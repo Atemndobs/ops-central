@@ -10,15 +10,46 @@ const jobStatusValidator = v.union(
   v.literal("cancelled"),
 );
 
-async function enrichJob(ctx: { db: any }, job: any) {
-  const property = await ctx.db.get(job.propertyId);
-  const cleaner = job.cleanerId ? await ctx.db.get(job.cleanerId) : null;
+type EnrichableJob = {
+  _id: string;
+  propertyId: string;
+  cleanerId?: string;
+  title: string;
+  scheduledFor: number;
+  [key: string]: unknown;
+};
 
-  return {
+type RelatedEntity = {
+  _id: string;
+  name?: string;
+  email?: string;
+  address?: string;
+};
+
+async function enrichJobs(
+  ctx: unknown,
+  jobs: EnrichableJob[],
+) {
+  const db = (ctx as { db: { get: (id: unknown) => Promise<RelatedEntity | null> } }).db;
+  const propertyIds = [...new Set(jobs.map((job) => job.propertyId))];
+
+  const properties = await Promise.all(propertyIds.map((propertyId) => db.get(propertyId)));
+  const cleaners = await Promise.all(
+    jobs.map((job) => (job.cleanerId ? db.get(job.cleanerId) : null)),
+  );
+
+  const propertyById = new Map(
+    properties.filter(Boolean).map((property) => [property!._id, property!]),
+  );
+  const cleanerById = new Map(
+    cleaners.filter(Boolean).map((cleaner) => [cleaner!._id, cleaner!]),
+  );
+
+  return jobs.map((job) => ({
     ...job,
-    property,
-    cleaner,
-  };
+    property: propertyById.get(job.propertyId) ?? null,
+    cleaner: job.cleanerId ? cleanerById.get(job.cleanerId) ?? null : null,
+  }));
 }
 
 export const list = query({
@@ -29,12 +60,25 @@ export const list = query({
     search: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const source = args.status
-      ? await ctx.db
-          .query("jobs")
-          .withIndex("by_status", (q) => q.eq("status", args.status!))
-          .collect()
-      : await ctx.db.query("jobs").collect();
+    let source;
+    if (args.status) {
+      source = await ctx.db
+        .query("jobs")
+        .withIndex("by_status", (q) => q.eq("status", args.status!))
+        .collect();
+    } else if (args.propertyId && !args.cleanerId) {
+      source = await ctx.db
+        .query("jobs")
+        .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId!))
+        .collect();
+    } else if (args.cleanerId && !args.propertyId) {
+      source = await ctx.db
+        .query("jobs")
+        .withIndex("by_cleaner", (q) => q.eq("cleanerId", args.cleanerId!))
+        .collect();
+    } else {
+      source = await ctx.db.query("jobs").collect();
+    }
 
     const filtered = source.filter((job) => {
       if (args.propertyId && job.propertyId !== args.propertyId) {
@@ -46,7 +90,7 @@ export const list = query({
       return true;
     });
 
-    const enriched = await Promise.all(filtered.map((job) => enrichJob(ctx, job)));
+    const enriched = await enrichJobs(ctx, filtered);
     const searchValue = args.search?.trim().toLowerCase();
 
     const bySearch = searchValue
@@ -77,7 +121,8 @@ export const getById = query({
       return null;
     }
 
-    return enrichJob(ctx, job);
+    const [enriched] = await enrichJobs(ctx, [job]);
+    return enriched;
   },
 });
 
@@ -91,7 +136,7 @@ export const getByProperty = query({
       .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId))
       .collect();
 
-    const enriched = await Promise.all(jobs.map((job) => enrichJob(ctx, job)));
+    const enriched = await enrichJobs(ctx, jobs);
     return enriched.sort((a, b) => b.scheduledFor - a.scheduledFor);
   },
 });
@@ -106,7 +151,27 @@ export const getByCleaner = query({
       .withIndex("by_cleaner", (q) => q.eq("cleanerId", args.cleanerId))
       .collect();
 
-    const enriched = await Promise.all(jobs.map((job) => enrichJob(ctx, job)));
+    const enriched = await enrichJobs(ctx, jobs);
     return enriched.sort((a, b) => b.scheduledFor - a.scheduledFor);
+  },
+});
+
+export const listCleanerOptions = query({
+  args: {},
+  handler: async (ctx) => {
+    const cleaners = await ctx.db
+      .query("users")
+      .withIndex("by_role", (q) => q.eq("role", "cleaner"))
+      .collect();
+
+    return cleaners
+      .map((cleaner) => ({
+        id: cleaner._id,
+        name:
+          cleaner.name?.trim() ||
+          cleaner.email?.split("@")[0] ||
+          `Cleaner ${String(cleaner._id).slice(-6)}`,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   },
 });

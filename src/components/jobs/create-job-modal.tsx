@@ -2,7 +2,9 @@
 
 import { FormEvent, useState } from "react";
 import { useMutation } from "convex/react";
-import { api } from "../../../convex/_generated/api";
+import type { FunctionReference } from "convex/server";
+import { useToast } from "@/components/ui/toast-provider";
+import { getErrorMessage } from "@/lib/errors";
 
 type Option = {
   id: string;
@@ -16,13 +18,29 @@ type CreateJobModalProps = {
   cleanerOptions: Option[];
 };
 
+const mutationRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
+  name as unknown as FunctionReference<"mutation", "public", TArgs, TReturn>;
+
 export function CreateJobModal({
   open,
   onClose,
   propertyOptions,
   cleanerOptions,
 }: CreateJobModalProps) {
-  const createJob = useMutation(api.jobs.mutations.create as any);
+  const createJob = useMutation(
+    mutationRef<
+      {
+        propertyId: string;
+        cleanerId?: string;
+        title: string;
+        notes?: string;
+        scheduledFor: number;
+        photoUrls?: string[];
+      },
+      string
+    >("jobs/mutations:create"),
+  );
+  const { showToast } = useToast();
 
   const [propertyId, setPropertyId] = useState("");
   const [cleanerId, setCleanerId] = useState("");
@@ -43,8 +61,14 @@ export function CreateJobModal({
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
 
-    if (!effectivePropertyId || !title || !scheduledFor) {
+    if (!effectivePropertyId || !title.trim() || !scheduledFor) {
       setError("Property, title, and schedule are required.");
+      return;
+    }
+
+    const scheduledTimestamp = new Date(scheduledFor).getTime();
+    if (!Number.isFinite(scheduledTimestamp)) {
+      setError("Enter a valid schedule date and time.");
       return;
     }
 
@@ -55,9 +79,9 @@ export function CreateJobModal({
       await createJob({
         propertyId: effectivePropertyId,
         cleanerId: cleanerId || undefined,
-        title,
+        title: title.trim(),
         notes: notes || undefined,
-        scheduledFor: new Date(scheduledFor).getTime(),
+        scheduledFor: scheduledTimestamp,
         photoUrls: photoUrls
           .split("\n")
           .map((url) => url.trim())
@@ -71,11 +95,12 @@ export function CreateJobModal({
       setNotes("");
       setPhotoUrls("");
       setManualPropertyId("");
+      showToast("Job created successfully.");
       onClose();
     } catch (submitError) {
-      const message =
-        submitError instanceof Error ? submitError.message : "Failed to create job.";
+      const message = getErrorMessage(submitError, "Failed to create job.");
       setError(message);
+      showToast(message, "error");
     } finally {
       setSaving(false);
     }

@@ -7,6 +7,8 @@ import { useMutation, useQuery } from "convex/react";
 import { ArrowLeft, Loader2, Pencil } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import { PropertyFormModal } from "@/components/properties/property-form-modal";
+import { useToast } from "@/components/ui/toast-provider";
+import { getErrorMessage } from "@/lib/errors";
 import { PropertyFormValues, PropertyRecord } from "@/types/property";
 
 const tabs = ["Overview", "Jobs", "Checklists", "Inventory", "Settings"] as const;
@@ -45,6 +47,8 @@ export function PropertyDetail({ id }: { id: string }) {
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>("Overview");
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   const property = useQuery(api.properties.queries.getById, {
     id: id as never,
@@ -74,10 +78,17 @@ export function PropertyDetail({ id }: { id: string }) {
 
   const handleUpdate = async (values: PropertyFormValues) => {
     setIsSaving(true);
+    setActionError(null);
 
     try {
       await updateProperty({ id: id as never, ...toMutationInput(values) });
       setIsEditOpen(false);
+      showToast("Property updated successfully.");
+    } catch (error) {
+      const message = getErrorMessage(error, "Failed to update property.");
+      setActionError(message);
+      showToast(message, "error");
+      throw error;
     } finally {
       setIsSaving(false);
     }
@@ -155,6 +166,12 @@ export function PropertyDetail({ id }: { id: string }) {
           </button>
         ))}
       </div>
+
+      {actionError ? (
+        <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+          {actionError}
+        </div>
+      ) : null}
 
       {activeTab === "Overview" ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

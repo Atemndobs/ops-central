@@ -1,8 +1,9 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { api } from "../../../convex/_generated/api";
+import type { FunctionReference } from "convex/server";
 import {
   STATUS_CLASSNAMES,
   STATUS_LABELS,
@@ -10,6 +11,8 @@ import {
   getNextStatus,
   type JobStatus,
 } from "@/components/jobs/job-status";
+import { useToast } from "@/components/ui/toast-provider";
+import { getErrorMessage } from "@/lib/errors";
 
 type Job = {
   _id: string;
@@ -24,24 +27,48 @@ type Job = {
   cleaner?: { _id: string; name?: string | null; email?: string | null } | null;
 };
 
+const queryRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
+  name as unknown as FunctionReference<"query", "public", TArgs, TReturn>;
+
+const mutationRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
+  name as unknown as FunctionReference<"mutation", "public", TArgs, TReturn>;
+
 export function JobDetailClient({ id }: { id: string }) {
-  const job = useQuery(api.jobs.queries.getById as any, { id }) as Job | null | undefined;
-  const updateStatus = useMutation(api.jobs.mutations.updateStatus as any);
-  const assignCleaner = useMutation(api.jobs.mutations.assignCleaner as any);
+  const job = useQuery(queryRef<{ id: string }, Job | null>("jobs/queries:getById"), {
+    id,
+  });
+  const updateStatus = useMutation(
+    mutationRef<{ id: string; status: JobStatus }, string>(
+      "jobs/mutations:updateStatus",
+    ),
+  );
+  const assignCleaner = useMutation(
+    mutationRef<{ id: string; cleanerId: string }, string>(
+      "jobs/mutations:assignCleaner",
+    ),
+  );
 
   const [cleanerId, setCleanerId] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { showToast } = useToast();
+
+  const cleanerOptions = useQuery(
+    queryRef<Record<string, never>, Array<{ id: string; name: string }>>(
+      "jobs/queries:listCleanerOptions",
+    ),
+    {},
+  );
 
   const cleanerJobs = useQuery(
-    api.jobs.queries.getByCleaner as any,
+    queryRef<{ cleanerId: string }, Job[]>("jobs/queries:getByCleaner"),
     job?.cleanerId ? { cleanerId: job.cleanerId } : "skip",
-  ) as Job[] | undefined;
+  );
 
   const propertyJobs = useQuery(
-    api.jobs.queries.getByProperty as any,
+    queryRef<{ propertyId: string }, Job[]>("jobs/queries:getByProperty"),
     job?.propertyId ? { propertyId: job.propertyId } : "skip",
-  ) as Job[] | undefined;
+  );
 
   const nextStatus = useMemo(() => {
     if (!job) {
@@ -68,8 +95,11 @@ export function JobDetailClient({ id }: { id: string }) {
 
     try {
       await updateStatus({ id, status: nextStatus });
+      showToast(`Job moved to ${STATUS_LABELS[nextStatus]}.`);
     } catch (statusError) {
-      setError(statusError instanceof Error ? statusError.message : "Unable to update status.");
+      const message = getErrorMessage(statusError, "Unable to update status.");
+      setError(message);
+      showToast(message, "error");
     } finally {
       setPending(false);
     }
@@ -77,7 +107,7 @@ export function JobDetailClient({ id }: { id: string }) {
 
   async function onAssignCleaner() {
     if (!cleanerId) {
-      setError("Enter a cleaner ID before assigning.");
+      setError("Select a cleaner before assigning.");
       return;
     }
 
@@ -87,8 +117,11 @@ export function JobDetailClient({ id }: { id: string }) {
     try {
       await assignCleaner({ id, cleanerId });
       setCleanerId("");
+      showToast("Cleaner assigned.");
     } catch (assignError) {
-      setError(assignError instanceof Error ? assignError.message : "Unable to assign cleaner.");
+      const message = getErrorMessage(assignError, "Unable to assign cleaner.");
+      setError(message);
+      showToast(message, "error");
     } finally {
       setPending(false);
     }
@@ -169,12 +202,18 @@ export function JobDetailClient({ id }: { id: string }) {
                 {nextStatus ? `Move to ${STATUS_LABELS[nextStatus]}` : "No further transition"}
               </button>
 
-              <input
+              <select
                 value={cleanerId}
                 onChange={(event) => setCleanerId(event.target.value)}
-                placeholder="Cleaner ID"
                 className="rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 text-sm"
-              />
+              >
+                <option value="">Select Cleaner</option>
+                {(cleanerOptions ?? []).map((cleaner) => (
+                  <option key={cleaner.id} value={cleaner.id}>
+                    {cleaner.name}
+                  </option>
+                ))}
+              </select>
               <button
                 onClick={onAssignCleaner}
                 disabled={pending}
@@ -217,9 +256,11 @@ export function JobDetailClient({ id }: { id: string }) {
                 rel="noreferrer"
                 className="group overflow-hidden rounded-md border border-[var(--border)]"
               >
-                <img
+                <Image
                   src={photo.url}
                   alt={photo.caption || `Job photo ${index + 1}`}
+                  width={320}
+                  height={160}
                   className="h-28 w-full object-cover transition-transform group-hover:scale-105"
                 />
               </a>

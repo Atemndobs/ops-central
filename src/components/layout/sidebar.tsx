@@ -34,7 +34,7 @@ const navigation = [
     name: "Jobs",
     href: "/jobs",
     icon: ClipboardList,
-    roles: ["admin", "property_ops", "manager"],
+    roles: ["admin", "property_ops", "manager", "cleaner"],
   },
   {
     name: "Properties",
@@ -89,7 +89,7 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="flex w-[var(--sidebar-width)] flex-col border-r border-[var(--border)] bg-[var(--card)]">
+    <aside className="hidden w-[var(--sidebar-width)] flex-col border-r border-[var(--border)] bg-[var(--card)] md:flex">
       {/* Logo */}
       <div className="flex h-14 items-center gap-2 border-b border-[var(--border)] px-4">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--primary)] text-sm font-bold text-white">

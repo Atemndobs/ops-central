@@ -1,19 +1,9 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { dark } from "@clerk/themes";
 import { ConvexClientProvider } from "@/components/providers/convex-provider";
+import { ToastProvider } from "@/components/ui/toast-provider";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "OpsCentral - Property Care Operations",
@@ -27,7 +17,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body className="antialiased">
         <ClerkProvider
           signInUrl="/sign-in"
           signUpUrl="/sign-up"
@@ -35,7 +25,7 @@ export default function RootLayout({
           appearance={{ baseTheme: dark }}
         >
           <ConvexClientProvider>
-            {children}
+            <ToastProvider>{children}</ToastProvider>
           </ConvexClientProvider>
         </ClerkProvider>
       </body>

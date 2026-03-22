@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
-import { Plus, Search } from "lucide-react";
-import { api } from "../../../convex/_generated/api";
+import type { FunctionReference } from "convex/server";
+import { Loader2, Plus, Search } from "lucide-react";
 import {
   JOB_STATUSES,
   STATUS_CLASSNAMES,
@@ -24,6 +24,14 @@ type JobWithRelations = {
   cleaner?: { _id: string; name?: string | null } | null;
 };
 
+type Option = {
+  id: string;
+  name: string;
+};
+
+const queryRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
+  name as unknown as FunctionReference<"query", "public", TArgs, TReturn>;
+
 export function JobsPageClient() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<JobStatus | "all">("all");
@@ -31,27 +39,64 @@ export function JobsPageClient() {
   const [cleanerId, setCleanerId] = useState("all");
   const [showCreateModal, setShowCreateModal] = useState(false);
 
-  const jobs = (useQuery(api.jobs.queries.list as any, {
+  const jobs = useQuery(
+    queryRef<
+      {
+        search?: string;
+        status?: JobStatus;
+        propertyId?: string;
+        cleanerId?: string;
+      },
+      JobWithRelations[]
+    >("jobs/queries:list"),
+    {
     search: search || undefined,
     status: status === "all" ? undefined : status,
     propertyId: propertyId === "all" ? undefined : propertyId,
     cleanerId: cleanerId === "all" ? undefined : cleanerId,
-  }) ?? []) as JobWithRelations[];
+    },
+  );
 
-  const allJobs = (useQuery(api.jobs.queries.list as any, {}) ?? []) as JobWithRelations[];
+  const allJobs = useQuery(
+    queryRef<Record<string, never>, JobWithRelations[]>("jobs/queries:list"),
+    {},
+  );
 
-  const propertyOptions = useMemo(() => {
+  const cleanerOptionsFromUsers = useQuery(
+    queryRef<Record<string, never>, Option[]>("jobs/queries:listCleanerOptions"),
+    {},
+  );
+
+  const propertiesForCreate = useQuery(
+    queryRef<{ includeInactive?: boolean }, Array<{ _id: string; name: string }>>(
+      "properties/queries:list",
+    ),
+    { includeInactive: false },
+  );
+
+  const propertyOptionsFromJobs = useMemo(() => {
     const optionMap = new Map<string, string>();
-    allJobs.forEach((job) => {
+    (allJobs ?? []).forEach((job) => {
       const name = job.property?.name || `Property ${job.propertyId.slice(-6)}`;
       optionMap.set(job.propertyId, name);
     });
     return Array.from(optionMap.entries()).map(([id, name]) => ({ id, name }));
   }, [allJobs]);
 
-  const cleanerOptions = useMemo(() => {
+  const propertyOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    (propertiesForCreate ?? []).forEach((property) => {
+      map.set(property._id, property.name);
+    });
+    propertyOptionsFromJobs.forEach((property) => {
+      map.set(property.id, property.name);
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [propertiesForCreate, propertyOptionsFromJobs]);
+
+  const cleanerOptionsFromJobs = useMemo(() => {
     const optionMap = new Map<string, string>();
-    allJobs.forEach((job) => {
+    (allJobs ?? []).forEach((job) => {
       if (!job.cleanerId) {
         return;
       }
@@ -61,13 +106,28 @@ export function JobsPageClient() {
     return Array.from(optionMap.entries()).map(([id, name]) => ({ id, name }));
   }, [allJobs]);
 
+  const cleanerOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    (cleanerOptionsFromUsers ?? []).forEach((cleaner) => {
+      map.set(cleaner.id, cleaner.name);
+    });
+    cleanerOptionsFromJobs.forEach((cleaner) => {
+      map.set(cleaner.id, cleaner.name);
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [cleanerOptionsFromJobs, cleanerOptionsFromUsers]);
+
   const counts = useMemo(() => {
-    const values: Record<string, number> = { all: allJobs.length };
+    const all = allJobs ?? [];
+    const values: Record<string, number> = { all: all.length };
     JOB_STATUSES.forEach((itemStatus) => {
-      values[itemStatus] = allJobs.filter((job) => job.status === itemStatus).length;
+      values[itemStatus] = all.filter((job) => job.status === itemStatus).length;
     });
     return values;
   }, [allJobs]);
+
+  const isLoading = jobs === undefined || allJobs === undefined;
+  const jobRows = jobs ?? [];
 
   return (
     <div className="space-y-4">
@@ -142,6 +202,12 @@ export function JobsPageClient() {
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--card)]">
+        {isLoading ? (
+          <div className="flex min-h-40 items-center justify-center p-6 text-sm text-[var(--muted-foreground)]">
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Loading jobs...
+          </div>
+        ) : null}
         <table className="min-w-full text-left text-sm">
           <thead className="border-b border-[var(--border)] text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
             <tr>
@@ -154,7 +220,7 @@ export function JobsPageClient() {
             </tr>
           </thead>
           <tbody>
-            {jobs.map((job) => (
+            {jobRows.map((job) => (
               <tr key={job._id} className="border-b border-[var(--border)] last:border-b-0">
                 <td className="px-4 py-3">
                   <p className="font-medium">{job.title}</p>
@@ -185,7 +251,7 @@ export function JobsPageClient() {
           </tbody>
         </table>
 
-        {!jobs.length ? (
+        {!isLoading && !jobRows.length ? (
           <div className="px-4 py-12 text-center text-sm text-[var(--muted-foreground)]">
             No jobs found for current filters.
           </div>

@@ -25,8 +25,8 @@ export function Header() {
     "OpsCentral";
 
   return (
-    <header className="flex h-14 items-center justify-between border-b border-[var(--border)] px-6">
-      <h1 className="text-lg font-semibold">{title}</h1>
+    <header className="flex h-14 items-center justify-between border-b border-[var(--border)] px-4 md:px-6">
+      <h1 className="truncate text-base font-semibold md:text-lg">{title}</h1>
       <div className="flex items-center gap-4">
         <button className="relative rounded-md p-2 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--accent-foreground)]">
           <Bell className="h-4 w-4" />

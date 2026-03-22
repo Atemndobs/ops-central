@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { Loader2, Upload, X } from "lucide-react";
+import { getErrorMessage } from "@/lib/errors";
 import { PropertyFormValues, PropertyStatus } from "@/types/property";
 
 interface PropertyFormModalProps {
@@ -115,14 +116,41 @@ export function PropertyFormModal({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!formValues.name.trim() || !formValues.address.trim()) {
+      setErrorMessage("Name and address are required.");
+      return;
+    }
+
+    if (formValues.bedrooms !== undefined && formValues.bedrooms < 0) {
+      setErrorMessage("Bedrooms must be 0 or more.");
+      return;
+    }
+
+    if (formValues.bathrooms !== undefined && formValues.bathrooms < 0) {
+      setErrorMessage("Bathrooms must be 0 or more.");
+      return;
+    }
+
+    if (
+      formValues.estimatedCleaningMinutes !== undefined &&
+      formValues.estimatedCleaningMinutes < 0
+    ) {
+      setErrorMessage("Cleaning minutes must be 0 or more.");
+      return;
+    }
+
     setIsSaving(true);
     setErrorMessage(null);
 
     try {
-      await onSubmit(formValues);
+      await onSubmit({
+        ...formValues,
+        name: formValues.name.trim(),
+        address: formValues.address.trim(),
+      });
       onClose();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to save property");
+      setErrorMessage(getErrorMessage(error, "Failed to save property"));
     } finally {
       setIsSaving(false);
     }

@@ -16,14 +16,23 @@ export const list = queryGeneric({
   handler: async (ctx, args) => {
     const includeInactive = args.includeInactive ?? false;
 
-    let properties = await ctx.db.query("properties").collect();
-
-    if (!includeInactive) {
-      properties = properties.filter((property) => property.isActive);
+    let properties;
+    if (args.status) {
+      properties = await ctx.db
+        .query("properties")
+        .withIndex("by_status", (q) => q.eq("status", args.status!))
+        .collect();
+    } else if (!includeInactive) {
+      properties = await ctx.db
+        .query("properties")
+        .withIndex("by_isActive", (q) => q.eq("isActive", true))
+        .collect();
+    } else {
+      properties = await ctx.db.query("properties").collect();
     }
 
-    if (args.status) {
-      properties = properties.filter((property) => property.status === args.status);
+    if (!includeInactive && args.status) {
+      properties = properties.filter((property) => property.isActive);
     }
 
     return properties.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -64,35 +73,39 @@ export const search = queryGeneric({
     const queryText = args.query.trim().toLowerCase();
     const limit = args.limit ?? 50;
 
-    let properties = await ctx.db.query("properties").collect();
-
-    if (!includeInactive) {
-      properties = properties.filter((property) => property.isActive);
-    }
-
-    if (args.status) {
-      properties = properties.filter((property) => property.status === args.status);
-    }
-
-    if (queryText.length > 0) {
-      properties = properties.filter((property) => {
-        const searchableText = [
-          property.name,
-          property.address,
-          property.city,
-          property.state,
-          property.postalCode,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-
-        return searchableText.includes(queryText);
+    if (!queryText) {
+      const fallback = await ctx.db
+        .query("properties")
+        .withIndex("by_updatedAt")
+        .collect();
+      const filtered = fallback.filter((property) => {
+        if (!includeInactive && !property.isActive) {
+          return false;
+        }
+        if (args.status && property.status !== args.status) {
+          return false;
+        }
+        return true;
       });
+      return filtered
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .slice(0, Math.max(1, Math.min(limit, 100)));
     }
 
-    return properties
-      .sort((a, b) => b.updatedAt - a.updatedAt)
-      .slice(0, Math.max(1, Math.min(limit, 100)));
+    const results = await ctx.db
+      .query("properties")
+      .withSearchIndex("search_name", (q) => {
+        const withQuery = q.search("name", queryText);
+        if (args.status) {
+          return withQuery.eq("status", args.status);
+        }
+        if (!includeInactive) {
+          return withQuery.eq("isActive", true);
+        }
+        return withQuery;
+      })
+      .take(Math.max(1, Math.min(limit, 100)));
+
+    return includeInactive ? results : results.filter((property) => property.isActive);
   },
 });

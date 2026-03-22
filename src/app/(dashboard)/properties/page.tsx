@@ -7,6 +7,8 @@ import { useMutation, useQuery } from "convex/react";
 import { Building2, Edit3, Loader2, Plus, Search, Trash2 } from "lucide-react";
 import { api } from "../../../../convex/_generated/api";
 import { PropertyFormModal } from "@/components/properties/property-form-modal";
+import { useToast } from "@/components/ui/toast-provider";
+import { getErrorMessage } from "@/lib/errors";
 import { PropertyFormValues, PropertyRecord, PropertyStatus } from "@/types/property";
 
 const statusStyles: Record<PropertyStatus, string> = {
@@ -59,6 +61,8 @@ export default function PropertiesPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingProperty, setEditingProperty] = useState<PropertyRecord | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   const properties = useQuery(
     search.trim().length > 0 ? api.properties.queries.search : api.properties.queries.list,
@@ -80,9 +84,16 @@ export default function PropertiesPage() {
 
   const handleCreate = async (values: PropertyFormValues) => {
     setIsSaving(true);
+    setActionError(null);
 
     try {
       await createProperty(toMutationInput(values));
+      showToast("Property created successfully.");
+    } catch (error) {
+      const message = getErrorMessage(error, "Failed to create property.");
+      setActionError(message);
+      showToast(message, "error");
+      throw error;
     } finally {
       setIsSaving(false);
     }
@@ -94,6 +105,7 @@ export default function PropertiesPage() {
     }
 
     setIsSaving(true);
+    setActionError(null);
 
     try {
       await updateProperty({
@@ -101,6 +113,12 @@ export default function PropertiesPage() {
         ...toMutationInput(values),
       });
       setEditingProperty(null);
+      showToast("Property updated successfully.");
+    } catch (error) {
+      const message = getErrorMessage(error, "Failed to update property.");
+      setActionError(message);
+      showToast(message, "error");
+      throw error;
     } finally {
       setIsSaving(false);
     }
@@ -112,7 +130,16 @@ export default function PropertiesPage() {
       return;
     }
 
-    await softDeleteProperty({ id: id as never });
+    setActionError(null);
+
+    try {
+      await softDeleteProperty({ id: id as never });
+      showToast("Property archived.");
+    } catch (error) {
+      const message = getErrorMessage(error, "Failed to archive property.");
+      setActionError(message);
+      showToast(message, "error");
+    }
   };
 
   return (
@@ -153,6 +180,12 @@ export default function PropertiesPage() {
           Add Property
         </button>
       </div>
+
+      {actionError ? (
+        <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+          {actionError}
+        </div>
+      ) : null}
 
       {!properties ? (
         <div className="flex min-h-40 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--card)]">

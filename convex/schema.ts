@@ -8,7 +8,9 @@ export default defineSchema({
     role: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
-  }).index("by_role", ["role"]),
+  })
+    .index("by_role", ["role"])
+    .index("by_email", ["email"]),
 
   properties: defineTable({
     name: v.string(),
@@ -17,12 +19,12 @@ export default defineSchema({
     state: v.optional(v.string()),
     postalCode: v.optional(v.string()),
     country: v.optional(v.string()),
-    status: v.union(
+    status: v.optional(v.union(
       v.literal("ready"),
       v.literal("dirty"),
       v.literal("in_progress"),
       v.literal("vacant"),
-    ),
+    )),
     propertyType: v.optional(v.string()),
     bedrooms: v.optional(v.number()),
     bathrooms: v.optional(v.number()),
@@ -42,6 +44,8 @@ export default defineSchema({
     .index("by_name", ["name"])
     .index("by_status", ["status"])
     .index("by_isActive", ["isActive"])
+    .index("by_nextCheckInAt", ["nextCheckInAt"])
+    .index("by_updatedAt", ["updatedAt"])
     .searchIndex("search_name", {
       searchField: "name",
       filterFields: ["status", "isActive"],
@@ -77,5 +81,6 @@ export default defineSchema({
     .index("by_property", ["propertyId"])
     .index("by_cleaner", ["cleanerId"])
     .index("by_scheduled", ["scheduledFor"])
-    .index("by_property_status", ["propertyId", "status"]),
+    .index("by_property_status", ["propertyId", "status"])
+    .index("by_status_scheduled", ["status", "scheduledFor"]),
 });

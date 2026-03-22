@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   ClipboardList,
   Clock,
+  Loader2,
   TrendingUp,
 } from "lucide-react";
 
@@ -98,7 +99,7 @@ function statusPill(status: string) {
   if (status === "in_progress") {
     return "bg-[var(--warning)]/20 text-[var(--warning)]";
   }
-  if (status === "awaiting_approval" || status === "rework_required") {
+  if (status === "cancelled") {
     return "bg-[var(--destructive)]/20 text-[var(--destructive)]";
   }
   return "bg-[var(--muted)] text-[var(--muted-foreground)]";
@@ -118,6 +119,12 @@ export default function DashboardPage() {
     queryRef<RecentActivityItem[]>("dashboard/queries:getRecentActivity"),
   );
 
+  const isLoading =
+    todayJobs === undefined ||
+    upcomingCheckins === undefined ||
+    quickStats === undefined ||
+    recentActivity === undefined;
+
   const stats = quickStats ?? {
     todayJobs: 0,
     inProgress: 0,
@@ -136,6 +143,13 @@ export default function DashboardPage() {
           Live view of jobs, readiness, and team activity.
         </p>
       </div>
+
+      {isLoading ? (
+        <div className="inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-sm text-[var(--muted-foreground)]">
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          Loading live dashboard data...
+        </div>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatTile
