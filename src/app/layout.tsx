@@ -28,7 +28,12 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <ClerkProvider appearance={{ baseTheme: dark }}>
+        <ClerkProvider
+          signInUrl="/sign-in"
+          signUpUrl="/sign-up"
+          afterSignOutUrl="/sign-in"
+          appearance={{ baseTheme: dark }}
+        >
           <ConvexClientProvider>
             {children}
           </ConvexClientProvider>

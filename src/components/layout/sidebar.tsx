@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { UserButton, useAuth, useUser } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
+import { getRoleFromSessionClaims, type UserRole } from "@/lib/auth";
 import {
   LayoutDashboard,
   Calendar,
@@ -16,19 +18,75 @@ import {
 } from "lucide-react";
 
 const navigation = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
-  { name: "Schedule", href: "/schedule", icon: Calendar },
-  { name: "Jobs", href: "/jobs", icon: ClipboardList },
-  { name: "Properties", href: "/properties", icon: Building2 },
-  { name: "Team", href: "/team", icon: Users },
-  { name: "Inventory", href: "/inventory", icon: Package },
-  { name: "Work Orders", href: "/work-orders", icon: Wrench },
-  { name: "Reports", href: "/reports", icon: BarChart3 },
-  { name: "Settings", href: "/settings", icon: Settings },
+  {
+    name: "Dashboard",
+    href: "/",
+    icon: LayoutDashboard,
+    roles: ["admin", "property_ops", "manager"],
+  },
+  {
+    name: "Schedule",
+    href: "/schedule",
+    icon: Calendar,
+    roles: ["admin", "property_ops"],
+  },
+  {
+    name: "Jobs",
+    href: "/jobs",
+    icon: ClipboardList,
+    roles: ["admin", "property_ops", "manager"],
+  },
+  {
+    name: "Properties",
+    href: "/properties",
+    icon: Building2,
+    roles: ["admin", "property_ops", "manager"],
+  },
+  {
+    name: "Team",
+    href: "/team",
+    icon: Users,
+    roles: ["admin", "property_ops", "manager"],
+  },
+  {
+    name: "Inventory",
+    href: "/inventory",
+    icon: Package,
+    roles: ["admin"],
+  },
+  {
+    name: "Work Orders",
+    href: "/work-orders",
+    icon: Wrench,
+    roles: ["admin"],
+  },
+  {
+    name: "Reports",
+    href: "/reports",
+    icon: BarChart3,
+    roles: ["admin", "property_ops", "manager"],
+  },
+  {
+    name: "Settings",
+    href: "/settings",
+    icon: Settings,
+    roles: ["admin"],
+  },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { sessionClaims } = useAuth();
+  const { user } = useUser();
+  const role = getRoleFromSessionClaims(
+    sessionClaims as Record<string, unknown> | null,
+  );
+  const roleLabel: Record<UserRole, string> = {
+    admin: "Admin",
+    property_ops: "Property Ops",
+    manager: "Manager",
+    cleaner: "Cleaner",
+  };
 
   return (
     <aside className="flex w-[var(--sidebar-width)] flex-col border-r border-[var(--border)] bg-[var(--card)]">
@@ -42,7 +100,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 p-3">
-        {navigation.map((item) => {
+        {navigation.filter((item) => item.roles.includes(role)).map((item) => {
           const isActive =
             pathname === item.href ||
             (item.href !== "/" && pathname.startsWith(item.href));
@@ -66,11 +124,16 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="border-t border-[var(--border)] p-3">
-        <div className="flex items-center gap-2 px-3 py-2">
-          <div className="h-6 w-6 rounded-full bg-[var(--muted)]" />
-          <span className="text-xs text-[var(--muted-foreground)]">
-            J&A Business Solutions
-          </span>
+        <div className="flex items-center justify-between rounded-md px-3 py-2 hover:bg-[var(--accent)]">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">
+              {user?.fullName || user?.primaryEmailAddress?.emailAddress || "User"}
+            </p>
+            <p className="truncate text-xs text-[var(--muted-foreground)]">
+              {roleLabel[role]}
+            </p>
+          </div>
+          <UserButton afterSignOutUrl="/sign-in" />
         </div>
       </div>
     </aside>

@@ -1,0 +1,214 @@
+"use client";
+
+import { FormEvent, useState } from "react";
+import { useMutation } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+
+type Option = {
+  id: string;
+  name: string;
+};
+
+type CreateJobModalProps = {
+  open: boolean;
+  onClose: () => void;
+  propertyOptions: Option[];
+  cleanerOptions: Option[];
+};
+
+export function CreateJobModal({
+  open,
+  onClose,
+  propertyOptions,
+  cleanerOptions,
+}: CreateJobModalProps) {
+  const createJob = useMutation(api.jobs.mutations.create as any);
+
+  const [propertyId, setPropertyId] = useState("");
+  const [cleanerId, setCleanerId] = useState("");
+  const [title, setTitle] = useState("");
+  const [scheduledFor, setScheduledFor] = useState("");
+  const [notes, setNotes] = useState("");
+  const [photoUrls, setPhotoUrls] = useState("");
+  const [manualPropertyId, setManualPropertyId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!open) {
+    return null;
+  }
+
+  const effectivePropertyId = propertyId || manualPropertyId;
+
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault();
+
+    if (!effectivePropertyId || !title || !scheduledFor) {
+      setError("Property, title, and schedule are required.");
+      return;
+    }
+
+    setError(null);
+    setSaving(true);
+
+    try {
+      await createJob({
+        propertyId: effectivePropertyId,
+        cleanerId: cleanerId || undefined,
+        title,
+        notes: notes || undefined,
+        scheduledFor: new Date(scheduledFor).getTime(),
+        photoUrls: photoUrls
+          .split("\n")
+          .map((url) => url.trim())
+          .filter(Boolean),
+      });
+
+      setPropertyId("");
+      setCleanerId("");
+      setTitle("");
+      setScheduledFor("");
+      setNotes("");
+      setPhotoUrls("");
+      setManualPropertyId("");
+      onClose();
+    } catch (submitError) {
+      const message =
+        submitError instanceof Error ? submitError.message : "Failed to create job.";
+      setError(message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <form
+        onSubmit={onSubmit}
+        className="w-full max-w-xl space-y-4 rounded-lg border border-[var(--border)] bg-[var(--card)] p-5"
+      >
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-base font-semibold">Create Job</h2>
+            <p className="text-xs text-[var(--muted-foreground)]">
+              Create a job and optionally assign a cleaner immediately.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md px-2 py-1 text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="space-y-1 text-sm">
+            <span className="text-[var(--muted-foreground)]">Property</span>
+            <select
+              value={propertyId}
+              onChange={(event) => setPropertyId(event.target.value)}
+              className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+            >
+              <option value="">Select property</option>
+              {propertyOptions.map((property) => (
+                <option key={property.id} value={property.id}>
+                  {property.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="space-y-1 text-sm">
+            <span className="text-[var(--muted-foreground)]">Cleaner</span>
+            <select
+              value={cleanerId}
+              onChange={(event) => setCleanerId(event.target.value)}
+              className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+            >
+              <option value="">Unassigned</option>
+              {cleanerOptions.map((cleaner) => (
+                <option key={cleaner.id} value={cleaner.id}>
+                  {cleaner.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <label className="block space-y-1 text-sm">
+          <span className="text-[var(--muted-foreground)]">Property ID (manual)</span>
+          <input
+            value={manualPropertyId}
+            onChange={(event) => setManualPropertyId(event.target.value)}
+            placeholder="Use this when no property options are available"
+            className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+          />
+        </label>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="space-y-1 text-sm">
+            <span className="text-[var(--muted-foreground)]">Title</span>
+            <input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="Turnover clean"
+              className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="space-y-1 text-sm">
+            <span className="text-[var(--muted-foreground)]">Scheduled For</span>
+            <input
+              type="datetime-local"
+              value={scheduledFor}
+              onChange={(event) => setScheduledFor(event.target.value)}
+              className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+            />
+          </label>
+        </div>
+
+        <label className="block space-y-1 text-sm">
+          <span className="text-[var(--muted-foreground)]">Notes</span>
+          <textarea
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            rows={3}
+            className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+          />
+        </label>
+
+        <label className="block space-y-1 text-sm">
+          <span className="text-[var(--muted-foreground)]">Photo URLs (one per line)</span>
+          <textarea
+            value={photoUrls}
+            onChange={(event) => setPhotoUrls(event.target.value)}
+            rows={3}
+            placeholder="https://..."
+            className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+          />
+        </label>
+
+        {error ? <p className="text-sm text-[var(--destructive)]">{error}</p> : null}
+
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-[var(--border)] px-3 py-1.5 text-sm"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
+          >
+            {saving ? "Creating..." : "Create Job"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}

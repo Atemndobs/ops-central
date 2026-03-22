@@ -1,7 +1,6 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { UserButton } from "@clerk/nextjs";
 import { Bell } from "lucide-react";
 
 const pageTitles: Record<string, string> = {
@@ -32,7 +31,6 @@ export function Header() {
         <button className="relative rounded-md p-2 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--accent-foreground)]">
           <Bell className="h-4 w-4" />
         </button>
-        <UserButton afterSignOutUrl="/sign-in" />
       </div>
     </header>
   );
