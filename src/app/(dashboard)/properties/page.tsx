@@ -65,15 +65,11 @@ export default function PropertiesPage() {
   const { showToast } = useToast();
 
   const properties = useQuery(
-    search.trim().length > 0 ? api.properties.queries.search : api.properties.queries.list,
-    search.trim().length > 0
-      ? {
-          query: search,
-          status: selectedStatus === "all" ? undefined : selectedStatus,
-        }
-      : {
-          status: selectedStatus === "all" ? undefined : selectedStatus,
-        },
+    api.properties.queries.search,
+    {
+      query: search,
+      status: selectedStatus === "all" ? undefined : selectedStatus,
+    },
   ) as PropertyRecord[] | undefined;
 
   const createProperty = useMutation(api.properties.mutations.create);
