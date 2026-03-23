@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
-import { dark } from "@clerk/themes";
 import { ConvexClientProvider } from "@/components/providers/convex-provider";
 import { ToastProvider } from "@/components/ui/toast-provider";
 import "./globals.css";
@@ -16,13 +15,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
       <body className="antialiased">
         <ClerkProvider
           signInUrl="/sign-in"
           signUpUrl="/sign-up"
           afterSignOutUrl="/sign-in"
-          appearance={{ baseTheme: dark }}
         >
           <ConvexClientProvider>
             <ToastProvider>{children}</ToastProvider>
