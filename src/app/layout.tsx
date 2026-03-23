@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { ClerkProvider } from "@clerk/nextjs";
 import { ConvexClientProvider } from "@/components/providers/convex-provider";
 import { ToastProvider } from "@/components/ui/toast-provider";
 import "./globals.css";
@@ -17,16 +16,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased">
-        <ClerkProvider
-          dynamic
-          signInUrl="/sign-in"
-          signUpUrl="/sign-up"
-          afterSignOutUrl="/sign-in"
-        >
-          <ConvexClientProvider>
-            <ToastProvider>{children}</ToastProvider>
-          </ConvexClientProvider>
-        </ClerkProvider>
+        <ConvexClientProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </ConvexClientProvider>
       </body>
     </html>
   );
