@@ -18,6 +18,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased">
         <ClerkProvider
+          dynamic
           signInUrl="/sign-in"
           signUpUrl="/sign-up"
           afterSignOutUrl="/sign-in"
