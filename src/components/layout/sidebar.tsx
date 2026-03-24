@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { UserButton, useAuth, useUser } from "@clerk/nextjs";
+import { SignOutButton, UserButton, useAuth, useUser } from "@clerk/nextjs";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { getRoleFromSessionClaims, type UserRole } from "@/lib/auth";
 import {
@@ -15,6 +17,10 @@ import {
   Wrench,
   BarChart3,
   Settings,
+  HelpCircle,
+  LogOut,
+  Moon,
+  Menu,
 } from "lucide-react";
 
 const navigation = [
@@ -78,6 +84,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const { sessionClaims } = useAuth();
   const { user } = useUser();
+  const [isCollapsed, setIsCollapsed] = useState(true);
   const role = getRoleFromSessionClaims(
     sessionClaims as Record<string, unknown> | null,
   );
@@ -89,17 +96,37 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="hidden w-[var(--sidebar-width)] flex-col border-r border-[var(--border)] bg-[var(--card)] md:flex">
-      {/* Logo */}
-      <div className="flex h-14 items-center gap-2 border-b border-[var(--border)] px-4">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--primary)] text-sm font-bold text-white">
-          OC
+    <aside
+      className={cn(
+        "hidden flex-col border-r bg-[var(--card)] transition-all duration-200 md:flex",
+        isCollapsed ? "w-24" : "w-[var(--sidebar-width)]",
+      )}
+    >
+      <div className={cn("pb-4 pt-6", isCollapsed ? "px-2" : "px-6")}>
+        <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3")}>
+          <Image
+            src="https://chezsoistays.com/wp-content/uploads/2026/02/cropped-chezsoi_favicon@2x.png"
+            alt="ChezSoi logo"
+            width={44}
+            height={44}
+            className="h-11 w-11 bg-[var(--primary)] p-2 object-contain"
+            priority
+          />
+          {!isCollapsed ? <p className="text-3xl font-black tracking-tighter">ChezSoi</p> : null}
         </div>
-        <span className="text-sm font-semibold tracking-tight">OpsCentral</span>
+        {!isCollapsed ? (
+          <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
+            Operations Management
+          </p>
+        ) : null}
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 space-y-1 p-3">
+      <nav
+        className={cn(
+          "flex-1 py-2",
+          isCollapsed ? "space-y-3 px-2" : "space-y-1 px-4",
+        )}
+      >
         {navigation.filter((item) => item.roles.includes(role)).map((item) => {
           const isActive =
             pathname === item.href ||
@@ -109,32 +136,95 @@ export function Sidebar() {
               key={item.name}
               href={item.href}
               className={cn(
-                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                "flex rounded-none transition-colors",
+                isCollapsed
+                  ? "mx-auto h-11 w-11 items-center justify-center"
+                  : "items-center gap-3 px-3 py-2.5 text-sm font-medium",
                 isActive
-                  ? "bg-[var(--accent)] text-[var(--accent-foreground)]"
-                  : "text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--accent-foreground)]",
+                  ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                  : "text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
               )}
+              title={isCollapsed ? item.name : undefined}
             >
-              <item.icon className="h-4 w-4" />
-              {item.name}
+              <item.icon className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
+              {!isCollapsed ? item.name : null}
             </Link>
           );
         })}
       </nav>
 
-      {/* Footer */}
-      <div className="border-t border-[var(--border)] p-3">
-        <div className="flex items-center justify-between rounded-md px-3 py-2 hover:bg-[var(--accent)]">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium">
-              {user?.fullName || user?.primaryEmailAddress?.emailAddress || "User"}
-            </p>
-            <p className="truncate text-xs text-[var(--muted-foreground)]">
-              {roleLabel[role]}
-            </p>
-          </div>
-          <UserButton afterSignOutUrl="/sign-in" />
+      <div className={cn("border-t py-4", isCollapsed ? "px-2" : "px-4")}>
+        <div className="space-y-1">
+          <button
+            type="button"
+            className={cn(
+              "flex w-full rounded-none text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
+              isCollapsed
+                ? "mx-auto h-11 w-11 items-center justify-center"
+                : "items-center gap-3 px-3 py-2.5 text-sm",
+            )}
+            title={isCollapsed ? "Help" : undefined}
+          >
+            <HelpCircle className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
+            {!isCollapsed ? "Help" : null}
+          </button>
+          <SignOutButton redirectUrl="/sign-in">
+            <button
+              type="button"
+              className={cn(
+                "flex w-full rounded-none text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
+                isCollapsed
+                  ? "mx-auto h-11 w-11 items-center justify-center"
+                  : "items-center gap-3 px-3 py-2.5 text-sm",
+              )}
+              title={isCollapsed ? "Logout" : undefined}
+            >
+              <LogOut className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
+              {!isCollapsed ? "Logout" : null}
+            </button>
+          </SignOutButton>
+          <button
+            type="button"
+            className={cn(
+              "flex w-full rounded-none text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
+              isCollapsed
+                ? "mx-auto h-11 w-11 items-center justify-center"
+                : "items-center gap-3 px-3 py-2.5 text-sm",
+            )}
+            title={isCollapsed ? "Theme" : undefined}
+          >
+            <Moon className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
+            {!isCollapsed ? "Dark Mode" : null}
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsCollapsed((prev) => !prev)}
+            className={cn(
+              "flex w-full rounded-none border-2 border-[#1d62d5] text-[#1d62d5] transition-colors hover:bg-[#1d62d5]/10",
+              isCollapsed
+                ? "mx-auto h-11 w-11 items-center justify-center"
+                : "items-center gap-3 px-3 py-2.5 text-sm",
+            )}
+            title={isCollapsed ? "Expand Sidebar" : undefined}
+          >
+            <Menu className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
+            {!isCollapsed ? "Collapse" : null}
+          </button>
         </div>
+
+        {!isCollapsed ? (
+          <div className="mt-4 flex items-center justify-between rounded-none px-2 py-2 hover:bg-[var(--accent)]">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">
+                {user?.fullName || user?.primaryEmailAddress?.emailAddress || "User"}
+              </p>
+              <p className="truncate text-xs text-[var(--muted-foreground)]">
+                {roleLabel[role]}
+              </p>
+            </div>
+            <UserButton afterSignOutUrl="/sign-in" />
+          </div>
+        ) : null}
       </div>
     </aside>
   );

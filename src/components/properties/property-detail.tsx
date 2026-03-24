@@ -4,18 +4,31 @@ import Link from "next/link";
 import Image from "next/image";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowLeft, Loader2, Pencil } from "lucide-react";
-import { api } from "../../../convex/_generated/api";
+import type { FunctionReference } from "convex/server";
+import { ArrowLeft, Loader2, MapPin, Pencil } from "lucide-react";
 import { PropertyFormModal } from "@/components/properties/property-form-modal";
+import { STATUS_LABELS, type JobStatus } from "@/components/jobs/job-status";
 import { useToast } from "@/components/ui/toast-provider";
 import { getErrorMessage } from "@/lib/errors";
 import { PropertyFormValues, PropertyRecord } from "@/types/property";
 
-const tabs = ["Overview", "Jobs", "Checklists", "Inventory", "Settings"] as const;
+const queryRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
+  name as unknown as FunctionReference<"query", "public", TArgs, TReturn>;
+
+const mutationRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
+  name as unknown as FunctionReference<"mutation", "public", TArgs, TReturn>;
+
+type PropertyJob = {
+  _id: string;
+  status: JobStatus;
+  scheduledStartAt?: number;
+  scheduledEndAt?: number;
+  cleaners?: Array<{ name?: string | null }>;
+};
 
 function formatDateTime(timestamp?: number) {
   if (!timestamp) {
-    return "—";
+    return "-";
   }
 
   return new Date(timestamp).toLocaleString();
@@ -27,52 +40,63 @@ function toMutationInput(values: PropertyFormValues) {
     address: values.address,
     city: values.city || undefined,
     state: values.state || undefined,
-    postalCode: values.postalCode || undefined,
+    zipCode: values.postalCode || undefined,
     country: values.country || undefined,
-    status: values.status,
     propertyType: values.propertyType || undefined,
     bedrooms: values.bedrooms,
     bathrooms: values.bathrooms,
-    estimatedCleaningMinutes: values.estimatedCleaningMinutes,
-    accessNotes: values.accessNotes || undefined,
-    tag: values.tag || undefined,
-    primaryPhotoUrl: values.primaryPhotoUrl || undefined,
-    photoUrls:
-      values.photoUrls && values.photoUrls.length > 0 ? values.photoUrls : undefined,
-    assignedCleanerName: values.assignedCleanerName || undefined,
+    imageUrl: values.primaryPhotoUrl || undefined,
   };
 }
 
 export function PropertyDetail({ id }: { id: string }) {
-  const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>("Overview");
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const { showToast } = useToast();
 
-  const property = useQuery(api.properties.queries.getById, {
+  const property = useQuery(queryRef<{ id: string }, PropertyRecord | null>("properties/queries:getById"), {
     id: id as never,
   }) as PropertyRecord | null | undefined;
 
-  const updateProperty = useMutation(api.properties.mutations.update);
+  const jobs = useQuery(
+    queryRef<{ propertyId?: string; limit?: number }, PropertyJob[]>("cleaningJobs/queries:getAll"),
+    {
+      propertyId: id as never,
+      limit: 30,
+    },
+  );
 
-  const stats = useMemo(() => {
+  const updateProperty = useMutation(
+    mutationRef<Record<string, unknown>, string>("properties/mutations:update"),
+  );
+
+  const recentJobs = useMemo(() => {
+    return (jobs ?? []).slice().sort((a, b) => (b.scheduledStartAt ?? 0) - (a.scheduledStartAt ?? 0));
+  }, [jobs]);
+
+  const overviewStats = useMemo(() => {
     if (!property) {
       return [];
     }
 
     return [
-      { label: "Bedrooms", value: property.bedrooms ?? "—" },
-      { label: "Bathrooms", value: property.bathrooms ?? "—" },
       {
-        label: "Cleaning Duration",
-        value: property.estimatedCleaningMinutes
-          ? `${property.estimatedCleaningMinutes} min`
-          : "—",
+        label: "Configuration",
+        value: `${property.bedrooms ?? "-"} Beds · ${property.bathrooms ?? "-"} Baths`,
       },
-      { label: "Next Check-in", value: formatDateTime(property.nextCheckInAt) },
-      { label: "Next Check-out", value: formatDateTime(property.nextCheckOutAt) },
-      { label: "Assigned Cleaner", value: property.assignedCleanerName ?? "—" },
+      {
+        label: "Property Status",
+        value: property.status.replace("_", " "),
+      },
+      {
+        label: "Next Check-In",
+        value: formatDateTime(property.nextCheckInAt),
+      },
+      {
+        label: "Primary Cleaner",
+        value: property.assignedCleanerName ?? "Unassigned",
+      },
     ];
   }, [property]);
 
@@ -94,7 +118,7 @@ export function PropertyDetail({ id }: { id: string }) {
     }
   };
 
-  if (property === undefined) {
+  if (property === undefined || jobs === undefined) {
     return (
       <div className="flex min-h-40 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--card)]">
         <Loader2 className="h-5 w-5 animate-spin text-[var(--muted-foreground)]" />
@@ -123,70 +147,105 @@ export function PropertyDetail({ id }: { id: string }) {
         Back to properties
       </Link>
 
-      <div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)]">
-        <div className="relative h-56 w-full bg-[var(--accent)]">
-          {property.primaryPhotoUrl ? (
-            <Image
-              src={property.primaryPhotoUrl}
-              alt={property.name}
-              fill
-              sizes="100vw"
-              className="object-cover"
-            />
-          ) : null}
-        </div>
-
-        <div className="flex flex-wrap items-start justify-between gap-4 p-4">
+      <section className="rounded-2xl border bg-[var(--card)] p-5">
+        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-2xl font-bold">{property.name}</h2>
-            <p className="text-sm text-[var(--muted-foreground)]">{property.address}</p>
+            <h1 className="text-2xl font-extrabold tracking-tight">{property.name}</h1>
+            <p className="mt-1 flex items-center gap-1 text-sm text-[var(--muted-foreground)]">
+              <MapPin className="h-3.5 w-3.5" />
+              {property.address}
+            </p>
           </div>
           <button
             onClick={() => setIsEditOpen(true)}
-            className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--accent)]"
+            className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold hover:bg-[var(--accent)]"
           >
             <Pencil className="h-4 w-4" />
             Edit Property
           </button>
         </div>
-      </div>
 
-      <div className="flex flex-wrap gap-1 border-b border-[var(--border)]">
-        {tabs.map((tab) => (
-          <button
-            key={tab}
-            className={`border-b-2 px-4 py-2 text-sm ${
-              activeTab === tab
-                ? "border-[var(--primary)] text-[var(--foreground)]"
-                : "border-transparent text-[var(--muted-foreground)] hover:border-[var(--primary)] hover:text-[var(--foreground)]"
-            }`}
-            onClick={() => setActiveTab(tab)}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
+        <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+          <div className="overflow-hidden rounded-xl border">
+            <div className="relative h-64 w-full bg-[var(--secondary)]">
+              {property.primaryPhotoUrl ? (
+                <Image
+                  src={property.primaryPhotoUrl}
+                  alt={property.name}
+                  fill
+                  sizes="(min-width: 1024px) 66vw, 100vw"
+                  className="object-cover"
+                />
+              ) : null}
+            </div>
+          </div>
+
+          <div className="rounded-xl border bg-[var(--card)]">
+            <div className="grid grid-cols-1 divide-y">
+              {overviewStats.map((item) => (
+                <div key={item.label} className="px-4 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">
+                    {item.label}
+                  </p>
+                  <p className="mt-1 text-sm font-semibold capitalize">{item.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
 
       {actionError ? (
-        <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+        <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
           {actionError}
         </div>
       ) : null}
 
-      {activeTab === "Overview" ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {stats.map((item) => (
-            <div key={item.label} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
-              <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">{item.label}</p>
-              <p className="mt-1 text-lg font-semibold">{item.value}</p>
-            </div>
-          ))}
+      <section className="rounded-2xl border bg-[var(--card)]">
+        <div className="border-b px-4 py-3">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Job History</h2>
         </div>
-      ) : (
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6 text-sm text-[var(--muted-foreground)]">
-          {activeTab} content layout is ready for data integration.
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[700px]">
+            <thead className="bg-[var(--secondary)]">
+              <tr className="text-left text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">
+                <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3">Assigned Staff</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Duration</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentJobs.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-sm text-[var(--muted-foreground)]">
+                    No jobs found for this property.
+                  </td>
+                </tr>
+              ) : (
+                recentJobs.map((job) => {
+                  const start = job.scheduledStartAt ?? 0;
+                  const end = job.scheduledEndAt ?? start;
+                  const minutes = Math.max(0, Math.round((end - start) / 60000));
+
+                  return (
+                    <tr key={job._id} className="border-t">
+                      <td className="px-4 py-3 text-sm font-semibold">{formatDateTime(job.scheduledStartAt)}</td>
+                      <td className="px-4 py-3 text-sm">
+                        {job.cleaners?.[0]?.name || "Unassigned"}
+                      </td>
+                      <td className="px-4 py-3 text-sm">{STATUS_LABELS[job.status]}</td>
+                      <td className="px-4 py-3 text-sm text-[var(--muted-foreground)]">
+                        {minutes ? `${minutes} min` : "-"}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
-      )}
+      </section>
 
       <PropertyFormModal
         open={isEditOpen}

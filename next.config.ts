@@ -9,6 +9,10 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "*.convex.cloud" },
       { protocol: "https", hostname: "img.clerk.com" },
       { protocol: "https", hostname: "res.cloudinary.com" },
+      { protocol: "https", hostname: "assets.hospitable.com" },
+      { protocol: "https", hostname: "a0.muscache.com" },
+      { protocol: "https", hostname: "*.muscache.com" },
+      { protocol: "https", hostname: "chezsoistays.com" },
     ],
   },
 };

@@ -2,8 +2,9 @@ export const JOB_STATUSES = [
   "scheduled",
   "assigned",
   "in_progress",
+  "awaiting_approval",
+  "rework_required",
   "completed",
-  "approved",
   "cancelled",
 ] as const;
 
@@ -13,33 +14,36 @@ export const WORKFLOW_STEPS: JobStatus[] = [
   "scheduled",
   "assigned",
   "in_progress",
+  "awaiting_approval",
   "completed",
-  "approved",
 ];
 
 export const STATUS_LABELS: Record<JobStatus, string> = {
   scheduled: "Scheduled",
   assigned: "Assigned",
   in_progress: "In Progress",
+  awaiting_approval: "Awaiting Approval",
+  rework_required: "Rework Required",
   completed: "Completed",
-  approved: "Approved",
   cancelled: "Cancelled",
 };
 
 export const STATUS_CLASSNAMES: Record<JobStatus, string> = {
-  scheduled: "bg-gray-500/15 text-gray-300 border-gray-500/40",
-  assigned: "bg-blue-500/15 text-blue-300 border-blue-500/40",
-  in_progress: "bg-yellow-500/15 text-yellow-300 border-yellow-500/40",
-  completed: "bg-green-500/15 text-green-300 border-green-500/40",
-  approved: "bg-emerald-500/15 text-emerald-300 border-emerald-500/40",
-  cancelled: "bg-red-500/15 text-red-300 border-red-500/40",
+  scheduled: "bg-slate-100 text-slate-700 border-slate-200",
+  assigned: "bg-blue-50 text-blue-700 border-blue-200",
+  in_progress: "bg-amber-50 text-amber-700 border-amber-200",
+  awaiting_approval: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  rework_required: "bg-orange-50 text-orange-700 border-orange-200",
+  completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  cancelled: "bg-rose-50 text-rose-700 border-rose-200",
 };
 
 const NEXT_STATUS: Partial<Record<JobStatus, JobStatus>> = {
   scheduled: "assigned",
   assigned: "in_progress",
-  in_progress: "completed",
-  completed: "approved",
+  in_progress: "awaiting_approval",
+  awaiting_approval: "completed",
+  rework_required: "in_progress",
 };
 
 export function getNextStatus(status: JobStatus): JobStatus | null {

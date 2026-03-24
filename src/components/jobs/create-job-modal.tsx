@@ -31,14 +31,19 @@ export function CreateJobModal({
     mutationRef<
       {
         propertyId: string;
-        cleanerId?: string;
-        title: string;
-        notes?: string;
-        scheduledFor: number;
-        photoUrls?: string[];
+        scheduledStartAt: number;
+        scheduledEndAt: number;
+        notesForCleaner?: string;
+        isUrgent?: boolean;
       },
       string
-    >("jobs/mutations:create"),
+    >("cleaningJobs/mutations:create"),
+  );
+  const assignJob = useMutation(
+    mutationRef<
+      { jobId: string; cleanerIds: string[]; notifyCleaners?: boolean },
+      string
+    >("cleaningJobs/mutations:assign"),
   );
   const { showToast } = useToast();
 
@@ -76,17 +81,17 @@ export function CreateJobModal({
     setSaving(true);
 
     try {
-      await createJob({
+      const durationMs = 2 * 60 * 60 * 1000;
+      const jobId = await createJob({
         propertyId: effectivePropertyId,
-        cleanerId: cleanerId || undefined,
-        title: title.trim(),
-        notes: notes || undefined,
-        scheduledFor: scheduledTimestamp,
-        photoUrls: photoUrls
-          .split("\n")
-          .map((url) => url.trim())
-          .filter(Boolean),
+        scheduledStartAt: scheduledTimestamp,
+        scheduledEndAt: scheduledTimestamp + durationMs,
+        notesForCleaner: [title.trim(), notes.trim()].filter(Boolean).join("\n") || undefined,
       });
+
+      if (cleanerId) {
+        await assignJob({ jobId, cleanerIds: [cleanerId], notifyCleaners: false });
+      }
 
       setPropertyId("");
       setCleanerId("");

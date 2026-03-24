@@ -1,6 +1,35 @@
 @import "tailwindcss";
 
 :root {
+  --background: oklch(0.98 0.01 262);
+  --foreground: oklch(0.24 0.02 255);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.24 0.02 255);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.24 0.02 255);
+  --primary: oklch(0.72 0.16 55);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.94 0.02 258);
+  --secondary-foreground: oklch(0.34 0.03 255);
+  --muted: oklch(0.95 0.01 258);
+  --muted-foreground: oklch(0.52 0.03 255);
+  --accent: oklch(0.95 0.02 258);
+  --accent-foreground: oklch(0.3 0.03 255);
+  --destructive: oklch(0.62 0.22 27);
+  --destructive-foreground: oklch(0.99 0 0);
+  --success: oklch(0.66 0.18 150);
+  --success-foreground: oklch(0.99 0 0);
+  --warning: oklch(0.83 0.16 80);
+  --warning-foreground: oklch(0.25 0.03 255);
+  --border: oklch(0.89 0.01 255);
+  --input: oklch(0.89 0.01 255);
+  --ring: oklch(0.72 0.16 55);
+  --radius: 0.75rem;
+  --sidebar-width: 16rem;
+  --sidebar-width-collapsed: 4rem;
+}
+
+.dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.178 0 0);
@@ -24,9 +53,6 @@
   --border: oklch(0.269 0 0);
   --input: oklch(0.269 0 0);
   --ring: oklch(0.623 0.214 259);
-  --radius: 0.5rem;
-  --sidebar-width: 16rem;
-  --sidebar-width-collapsed: 4rem;
 }
 
 * {
@@ -34,7 +60,27 @@
 }
 
 body {
-  background: var(--background);
+  background: radial-gradient(circle at 20% 0%, #f3f7ff, transparent 35%),
+    radial-gradient(circle at 85% 20%, #eef8ff, transparent 30%),
+    var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans, system-ui, -apple-system, sans-serif);
+}
+
+.dark body {
+  background: var(--background);
+}
+
+@layer utilities {
+  .no-line-card {
+    @apply rounded-none border bg-[var(--card)] shadow-sm transition-colors;
+  }
+
+  .text-micro {
+    @apply text-[10px] font-semibold uppercase tracking-wider;
+  }
+
+  .text-display {
+    @apply text-4xl font-bold leading-none tracking-tighter;
+  }
 }

@@ -25,8 +25,11 @@ function readRoleFromMetadata(metadata: unknown): UserRole | null {
 }
 
 export function getRoleFromSessionClaims(claims: ClaimsLike): UserRole {
+  const fallbackRole =
+    (process.env.NEXT_PUBLIC_DEFAULT_ROLE as UserRole | undefined) ?? "admin";
+
   if (!claims) {
-    return "cleaner";
+    return fallbackRole;
   }
 
   const directRole = claims.role;
@@ -44,7 +47,14 @@ export function getRoleFromSessionClaims(claims: ClaimsLike): UserRole {
     return publicMetadataRole;
   }
 
-  return "cleaner";
+  const unsafeMetadataRole = readRoleFromMetadata(
+    (claims as Record<string, unknown>).unsafeMetadata,
+  );
+  if (unsafeMetadataRole) {
+    return unsafeMetadataRole;
+  }
+
+  return fallbackRole;
 }
 
 export function canAccessPath(role: UserRole, pathname: string): boolean {

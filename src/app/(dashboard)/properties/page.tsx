@@ -4,8 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
+import type { FunctionReference } from "convex/server";
 import { Building2, Edit3, Loader2, Plus, Search, Trash2 } from "lucide-react";
-import { api } from "../../../../convex/_generated/api";
 import { PropertyFormModal } from "@/components/properties/property-form-modal";
 import { useToast } from "@/components/ui/toast-provider";
 import { getErrorMessage } from "@/lib/errors";
@@ -25,6 +25,12 @@ const statusLabels: Record<PropertyStatus, string> = {
   vacant: "Vacant",
 };
 
+const queryRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
+  name as unknown as FunctionReference<"query", "public", TArgs, TReturn>;
+
+const mutationRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
+  name as unknown as FunctionReference<"mutation", "public", TArgs, TReturn>;
+
 function formatDate(value?: number) {
   if (!value) {
     return "—";
@@ -39,19 +45,12 @@ function toMutationInput(values: PropertyFormValues) {
     address: values.address,
     city: values.city || undefined,
     state: values.state || undefined,
-    postalCode: values.postalCode || undefined,
+    zipCode: values.postalCode || undefined,
     country: values.country || undefined,
-    status: values.status,
     propertyType: values.propertyType || undefined,
     bedrooms: values.bedrooms,
     bathrooms: values.bathrooms,
-    estimatedCleaningMinutes: values.estimatedCleaningMinutes,
-    accessNotes: values.accessNotes || undefined,
-    tag: values.tag || undefined,
-    primaryPhotoUrl: values.primaryPhotoUrl || undefined,
-    photoUrls:
-      values.photoUrls && values.photoUrls.length > 0 ? values.photoUrls : undefined,
-    assignedCleanerName: values.assignedCleanerName || undefined,
+    imageUrl: values.primaryPhotoUrl || undefined,
   };
 }
 
@@ -65,18 +64,33 @@ export default function PropertiesPage() {
   const { showToast } = useToast();
 
   const properties = useQuery(
-    api.properties.queries.search,
-    {
-      query: search,
-      status: selectedStatus === "all" ? undefined : selectedStatus,
-    },
-  ) as PropertyRecord[] | undefined;
+    queryRef<{ limit?: number }, PropertyRecord[]>("properties/queries:getAll"),
+    { limit: 500 },
+  );
 
-  const createProperty = useMutation(api.properties.mutations.create);
-  const updateProperty = useMutation(api.properties.mutations.update);
-  const softDeleteProperty = useMutation(api.properties.mutations.softDelete);
+  const createProperty = useMutation(
+    mutationRef<Record<string, unknown>, string>("properties/mutations:create"),
+  );
+  const updateProperty = useMutation(
+    mutationRef<Record<string, unknown>, string>("properties/mutations:update"),
+  );
+  const softDeleteProperty = useMutation(
+    mutationRef<{ id: string }, string>("properties/mutations:remove"),
+  );
 
-  const cards = useMemo(() => properties ?? [], [properties]);
+  const cards = useMemo(() => {
+    const all = properties ?? [];
+    const searchValue = search.trim().toLowerCase();
+    return all.filter((property) => {
+      const matchesSearch =
+        !searchValue ||
+        property.name.toLowerCase().includes(searchValue) ||
+        property.address.toLowerCase().includes(searchValue);
+      const status = (property.status ?? "vacant") as PropertyStatus;
+      const matchesStatus = selectedStatus === "all" || status === selectedStatus;
+      return matchesSearch && matchesStatus;
+    });
+  }, [properties, search, selectedStatus]);
 
   const handleCreate = async (values: PropertyFormValues) => {
     setIsSaving(true);
@@ -139,10 +153,19 @@ export default function PropertiesPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-8">
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-display">Properties</h1>
+          <p className="mt-2 text-[var(--muted-foreground)]">
+            Manage portfolio health and property readiness.
+          </p>
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-1.5">
+          <div className="flex items-center gap-2 rounded-none border bg-[var(--card)] px-3 py-1.5">
             <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
             <input
               type="text"
@@ -158,7 +181,7 @@ export default function PropertiesPage() {
             onChange={(event) =>
               setSelectedStatus(event.target.value as PropertyStatus | "all")
             }
-            className="rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-sm outline-none"
+            className="rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm outline-none"
           >
             <option value="all">All statuses</option>
             <option value="ready">Ready</option>
@@ -169,7 +192,7 @@ export default function PropertiesPage() {
         </div>
 
         <button
-          className="flex items-center gap-2 rounded-md bg-[var(--primary)] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+          className="flex items-center gap-2 rounded-none bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90"
           onClick={() => setIsCreateOpen(true)}
         >
           <Plus className="h-4 w-4" />
@@ -190,7 +213,7 @@ export default function PropertiesPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {cards.length === 0 ? (
-            <div className="col-span-full flex items-center justify-center rounded-lg border border-dashed border-[var(--border)] py-24">
+            <div className="col-span-full flex items-center justify-center border border-dashed py-24">
               <div className="text-center">
                 <Building2 className="mx-auto mb-2 h-8 w-8 text-[var(--muted-foreground)] opacity-40" />
                 <p className="text-sm text-[var(--muted-foreground)]">No properties found</p>
@@ -198,14 +221,20 @@ export default function PropertiesPage() {
             </div>
           ) : (
             cards.map((property) => (
+              (() => {
+                const imageUrl =
+                  property.primaryPhotoUrl ||
+                  (property as unknown as { imageUrl?: string; picture?: string }).imageUrl ||
+                  (property as unknown as { imageUrl?: string; picture?: string }).picture;
+                return (
               <div
                 key={property._id}
-                className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)]"
+                className="overflow-hidden border bg-[var(--card)]"
               >
                 <div className="relative h-40 w-full bg-[var(--accent)]">
-                  {property.primaryPhotoUrl ? (
+                  {imageUrl ? (
                     <Image
-                      src={property.primaryPhotoUrl}
+                      src={imageUrl}
                       alt={property.name}
                       fill
                       sizes="(max-width: 1280px) 50vw, 33vw"
@@ -218,9 +247,9 @@ export default function PropertiesPage() {
                   )}
 
                   <span
-                    className={`absolute right-2 top-2 rounded-full px-2 py-1 text-xs font-medium ${statusStyles[property.status]}`}
+                    className={`absolute right-2 top-2 rounded-none px-2 py-1 text-xs font-medium ${statusStyles[(property.status ?? "vacant") as PropertyStatus]}`}
                   >
-                    {statusLabels[property.status]}
+                    {statusLabels[(property.status ?? "vacant") as PropertyStatus]}
                   </span>
                 </div>
 
@@ -246,16 +275,16 @@ export default function PropertiesPage() {
                     </p>
                   </div>
 
-                  <div className="flex items-center justify-end gap-2 border-t border-[var(--border)] pt-3">
+                  <div className="flex items-center justify-end gap-2 border-t pt-3">
                     <button
-                      className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] px-2 py-1 text-xs hover:bg-[var(--accent)]"
+                      className="inline-flex items-center gap-1 rounded-none border px-2 py-1 text-xs hover:bg-[var(--accent)]"
                       onClick={() => setEditingProperty(property)}
                     >
                       <Edit3 className="h-3.5 w-3.5" />
                       Edit
                     </button>
                     <button
-                      className="inline-flex items-center gap-1 rounded-md border border-red-500/40 px-2 py-1 text-xs text-red-500 hover:bg-red-500/10"
+                      className="inline-flex items-center gap-1 rounded-none border border-red-500/40 px-2 py-1 text-xs text-red-500 hover:bg-red-500/10"
                       onClick={() => handleDelete(property._id)}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -264,6 +293,8 @@ export default function PropertiesPage() {
                   </div>
                 </div>
               </div>
+                );
+              })()
             ))
           )}
         </div>

@@ -16,15 +16,15 @@ import { getErrorMessage } from "@/lib/errors";
 
 type Job = {
   _id: string;
-  title: string;
-  notes?: string;
+  notesForCleaner?: string;
   status: JobStatus;
-  scheduledFor: number;
+  scheduledStartAt?: number;
+  scheduledEndAt?: number;
   propertyId: string;
-  cleanerId?: string;
+  assignedCleanerIds?: string[];
   photos?: Array<{ url: string; caption?: string }>;
   property?: { _id: string; name?: string | null; address?: string | null } | null;
-  cleaner?: { _id: string; name?: string | null; email?: string | null } | null;
+  cleaners?: Array<{ _id: string; name?: string | null; email?: string | null }> | null;
 };
 
 const queryRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
@@ -34,17 +34,29 @@ const mutationRef = <TArgs extends Record<string, unknown>, TReturn>(name: strin
   name as unknown as FunctionReference<"mutation", "public", TArgs, TReturn>;
 
 export function JobDetailClient({ id }: { id: string }) {
-  const job = useQuery(queryRef<{ id: string }, Job | null>("jobs/queries:getById"), {
-    id,
-  });
-  const updateStatus = useMutation(
-    mutationRef<{ id: string; status: JobStatus }, string>(
-      "jobs/mutations:updateStatus",
+  const canonicalJob = useQuery(
+    queryRef<{ jobId: string }, Job | null>("cleaningJobs/queries:getById"),
+    { jobId: id },
+  );
+  const startJob = useMutation(
+    mutationRef<{ jobId: string }, string>("cleaningJobs/mutations:start"),
+  );
+  const completeJob = useMutation(
+    mutationRef<{ jobId: string; notes?: string; guestReady?: boolean }, string>(
+      "cleaningJobs/mutations:complete",
+    ),
+  );
+  const submitForApproval = useMutation(
+    mutationRef<{ jobId: string }, string>("cleaningJobs/approve:submitForApproval"),
+  );
+  const approveCompletion = useMutation(
+    mutationRef<{ jobId: string; approvalNotes?: string }, string>(
+      "cleaningJobs/approve:approveCompletion",
     ),
   );
   const assignCleaner = useMutation(
-    mutationRef<{ id: string; cleanerId: string }, string>(
-      "jobs/mutations:assignCleaner",
+    mutationRef<{ jobId: string; cleanerIds: string[]; notifyCleaners?: boolean }, string>(
+      "cleaningJobs/mutations:assign",
     ),
   );
 
@@ -54,39 +66,41 @@ export function JobDetailClient({ id }: { id: string }) {
   const { showToast } = useToast();
 
   const cleanerOptions = useQuery(
-    queryRef<Record<string, never>, Array<{ id: string; name: string }>>(
-      "jobs/queries:listCleanerOptions",
+    queryRef<{ role: "cleaner" }, Array<{ _id: string; name?: string | null }>>(
+      "users/queries:getByRole",
     ),
-    {},
+    { role: "cleaner" },
   );
 
   const cleanerJobs = useQuery(
-    queryRef<{ cleanerId: string }, Job[]>("jobs/queries:getByCleaner"),
-    job?.cleanerId ? { cleanerId: job.cleanerId } : "skip",
+    queryRef<{ cleanerId: string }, Job[]>("cleaningJobs/queries:getForCleaner"),
+    canonicalJob?.assignedCleanerIds?.[0]
+      ? { cleanerId: canonicalJob.assignedCleanerIds[0] }
+      : "skip",
   );
 
   const propertyJobs = useQuery(
-    queryRef<{ propertyId: string }, Job[]>("jobs/queries:getByProperty"),
-    job?.propertyId ? { propertyId: job.propertyId } : "skip",
+    queryRef<{ propertyId: string }, Job[]>("cleaningJobs/queries:getAll"),
+    canonicalJob?.propertyId ? { propertyId: canonicalJob.propertyId } : "skip",
   );
 
   const nextStatus = useMemo(() => {
-    if (!job) {
+    if (!canonicalJob) {
       return null;
     }
-    return getNextStatus(job.status);
-  }, [job]);
+    return getNextStatus(canonicalJob.status);
+  }, [canonicalJob]);
 
-  if (job === undefined) {
+  if (canonicalJob === undefined) {
     return <div className="text-sm text-[var(--muted-foreground)]">Loading job...</div>;
   }
 
-  if (!job) {
+  if (!canonicalJob) {
     return <div className="text-sm text-[var(--muted-foreground)]">Job not found.</div>;
   }
 
   async function onAdvanceStatus() {
-    if (!nextStatus) {
+    if (!nextStatus || !canonicalJob) {
       return;
     }
 
@@ -94,7 +108,19 @@ export function JobDetailClient({ id }: { id: string }) {
     setPending(true);
 
     try {
-      await updateStatus({ id, status: nextStatus });
+      if (
+        canonicalJob.status === "scheduled" ||
+        canonicalJob.status === "assigned" ||
+        canonicalJob.status === "rework_required"
+      ) {
+        await startJob({ jobId: id });
+      } else if (canonicalJob.status === "in_progress") {
+        await submitForApproval({ jobId: id });
+      } else if (canonicalJob.status === "awaiting_approval") {
+        await approveCompletion({ jobId: id });
+      } else if (canonicalJob.status === "completed") {
+        await completeJob({ jobId: id });
+      }
       showToast(`Job moved to ${STATUS_LABELS[nextStatus]}.`);
     } catch (statusError) {
       const message = getErrorMessage(statusError, "Unable to update status.");
@@ -115,7 +141,7 @@ export function JobDetailClient({ id }: { id: string }) {
     setPending(true);
 
     try {
-      await assignCleaner({ id, cleanerId });
+      await assignCleaner({ jobId: id, cleanerIds: [cleanerId], notifyCleaners: false });
       setCleanerId("");
       showToast("Cleaner assigned.");
     } catch (assignError) {
@@ -127,7 +153,7 @@ export function JobDetailClient({ id }: { id: string }) {
     }
   }
 
-  const currentStepIndex = WORKFLOW_STEPS.indexOf(job.status);
+  const currentStepIndex = WORKFLOW_STEPS.indexOf(canonicalJob.status);
 
   return (
     <div className="space-y-6">
@@ -161,35 +187,38 @@ export function JobDetailClient({ id }: { id: string }) {
           <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
             <div className="flex items-center justify-between gap-2">
               <div>
-                <h2 className="text-base font-semibold">{job.title}</h2>
-                <p className="text-xs text-[var(--muted-foreground)]">{job._id}</p>
+                <h2 className="text-base font-semibold">
+                  {canonicalJob.notesForCleaner?.split("\n")[0] || "Cleaning Job"}
+                </h2>
+                <p className="text-xs text-[var(--muted-foreground)]">{canonicalJob._id}</p>
               </div>
               <span
-                className={`rounded-full border px-2 py-1 text-xs ${STATUS_CLASSNAMES[job.status]}`}
+                className={`rounded-full border px-2 py-1 text-xs ${STATUS_CLASSNAMES[canonicalJob.status]}`}
               >
-                {STATUS_LABELS[job.status]}
+                {STATUS_LABELS[canonicalJob.status]}
               </span>
             </div>
 
             <div className="mt-4 grid gap-2 text-sm">
               <p>
                 <span className="text-[var(--muted-foreground)]">Property:</span>{" "}
-                {job.property?.name ?? "Unknown property"}
+                {canonicalJob.property?.name ?? "Unknown property"}
               </p>
               <p>
                 <span className="text-[var(--muted-foreground)]">Address:</span>{" "}
-                {job.property?.address ?? "—"}
+                {canonicalJob.property?.address ?? "—"}
               </p>
               <p>
                 <span className="text-[var(--muted-foreground)]">Cleaner:</span>{" "}
-                {job.cleaner?.name ?? "Unassigned"}
+                {canonicalJob.cleaners?.[0]?.name ?? "Unassigned"}
               </p>
               <p>
                 <span className="text-[var(--muted-foreground)]">Scheduled:</span>{" "}
-                {new Date(job.scheduledFor).toLocaleString()}
+                {new Date(canonicalJob.scheduledStartAt ?? 0).toLocaleString()}
               </p>
               <p>
-                <span className="text-[var(--muted-foreground)]">Notes:</span> {job.notes || "—"}
+                <span className="text-[var(--muted-foreground)]">Notes:</span>{" "}
+                {canonicalJob.notesForCleaner || "—"}
               </p>
             </div>
 
@@ -209,8 +238,8 @@ export function JobDetailClient({ id }: { id: string }) {
               >
                 <option value="">Select Cleaner</option>
                 {(cleanerOptions ?? []).map((cleaner) => (
-                  <option key={cleaner.id} value={cleaner.id}>
-                    {cleaner.name}
+                  <option key={cleaner._id} value={cleaner._id}>
+                    {cleaner.name ?? `Cleaner ${cleaner._id.slice(-6)}`}
                   </option>
                 ))}
               </select>
@@ -248,7 +277,7 @@ export function JobDetailClient({ id }: { id: string }) {
         <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
           <h3 className="mb-4 text-sm font-semibold">Photo Gallery</h3>
           <div className="grid grid-cols-2 gap-2">
-            {job.photos?.map((photo, index) => (
+            {canonicalJob.photos?.map((photo, index) => (
               <a
                 key={`${photo.url}-${index}`}
                 href={photo.url}
@@ -266,7 +295,7 @@ export function JobDetailClient({ id }: { id: string }) {
               </a>
             ))}
           </div>
-          {!job.photos?.length ? (
+          {!canonicalJob.photos?.length ? (
             <p className="text-sm text-[var(--muted-foreground)]">No photos attached to this job.</p>
           ) : null}
         </div>
