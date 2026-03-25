@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { UserButton, useAuth, useClerk, useUser } from "@clerk/nextjs";
+import { UserButton, useAuth, useUser } from "@clerk/nextjs";
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast-provider";
@@ -85,9 +85,8 @@ const navigation = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { sessionClaims } = useAuth();
+  const { sessionClaims, signOut } = useAuth();
   const { user } = useUser();
-  const { signOut } = useClerk();
   const { showToast } = useToast();
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
@@ -200,7 +199,10 @@ export function Sidebar() {
           </button>
           <button
             type="button"
-            onClick={() => signOut({ redirectUrl: "/sign-in" })}
+            onClick={async () => {
+              await signOut();
+              window.location.href = "/sign-in";
+            }}
             className={cn(
               "flex w-full rounded-none text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
               isCollapsed
