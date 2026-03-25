@@ -1,6 +1,6 @@
-import { queryGeneric } from "convex/server";
+import { query } from "../_generated/server";
 
-const openStatuses = ["scheduled", "assigned", "in_progress"] as const;
+const openStatuses = ["scheduled", "assigned", "in_progress", "awaiting_approval", "rework_required"] as const;
 type OpenStatus = (typeof openStatuses)[number];
 
 type RelatedEntity = {
@@ -22,27 +22,30 @@ function isOpenStatus(status: string): status is OpenStatus {
   return openStatuses.includes(status as OpenStatus);
 }
 
-export const getTodayJobs = queryGeneric({
+export const getTodayJobs = query({
   args: {},
   handler: async (ctx) => {
     const { start, end } = getDayRange();
 
     const jobs = await ctx.db
-      .query("jobs")
-      .withIndex("by_scheduled", (q) => q.gte("scheduledFor", start))
-      .filter((q) => q.lt(q.field("scheduledFor"), end))
+      .query("cleaningJobs")
+      .withIndex("by_scheduled", (q) => q.gte("scheduledStartAt", start))
+      .filter((q) => q.lt(q.field("scheduledStartAt"), end))
       .collect();
 
     const activeToday = jobs
       .filter((job) => job.status !== "cancelled")
-      .sort((a, b) => a.scheduledFor - b.scheduledFor);
+      .sort((a, b) => a.scheduledStartAt - b.scheduledStartAt);
 
     const propertyIds = [...new Set(activeToday.map((job) => job.propertyId))];
     const properties = (await Promise.all(
       propertyIds.map((propertyId) => ctx.db.get(propertyId)),
     )) as Array<RelatedEntity | null>;
+
+    // Get all unique cleaner IDs
+    const allCleanerIds = [...new Set(activeToday.flatMap((job) => job.assignedCleanerIds ?? []))];
     const cleaners = (await Promise.all(
-      activeToday.map((job) => (job.cleanerId ? ctx.db.get(job.cleanerId) : null)),
+      allCleanerIds.map((id) => ctx.db.get(id)),
     )) as Array<RelatedEntity | null>;
 
     const propertyById = new Map(
@@ -58,18 +61,19 @@ export const getTodayJobs = queryGeneric({
 
     return activeToday.map((job) => {
       const property = propertyById.get(job.propertyId);
-      const cleaner = job.cleanerId ? cleanerById.get(job.cleanerId) : null;
-      const estimatedDurationMs = (property?.estimatedCleaningMinutes ?? 120) * 60 * 1000;
+      const firstCleanerId = job.assignedCleanerIds?.[0];
+      const cleaner = firstCleanerId ? cleanerById.get(firstCleanerId) : null;
       const now = Date.now();
 
       return {
         id: job._id,
         status: job.status,
         isUrgent:
-          isOpenStatus(job.status) &&
-          job.scheduledFor <= now + 2 * 60 * 60 * 1000,
-        scheduledStartAt: job.scheduledFor,
-        scheduledEndAt: job.scheduledFor + estimatedDurationMs,
+          job.isUrgent ||
+          (isOpenStatus(job.status) &&
+            job.scheduledStartAt <= now + 2 * 60 * 60 * 1000),
+        scheduledStartAt: job.scheduledStartAt,
+        scheduledEndAt: job.scheduledEndAt,
         propertyName: property?.name ?? "Unknown Property",
         cleanerName:
           cleaner?.name ?? cleaner?.email?.split("@")[0] ?? "Unassigned",
@@ -78,58 +82,65 @@ export const getTodayJobs = queryGeneric({
   },
 });
 
-export const getUpcomingCheckins = queryGeneric({
+export const getUpcomingCheckins = query({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
     const nextThreeDays = now + 72 * 60 * 60 * 1000;
 
-    const properties = await ctx.db
-      .query("properties")
-      .withIndex("by_isActive", (q) => q.eq("isActive", true))
+    // Use stays table for check-in data
+    const stays = await ctx.db
+      .query("stays")
+      .withIndex("by_checkin", (q) => q.gte("checkInAt", now))
+      .filter((q) => q.lt(q.field("checkInAt"), nextThreeDays))
       .collect();
 
-    return properties
-      .filter(
-        (property) =>
-          property.nextCheckInAt !== undefined &&
-          property.nextCheckInAt >= now &&
-          property.nextCheckInAt < nextThreeDays,
-      )
-      .sort((a, b) => (a.nextCheckInAt ?? 0) - (b.nextCheckInAt ?? 0))
+    const propertyIds = [...new Set(stays.map((stay) => stay.propertyId))];
+    const properties = (await Promise.all(
+      propertyIds.map((id) => ctx.db.get(id)),
+    )) as Array<RelatedEntity | null>;
+
+    const propertyById = new Map(
+      properties
+        .filter((p): p is RelatedEntity => Boolean(p))
+        .map((p) => [p._id, p]),
+    );
+
+    return stays
+      .sort((a, b) => a.checkInAt - b.checkInAt)
       .slice(0, 8)
-      .map((property) => ({
-        id: property._id,
-        propertyId: property._id,
-        propertyName: property.name,
-        checkInAt: property.nextCheckInAt!,
-        checkOutAt: property.nextCheckOutAt ?? property.nextCheckInAt!,
-        guestName: "Upcoming guest",
+      .map((stay) => ({
+        id: stay._id,
+        propertyId: stay.propertyId,
+        propertyName: propertyById.get(stay.propertyId)?.name ?? "Unknown Property",
+        checkInAt: stay.checkInAt,
+        checkOutAt: stay.checkOutAt,
+        guestName: stay.guestName,
       }));
   },
 });
 
-export const getQuickStats = queryGeneric({
+export const getQuickStats = query({
   args: {},
   handler: async (ctx) => {
     const { start, end } = getDayRange();
 
-    const allJobs = await ctx.db.query("jobs").collect();
+    const allJobs = await ctx.db.query("cleaningJobs").collect();
     const todayJobs = allJobs.filter(
-      (job) => job.scheduledFor >= start && job.scheduledFor < end,
+      (job) => job.scheduledStartAt >= start && job.scheduledStartAt < end,
     );
 
     const activeProperties = await ctx.db
       .query("properties")
-      .withIndex("by_isActive", (q) => q.eq("isActive", true))
+      .withIndex("by_active", (q) => q.eq("isActive", true))
       .collect();
 
-    const upcomingCheckins = activeProperties.filter(
-      (property) =>
-        property.nextCheckInAt !== undefined &&
-        property.nextCheckInAt >= Date.now() &&
-        property.nextCheckInAt < end + 24 * 60 * 60 * 1000,
-    );
+    // Use stays for upcoming check-ins
+    const upcomingStays = await ctx.db
+      .query("stays")
+      .withIndex("by_checkin", (q) => q.gte("checkInAt", Date.now()))
+      .filter((q) => q.lt(q.field("checkInAt"), end + 24 * 60 * 60 * 1000))
+      .collect();
 
     return {
       todayJobs: todayJobs.length,
@@ -143,25 +154,21 @@ export const getQuickStats = queryGeneric({
       needsAttention: allJobs.filter(
         (job) =>
           job.status === "cancelled" ||
-          (job.status === "scheduled" && job.scheduledFor < Date.now() - 60 * 60 * 1000),
+          job.status === "rework_required" ||
+          job.status === "awaiting_approval" ||
+          (job.status === "scheduled" && job.scheduledStartAt < Date.now() - 60 * 60 * 1000),
       ).length,
-      upcomingCheckins: upcomingCheckins.length,
-      readiness: {
-        ready: activeProperties.filter((property) => property.status === "ready").length,
-        inProgress: activeProperties.filter((property) => property.status === "in_progress")
-          .length,
-        attention: activeProperties.filter((property) => property.status === "dirty").length,
-      },
+      upcomingCheckins: upcomingStays.length,
       openJobs: allJobs.filter((job) => isOpenStatus(job.status)).length,
     };
   },
 });
 
-export const getRecentActivity = queryGeneric({
+export const getRecentActivity = query({
   args: {},
   handler: async (ctx) => {
     const yesterday = Date.now() - 24 * 60 * 60 * 1000;
-    const jobs = await ctx.db.query("jobs").collect();
+    const jobs = await ctx.db.query("cleaningJobs").collect();
 
     const recentJobs = jobs
       .filter((job) => (job.updatedAt ?? job.createdAt) >= yesterday)
@@ -175,8 +182,10 @@ export const getRecentActivity = queryGeneric({
     const properties = (await Promise.all(
       propertyIds.map((propertyId) => ctx.db.get(propertyId)),
     )) as Array<RelatedEntity | null>;
+
+    const allCleanerIds = [...new Set(recentJobs.flatMap((job) => job.assignedCleanerIds ?? []))];
     const cleaners = (await Promise.all(
-      recentJobs.map((job) => (job.cleanerId ? ctx.db.get(job.cleanerId) : null)),
+      allCleanerIds.map((id) => ctx.db.get(id)),
     )) as Array<RelatedEntity | null>;
 
     const propertyById = new Map(
@@ -194,14 +203,16 @@ export const getRecentActivity = queryGeneric({
       scheduled: "Job scheduled",
       assigned: "Cleaner assigned",
       in_progress: "Job started",
+      awaiting_approval: "Awaiting approval",
+      rework_required: "Rework required",
       completed: "Job completed",
-      approved: "Job approved",
       cancelled: "Job cancelled",
     };
 
     return recentJobs.map((job) => {
       const property = propertyById.get(job.propertyId);
-      const cleaner = job.cleanerId ? cleanerById.get(job.cleanerId) : null;
+      const firstCleanerId = job.assignedCleanerIds?.[0];
+      const cleaner = firstCleanerId ? cleanerById.get(firstCleanerId) : null;
 
       return {
         id: job._id,

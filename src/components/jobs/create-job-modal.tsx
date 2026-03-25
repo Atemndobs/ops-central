@@ -2,7 +2,8 @@
 
 import { FormEvent, useState } from "react";
 import { useMutation } from "convex/react";
-import type { FunctionReference } from "convex/server";
+import { api } from "@convex/_generated/api";
+import type { Id } from "@convex/_generated/dataModel";
 import { useToast } from "@/components/ui/toast-provider";
 import { getErrorMessage } from "@/lib/errors";
 
@@ -18,9 +19,6 @@ type CreateJobModalProps = {
   cleanerOptions: Option[];
 };
 
-const mutationRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
-  name as unknown as FunctionReference<"mutation", "public", TArgs, TReturn>;
-
 export function CreateJobModal({
   open,
   onClose,
@@ -28,22 +26,10 @@ export function CreateJobModal({
   cleanerOptions,
 }: CreateJobModalProps) {
   const createJob = useMutation(
-    mutationRef<
-      {
-        propertyId: string;
-        scheduledStartAt: number;
-        scheduledEndAt: number;
-        notesForCleaner?: string;
-        isUrgent?: boolean;
-      },
-      string
-    >("cleaningJobs/mutations:create"),
+    api.cleaningJobs.mutations.create,
   );
   const assignJob = useMutation(
-    mutationRef<
-      { jobId: string; cleanerIds: string[]; notifyCleaners?: boolean },
-      string
-    >("cleaningJobs/mutations:assign"),
+    api.cleaningJobs.mutations.assign,
   );
   const { showToast } = useToast();
 
@@ -83,14 +69,14 @@ export function CreateJobModal({
     try {
       const durationMs = 2 * 60 * 60 * 1000;
       const jobId = await createJob({
-        propertyId: effectivePropertyId,
+        propertyId: effectivePropertyId as Id<"properties">,
         scheduledStartAt: scheduledTimestamp,
         scheduledEndAt: scheduledTimestamp + durationMs,
         notesForCleaner: [title.trim(), notes.trim()].filter(Boolean).join("\n") || undefined,
       });
 
       if (cleanerId) {
-        await assignJob({ jobId, cleanerIds: [cleanerId], notifyCleaners: false });
+        await assignJob({ jobId, cleanerIds: [cleanerId as Id<"users">], notifyCleaners: false });
       }
 
       setPropertyId("");

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
-import type { FunctionReference } from "convex/server";
+import { api } from "@convex/_generated/api";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { AlertTriangle, Loader2, Plus, Search } from "lucide-react";
@@ -37,9 +37,6 @@ type Property = {
   name: string;
 };
 
-const queryRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
-  name as unknown as FunctionReference<"query", "public", TArgs, TReturn>;
-
 const statusLabel: Record<InventoryStatus, string> = {
   ok: "In Stock",
   low_stock: "Low Stock",
@@ -62,13 +59,7 @@ export default function InventoryPage() {
   const canQuery = isLoaded && Boolean(isSignedIn);
 
   const inventory = useQuery(
-    queryRef<
-      {
-        propertyId?: string;
-        status?: InventoryStatus;
-      },
-      InventoryResponse
-    >("inventory/queries:getAll"),
+    api.inventory.queries.getAll,
     canQuery
       ? {
           propertyId: propertyFilter === "all" ? undefined : (propertyFilter as never),
@@ -78,23 +69,23 @@ export default function InventoryPage() {
   );
 
   const lowStock = useQuery(
-    queryRef<Record<string, never>, InventoryItem[]>("inventory/queries:getLowStock"),
+    api.inventory.queries.getLowStock,
     canQuery ? {} : "skip",
   );
   const globalStats = useQuery(
-    queryRef<Record<string, never>, GlobalStats>("inventory/queries:getGlobalStats"),
+    api.inventory.queries.getGlobalStats,
     canQuery ? {} : "skip",
   );
   const properties = useQuery(
-    queryRef<{ limit?: number }, Property[]>("properties/queries:getAll"),
+    api.properties.queries.getAll,
     canQuery ? { limit: 500 } : "skip",
   );
 
   const filteredItems = useMemo(() => {
-    const items = inventory?.items ?? [];
+    const items = (inventory ?? []) as InventoryItem[];
     const q = search.trim().toLowerCase();
     if (!q) return items;
-    return items.filter((item) => {
+    return items.filter((item: InventoryItem) => {
       return (
         item.name.toLowerCase().includes(q) ||
         item.property?.name?.toLowerCase().includes(q) ||
@@ -102,7 +93,7 @@ export default function InventoryPage() {
         item.room?.toLowerCase().includes(q)
       );
     });
-  }, [inventory?.items, search]);
+  }, [inventory, search]);
 
   const loading = canQuery && (!inventory || !lowStock || !globalStats || !properties);
 
@@ -153,9 +144,9 @@ export default function InventoryPage() {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <QuickCard label="Total SKU Items" value={globalStats?.totalItems} hint="Tracked inventory items" />
-        <QuickCard label="Low Stock Alerts" value={globalStats?.lowStockItems} hint="Action required" tone="warning" />
-        <QuickCard label="Needs Restock" value={globalStats?.requiresRestockCount} hint="Marked for replenishment" tone="danger" />
-        <QuickCard label="Health Score" value={globalStats?.overallHealthScore} hint="Overall inventory health" suffix="%" />
+        <QuickCard label="Low Stock Alerts" value={globalStats?.lowStockCount} hint="Action required" tone="warning" />
+        <QuickCard label="Needs Restock" value={globalStats?.outOfStockCount} hint="Marked for replenishment" tone="danger" />
+        <QuickCard label="Categories" value={globalStats?.categoriesCount} hint="Inventory categories" />
       </div>
 
       {loading ? (
@@ -234,7 +225,7 @@ export default function InventoryPage() {
                       </td>
                     </tr>
                   ) : (
-                    filteredItems.map((item) => (
+                    filteredItems.map((item: InventoryItem) => (
                       <tr key={item._id} className="border-t">
                         <td className="px-4 py-3">
                           <p className="text-sm font-semibold">{item.name}</p>
@@ -245,8 +236,8 @@ export default function InventoryPage() {
                         <td className="px-4 py-3 text-center text-sm font-semibold">{item.quantityCurrent}</td>
                         <td className="px-4 py-3 text-center text-sm text-[var(--muted-foreground)]">{item.minimumQuantity}</td>
                         <td className="px-4 py-3">
-                          <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${statusClass[item.status]}`}>
-                            {statusLabel[item.status]}
+                          <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${statusClass[item.status as InventoryStatus] ?? ""}`}>
+                            {statusLabel[item.status as InventoryStatus] ?? item.status}
                           </span>
                         </td>
                       </tr>

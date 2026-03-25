@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { ConvexHttpClient } from "convex/browser";
-import type { FunctionReference } from "convex/server";
+import { api } from "@convex/_generated/api";
 import { z } from "zod";
 
 const createPayloadSchema = z.object({
@@ -15,12 +15,6 @@ const createPayloadSchema = z.object({
   ]),
   phone: z.string().optional(),
 });
-
-const queryRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
-  name as unknown as FunctionReference<"query", "public", TArgs, TReturn>;
-
-const mutationRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
-  name as unknown as FunctionReference<"mutation", "public", TArgs, TReturn>;
 
 function splitFullName(fullName: string) {
   const parts = fullName.trim().split(/\s+/);
@@ -130,28 +124,13 @@ export async function POST(request: Request) {
     convex.setAuth(convexToken);
 
     const existingConvexUser = await convex.query(
-      queryRef<{ clerkId: string }, { _id: string } | null>(
-        "users/queries:getByClerkId",
-      ),
+      api.users.queries.getByClerkId,
       { clerkId: clerkUser.id },
     );
 
     if (existingConvexUser?._id) {
       await convex.mutation(
-        mutationRef<
-          {
-            id: string;
-            name?: string;
-            email?: string;
-            phone?: string;
-            role?:
-              | "cleaner"
-              | "manager"
-              | "property_ops"
-              | "admin";
-          },
-          { success: boolean }
-        >("admin/mutations:updateUser"),
+        api.admin.mutations.updateUser,
         {
           id: existingConvexUser._id as never,
           name: payload.fullName,
@@ -162,16 +141,7 @@ export async function POST(request: Request) {
       );
     } else {
       await convex.mutation(
-        mutationRef<
-          {
-            clerkId: string;
-            email: string;
-            name?: string;
-            phone?: string;
-            role: "cleaner" | "manager" | "property_ops" | "admin";
-          },
-          { success: boolean; userId: string }
-        >("admin/mutations:createUser"),
+        api.admin.mutations.createUser,
         {
           clerkId: clerkUser.id,
           email: payload.email,

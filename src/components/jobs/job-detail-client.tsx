@@ -3,7 +3,8 @@
 import Image from "next/image";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import type { FunctionReference } from "convex/server";
+import { api } from "@convex/_generated/api";
+import type { Id } from "@convex/_generated/dataModel";
 import {
   STATUS_CLASSNAMES,
   STATUS_LABELS,
@@ -27,37 +28,25 @@ type Job = {
   cleaners?: Array<{ _id: string; name?: string | null; email?: string | null }> | null;
 };
 
-const queryRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
-  name as unknown as FunctionReference<"query", "public", TArgs, TReturn>;
-
-const mutationRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
-  name as unknown as FunctionReference<"mutation", "public", TArgs, TReturn>;
-
 export function JobDetailClient({ id }: { id: string }) {
   const canonicalJob = useQuery(
-    queryRef<{ jobId: string }, Job | null>("cleaningJobs/queries:getById"),
-    { jobId: id },
+    api.cleaningJobs.queries.getById,
+    { jobId: id as Id<"cleaningJobs"> },
   );
   const startJob = useMutation(
-    mutationRef<{ jobId: string }, string>("cleaningJobs/mutations:start"),
+    api.cleaningJobs.mutations.start,
   );
   const completeJob = useMutation(
-    mutationRef<{ jobId: string; notes?: string; guestReady?: boolean }, string>(
-      "cleaningJobs/mutations:complete",
-    ),
+    api.cleaningJobs.mutations.complete,
   );
   const submitForApproval = useMutation(
-    mutationRef<{ jobId: string }, string>("cleaningJobs/approve:submitForApproval"),
+    api.cleaningJobs.approve.submitForApproval,
   );
   const approveCompletion = useMutation(
-    mutationRef<{ jobId: string; approvalNotes?: string }, string>(
-      "cleaningJobs/approve:approveCompletion",
-    ),
+    api.cleaningJobs.approve.approveCompletion,
   );
   const assignCleaner = useMutation(
-    mutationRef<{ jobId: string; cleanerIds: string[]; notifyCleaners?: boolean }, string>(
-      "cleaningJobs/mutations:assign",
-    ),
+    api.cleaningJobs.mutations.assign,
   );
 
   const [cleanerId, setCleanerId] = useState("");
@@ -66,21 +55,19 @@ export function JobDetailClient({ id }: { id: string }) {
   const { showToast } = useToast();
 
   const cleanerOptions = useQuery(
-    queryRef<{ role: "cleaner" }, Array<{ _id: string; name?: string | null }>>(
-      "users/queries:getByRole",
-    ),
+    api.users.queries.getByRole,
     { role: "cleaner" },
   );
 
   const cleanerJobs = useQuery(
-    queryRef<{ cleanerId: string }, Job[]>("cleaningJobs/queries:getForCleaner"),
+    api.cleaningJobs.queries.getForCleaner,
     canonicalJob?.assignedCleanerIds?.[0]
       ? { cleanerId: canonicalJob.assignedCleanerIds[0] }
       : "skip",
   );
 
   const propertyJobs = useQuery(
-    queryRef<{ propertyId: string }, Job[]>("cleaningJobs/queries:getAll"),
+    api.cleaningJobs.queries.getAll,
     canonicalJob?.propertyId ? { propertyId: canonicalJob.propertyId } : "skip",
   );
 
@@ -113,13 +100,13 @@ export function JobDetailClient({ id }: { id: string }) {
         canonicalJob.status === "assigned" ||
         canonicalJob.status === "rework_required"
       ) {
-        await startJob({ jobId: id });
+        await startJob({ jobId: id as Id<"cleaningJobs"> });
       } else if (canonicalJob.status === "in_progress") {
-        await submitForApproval({ jobId: id });
+        await submitForApproval({ jobId: id as Id<"cleaningJobs"> });
       } else if (canonicalJob.status === "awaiting_approval") {
-        await approveCompletion({ jobId: id });
+        await approveCompletion({ jobId: id as Id<"cleaningJobs"> });
       } else if (canonicalJob.status === "completed") {
-        await completeJob({ jobId: id });
+        await completeJob({ jobId: id as Id<"cleaningJobs"> });
       }
       showToast(`Job moved to ${STATUS_LABELS[nextStatus]}.`);
     } catch (statusError) {
@@ -141,7 +128,7 @@ export function JobDetailClient({ id }: { id: string }) {
     setPending(true);
 
     try {
-      await assignCleaner({ jobId: id, cleanerIds: [cleanerId], notifyCleaners: false });
+      await assignCleaner({ jobId: id as Id<"cleaningJobs">, cleanerIds: [cleanerId as Id<"users">], notifyCleaners: false });
       setCleanerId("");
       showToast("Cleaner assigned.");
     } catch (assignError) {
@@ -277,7 +264,7 @@ export function JobDetailClient({ id }: { id: string }) {
         <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
           <h3 className="mb-4 text-sm font-semibold">Photo Gallery</h3>
           <div className="grid grid-cols-2 gap-2">
-            {canonicalJob.photos?.map((photo, index) => (
+            {((canonicalJob as any).photos as Array<{ url: string; caption?: string }> | undefined)?.map((photo: { url: string; caption?: string }, index: number) => (
               <a
                 key={`${photo.url}-${index}`}
                 href={photo.url}
@@ -295,7 +282,7 @@ export function JobDetailClient({ id }: { id: string }) {
               </a>
             ))}
           </div>
-          {!canonicalJob.photos?.length ? (
+          {!((canonicalJob as any).photos as Array<{ url: string; caption?: string }> | undefined)?.length ? (
             <p className="text-sm text-[var(--muted-foreground)]">No photos attached to this job.</p>
           ) : null}
         </div>

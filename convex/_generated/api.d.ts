@@ -8,11 +8,27 @@
  * @module
  */
 
+import type * as admin_mutations from "../admin/mutations.js";
+import type * as admin_queries from "../admin/queries.js";
+import type * as cleaningJobs_approve from "../cleaningJobs/approve.js";
+import type * as cleaningJobs_mutations from "../cleaningJobs/mutations.js";
+import type * as cleaningJobs_queries from "../cleaningJobs/queries.js";
+import type * as crons from "../crons.js";
 import type * as dashboard_queries from "../dashboard/queries.js";
-import type * as jobs_mutations from "../jobs/mutations.js";
-import type * as jobs_queries from "../jobs/queries.js";
+import type * as files_mutations from "../files/mutations.js";
+import type * as files_queries from "../files/queries.js";
+import type * as hospitable_actions from "../hospitable/actions.js";
+import type * as hospitable_mutations from "../hospitable/mutations.js";
+import type * as incidents_mutations from "../incidents/mutations.js";
+import type * as inventory_queries from "../inventory/queries.js";
+import type * as lib_auth from "../lib/auth.js";
+import type * as notifications_actions from "../notifications/actions.js";
+import type * as notifications_mutations from "../notifications/mutations.js";
+import type * as notifications_queries from "../notifications/queries.js";
 import type * as properties_mutations from "../properties/mutations.js";
 import type * as properties_queries from "../properties/queries.js";
+import type * as users_mutations from "../users/mutations.js";
+import type * as users_queries from "../users/queries.js";
 
 import type {
   ApiFromModules,
@@ -21,11 +37,27 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "admin/mutations": typeof admin_mutations;
+  "admin/queries": typeof admin_queries;
+  "cleaningJobs/approve": typeof cleaningJobs_approve;
+  "cleaningJobs/mutations": typeof cleaningJobs_mutations;
+  "cleaningJobs/queries": typeof cleaningJobs_queries;
+  crons: typeof crons;
   "dashboard/queries": typeof dashboard_queries;
-  "jobs/mutations": typeof jobs_mutations;
-  "jobs/queries": typeof jobs_queries;
+  "files/mutations": typeof files_mutations;
+  "files/queries": typeof files_queries;
+  "hospitable/actions": typeof hospitable_actions;
+  "hospitable/mutations": typeof hospitable_mutations;
+  "incidents/mutations": typeof incidents_mutations;
+  "inventory/queries": typeof inventory_queries;
+  "lib/auth": typeof lib_auth;
+  "notifications/actions": typeof notifications_actions;
+  "notifications/mutations": typeof notifications_mutations;
+  "notifications/queries": typeof notifications_queries;
   "properties/mutations": typeof properties_mutations;
   "properties/queries": typeof properties_queries;
+  "users/mutations": typeof users_mutations;
+  "users/queries": typeof users_queries;
 }>;
 
 /**

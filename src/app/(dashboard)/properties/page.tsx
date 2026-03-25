@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import type { FunctionReference } from "convex/server";
+import { api } from "@convex/_generated/api";
 import { Building2, Edit3, Loader2, Plus, Search, Trash2 } from "lucide-react";
 import { PropertyFormModal } from "@/components/properties/property-form-modal";
 import { useToast } from "@/components/ui/toast-provider";
@@ -24,12 +24,6 @@ const statusLabels: Record<PropertyStatus, string> = {
   in_progress: "In Progress",
   vacant: "Vacant",
 };
-
-const queryRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
-  name as unknown as FunctionReference<"query", "public", TArgs, TReturn>;
-
-const mutationRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
-  name as unknown as FunctionReference<"mutation", "public", TArgs, TReturn>;
 
 function formatDate(value?: number) {
   if (!value) {
@@ -64,18 +58,18 @@ export default function PropertiesPage() {
   const { showToast } = useToast();
 
   const properties = useQuery(
-    queryRef<{ limit?: number }, PropertyRecord[]>("properties/queries:getAll"),
+    api.properties.queries.getAll,
     { limit: 500 },
   );
 
   const createProperty = useMutation(
-    mutationRef<Record<string, unknown>, string>("properties/mutations:create"),
+    api.properties.mutations.create,
   );
   const updateProperty = useMutation(
-    mutationRef<Record<string, unknown>, string>("properties/mutations:update"),
+    api.properties.mutations.update,
   );
   const softDeleteProperty = useMutation(
-    mutationRef<{ id: string }, string>("properties/mutations:remove"),
+    api.properties.mutations.softDelete,
   );
 
   const cards = useMemo(() => {
@@ -86,7 +80,7 @@ export default function PropertiesPage() {
         !searchValue ||
         property.name.toLowerCase().includes(searchValue) ||
         property.address.toLowerCase().includes(searchValue);
-      const status = (property.status ?? "vacant") as PropertyStatus;
+      const status = ((property as any).status ?? "vacant") as PropertyStatus;
       const matchesStatus = selectedStatus === "all" || status === selectedStatus;
       return matchesSearch && matchesStatus;
     });
@@ -223,9 +217,9 @@ export default function PropertiesPage() {
             cards.map((property) => (
               (() => {
                 const imageUrl =
-                  property.primaryPhotoUrl ||
-                  (property as unknown as { imageUrl?: string; picture?: string }).imageUrl ||
-                  (property as unknown as { imageUrl?: string; picture?: string }).picture;
+                  (property as any).primaryPhotoUrl ||
+                  (property as any).imageUrl ||
+                  (property as any).picture;
                 return (
               <div
                 key={property._id}
@@ -247,9 +241,9 @@ export default function PropertiesPage() {
                   )}
 
                   <span
-                    className={`absolute right-2 top-2 rounded-none px-2 py-1 text-xs font-medium ${statusStyles[(property.status ?? "vacant") as PropertyStatus]}`}
+                    className={`absolute right-2 top-2 rounded-none px-2 py-1 text-xs font-medium ${statusStyles[((property as any).status ?? "vacant") as PropertyStatus]}`}
                   >
-                    {statusLabels[(property.status ?? "vacant") as PropertyStatus]}
+                    {statusLabels[((property as any).status ?? "vacant") as PropertyStatus]}
                   </span>
                 </div>
 
@@ -265,10 +259,10 @@ export default function PropertiesPage() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 text-xs text-[var(--muted-foreground)]">
-                    <p>Check-in: {formatDate(property.nextCheckInAt)}</p>
-                    <p>Check-out: {formatDate(property.nextCheckOutAt)}</p>
+                    <p>Check-in: {formatDate((property as any).nextCheckInAt)}</p>
+                    <p>Check-out: {formatDate((property as any).nextCheckOutAt)}</p>
                     <p>
-                      Cleaner: <span className="text-[var(--foreground)]">{property.assignedCleanerName || "—"}</span>
+                      Cleaner: <span className="text-[var(--foreground)]">{(property as any).assignedCleanerName || "—"}</span>
                     </p>
                     <p>
                       Beds/Baths: {property.bedrooms ?? "—"}/{property.bathrooms ?? "—"}
@@ -278,7 +272,7 @@ export default function PropertiesPage() {
                   <div className="flex items-center justify-end gap-2 border-t pt-3">
                     <button
                       className="inline-flex items-center gap-1 rounded-none border px-2 py-1 text-xs hover:bg-[var(--accent)]"
-                      onClick={() => setEditingProperty(property)}
+                      onClick={() => setEditingProperty(property as unknown as PropertyRecord)}
                     >
                       <Edit3 className="h-3.5 w-3.5" />
                       Edit

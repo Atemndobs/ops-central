@@ -1,45 +1,28 @@
-import { queryGeneric } from "convex/server";
+import { query } from "../_generated/server";
 import { v } from "convex/values";
 
-export const list = queryGeneric({
+export const list = query({
   args: {
     includeInactive: v.optional(v.boolean()),
-    status: v.optional(
-      v.union(
-        v.literal("ready"),
-        v.literal("dirty"),
-        v.literal("in_progress"),
-        v.literal("vacant"),
-      ),
-    ),
   },
   handler: async (ctx, args) => {
     const includeInactive = args.includeInactive ?? false;
 
     let properties;
-    if (args.status) {
+    if (!includeInactive) {
       properties = await ctx.db
         .query("properties")
-        .withIndex("by_status", (q) => q.eq("status", args.status!))
-        .collect();
-    } else if (!includeInactive) {
-      properties = await ctx.db
-        .query("properties")
-        .withIndex("by_isActive", (q) => q.eq("isActive", true))
+        .withIndex("by_active", (q) => q.eq("isActive", true))
         .collect();
     } else {
       properties = await ctx.db.query("properties").collect();
     }
 
-    if (!includeInactive && args.status) {
-      properties = properties.filter((property) => property.isActive);
-    }
-
-    return properties.sort((a, b) => b.updatedAt - a.updatedAt);
+    return properties.sort((a, b) => (b.updatedAt ?? b.createdAt) - (a.updatedAt ?? a.createdAt));
   },
 });
 
-export const getById = queryGeneric({
+export const getById = query({
   args: {
     id: v.id("properties"),
   },
@@ -54,17 +37,9 @@ export const getById = queryGeneric({
   },
 });
 
-export const search = queryGeneric({
+export const search = query({
   args: {
     query: v.string(),
-    status: v.optional(
-      v.union(
-        v.literal("ready"),
-        v.literal("dirty"),
-        v.literal("in_progress"),
-        v.literal("vacant"),
-      ),
-    ),
     includeInactive: v.optional(v.boolean()),
     limit: v.optional(v.number()),
   },
@@ -72,40 +47,51 @@ export const search = queryGeneric({
     const includeInactive = args.includeInactive ?? false;
     const queryText = args.query.trim().toLowerCase();
     const limit = args.limit ?? 50;
+    const cap = Math.max(1, Math.min(limit, 100));
 
     if (!queryText) {
-      const fallback = await ctx.db
-        .query("properties")
-        .withIndex("by_updatedAt")
-        .collect();
-      const filtered = fallback.filter((property) => {
-        if (!includeInactive && !property.isActive) {
-          return false;
-        }
-        if (args.status && property.status !== args.status) {
-          return false;
-        }
-        return true;
-      });
-      return filtered
-        .sort((a, b) => b.updatedAt - a.updatedAt)
-        .slice(0, Math.max(1, Math.min(limit, 100)));
+      let properties;
+      if (!includeInactive) {
+        properties = await ctx.db
+          .query("properties")
+          .withIndex("by_active", (q) => q.eq("isActive", true))
+          .collect();
+      } else {
+        properties = await ctx.db.query("properties").collect();
+      }
+      return properties
+        .sort((a, b) => (b.updatedAt ?? b.createdAt) - (a.updatedAt ?? a.createdAt))
+        .slice(0, cap);
     }
 
+    // search_name has no filterFields, so filter isActive in memory
     const results = await ctx.db
       .query("properties")
-      .withSearchIndex("search_name", (q) => {
-        const withQuery = q.search("name", queryText);
-        if (args.status) {
-          return withQuery.eq("status", args.status);
-        }
-        if (!includeInactive) {
-          return withQuery.eq("isActive", true);
-        }
-        return withQuery;
-      })
-      .take(Math.max(1, Math.min(limit, 100)));
+      .withSearchIndex("search_name", (q) => q.search("name", queryText))
+      .take(cap * 2); // fetch extra to account for in-memory filtering
 
-    return includeInactive ? results : results.filter((property) => property.isActive);
+    const filtered = includeInactive
+      ? results
+      : results.filter((property) => property.isActive);
+
+    return filtered.slice(0, cap);
+  },
+});
+
+export const getAll = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 500;
+
+    const properties = await ctx.db
+      .query("properties")
+      .withIndex("by_active", (q) => q.eq("isActive", true))
+      .collect();
+
+    return properties
+      .sort((a, b) => (b.updatedAt ?? b.createdAt) - (a.updatedAt ?? a.createdAt))
+      .slice(0, limit);
   },
 });

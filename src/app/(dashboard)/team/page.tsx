@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
-import type { FunctionReference } from "convex/server";
+import { api } from "@convex/_generated/api";
 import { Award, Loader2, Plus, Search, TrendingUp } from "lucide-react";
 
 type UserRole = "cleaner" | "manager" | "property_ops" | "admin";
@@ -27,9 +27,6 @@ type Job = {
   assignedCleanerIds: string[];
 };
 
-const queryRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
-  name as unknown as FunctionReference<"query", "public", TArgs, TReturn>;
-
 export default function TeamPage() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | UserRole>("all");
@@ -45,18 +42,18 @@ export default function TeamPage() {
   });
 
   const cleaners = useQuery(
-    queryRef<{ role: "cleaner" }, TeamMember[]>("users/queries:getByRole"),
+    api.users.queries.getByRole,
     { role: "cleaner" },
   );
   const managers = useQuery(
-    queryRef<{ role: "manager" }, TeamMember[]>("users/queries:getByRole"),
+    api.users.queries.getByRole,
     { role: "manager" },
   );
   const ops = useQuery(
-    queryRef<{ role: "property_ops" }, TeamMember[]>("users/queries:getByRole"),
+    api.users.queries.getByRole,
     { role: "property_ops" },
   );
-  const jobs = useQuery(queryRef<{ limit?: number }, Job[]>("cleaningJobs/queries:getAll"), {
+  const jobs = useQuery(api.cleaningJobs.queries.getAll, {
     limit: 1000,
   });
 

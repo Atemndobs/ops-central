@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
-import type { FunctionReference } from "convex/server";
+import { api } from "@convex/_generated/api";
 import { ChevronLeft, ChevronRight, Loader2, Search, Star } from "lucide-react";
 import {
   STATUS_CLASSNAMES,
@@ -28,9 +28,6 @@ type TeamMember = {
   role: "cleaner" | "manager" | "property_ops" | "admin";
 };
 
-const queryRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
-  name as unknown as FunctionReference<"query", "public", TArgs, TReturn>;
-
 const readinessDotClass: Record<PropertyStatus, string> = {
   ready: "bg-emerald-500",
   dirty: "bg-rose-500",
@@ -46,17 +43,17 @@ export function ScheduleClient() {
   const [propertyFilter, setPropertyFilter] = useState("all");
 
   const properties = useQuery(
-    queryRef<{ limit?: number }, PropertyRecord[]>("properties/queries:getAll"),
+    api.properties.queries.getAll,
     { limit: 500 },
   );
 
   const jobs = useQuery(
-    queryRef<{ limit?: number }, JobWithRelations[]>("cleaningJobs/queries:getAll"),
+    api.cleaningJobs.queries.getAll,
     { limit: 1000 },
   );
 
   const cleaners = useQuery(
-    queryRef<{ role: "cleaner" }, TeamMember[]>("users/queries:getByRole"),
+    api.users.queries.getByRole,
     { role: "cleaner" },
   );
 
@@ -94,7 +91,7 @@ export function ScheduleClient() {
       const dayKey = dateKey(new Date(scheduledAt));
       const key = `${job.propertyId}-${dayKey}`;
       const existing = map.get(key) ?? [];
-      existing.push(job);
+      existing.push(job as unknown as JobWithRelations);
       map.set(key, existing);
     });
 
@@ -110,7 +107,7 @@ export function ScheduleClient() {
     (jobs ?? []).forEach((job) => {
       if (job.scheduledStartAt && job.scheduledStartAt >= weekStartTime && job.scheduledStartAt < weekEndTime) {
         (job.cleaners ?? []).forEach((cleaner) => {
-          if (!cleaner._id) return;
+          if (!cleaner?._id) return;
           byCleaner.set(cleaner._id, (byCleaner.get(cleaner._id) ?? 0) + 1);
         });
       }
@@ -256,7 +253,7 @@ export function ScheduleClient() {
             </div>
           ) : (
             filteredProperties.map((property) => {
-              const propertyStatus = property.status ?? "vacant";
+              const propertyStatus = ((property as any).status ?? "vacant") as PropertyStatus;
 
               return (
                 <div

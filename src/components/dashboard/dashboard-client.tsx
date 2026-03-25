@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { useQuery } from "convex/react";
-import type { FunctionReference } from "convex/server";
+import { api } from "@convex/_generated/api";
 import { AlertTriangle, CheckCircle2, Clock3, Loader2, RotateCcw } from "lucide-react";
 import {
   STATUS_CLASSNAMES,
@@ -29,9 +29,6 @@ type StatItem = {
   icon: React.ComponentType<{ className?: string }>;
 };
 
-const queryRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
-  name as unknown as FunctionReference<"query", "public", TArgs, TReturn>;
-
 const readinessLabel: Record<PropertyStatus, string> = {
   ready: "Ready",
   dirty: "Dirty",
@@ -48,11 +45,11 @@ const readinessColor: Record<PropertyStatus, string> = {
 
 export function DashboardClient() {
   const jobs = useQuery(
-    queryRef<{ limit?: number }, JobRecord[]>("cleaningJobs/queries:getAll"),
+    api.cleaningJobs.queries.getAll,
     { limit: 500 },
   );
   const properties = useQuery(
-    queryRef<{ limit?: number }, PropertyRecord[]>("properties/queries:getAll"),
+    api.properties.queries.getAll,
     { limit: 500 },
   );
 
@@ -101,7 +98,7 @@ export function DashboardClient() {
       vacant: 0,
     };
     (properties ?? []).forEach((property) => {
-      const status = property.status ?? "vacant";
+      const status = ((property as any).status ?? "vacant") as PropertyStatus;
       summary[status] += 1;
     });
     return summary;

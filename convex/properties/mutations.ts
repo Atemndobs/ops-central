@@ -1,33 +1,27 @@
-import { mutationGeneric } from "convex/server";
+import { mutation } from "../_generated/server";
 import { ConvexError, v } from "convex/values";
 
-const propertyStatusValidator = v.union(
-  v.literal("ready"),
-  v.literal("dirty"),
-  v.literal("in_progress"),
-  v.literal("vacant"),
-);
-
-export const create = mutationGeneric({
+export const create = mutation({
   args: {
     name: v.string(),
     address: v.string(),
     city: v.optional(v.string()),
     state: v.optional(v.string()),
-    postalCode: v.optional(v.string()),
+    zipCode: v.optional(v.string()),
     country: v.optional(v.string()),
-    status: v.optional(propertyStatusValidator),
+    timezone: v.optional(v.string()),
     propertyType: v.optional(v.string()),
     bedrooms: v.optional(v.number()),
     bathrooms: v.optional(v.number()),
-    estimatedCleaningMinutes: v.optional(v.number()),
-    accessNotes: v.optional(v.string()),
-    tag: v.optional(v.string()),
-    primaryPhotoUrl: v.optional(v.string()),
-    photoUrls: v.optional(v.array(v.string())),
-    assignedCleanerName: v.optional(v.string()),
-    nextCheckInAt: v.optional(v.number()),
-    nextCheckOutAt: v.optional(v.number()),
+    squareFeet: v.optional(v.number()),
+    hospitableId: v.optional(v.string()),
+    airbnbUrl: v.optional(v.string()),
+    vrboUrl: v.optional(v.string()),
+    directBookingUrl: v.optional(v.string()),
+    imageUrl: v.optional(v.string()),
+    currency: v.optional(v.string()),
+    amenities: v.optional(v.array(v.string())),
+    metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     try {
@@ -53,35 +47,26 @@ export const create = mutationGeneric({
         throw new ConvexError("Bathrooms must be a non-negative number.");
       }
 
-      if (
-        args.estimatedCleaningMinutes !== undefined &&
-        (args.estimatedCleaningMinutes < 0 ||
-          !Number.isFinite(args.estimatedCleaningMinutes))
-      ) {
-        throw new ConvexError(
-          "Estimated cleaning time must be a non-negative number.",
-        );
-      }
-
       return await ctx.db.insert("properties", {
         name,
         address,
         city: args.city?.trim(),
         state: args.state?.trim(),
-        postalCode: args.postalCode?.trim(),
+        zipCode: args.zipCode?.trim(),
         country: args.country?.trim(),
-        status: args.status ?? "vacant",
+        timezone: args.timezone?.trim(),
         propertyType: args.propertyType?.trim(),
         bedrooms: args.bedrooms,
         bathrooms: args.bathrooms,
-        estimatedCleaningMinutes: args.estimatedCleaningMinutes,
-        accessNotes: args.accessNotes?.trim(),
-        tag: args.tag?.trim(),
-        primaryPhotoUrl: args.primaryPhotoUrl,
-        photoUrls: args.photoUrls,
-        assignedCleanerName: args.assignedCleanerName?.trim(),
-        nextCheckInAt: args.nextCheckInAt,
-        nextCheckOutAt: args.nextCheckOutAt,
+        squareFeet: args.squareFeet,
+        hospitableId: args.hospitableId,
+        airbnbUrl: args.airbnbUrl,
+        vrboUrl: args.vrboUrl,
+        directBookingUrl: args.directBookingUrl,
+        imageUrl: args.imageUrl,
+        currency: args.currency,
+        amenities: args.amenities,
+        metadata: args.metadata,
         isActive: true,
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -95,28 +80,30 @@ export const create = mutationGeneric({
   },
 });
 
-export const update = mutationGeneric({
+export const update = mutation({
   args: {
     id: v.id("properties"),
     name: v.optional(v.string()),
     address: v.optional(v.string()),
     city: v.optional(v.string()),
     state: v.optional(v.string()),
-    postalCode: v.optional(v.string()),
+    zipCode: v.optional(v.string()),
     country: v.optional(v.string()),
-    status: v.optional(propertyStatusValidator),
+    timezone: v.optional(v.string()),
     propertyType: v.optional(v.string()),
     bedrooms: v.optional(v.number()),
     bathrooms: v.optional(v.number()),
-    estimatedCleaningMinutes: v.optional(v.number()),
-    accessNotes: v.optional(v.string()),
-    tag: v.optional(v.string()),
-    primaryPhotoUrl: v.optional(v.string()),
-    photoUrls: v.optional(v.array(v.string())),
-    assignedCleanerName: v.optional(v.string()),
-    nextCheckInAt: v.optional(v.number()),
-    nextCheckOutAt: v.optional(v.number()),
+    squareFeet: v.optional(v.number()),
+    hospitableId: v.optional(v.string()),
+    airbnbUrl: v.optional(v.string()),
+    vrboUrl: v.optional(v.string()),
+    directBookingUrl: v.optional(v.string()),
+    imageUrl: v.optional(v.string()),
+    currency: v.optional(v.string()),
+    amenities: v.optional(v.array(v.string())),
+    metadata: v.optional(v.any()),
     isActive: v.optional(v.boolean()),
+    updatedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     try {
@@ -143,22 +130,11 @@ export const update = mutationGeneric({
         throw new ConvexError("Bedrooms must be a non-negative number.");
       }
 
-      if
-        (
+      if (
         patch.bathrooms !== undefined &&
         (patch.bathrooms < 0 || !Number.isFinite(patch.bathrooms))
       ) {
         throw new ConvexError("Bathrooms must be a non-negative number.");
-      }
-
-      if (
-        patch.estimatedCleaningMinutes !== undefined &&
-        (patch.estimatedCleaningMinutes < 0 ||
-          !Number.isFinite(patch.estimatedCleaningMinutes))
-      ) {
-        throw new ConvexError(
-          "Estimated cleaning time must be a non-negative number.",
-        );
       }
 
       await ctx.db.patch(id, {
@@ -167,12 +143,10 @@ export const update = mutationGeneric({
         address: patch.address?.trim(),
         city: patch.city?.trim(),
         state: patch.state?.trim(),
-        postalCode: patch.postalCode?.trim(),
+        zipCode: patch.zipCode?.trim(),
         country: patch.country?.trim(),
+        timezone: patch.timezone?.trim(),
         propertyType: patch.propertyType?.trim(),
-        accessNotes: patch.accessNotes?.trim(),
-        tag: patch.tag?.trim(),
-        assignedCleanerName: patch.assignedCleanerName?.trim(),
         updatedAt: Date.now(),
       });
 
@@ -186,7 +160,7 @@ export const update = mutationGeneric({
   },
 });
 
-export const softDelete = mutationGeneric({
+export const softDelete = mutation({
   args: {
     id: v.id("properties"),
   },
@@ -200,7 +174,6 @@ export const softDelete = mutationGeneric({
 
       await ctx.db.patch(args.id, {
         isActive: false,
-        deletedAt: Date.now(),
         updatedAt: Date.now(),
       });
 

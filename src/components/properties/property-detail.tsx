@@ -4,19 +4,13 @@ import Link from "next/link";
 import Image from "next/image";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import type { FunctionReference } from "convex/server";
+import { api } from "@convex/_generated/api";
 import { ArrowLeft, Loader2, MapPin, Pencil } from "lucide-react";
 import { PropertyFormModal } from "@/components/properties/property-form-modal";
 import { STATUS_LABELS, type JobStatus } from "@/components/jobs/job-status";
 import { useToast } from "@/components/ui/toast-provider";
 import { getErrorMessage } from "@/lib/errors";
 import { PropertyFormValues, PropertyRecord } from "@/types/property";
-
-const queryRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
-  name as unknown as FunctionReference<"query", "public", TArgs, TReturn>;
-
-const mutationRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
-  name as unknown as FunctionReference<"mutation", "public", TArgs, TReturn>;
 
 type PropertyJob = {
   _id: string;
@@ -55,12 +49,12 @@ export function PropertyDetail({ id }: { id: string }) {
   const [actionError, setActionError] = useState<string | null>(null);
   const { showToast } = useToast();
 
-  const property = useQuery(queryRef<{ id: string }, PropertyRecord | null>("properties/queries:getById"), {
+  const property = useQuery(api.properties.queries.getById, {
     id: id as never,
   }) as PropertyRecord | null | undefined;
 
   const jobs = useQuery(
-    queryRef<{ propertyId?: string; limit?: number }, PropertyJob[]>("cleaningJobs/queries:getAll"),
+    api.cleaningJobs.queries.getAll,
     {
       propertyId: id as never,
       limit: 30,
@@ -68,7 +62,7 @@ export function PropertyDetail({ id }: { id: string }) {
   );
 
   const updateProperty = useMutation(
-    mutationRef<Record<string, unknown>, string>("properties/mutations:update"),
+    api.properties.mutations.update,
   );
 
   const recentJobs = useMemo(() => {

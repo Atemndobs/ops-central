@@ -1,128 +1,578 @@
+// Convex Schema for Cleaning Operations
+// Shared by: opscentral-admin (web) + jna-cleaners-app (mobile)
+// Deployment: usable-anaconda-394
+// Created: 2026-03-24
+
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
-export default defineSchema({
-  users: defineTable({
-    clerkId: v.optional(v.string()),
-    name: v.optional(v.string()),
-    email: v.optional(v.string()),
-    phone: v.optional(v.string()),
-    avatarUrl: v.optional(v.string()),
-    role: v.optional(v.string()),
-    status: v.optional(v.string()),
-    pushToken: v.optional(v.string()),
-    companyId: v.optional(v.id("users")),
-    metadata: v.optional(v.any()),
-    lastActiveAt: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.optional(v.number()),
-  })
-    .index("by_role", ["role"])
-    .index("by_email", ["email"]),
+// ═══════════════════════════════════════════════════════════════════════════════
+// USERS & AUTH
+// ═══════════════════════════════════════════════════════════════════════════════
 
-  properties: defineTable({
-    name: v.string(),
-    address: v.string(),
-    city: v.optional(v.string()),
-    state: v.optional(v.string()),
-    postalCode: v.optional(v.string()),
-    country: v.optional(v.string()),
-    status: v.optional(v.union(
-      v.literal("ready"),
-      v.literal("dirty"),
-      v.literal("in_progress"),
-      v.literal("vacant"),
-    )),
-    propertyType: v.optional(v.string()),
-    bedrooms: v.optional(v.number()),
-    bathrooms: v.optional(v.number()),
-    estimatedCleaningMinutes: v.optional(v.number()),
-    accessNotes: v.optional(v.string()),
-    tag: v.optional(v.string()),
-    primaryPhotoUrl: v.optional(v.string()),
-    photoUrls: v.optional(v.array(v.string())),
-    assignedCleanerName: v.optional(v.string()),
-    hospitableId: v.optional(v.string()),
-    airbnbUrl: v.optional(v.string()),
-    vrboUrl: v.optional(v.string()),
-    bookingUrl: v.optional(v.string()),
-    directUrl: v.optional(v.string()),
-    imageUrl: v.optional(v.string()),
-    picture: v.optional(v.string()),
-    currency: v.optional(v.string()),
-    timezone: v.optional(v.string()),
-    amenities: v.optional(v.array(v.string())),
-    public_name: v.optional(v.string()),
-    property_type: v.optional(v.string()),
-    room_type: v.optional(v.string()),
-    summary: v.optional(v.string()),
-    tags: v.optional(v.array(v.string())),
-    listed: v.optional(v.boolean()),
-    listings: v.optional(v.any()),
-    parent_child: v.optional(v.any()),
-    room_details: v.optional(v.any()),
-    ical_imports: v.optional(v.any()),
-    house_rules: v.optional(v.any()),
-    metadata: v.optional(v.any()),
-    nextCheckInAt: v.optional(v.number()),
-    nextCheckOutAt: v.optional(v.number()),
-    isActive: v.boolean(),
-    deletedAt: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_name", ["name"])
-    .index("by_status", ["status"])
-    .index("by_isActive", ["isActive"])
-    .index("by_nextCheckInAt", ["nextCheckInAt"])
-    .index("by_updatedAt", ["updatedAt"])
-    .searchIndex("search_name", {
-      searchField: "name",
-      filterFields: ["status", "isActive"],
-    }),
+const users = defineTable({
+  clerkId: v.string(),
+  email: v.string(),
+  name: v.optional(v.string()),
+  avatarUrl: v.optional(v.string()),
+  role: v.union(
+    v.literal("cleaner"),
+    v.literal("manager"),
+    v.literal("property_ops"),
+    v.literal("admin")
+  ),
+  pushToken: v.optional(v.string()),
+  phone: v.optional(v.string()),
+  metadata: v.optional(v.any()),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_clerk_id", ["clerkId"])
+  .index("by_email", ["email"])
+  .index("by_role", ["role"]);
 
-  jobs: defineTable({
-    propertyId: v.id("properties"),
-    cleanerId: v.optional(v.id("users")),
-    title: v.string(),
-    description: v.optional(v.string()),
-    type: v.optional(v.string()),
-    priority: v.optional(v.string()),
-    notes: v.optional(v.string()),
-    scheduledFor: v.number(),
-    startAt: v.optional(v.number()),
-    endAt: v.optional(v.number()),
-    assignedAt: v.optional(v.number()),
+const userRoles = defineTable({
+  userId: v.id("users"),
+  role: v.string(),
+  grantedBy: v.optional(v.id("users")),
+  grantedAt: v.number(),
+  revokedAt: v.optional(v.number()),
+})
+  .index("by_user", ["userId"])
+  .index("by_active", ["userId", "revokedAt"]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLEANING COMPANIES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const cleaningCompanies = defineTable({
+  name: v.string(),
+  ownerId: v.optional(v.id("users")),
+  contactEmail: v.optional(v.string()),
+  contactPhone: v.optional(v.string()),
+  isActive: v.boolean(),
+  settings: v.optional(v.object({
+    autoAssign: v.optional(v.boolean()),
+    notificationPreferences: v.optional(v.any()),
+  })),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_owner", ["ownerId"])
+  .index("by_active", ["isActive"]);
+
+const companyMembers = defineTable({
+  companyId: v.id("cleaningCompanies"),
+  userId: v.id("users"),
+  role: v.union(
+    v.literal("cleaner"),
+    v.literal("manager"),
+    v.literal("owner")
+  ),
+  isActive: v.boolean(),
+  joinedAt: v.number(),
+  leftAt: v.optional(v.number()),
+})
+  .index("by_company", ["companyId"])
+  .index("by_user", ["userId"])
+  .index("by_company_role", ["companyId", "role"]);
+
+const companyProperties = defineTable({
+  companyId: v.id("cleaningCompanies"),
+  propertyId: v.id("properties"),
+  assignedAt: v.number(),
+  assignedBy: v.optional(v.id("users")),
+})
+  .index("by_company", ["companyId"])
+  .index("by_property", ["propertyId"]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PROPERTIES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const properties = defineTable({
+  name: v.string(),
+  hospitableId: v.optional(v.string()),
+
+  // Location
+  address: v.string(),
+  city: v.optional(v.string()),
+  state: v.optional(v.string()),
+  zipCode: v.optional(v.string()),
+  country: v.optional(v.string()),
+  timezone: v.optional(v.string()),
+
+  // Details
+  bedrooms: v.optional(v.number()),
+  bathrooms: v.optional(v.number()),
+  squareFeet: v.optional(v.number()),
+  propertyType: v.optional(v.string()),
+
+  // Links
+  airbnbUrl: v.optional(v.string()),
+  vrboUrl: v.optional(v.string()),
+  directBookingUrl: v.optional(v.string()),
+
+  // Media
+  imageUrl: v.optional(v.string()),
+
+  // Config
+  isActive: v.boolean(),
+  currency: v.optional(v.string()),
+
+  // Amenities
+  amenities: v.optional(v.array(v.string())),
+
+  metadata: v.optional(v.any()),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_hospitable", ["hospitableId"])
+  .index("by_active", ["isActive"])
+  .index("by_city", ["city"])
+  .searchIndex("search_name", { searchField: "name" });
+
+const propertyImages = defineTable({
+  propertyId: v.id("properties"),
+  storageId: v.optional(v.id("_storage")),
+  imageUrl: v.optional(v.string()),
+  caption: v.optional(v.string()),
+  sortOrder: v.number(),
+  isPrimary: v.boolean(),
+  createdAt: v.number(),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_property_order", ["propertyId", "sortOrder"]);
+
+const propertyTags = defineTable({
+  propertyId: v.id("properties"),
+  tagName: v.string(),
+  createdAt: v.number(),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_tag", ["tagName"]);
+
+const propertyOpsAssignments = defineTable({
+  propertyId: v.id("properties"),
+  userId: v.id("users"),
+  role: v.string(),
+  assignedAt: v.number(),
+  assignedBy: v.optional(v.id("users")),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_user", ["userId"]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// STAYS (RESERVATIONS)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const stays = defineTable({
+  propertyId: v.id("properties"),
+  hospitableId: v.optional(v.string()),
+
+  guestName: v.string(),
+  guestEmail: v.optional(v.string()),
+  guestPhone: v.optional(v.string()),
+  numberOfGuests: v.optional(v.number()),
+
+  // Dates (Unix timestamps in milliseconds)
+  checkInAt: v.number(),
+  checkOutAt: v.number(),
+
+  // Flags
+  lateCheckout: v.boolean(),
+  earlyCheckin: v.boolean(),
+  partyRiskFlag: v.boolean(),
+
+  // Platform
+  platform: v.optional(v.string()),
+  confirmationCode: v.optional(v.string()),
+
+  // Financial
+  totalAmount: v.optional(v.number()),
+  currency: v.optional(v.string()),
+
+  metadata: v.optional(v.any()),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_hospitable", ["hospitableId"])
+  .index("by_checkout", ["checkOutAt"])
+  .index("by_checkin", ["checkInAt"])
+  .index("by_property_dates", ["propertyId", "checkInAt", "checkOutAt"]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLEANING JOBS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const cleaningJobs = defineTable({
+  propertyId: v.id("properties"),
+  stayId: v.optional(v.id("stays")),
+  templateId: v.optional(v.id("jobTemplates")),
+
+  // Assignments
+  assignedCleanerIds: v.array(v.id("users")),
+  assignedManagerId: v.optional(v.id("users")),
+
+  // Status
+  status: v.union(
+    v.literal("scheduled"),
+    v.literal("assigned"),
+    v.literal("in_progress"),
+    v.literal("awaiting_approval"),
+    v.literal("rework_required"),
+    v.literal("completed"),
+    v.literal("cancelled")
+  ),
+
+  // Scheduling (Unix timestamps in milliseconds)
+  scheduledStartAt: v.number(),
+  scheduledEndAt: v.number(),
+  actualStartAt: v.optional(v.number()),
+  actualEndAt: v.optional(v.number()),
+
+  // Approval
+  approvedAt: v.optional(v.number()),
+  approvedBy: v.optional(v.id("users")),
+  rejectedAt: v.optional(v.number()),
+  rejectedBy: v.optional(v.id("users")),
+  rejectionReason: v.optional(v.string()),
+
+  // Flags
+  partyRiskFlag: v.boolean(),
+  opsRiskFlag: v.boolean(),
+  isUrgent: v.boolean(),
+
+  // Notes
+  notesForCleaner: v.optional(v.string()),
+  completionNotes: v.optional(v.string()),
+  managerNotes: v.optional(v.string()),
+
+  // Checklist
+  checklistItems: v.optional(v.array(v.object({
+    id: v.string(),
+    label: v.string(),
+    completed: v.boolean(),
     completedAt: v.optional(v.number()),
-    approvedAt: v.optional(v.number()),
-    cancelledAt: v.optional(v.number()),
-    reservationId: v.optional(v.string()),
-    source: v.optional(v.string()),
-    metadata: v.optional(v.any()),
-    status: v.union(
-      v.literal("scheduled"),
-      v.literal("assigned"),
-      v.literal("in_progress"),
-      v.literal("completed"),
-      v.literal("approved"),
-      v.literal("cancelled"),
-    ),
-    photos: v.optional(
-      v.array(
-        v.object({
-          url: v.string(),
-          caption: v.optional(v.string()),
-          uploadedAt: v.number(),
-        }),
-      ),
-    ),
-    createdAt: v.number(),
-    updatedAt: v.optional(v.number()),
-  })
-    .index("by_status", ["status"])
-    .index("by_property", ["propertyId"])
-    .index("by_cleaner", ["cleanerId"])
-    .index("by_scheduled", ["scheduledFor"])
-    .index("by_property_status", ["propertyId", "status"])
-    .index("by_status_scheduled", ["status", "scheduledFor"]),
+  }))),
+
+  metadata: v.optional(v.any()),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_status", ["status"])
+  .index("by_manager", ["assignedManagerId"])
+  .index("by_scheduled", ["scheduledStartAt"])
+  .index("by_property_status", ["propertyId", "status"])
+  .index("by_stay", ["stayId"]);
+
+const jobTemplates = defineTable({
+  propertyId: v.optional(v.id("properties")),
+  name: v.string(),
+  description: v.optional(v.string()),
+
+  checklistItems: v.array(v.object({
+    id: v.string(),
+    label: v.string(),
+    category: v.optional(v.string()),
+    required: v.boolean(),
+  })),
+
+  inventoryPrompts: v.optional(v.array(v.object({
+    itemName: v.string(),
+    minQuantity: v.number(),
+  }))),
+
+  estimatedDuration: v.optional(v.number()),
+  isActive: v.boolean(),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_active", ["isActive"]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHOTOS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const photos = defineTable({
+  cleaningJobId: v.id("cleaningJobs"),
+  storageId: v.id("_storage"),
+
+  roomName: v.string(),
+  type: v.union(
+    v.literal("before"),
+    v.literal("after"),
+    v.literal("incident")
+  ),
+  source: v.union(
+    v.literal("app"),
+    v.literal("whatsapp"),
+    v.literal("manual")
+  ),
+
+  annotations: v.optional(v.any()),
+  notes: v.optional(v.string()),
+  uploadedBy: v.optional(v.id("users")),
+  uploadedAt: v.number(),
+})
+  .index("by_job", ["cleaningJobId"])
+  .index("by_job_room", ["cleaningJobId", "roomName"])
+  .index("by_job_type", ["cleaningJobId", "type"]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INCIDENTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const incidents = defineTable({
+  cleaningJobId: v.optional(v.id("cleaningJobs")),
+  propertyId: v.id("properties"),
+  reportedBy: v.optional(v.id("users")),
+
+  incidentType: v.union(
+    v.literal("missing_item"),
+    v.literal("damaged_item"),
+    v.literal("maintenance_needed"),
+    v.literal("guest_issue"),
+    v.literal("suggestion"),
+    v.literal("other")
+  ),
+  severity: v.optional(v.union(
+    v.literal("low"),
+    v.literal("medium"),
+    v.literal("high"),
+    v.literal("critical")
+  )),
+
+  title: v.string(),
+  description: v.optional(v.string()),
+  roomName: v.optional(v.string()),
+
+  inventoryItemId: v.optional(v.id("inventoryItems")),
+  quantityMissing: v.optional(v.number()),
+  photoIds: v.array(v.string()),
+
+  customItemDescription: v.optional(v.string()),
+  incidentContext: v.optional(v.string()),
+
+  status: v.union(
+    v.literal("open"),
+    v.literal("in_progress"),
+    v.literal("resolved"),
+    v.literal("wont_fix")
+  ),
+  resolvedAt: v.optional(v.number()),
+  resolvedBy: v.optional(v.id("users")),
+  resolutionNotes: v.optional(v.string()),
+
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_job", ["cleaningJobId"])
+  .index("by_property", ["propertyId"])
+  .index("by_status", ["status"])
+  .index("by_severity", ["severity"]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INVENTORY
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const inventoryCategories = defineTable({
+  name: v.string(),
+  icon: v.optional(v.string()),
+  sortOrder: v.number(),
+  createdAt: v.number(),
+})
+  .index("by_name", ["name"])
+  .index("by_order", ["sortOrder"]);
+
+const inventoryItems = defineTable({
+  propertyId: v.id("properties"),
+  categoryId: v.optional(v.id("inventoryCategories")),
+  name: v.string(),
+  description: v.optional(v.string()),
+  room: v.optional(v.string()),
+
+  quantityPurchased: v.number(),
+  quantityCurrent: v.number(),
+  minimumQuantity: v.number(),
+
+  status: v.union(
+    v.literal("ok"),
+    v.literal("low_stock"),
+    v.literal("out_of_stock"),
+    v.literal("reorder_pending")
+  ),
+  requiresRestock: v.boolean(),
+
+  lastCheckedAt: v.optional(v.number()),
+  lastCheckedBy: v.optional(v.id("users")),
+
+  metadata: v.optional(v.any()),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_category", ["categoryId"])
+  .index("by_status", ["status"])
+  .index("by_property_room", ["propertyId", "room"])
+  .searchIndex("search_name", { searchField: "name" });
+
+const stockChecks = defineTable({
+  jobId: v.id("cleaningJobs"),
+  itemId: v.id("inventoryItems"),
+  quantityBefore: v.number(),
+  quantityAfter: v.number(),
+  checkedBy: v.id("users"),
+  checkedAt: v.number(),
+  notes: v.optional(v.string()),
+})
+  .index("by_job", ["jobId"])
+  .index("by_item", ["itemId"]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NOTIFICATIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const notifications = defineTable({
+  userId: v.id("users"),
+  type: v.union(
+    v.literal("job_assigned"),
+    v.literal("job_at_risk"),
+    v.literal("job_completed"),
+    v.literal("awaiting_approval"),
+    v.literal("rework_required"),
+    v.literal("incident_created"),
+    v.literal("low_stock"),
+    v.literal("system")
+  ),
+  title: v.string(),
+  message: v.string(),
+  data: v.optional(v.any()),
+
+  readAt: v.optional(v.number()),
+  dismissedAt: v.optional(v.number()),
+
+  pushSent: v.boolean(),
+  pushSentAt: v.optional(v.number()),
+  createdAt: v.number(),
+})
+  .index("by_user", ["userId"])
+  .index("by_unread", ["userId", "readAt"])
+  .index("by_type", ["type"]);
+
+const notificationSchedules = defineTable({
+  jobId: v.id("cleaningJobs"),
+  type: v.string(),
+  scheduledFor: v.number(),
+  status: v.union(
+    v.literal("pending"),
+    v.literal("sent"),
+    v.literal("cancelled"),
+    v.literal("failed")
+  ),
+  sentAt: v.optional(v.number()),
+  error: v.optional(v.string()),
+  createdAt: v.number(),
+})
+  .index("by_pending", ["status", "scheduledFor"])
+  .index("by_job", ["jobId"]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INSTRUCTIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const instructionCategories = defineTable({
+  name: v.string(),
+  icon: v.optional(v.string()),
+  sortOrder: v.number(),
+  createdAt: v.number(),
+})
+  .index("by_name", ["name"])
+  .index("by_order", ["sortOrder"]);
+
+const instructions = defineTable({
+  propertyId: v.optional(v.id("properties")),
+  categoryId: v.optional(v.id("instructionCategories")),
+  title: v.string(),
+  content: v.string(),
+  priority: v.optional(v.number()),
+  isActive: v.boolean(),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_category", ["categoryId"])
+  .index("by_active", ["isActive"]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INTEGRATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const hospitableConfig = defineTable({
+  propertyId: v.optional(v.string()),
+  isActive: v.boolean(),
+  syncWindowDays: v.optional(v.number()),
+  lastSyncAt: v.optional(v.number()),
+  lastSyncStatus: v.optional(v.string()),
+  lastTestedAt: v.optional(v.number()),
+  testStatus: v.optional(v.string()),
+  propertyMappings: v.optional(v.array(v.object({
+    hospitableId: v.string(),
+    convexId: v.id("properties"),
+  }))),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EXPORT SCHEMA
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export default defineSchema({
+  // Users & Auth
+  users,
+  userRoles,
+
+  // Companies
+  cleaningCompanies,
+  companyMembers,
+  companyProperties,
+
+  // Properties
+  properties,
+  propertyImages,
+  propertyTags,
+  propertyOpsAssignments,
+
+  // Stays
+  stays,
+
+  // Jobs
+  cleaningJobs,
+  jobTemplates,
+
+  // Photos
+  photos,
+
+  // Incidents
+  incidents,
+
+  // Inventory
+  inventoryCategories,
+  inventoryItems,
+  stockChecks,
+
+  // Notifications
+  notifications,
+  notificationSchedules,
+
+  // Instructions
+  instructionCategories,
+  instructions,
+
+  // Integration
+  hospitableConfig,
 });

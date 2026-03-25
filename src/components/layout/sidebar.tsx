@@ -3,9 +3,10 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { SignOutButton, UserButton, useAuth, useUser } from "@clerk/nextjs";
-import { useState } from "react";
+import { UserButton, useAuth, useClerk, useUser } from "@clerk/nextjs";
+import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/toast-provider";
 import { getRoleFromSessionClaims, type UserRole } from "@/lib/auth";
 import {
   LayoutDashboard,
@@ -20,7 +21,9 @@ import {
   HelpCircle,
   LogOut,
   Moon,
+  Sun,
   Menu,
+  X,
 } from "lucide-react";
 
 const navigation = [
@@ -84,7 +87,12 @@ export function Sidebar() {
   const pathname = usePathname();
   const { sessionClaims } = useAuth();
   const { user } = useUser();
+  const { signOut } = useClerk();
+  const { showToast } = useToast();
   const [isCollapsed, setIsCollapsed] = useState(true);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [hasMounted, setHasMounted] = useState(false);
   const role = getRoleFromSessionClaims(
     sessionClaims as Record<string, unknown> | null,
   );
@@ -94,6 +102,27 @@ export function Sidebar() {
     manager: "Manager",
     cleaner: "Cleaner",
   };
+  const quickLinks = navigation
+    .filter((item) => item.roles.includes(role))
+    .slice(0, 5);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem("opscentral-theme");
+    const prefersDark = stored === "dark" || (!stored && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    setIsDarkMode(prefersDark);
+    document.documentElement.classList.toggle("dark", prefersDark);
+    setHasMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    document.documentElement.classList.toggle("dark", isDarkMode);
+    window.localStorage.setItem("opscentral-theme", isDarkMode ? "dark" : "light");
+  }, [isDarkMode, hasMounted]);
+
+  const toggleTheme = useCallback(() => {
+    setIsDarkMode((previous) => !previous);
+  }, []);
 
   return (
     <aside
@@ -142,7 +171,7 @@ export function Sidebar() {
                   : "items-center gap-3 px-3 py-2.5 text-sm font-medium",
                 isActive
                   ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
-                  : "text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
+                  : "text-[var(--accent-foreground)] opacity-70 hover:opacity-100 hover:bg-[var(--accent)]",
               )}
               title={isCollapsed ? item.name : undefined}
             >
@@ -157,6 +186,7 @@ export function Sidebar() {
         <div className="space-y-1">
           <button
             type="button"
+            onClick={() => setIsHelpOpen(true)}
             className={cn(
               "flex w-full rounded-none text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
               isCollapsed
@@ -168,33 +198,37 @@ export function Sidebar() {
             <HelpCircle className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
             {!isCollapsed ? "Help" : null}
           </button>
-          <SignOutButton redirectUrl="/sign-in">
-            <button
-              type="button"
-              className={cn(
-                "flex w-full rounded-none text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
-                isCollapsed
-                  ? "mx-auto h-11 w-11 items-center justify-center"
-                  : "items-center gap-3 px-3 py-2.5 text-sm",
-              )}
-              title={isCollapsed ? "Logout" : undefined}
-            >
-              <LogOut className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
-              {!isCollapsed ? "Logout" : null}
-            </button>
-          </SignOutButton>
           <button
             type="button"
+            onClick={() => signOut({ redirectUrl: "/sign-in" })}
             className={cn(
               "flex w-full rounded-none text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
               isCollapsed
                 ? "mx-auto h-11 w-11 items-center justify-center"
                 : "items-center gap-3 px-3 py-2.5 text-sm",
             )}
-            title={isCollapsed ? "Theme" : undefined}
+            title={isCollapsed ? "Logout" : undefined}
           >
-            <Moon className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
-            {!isCollapsed ? "Dark Mode" : null}
+            <LogOut className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
+            {!isCollapsed ? "Logout" : null}
+          </button>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className={cn(
+              "flex w-full rounded-none text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
+              isCollapsed
+                ? "mx-auto h-11 w-11 items-center justify-center"
+                : "items-center gap-3 px-3 py-2.5 text-sm",
+            )}
+            title={isCollapsed ? (isDarkMode ? "Light Mode" : "Dark Mode") : undefined}
+          >
+            {isDarkMode ? (
+              <Sun className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
+            ) : (
+              <Moon className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
+            )}
+            {!isCollapsed ? (isDarkMode ? "Light Mode" : "Dark Mode") : null}
           </button>
           <button
             type="button"
@@ -222,10 +256,59 @@ export function Sidebar() {
                 {roleLabel[role]}
               </p>
             </div>
-            <UserButton afterSignOutUrl="/sign-in" />
+            <UserButton signInUrl="/sign-in" />
           </div>
         ) : null}
       </div>
+
+      {isHelpOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setIsHelpOpen(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-xl border bg-[var(--card)] p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold">OpsCentral Help</h3>
+                <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+                  Use these shortcuts to navigate key operational pages quickly.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsHelpOpen(false)}
+                className="rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+                aria-label="Close help"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              {quickLinks.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setIsHelpOpen(false)}
+                  className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-[var(--accent)]"
+                >
+                  <item.icon className="h-4 w-4 text-[var(--muted-foreground)]" />
+                  <span>{item.name}</span>
+                </Link>
+              ))}
+            </div>
+
+            <div className="mt-4 rounded-md border border-dashed px-3 py-2 text-xs text-[var(--muted-foreground)]">
+              Need account or alert preferences? Open Settings from the top-right
+              header.
+            </div>
+          </div>
+        </div>
+      ) : null}
     </aside>
   );
 }
+

@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
-import type { FunctionReference } from "convex/server";
+import { api } from "@convex/_generated/api";
+import type { Id } from "@convex/_generated/dataModel";
 import { Loader2, Plus, Search } from "lucide-react";
 import {
   JOB_STATUSES,
@@ -37,9 +38,6 @@ const workflowStatuses: JobStatus[] = [
   "completed",
 ];
 
-const queryRef = <TArgs extends Record<string, unknown>, TReturn>(name: string) =>
-  name as unknown as FunctionReference<"query", "public", TArgs, TReturn>;
-
 export function JobsPageClient() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<JobStatus | "all">("all");
@@ -49,37 +47,26 @@ export function JobsPageClient() {
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   const jobs = useQuery(
-    queryRef<
-      {
-        status?: JobStatus;
-        propertyId?: string;
-        limit?: number;
-      },
-      JobWithRelations[]
-    >("cleaningJobs/queries:getAll"),
+    api.cleaningJobs.queries.getAll,
     {
       status: status === "all" ? undefined : status,
-      propertyId: propertyId === "all" ? undefined : propertyId,
+      propertyId: propertyId === "all" ? undefined : propertyId as Id<"properties">,
       limit: 1000,
     },
   );
 
   const allJobs = useQuery(
-    queryRef<{ limit?: number }, JobWithRelations[]>("cleaningJobs/queries:getAll"),
+    api.cleaningJobs.queries.getAll,
     { limit: 1000 },
   );
 
   const cleanerOptionsFromUsers = useQuery(
-    queryRef<{ role: "cleaner" }, Array<{ _id: string; name?: string | null }>>(
-      "users/queries:getByRole",
-    ),
+    api.users.queries.getByRole,
     { role: "cleaner" },
   );
 
   const propertiesForCreate = useQuery(
-    queryRef<{ limit?: number }, Array<{ _id: string; name: string }>>(
-      "properties/queries:getAll",
-    ),
+    api.properties.queries.getAll,
     { limit: 500 },
   );
 
@@ -153,7 +140,7 @@ export function JobsPageClient() {
     }
 
     if (cleanerId !== "all") {
-      list = list.filter((job) => (job.assignedCleanerIds ?? []).includes(cleanerId));
+      list = list.filter((job) => (job.assignedCleanerIds ?? []).includes(cleanerId as Id<"users">));
     }
 
     if (!selectedDate) {
