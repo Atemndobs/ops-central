@@ -13,8 +13,80 @@
 
 import { v } from "convex/values";
 import { query } from "../_generated/server";
-import { type Id } from "../_generated/dataModel";
-import { requireRole, requireAuth, getCurrentUser } from "../lib/auth";
+import { type Doc, type Id } from "../_generated/dataModel";
+import { requireRole, requireAuth } from "../lib/auth";
+
+type TeamAvailability = "working" | "available" | "off";
+
+const WORKING_STATUSES = new Set<Doc<"cleaningJobs">["status"]>([
+  "in_progress",
+  "awaiting_approval",
+]);
+const UPCOMING_STATUSES = new Set<Doc<"cleaningJobs">["status"]>([
+  "scheduled",
+  "assigned",
+]);
+const ACTIVE_ASSIGNMENT_STATUSES = new Set<Doc<"cleaningJobs">["status"]>([
+  "scheduled",
+  "assigned",
+  "in_progress",
+  "awaiting_approval",
+]);
+const QUALITY_RATED_STATUSES = new Set<Doc<"cleaningJobs">["status"]>([
+  "completed",
+  "awaiting_approval",
+  "rework_required",
+  "cancelled",
+]);
+const QUALITY_POSITIVE_STATUSES = new Set<Doc<"cleaningJobs">["status"]>([
+  "completed",
+  "awaiting_approval",
+]);
+
+function normalizeName(user: { name?: string; email?: string }): string {
+  return (user.name?.trim() || user.email || "").toLowerCase();
+}
+
+function metricTimestamp(job: Doc<"cleaningJobs">): number {
+  return (
+    job.actualEndAt ??
+    job.approvedAt ??
+    job.rejectedAt ??
+    job.scheduledEndAt ??
+    job.scheduledStartAt
+  );
+}
+
+function isWithinLookback(job: Doc<"cleaningJobs">, lookbackStart: number): boolean {
+  return metricTimestamp(job) >= lookbackStart;
+}
+
+function pickAvailability(
+  jobs: Doc<"cleaningJobs">[],
+  now: number,
+  horizonEnd: number,
+): TeamAvailability {
+  const hasWorking = jobs.some((job) => WORKING_STATUSES.has(job.status));
+  if (hasWorking) {
+    return "working";
+  }
+
+  const hasUpcoming = jobs.some(
+    (job) =>
+      UPCOMING_STATUSES.has(job.status) &&
+      job.scheduledStartAt >= now &&
+      job.scheduledStartAt <= horizonEnd,
+  );
+  if (hasUpcoming) {
+    return "available";
+  }
+
+  return "off";
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // USER MANAGEMENT QUERIES
@@ -83,6 +155,174 @@ export const getUsers = query({
 
     const users = await ctx.db.query("users").collect();
     return users.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  },
+});
+
+/**
+ * Team metrics for Team Management screen.
+ * Single source of truth for UI statistics and status labels.
+ */
+export const getTeamMetrics = query({
+  args: {
+    lookbackDays: v.optional(v.number()),
+    horizonHours: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await requireRole(ctx, ["admin", "property_ops", "manager"]);
+
+    const now = Date.now();
+    const lookbackDays = Math.min(
+      365,
+      Math.max(1, Math.floor(args.lookbackDays ?? 30)),
+    );
+    const horizonHours = Math.min(
+      168,
+      Math.max(1, Math.floor(args.horizonHours ?? 24)),
+    );
+    const lookbackStart = now - lookbackDays * 24 * 60 * 60 * 1000;
+    const horizonEnd = now + horizonHours * 60 * 60 * 1000;
+
+    const [users, jobs, memberships] = await Promise.all([
+      ctx.db.query("users").collect(),
+      ctx.db.query("cleaningJobs").collect(),
+      ctx.db.query("companyMembers").collect(),
+    ]);
+
+    const jobsByUserId = new Map<Id<"users">, Doc<"cleaningJobs">[]>();
+    for (const user of users) {
+      jobsByUserId.set(user._id, []);
+    }
+
+    for (const job of jobs) {
+      const participantIds = new Set<Id<"users">>(job.assignedCleanerIds);
+      if (job.assignedManagerId) {
+        participantIds.add(job.assignedManagerId);
+      }
+
+      for (const participantId of participantIds) {
+        if (!jobsByUserId.has(participantId)) {
+          jobsByUserId.set(participantId, []);
+        }
+        jobsByUserId.get(participantId)!.push(job);
+      }
+    }
+
+    const activeMembershipByUserId = new Map<Id<"users">, Doc<"companyMembers">>();
+    for (const membership of memberships) {
+      if (!membership.isActive || membership.leftAt !== undefined) {
+        continue;
+      }
+
+      const current = activeMembershipByUserId.get(membership.userId);
+      if (!current || membership.joinedAt > current.joinedAt) {
+        activeMembershipByUserId.set(membership.userId, membership);
+      }
+    }
+
+    const companyIds = [
+      ...new Set(
+        [...activeMembershipByUserId.values()].map((membership) => membership.companyId),
+      ),
+    ];
+    const companies = await Promise.all(companyIds.map((companyId) => ctx.db.get(companyId)));
+    const companyById = new Map(
+      companies
+        .filter((company): company is NonNullable<typeof company> => company !== null)
+        .map((company) => [company._id, company] as const),
+    );
+
+    const members = users
+      .map((user) => {
+        const assignedJobs = jobsByUserId.get(user._id) ?? [];
+        const inWindowJobs = assignedJobs.filter((job) =>
+          isWithinLookback(job, lookbackStart),
+        );
+
+        const activeAssignmentsCount = assignedJobs.filter((job) =>
+          ACTIVE_ASSIGNMENT_STATUSES.has(job.status),
+        ).length;
+
+        const qualityRatedJobs = inWindowJobs.filter((job) =>
+          QUALITY_RATED_STATUSES.has(job.status),
+        );
+        const qualityPositiveJobs = qualityRatedJobs.filter((job) =>
+          QUALITY_POSITIVE_STATUSES.has(job.status),
+        );
+        const qualityScore =
+          qualityRatedJobs.length > 0
+            ? Number(
+                clamp((5 * qualityPositiveJobs.length) / qualityRatedJobs.length, 0, 5).toFixed(2),
+              )
+            : null;
+
+        const durationJobs = inWindowJobs.filter(
+          (job) =>
+            typeof job.actualStartAt === "number" &&
+            typeof job.actualEndAt === "number" &&
+            job.actualEndAt >= job.actualStartAt,
+        );
+        const avgDurationMinutes =
+          durationJobs.length > 0
+            ? Math.round(
+                durationJobs.reduce(
+                  (total, job) => total + (job.actualEndAt! - job.actualStartAt!),
+                  0,
+                ) /
+                  durationJobs.length /
+                  (1000 * 60),
+              )
+            : null;
+
+        const onTimeEligibleJobs = inWindowJobs.filter(
+          (job) =>
+            QUALITY_RATED_STATUSES.has(job.status) &&
+            typeof job.scheduledEndAt === "number" &&
+            typeof (job.actualEndAt ?? job.approvedAt ?? job.rejectedAt) === "number",
+        );
+        const onTimeJobs = onTimeEligibleJobs.filter((job) => {
+          const completionTime = job.actualEndAt ?? job.approvedAt ?? job.rejectedAt;
+          return typeof completionTime === "number" && completionTime <= job.scheduledEndAt;
+        });
+        const onTimePct =
+          onTimeEligibleJobs.length > 0
+            ? Math.round((onTimeJobs.length / onTimeEligibleJobs.length) * 100)
+            : null;
+
+        const completedJobsCount = inWindowJobs.filter(
+          (job) => job.status === "completed",
+        ).length;
+
+        const activeMembership = activeMembershipByUserId.get(user._id);
+        const company = activeMembership
+          ? companyById.get(activeMembership.companyId) ?? null
+          : null;
+
+        return {
+          _id: user._id,
+          clerkId: user.clerkId,
+          email: user.email,
+          name: user.name,
+          avatarUrl: user.avatarUrl,
+          role: user.role,
+          availability: pickAvailability(assignedJobs, now, horizonEnd),
+          onTimePct,
+          qualityScore,
+          avgDurationMinutes,
+          activeAssignmentsCount,
+          completedJobsCount,
+          companyId: activeMembership?.companyId ?? null,
+          companyName: company?.name ?? null,
+          companyMemberRole: activeMembership?.role ?? null,
+        };
+      })
+      .sort((a, b) => normalizeName(a).localeCompare(normalizeName(b)));
+
+    return {
+      generatedAt: now,
+      lookbackDays,
+      horizonHours,
+      members,
+    };
   },
 });
 
@@ -349,6 +589,52 @@ export const getCompanies = query({
 
     const companies = await ctx.db.query("cleaningCompanies").collect();
     return companies.sort((a, b) => a.name.localeCompare(b.name));
+  },
+});
+
+/**
+ * Active company memberships for a set of users.
+ * Used by team-management UIs to display and edit company assignment.
+ */
+export const getCompanyMembershipsForUsers = query({
+  args: {
+    userIds: v.array(v.id("users")),
+  },
+  handler: async (ctx, args) => {
+    await requireAuth(ctx);
+
+    const dedupedUserIds = [...new Set(args.userIds)];
+    const memberships: Array<{
+      userId: Id<"users">;
+      companyId: Id<"cleaningCompanies">;
+      companyName: string;
+      memberRole: "cleaner" | "manager" | "owner";
+    }> = [];
+
+    for (const userId of dedupedUserIds) {
+      const userMemberships = await ctx.db
+        .query("companyMembers")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .collect();
+
+      const activeMembership = userMemberships
+        .filter((membership) => membership.isActive && membership.leftAt === undefined)
+        .sort((a, b) => b.joinedAt - a.joinedAt)[0];
+
+      if (!activeMembership) {
+        continue;
+      }
+
+      const company = await ctx.db.get(activeMembership.companyId);
+      memberships.push({
+        userId,
+        companyId: activeMembership.companyId,
+        companyName: company?.name ?? "Unknown company",
+        memberRole: activeMembership.role,
+      });
+    }
+
+    return memberships;
   },
 });
 

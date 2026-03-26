@@ -10,6 +10,7 @@
 
 import type * as admin_mutations from "../admin/mutations.js";
 import type * as admin_queries from "../admin/queries.js";
+import type * as admin_userSync from "../admin/userSync.js";
 import type * as cleaningJobs_approve from "../cleaningJobs/approve.js";
 import type * as cleaningJobs_mutations from "../cleaningJobs/mutations.js";
 import type * as cleaningJobs_queries from "../cleaningJobs/queries.js";
@@ -39,6 +40,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   "admin/mutations": typeof admin_mutations;
   "admin/queries": typeof admin_queries;
+  "admin/userSync": typeof admin_userSync;
   "cleaningJobs/approve": typeof cleaningJobs_approve;
   "cleaningJobs/mutations": typeof cleaningJobs_mutations;
   "cleaningJobs/queries": typeof cleaningJobs_queries;

@@ -4,9 +4,10 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { UserButton, useAuth, useUser } from "@clerk/nextjs";
-import { useCallback, useEffect, useState } from "react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api } from "@convex/_generated/api";
 import { cn } from "@/lib/utils";
-import { useToast } from "@/components/ui/toast-provider";
 import { getRoleFromSessionClaims, type UserRole } from "@/lib/auth";
 import {
   LayoutDashboard,
@@ -83,15 +84,45 @@ const navigation = [
   },
 ];
 
+const THEME_STORAGE_KEY = "opscentral-theme";
+
+type ThemePreference = "dark" | "light";
+
+function readClientThemePreference(): ThemePreference {
+  if (typeof window === "undefined") {
+    return "light";
+  }
+
+  const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+  if (stored === "dark" || stored === "light") {
+    return stored;
+  }
+
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
+
+function applyTheme(theme: ThemePreference) {
+  document.documentElement.classList.toggle("dark", theme === "dark");
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const { sessionClaims, signOut } = useAuth();
   const { user } = useUser();
-  const { showToast } = useToast();
+  const { isAuthenticated: isConvexAuthenticated, isLoading: isConvexAuthLoading } =
+    useConvexAuth();
+  const themePreference = useQuery(
+    api.users.queries.getThemePreference,
+    isConvexAuthenticated ? {} : "skip",
+  );
+  const setThemePreference = useMutation(api.users.mutations.setThemePreference);
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
+  const initializedThemeScopeRef = useRef<string | null>(null);
   const role = getRoleFromSessionClaims(
     sessionClaims as Record<string, unknown> | null,
   );
@@ -104,24 +135,69 @@ export function Sidebar() {
   const quickLinks = navigation
     .filter((item) => item.roles.includes(role))
     .slice(0, 5);
+  const themeScopeKey = isConvexAuthenticated
+    ? `auth:${user?.id ?? "unknown"}`
+    : "anon";
 
   useEffect(() => {
-    const stored = window.localStorage.getItem("opscentral-theme");
-    const prefersDark = stored === "dark" || (!stored && window.matchMedia("(prefers-color-scheme: dark)").matches);
-    setIsDarkMode(prefersDark);
-    document.documentElement.classList.toggle("dark", prefersDark);
+    if (initializedThemeScopeRef.current === themeScopeKey) {
+      return;
+    }
+    if (isConvexAuthLoading) {
+      return;
+    }
+    if (isConvexAuthenticated && themePreference === undefined) {
+      return;
+    }
+
+    const fallbackTheme = readClientThemePreference();
+    const resolvedTheme =
+      isConvexAuthenticated && themePreference?.theme
+        ? themePreference.theme
+        : fallbackTheme;
+
+    setIsDarkMode(resolvedTheme === "dark");
+    applyTheme(resolvedTheme);
+    window.localStorage.setItem(THEME_STORAGE_KEY, resolvedTheme);
     setHasMounted(true);
-  }, []);
+    initializedThemeScopeRef.current = themeScopeKey;
+
+    if (isConvexAuthenticated && !themePreference?.theme) {
+      void setThemePreference({ theme: resolvedTheme }).catch((error) => {
+        console.warn("[ThemePreference] Failed to initialize theme in Convex", error);
+      });
+    }
+  }, [
+    isConvexAuthenticated,
+    isConvexAuthLoading,
+    setThemePreference,
+    themePreference,
+    themeScopeKey,
+  ]);
 
   useEffect(() => {
     if (!hasMounted) return;
-    document.documentElement.classList.toggle("dark", isDarkMode);
-    window.localStorage.setItem("opscentral-theme", isDarkMode ? "dark" : "light");
+    const theme: ThemePreference = isDarkMode ? "dark" : "light";
+    applyTheme(theme);
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [isDarkMode, hasMounted]);
 
   const toggleTheme = useCallback(() => {
-    setIsDarkMode((previous) => !previous);
-  }, []);
+    setIsDarkMode((previous) => {
+      const nextIsDarkMode = !previous;
+      const nextTheme: ThemePreference = nextIsDarkMode ? "dark" : "light";
+      applyTheme(nextTheme);
+      window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+
+      if (isConvexAuthenticated) {
+        void setThemePreference({ theme: nextTheme }).catch((error) => {
+          console.warn("[ThemePreference] Failed to save theme in Convex", error);
+        });
+      }
+
+      return nextIsDarkMode;
+    });
+  }, [isConvexAuthenticated, setThemePreference]);
 
   return (
     <aside
@@ -313,4 +389,3 @@ export function Sidebar() {
     </aside>
   );
 }
-

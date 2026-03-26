@@ -2,7 +2,7 @@
 // Keep this in sync with the admin app so both clients trust the same issuer.
 const clerkIssuer =
   process.env.CLERK_ISSUER_URL ??
-  "https://informed-marlin-31.clerk.accounts.dev";
+  "https://good-bluejay-68.clerk.accounts.dev";
 
 export default {
   providers: [
