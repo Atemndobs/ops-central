@@ -9,16 +9,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@convex/_generated/api";
 import { cn } from "@/lib/utils";
 import { getRoleFromSessionClaims, type UserRole } from "@/lib/auth";
+import { navigation } from "@/components/layout/navigation";
 import {
-  LayoutDashboard,
-  Calendar,
-  ClipboardList,
-  Building2,
-  Users,
-  Package,
-  Wrench,
-  BarChart3,
-  Settings,
   HelpCircle,
   LogOut,
   Moon,
@@ -26,63 +18,6 @@ import {
   Menu,
   X,
 } from "lucide-react";
-
-const navigation = [
-  {
-    name: "Dashboard",
-    href: "/",
-    icon: LayoutDashboard,
-    roles: ["admin", "property_ops", "manager"],
-  },
-  {
-    name: "Schedule",
-    href: "/schedule",
-    icon: Calendar,
-    roles: ["admin", "property_ops"],
-  },
-  {
-    name: "Jobs",
-    href: "/jobs",
-    icon: ClipboardList,
-    roles: ["admin", "property_ops", "manager", "cleaner"],
-  },
-  {
-    name: "Properties",
-    href: "/properties",
-    icon: Building2,
-    roles: ["admin", "property_ops", "manager"],
-  },
-  {
-    name: "Team",
-    href: "/team",
-    icon: Users,
-    roles: ["admin", "property_ops", "manager"],
-  },
-  {
-    name: "Inventory",
-    href: "/inventory",
-    icon: Package,
-    roles: ["admin"],
-  },
-  {
-    name: "Work Orders",
-    href: "/work-orders",
-    icon: Wrench,
-    roles: ["admin"],
-  },
-  {
-    name: "Reports",
-    href: "/reports",
-    icon: BarChart3,
-    roles: ["admin", "property_ops", "manager"],
-  },
-  {
-    name: "Settings",
-    href: "/settings",
-    icon: Settings,
-    roles: ["admin"],
-  },
-];
 
 const THEME_STORAGE_KEY = "opscentral-theme";
 
