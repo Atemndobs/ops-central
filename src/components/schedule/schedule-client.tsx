@@ -20,7 +20,7 @@ import {
   type JobStatus,
 } from "@/components/jobs/job-status";
 import { cn } from "@/lib/utils";
-import type { PropertyRecord, PropertyStatus } from "@/types/property";
+import type { PropertyStatus } from "@/types/property";
 
 type JobWithRelations = {
   _id: string;
@@ -30,13 +30,6 @@ type JobWithRelations = {
   propertyId: string;
   property?: { _id: string; name?: string | null };
   cleaners?: Array<{ _id?: string; name?: string | null }>;
-};
-
-type TeamMember = {
-  _id: string;
-  name?: string;
-  email?: string;
-  role: "cleaner" | "manager" | "property_ops" | "admin";
 };
 
 const readinessDotClass: Record<PropertyStatus, string> = {
@@ -49,34 +42,30 @@ const readinessDotClass: Record<PropertyStatus, string> = {
 const oneDayMs = 24 * 60 * 60 * 1000;
 
 export function ScheduleClient() {
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
+  const [rangeMode, setRangeMode] = useState<"week" | "month" | "custom">("week");
+  const [rangeStart, setRangeStart] = useState(() => startOfWeek(new Date()));
+  const [rangeEnd, setRangeEnd] = useState(() => addDays(startOfWeek(new Date()), 6));
+  const [visibleDaysCount, setVisibleDaysCount] = useState(7);
+  const [dayOffset, setDayOffset] = useState(0);
   const [search, setSearch] = useState("");
   const [propertyFilter, setPropertyFilter] = useState("all");
   const [isCleanerPanelVisible, setIsCleanerPanelVisible] = useState(true);
   const [isGridFitMode, setIsGridFitMode] = useState(false);
 
-  const properties = useQuery(
-    api.properties.queries.getAll,
-    { limit: 500 },
+  const properties = useQuery(api.properties.queries.getAll, { limit: 500 });
+  const jobs = useQuery(api.cleaningJobs.queries.getAll, { limit: 1000 });
+  const cleaners = useQuery(api.users.queries.getByRole, { role: "cleaner" });
+
+  const rangeDays = useMemo(() => listDaysBetween(rangeStart, rangeEnd), [rangeEnd, rangeStart]);
+  const maxDayOffset = Math.max(0, rangeDays.length - visibleDaysCount);
+  const effectiveDayOffset = Math.min(dayOffset, maxDayOffset);
+  const visibleDays = useMemo(
+    () => rangeDays.slice(effectiveDayOffset, effectiveDayOffset + visibleDaysCount),
+    [effectiveDayOffset, rangeDays, visibleDaysCount],
   );
 
-  const jobs = useQuery(
-    api.cleaningJobs.queries.getAll,
-    { limit: 1000 },
-  );
-
-  const cleaners = useQuery(
-    api.users.queries.getByRole,
-    { role: "cleaner" },
-  );
-
-  const weekDays = useMemo(
-    () => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)),
-    [weekStart],
-  );
-
-  const weekStartTime = weekStart.getTime();
-  const weekEndTime = weekStartTime + 7 * oneDayMs;
+  const rangeStartTime = startOfDay(rangeStart).getTime();
+  const rangeEndExclusiveTime = addDays(startOfDay(rangeEnd), 1).getTime();
 
   const filteredProperties = useMemo(() => {
     const source = properties ?? [];
@@ -97,7 +86,7 @@ export function ScheduleClient() {
 
     (jobs ?? []).forEach((job) => {
       const scheduledAt = job.scheduledStartAt ?? 0;
-      if (scheduledAt < weekStartTime || scheduledAt >= weekEndTime) {
+      if (scheduledAt < rangeStartTime || scheduledAt >= rangeEndExclusiveTime) {
         return;
       }
 
@@ -113,12 +102,16 @@ export function ScheduleClient() {
     });
 
     return map;
-  }, [jobs, weekEndTime, weekStartTime]);
+  }, [jobs, rangeEndExclusiveTime, rangeStartTime]);
 
   const cleanerLoads = useMemo(() => {
     const byCleaner = new Map<string, number>();
     (jobs ?? []).forEach((job) => {
-      if (job.scheduledStartAt && job.scheduledStartAt >= weekStartTime && job.scheduledStartAt < weekEndTime) {
+      if (
+        job.scheduledStartAt &&
+        job.scheduledStartAt >= rangeStartTime &&
+        job.scheduledStartAt < rangeEndExclusiveTime
+      ) {
         (job.cleaners ?? []).forEach((cleaner) => {
           if (!cleaner?._id) return;
           byCleaner.set(cleaner._id, (byCleaner.get(cleaner._id) ?? 0) + 1);
@@ -128,50 +121,169 @@ export function ScheduleClient() {
 
     return (cleaners ?? []).map((cleaner, index) => ({
       ...cleaner,
-      jobsThisWeek: byCleaner.get(cleaner._id) ?? Math.max(0, 4 - (index % 3)),
+      jobsThisRange: byCleaner.get(cleaner._id) ?? Math.max(0, 4 - (index % 3)),
       rating: (4.6 + ((index % 4) * 0.1)).toFixed(1),
       available: index % 5 !== 0,
     }));
-  }, [cleaners, jobs, weekStartTime, weekEndTime]);
+  }, [cleaners, jobs, rangeEndExclusiveTime, rangeStartTime]);
 
   const loading = !properties || !jobs || !cleaners;
   const showCleanerPanel = isCleanerPanelVisible && !isGridFitMode;
-  const scheduleGridTemplateClass = isGridFitMode
-    ? "grid-cols-[minmax(200px,1.8fr)_repeat(7,minmax(88px,1fr))]"
-    : "grid-cols-[260px_repeat(7,minmax(120px,1fr))]";
-  const scheduleMinWidthClass = isGridFitMode ? "min-w-0" : "min-w-[1100px]";
+
+  const scheduleGridTemplateColumns = isGridFitMode
+    ? `minmax(200px, 1.8fr) repeat(${Math.max(1, visibleDays.length)}, minmax(0, 1fr))`
+    : `260px repeat(${Math.max(1, visibleDays.length)}, minmax(120px, 1fr))`;
+  const scheduleMinWidth = isGridFitMode
+    ? undefined
+    : `${260 + Math.max(1, visibleDays.length) * 120}px`;
+
+  const visibleWindowLabel =
+    visibleDays.length > 0
+      ? formatRange(visibleDays[0], visibleDays[visibleDays.length - 1])
+      : formatRange(rangeStart, rangeEnd);
+
+  const applyWeekRange = (baseDate: Date) => {
+    const nextStart = startOfWeek(baseDate);
+    setRangeStart(nextStart);
+    setRangeEnd(addDays(nextStart, 6));
+    setDayOffset(0);
+  };
+
+  const applyMonthRange = (baseDate: Date) => {
+    setRangeStart(startOfMonth(baseDate));
+    setRangeEnd(endOfMonth(baseDate));
+    setDayOffset(0);
+  };
+
+  const shiftRange = (direction: -1 | 1) => {
+    if (rangeMode === "month") {
+      applyMonthRange(addMonths(rangeStart, direction));
+      return;
+    }
+
+    const spanDays = Math.max(1, daysBetween(rangeStart, rangeEnd) + 1);
+    const deltaDays = direction * (rangeMode === "week" ? 7 : spanDays);
+    setRangeStart((current) => addDays(current, deltaDays));
+    setRangeEnd((current) => addDays(current, deltaDays));
+    setDayOffset(0);
+  };
 
   return (
     <div className="space-y-4">
       <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-[var(--card)] p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="mr-2 text-xl font-extrabold tracking-tight">Weekly Schedule</h1>
+          <h1 className="mr-2 text-xl font-extrabold tracking-tight">Schedule Planner</h1>
           <button
             className="rounded-md border px-3 py-1.5 text-sm hover:bg-[var(--accent)]"
-            onClick={() => setWeekStart(startOfWeek(new Date()))}
+            onClick={() => {
+              if (rangeMode === "month") {
+                applyMonthRange(new Date());
+              } else {
+                setRangeMode("week");
+                applyWeekRange(new Date());
+              }
+            }}
           >
             Today
           </button>
           <button
             className="rounded-md p-1.5 hover:bg-[var(--accent)]"
-            onClick={() => setWeekStart((current) => addDays(current, -7))}
-            aria-label="Previous week"
+            onClick={() => shiftRange(-1)}
+            aria-label="Previous range"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
           <button
             className="rounded-md p-1.5 hover:bg-[var(--accent)]"
-            onClick={() => setWeekStart((current) => addDays(current, 7))}
-            aria-label="Next week"
+            onClick={() => shiftRange(1)}
+            aria-label="Next range"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
           <span className="text-sm font-semibold text-[var(--muted-foreground)]">
-            {formatRange(weekDays[0], weekDays[6])}
+            {formatRange(rangeStart, rangeEnd)}
           </span>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setRangeMode("week");
+              applyWeekRange(rangeStart);
+            }}
+            className={cn(
+              "rounded-md border px-2 py-1.5 text-sm",
+              rangeMode === "week" ? "bg-[var(--accent)] font-semibold" : "hover:bg-[var(--accent)]",
+            )}
+          >
+            Week
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setRangeMode("month");
+              applyMonthRange(rangeStart);
+            }}
+            className={cn(
+              "rounded-md border px-2 py-1.5 text-sm",
+              rangeMode === "month" ? "bg-[var(--accent)] font-semibold" : "hover:bg-[var(--accent)]",
+            )}
+          >
+            Month
+          </button>
+
+          <input
+            type="date"
+            value={toInputDate(rangeStart)}
+            onChange={(event) => {
+              const nextStart = fromInputDate(event.target.value);
+              if (!nextStart) return;
+              const normalizedStart = startOfDay(nextStart);
+              setRangeMode("custom");
+              setRangeStart(normalizedStart);
+              setRangeEnd((current) =>
+                startOfDay(current).getTime() < normalizedStart.getTime()
+                  ? normalizedStart
+                  : current,
+              );
+              setDayOffset(0);
+            }}
+            className="rounded-md border bg-[var(--card)] px-2 py-1.5 text-sm"
+            aria-label="Range start date"
+          />
+          <input
+            type="date"
+            value={toInputDate(rangeEnd)}
+            onChange={(event) => {
+              const nextEnd = fromInputDate(event.target.value);
+              if (!nextEnd) return;
+              const normalizedEnd = startOfDay(nextEnd);
+              setRangeMode("custom");
+              setRangeEnd(normalizedEnd);
+              setRangeStart((current) =>
+                startOfDay(current).getTime() > normalizedEnd.getTime()
+                  ? normalizedEnd
+                  : current,
+              );
+              setDayOffset(0);
+            }}
+            className="rounded-md border bg-[var(--card)] px-2 py-1.5 text-sm"
+            aria-label="Range end date"
+          />
+
+          <select
+            value={visibleDaysCount}
+            onChange={(event) => setVisibleDaysCount(Number(event.target.value))}
+            className="rounded-md border bg-[var(--card)] px-2 py-1.5 text-sm"
+            aria-label="Visible days"
+          >
+            <option value={5}>5 days</option>
+            <option value={7}>7 days</option>
+            <option value={10}>10 days</option>
+            <option value={14}>14 days</option>
+          </select>
+
           <div className="flex items-center gap-2 rounded-md border bg-[var(--card)] px-3 py-1.5">
             <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
             <input
@@ -182,6 +294,7 @@ export function ScheduleClient() {
               className="w-40 bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)]"
             />
           </div>
+
           <select
             value={propertyFilter}
             onChange={(event) => setPropertyFilter(event.target.value)}
@@ -194,6 +307,7 @@ export function ScheduleClient() {
               </option>
             ))}
           </select>
+
           <button
             type="button"
             onClick={() => setIsCleanerPanelVisible((prev) => !prev)}
@@ -201,36 +315,42 @@ export function ScheduleClient() {
             aria-pressed={!isCleanerPanelVisible}
             aria-label={isCleanerPanelVisible ? "Hide cleaners panel" : "Show cleaners panel"}
           >
-            {isCleanerPanelVisible ? (
-              <EyeOff className="h-4 w-4" />
-            ) : (
-              <Eye className="h-4 w-4" />
-            )}
+            {isCleanerPanelVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             {isCleanerPanelVisible ? "Hide Team" : "Show Team"}
           </button>
+
           <button
             type="button"
             onClick={() => setIsGridFitMode((prev) => !prev)}
             className="inline-flex items-center gap-1 rounded-md border px-2 py-1.5 text-sm hover:bg-[var(--accent)]"
             aria-pressed={isGridFitMode}
-            aria-label={isGridFitMode ? "Return schedule to normal width" : "Fit schedule to screen"}
+            aria-label={isGridFitMode ? "Show normal width schedule grid" : "Fit schedule grid to screen"}
           >
-            {isGridFitMode ? (
-              <Minimize2 className="h-4 w-4" />
-            ) : (
-              <Maximize2 className="h-4 w-4" />
-            )}
+            {isGridFitMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             {isGridFitMode ? "Normal Width" : "Fit Screen"}
           </button>
         </div>
       </header>
 
-      <div
-        className={cn(
-          "grid gap-4",
-          showCleanerPanel ? "lg:grid-cols-[280px_minmax(0,1fr)]" : "grid-cols-1",
-        )}
-      >
+      {maxDayOffset > 0 ? (
+        <div className="rounded-xl border bg-[var(--card)] p-3">
+          <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-[var(--muted-foreground)]">
+            <span>Visible: {visibleWindowLabel}</span>
+            <span>Range: {formatRange(rangeStart, rangeEnd)}</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={maxDayOffset}
+            value={effectiveDayOffset}
+            onChange={(event) => setDayOffset(Number(event.target.value))}
+            className="w-full"
+            aria-label="Slide through selected calendar range"
+          />
+        </div>
+      ) : null}
+
+      <div className={cn("grid gap-4", showCleanerPanel ? "lg:grid-cols-[280px_minmax(0,1fr)]" : "grid-cols-1")}>
         {showCleanerPanel ? (
           <aside className="rounded-2xl border bg-[var(--card)] p-4">
             <div className="mb-4 flex items-center justify-between">
@@ -268,7 +388,7 @@ export function ScheduleClient() {
                       />
                     </div>
                     <div className="mt-2 flex items-center justify-between text-[11px] text-[var(--muted-foreground)]">
-                      <span>{cleaner.jobsThisWeek} jobs this week</span>
+                      <span>{cleaner.jobsThisRange} jobs in range</span>
                       <span>{cleaner.available ? "Available" : "Busy"}</span>
                     </div>
                   </div>
@@ -285,16 +405,16 @@ export function ScheduleClient() {
           )}
         >
           <div
-            className={cn(
-              "grid border-b",
-              scheduleGridTemplateClass,
-              scheduleMinWidthClass,
-            )}
+            className="grid border-b"
+            style={{
+              gridTemplateColumns: scheduleGridTemplateColumns,
+              minWidth: scheduleMinWidth,
+            }}
           >
-            <div className="p-3 text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)]">
+            <div className="sticky left-0 z-20 border-r bg-[var(--card)] p-3 text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)]">
               Property
             </div>
-            {weekDays.map((day) => (
+            {visibleDays.map((day) => (
               <div key={dateKey(day)} className="border-l p-3 text-center">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">
                   {day.toLocaleDateString([], { weekday: "short" })}
@@ -317,18 +437,25 @@ export function ScheduleClient() {
             </div>
           ) : (
             filteredProperties.map((property) => {
-              const propertyStatus = ((property as any).status ?? "vacant") as PropertyStatus;
+              const statusCandidate = (property as { status?: unknown }).status;
+              const propertyStatus: PropertyStatus =
+                statusCandidate === "ready" ||
+                statusCandidate === "dirty" ||
+                statusCandidate === "in_progress" ||
+                statusCandidate === "vacant"
+                  ? statusCandidate
+                  : "vacant";
 
               return (
                 <div
                   key={property._id}
-                  className={cn(
-                    "grid border-b last:border-b-0",
-                    scheduleGridTemplateClass,
-                    scheduleMinWidthClass,
-                  )}
+                  className="grid border-b last:border-b-0"
+                  style={{
+                    gridTemplateColumns: scheduleGridTemplateColumns,
+                    minWidth: scheduleMinWidth,
+                  }}
                 >
-                  <div className="p-3">
+                  <div className="sticky left-0 z-10 border-r bg-[var(--card)] p-3">
                     <p className="truncate text-sm font-bold">{property.name}</p>
                     <p className="truncate text-xs text-[var(--muted-foreground)]">{property.address}</p>
                     <div className="mt-2 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs">
@@ -337,7 +464,7 @@ export function ScheduleClient() {
                     </div>
                   </div>
 
-                  {weekDays.map((day) => {
+                  {visibleDays.map((day) => {
                     const key = `${property._id}-${dateKey(day)}`;
                     const cellJobs = jobsByCell.get(key) ?? [];
                     return (
@@ -391,10 +518,50 @@ function startOfWeek(date: Date) {
   return copy;
 }
 
+function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function endOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0);
+}
+
+function startOfDay(date: Date) {
+  const copy = new Date(date);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+}
+
 function addDays(date: Date, days: number) {
   const copy = new Date(date);
   copy.setDate(copy.getDate() + days);
   return copy;
+}
+
+function addMonths(date: Date, months: number) {
+  const copy = new Date(date);
+  copy.setMonth(copy.getMonth() + months);
+  return copy;
+}
+
+function daysBetween(start: Date, end: Date) {
+  const a = startOfDay(start).getTime();
+  const b = startOfDay(end).getTime();
+  return Math.floor((b - a) / oneDayMs);
+}
+
+function listDaysBetween(start: Date, end: Date) {
+  const safeStart = startOfDay(start);
+  const safeEnd = startOfDay(end);
+  const from = safeStart.getTime() <= safeEnd.getTime() ? safeStart : safeEnd;
+  const to = safeStart.getTime() <= safeEnd.getTime() ? safeEnd : safeStart;
+
+  const days: Date[] = [];
+  for (let cursor = new Date(from); cursor.getTime() <= to.getTime(); cursor = addDays(cursor, 1)) {
+    days.push(new Date(cursor));
+  }
+
+  return days;
 }
 
 function dateKey(date: Date) {
@@ -413,4 +580,18 @@ function formatRange(start: Date, end: Date) {
   });
 
   return `${startLabel} - ${endLabel}`;
+}
+
+function toInputDate(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function fromInputDate(value: string) {
+  if (!value) return null;
+  const [y, m, d] = value.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
 }
