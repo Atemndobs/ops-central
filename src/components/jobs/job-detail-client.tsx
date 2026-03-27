@@ -57,6 +57,17 @@ function getWorkflowStepIndex(status: JobStatus) {
   return WORKFLOW_STEPS.indexOf(status);
 }
 
+function getAssignWarnings(result: unknown): string[] {
+  if (!result || typeof result !== "object") {
+    return [];
+  }
+  const warnings = (result as { warnings?: unknown }).warnings;
+  if (!Array.isArray(warnings)) {
+    return [];
+  }
+  return warnings.filter((warning): warning is string => typeof warning === "string");
+}
+
 export function JobDetailClient({ id }: { id: string }) {
   const jobId = id as Id<"cleaningJobs">;
 
@@ -172,13 +183,19 @@ export function JobDetailClient({ id }: { id: string }) {
     setError(null);
     setPending(true);
     try {
-      await assignCleaner({
+      const result = await assignCleaner({
         jobId,
         cleanerIds: [cleanerId as Id<"users">],
         notifyCleaners: false,
+        source: "job_detail_assign",
+        returnWarnings: true,
       });
       setCleanerId("");
       showToast("Cleaner assigned.");
+      const warnings = getAssignWarnings(result);
+      if (warnings.length > 0) {
+        showToast(`Dispatch warning: ${warnings.join(" ")}`, "error");
+      }
     } catch (assignError) {
       const message = getErrorMessage(assignError, "Unable to assign cleaner.");
       setError(message);

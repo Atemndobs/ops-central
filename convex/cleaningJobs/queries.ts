@@ -73,6 +73,12 @@ function getCurrentRevision(job: Doc<"cleaningJobs">): number {
   return job.currentRevision ?? 1;
 }
 
+function isActiveCompanyPropertyAssignment(
+  assignment: Doc<"companyProperties">,
+): boolean {
+  return assignment.isActive !== false && assignment.unassignedAt === undefined;
+}
+
 export const getAll = query({
   args: {
     status: v.optional(
@@ -173,8 +179,11 @@ export const getAssignableCleanersByProperty = query({
           .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
           .collect();
 
+        const sortedAssignments = assignments.sort(
+          (a, b) => b.assignedAt - a.assignedAt,
+        );
         const latestAssignment =
-          assignments.sort((a, b) => b.assignedAt - a.assignedAt)[0] ?? null;
+          sortedAssignments.find(isActiveCompanyPropertyAssignment) ?? null;
 
         return {
           propertyId,

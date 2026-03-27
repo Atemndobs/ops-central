@@ -19,6 +19,17 @@ type CreateJobModalProps = {
   cleanerOptions: Option[];
 };
 
+function getAssignWarnings(result: unknown): string[] {
+  if (!result || typeof result !== "object") {
+    return [];
+  }
+  const warnings = (result as { warnings?: unknown }).warnings;
+  if (!Array.isArray(warnings)) {
+    return [];
+  }
+  return warnings.filter((warning): warning is string => typeof warning === "string");
+}
+
 export function CreateJobModal({
   open,
   onClose,
@@ -76,7 +87,17 @@ export function CreateJobModal({
       });
 
       if (cleanerId) {
-        await assignJob({ jobId, cleanerIds: [cleanerId as Id<"users">], notifyCleaners: false });
+        const assignResult = await assignJob({
+          jobId,
+          cleanerIds: [cleanerId as Id<"users">],
+          notifyCleaners: false,
+          source: "create_job_modal",
+          returnWarnings: true,
+        });
+        const warnings = getAssignWarnings(assignResult);
+        if (warnings.length > 0) {
+          showToast(`Dispatch warning: ${warnings.join(" ")}`, "error");
+        }
       }
 
       setPropertyId("");

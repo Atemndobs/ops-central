@@ -61,6 +61,13 @@ export default function PropertiesPage() {
     api.properties.queries.getAll,
     { limit: 500 },
   );
+  const propertyAssignments = useQuery(
+    api.admin.queries.listCompanyPropertyAssignments,
+    {
+      includeUnassigned: true,
+      limit: 500,
+    },
+  );
 
   const createProperty = useMutation(
     api.properties.mutations.create,
@@ -85,6 +92,14 @@ export default function PropertiesPage() {
       return matchesSearch && matchesStatus;
     });
   }, [properties, search, selectedStatus]);
+
+  const activeCompanyByPropertyId = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const row of propertyAssignments?.rows ?? []) {
+      map.set(row.propertyId, row.activeAssignment?.companyName ?? null);
+    }
+    return map;
+  }, [propertyAssignments]);
 
   const handleCreate = async (values: PropertyFormValues) => {
     setIsSaving(true);
@@ -200,7 +215,7 @@ export default function PropertiesPage() {
         </div>
       ) : null}
 
-      {!properties ? (
+      {!properties || !propertyAssignments ? (
         <div className="flex min-h-40 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--card)]">
           <Loader2 className="h-5 w-5 animate-spin text-[var(--muted-foreground)]" />
         </div>
@@ -265,9 +280,23 @@ export default function PropertiesPage() {
                       Cleaner: <span className="text-[var(--foreground)]">{(property as any).assignedCleanerName || "—"}</span>
                     </p>
                     <p>
+                      Company:{" "}
+                      <span className="text-[var(--foreground)]">
+                        {activeCompanyByPropertyId.get(property._id) ?? "Unassigned"}
+                      </span>
+                    </p>
+                    <p>
                       Beds/Baths: {property.bedrooms ?? "—"}/{property.bathrooms ?? "—"}
                     </p>
                   </div>
+
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    Manage company assignment in{" "}
+                    <Link href="/companies" className="text-[var(--primary)] hover:underline">
+                      Companies Hub
+                    </Link>
+                    .
+                  </p>
 
                   <div className="flex items-center justify-end gap-2 border-t pt-3">
                     <button

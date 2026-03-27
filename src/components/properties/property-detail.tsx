@@ -7,18 +7,10 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { ArrowLeft, Loader2, MapPin, Pencil } from "lucide-react";
 import { PropertyFormModal } from "@/components/properties/property-form-modal";
-import { STATUS_LABELS, type JobStatus } from "@/components/jobs/job-status";
+import { STATUS_LABELS } from "@/components/jobs/job-status";
 import { useToast } from "@/components/ui/toast-provider";
 import { getErrorMessage } from "@/lib/errors";
 import { PropertyFormValues, PropertyRecord } from "@/types/property";
-
-type PropertyJob = {
-  _id: string;
-  status: JobStatus;
-  scheduledStartAt?: number;
-  scheduledEndAt?: number;
-  cleaners?: Array<{ name?: string | null }>;
-};
 
 function formatDateTime(timestamp?: number) {
   if (!timestamp) {
@@ -60,6 +52,12 @@ export function PropertyDetail({ id }: { id: string }) {
       limit: 30,
     },
   );
+  const propertyCompanyAssignment = useQuery(
+    api.admin.queries.getPropertyCompanyAssignment,
+    {
+      propertyId: id as never,
+    },
+  );
 
   const updateProperty = useMutation(
     api.properties.mutations.update,
@@ -91,8 +89,12 @@ export function PropertyDetail({ id }: { id: string }) {
         label: "Primary Cleaner",
         value: property.assignedCleanerName ?? "Unassigned",
       },
+      {
+        label: "Cleaning Company",
+        value: propertyCompanyAssignment?.activeAssignment?.companyName ?? "Unassigned",
+      },
     ];
-  }, [property]);
+  }, [property, propertyCompanyAssignment?.activeAssignment?.companyName]);
 
   const handleUpdate = async (values: PropertyFormValues) => {
     setIsSaving(true);
@@ -112,7 +114,7 @@ export function PropertyDetail({ id }: { id: string }) {
     }
   };
 
-  if (property === undefined || jobs === undefined) {
+  if (property === undefined || jobs === undefined || propertyCompanyAssignment === undefined) {
     return (
       <div className="flex min-h-40 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--card)]">
         <Loader2 className="h-5 w-5 animate-spin text-[var(--muted-foreground)]" />
@@ -184,6 +186,13 @@ export function PropertyDetail({ id }: { id: string }) {
                   <p className="mt-1 text-sm font-semibold capitalize">{item.value}</p>
                 </div>
               ))}
+            </div>
+            <div className="border-t px-4 py-3 text-xs text-[var(--muted-foreground)]">
+              Manage assignments in{" "}
+              <Link href="/companies" className="text-[var(--primary)] hover:underline">
+                Companies Hub
+              </Link>
+              .
             </div>
           </div>
         </div>

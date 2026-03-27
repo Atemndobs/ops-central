@@ -46,6 +46,17 @@ const readinessDotClass: Record<PropertyStatus, string> = {
 
 const oneDayMs = 24 * 60 * 60 * 1000;
 
+function getAssignWarnings(result: unknown): string[] {
+  if (!result || typeof result !== "object") {
+    return [];
+  }
+  const warnings = (result as { warnings?: unknown }).warnings;
+  if (!Array.isArray(warnings)) {
+    return [];
+  }
+  return warnings.filter((warning): warning is string => typeof warning === "string");
+}
+
 export function ScheduleClient() {
   const { showToast } = useToast();
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
@@ -200,13 +211,19 @@ export function ScheduleClient() {
   ) => {
     setAssigningJobId(jobId);
     try {
-      await assignJob({
+      const result = await assignJob({
         jobId,
         cleanerIds: [cleanerId],
         notifyCleaners: false,
+        source: "schedule_quick_assign",
+        returnWarnings: true,
       });
       setQuickAssignJobId(null);
       showToast("Cleaner assigned successfully.");
+      const warnings = getAssignWarnings(result);
+      if (warnings.length > 0) {
+        showToast(`Dispatch warning: ${warnings.join(" ")}`, "error");
+      }
     } catch (error) {
       showToast(getErrorMessage(error, "Unable to assign cleaner."), "error");
     } finally {

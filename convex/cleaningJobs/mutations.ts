@@ -37,6 +37,48 @@ function requirePrivilegedRole(user: Doc<"users">) {
   }
 }
 
+function isActiveCompanyPropertyAssignment(
+  assignment: Doc<"companyProperties">,
+): boolean {
+  return assignment.isActive !== false && assignment.unassignedAt === undefined;
+}
+
+function isActiveMembership(membership: Doc<"companyMembers">): boolean {
+  return membership.isActive && membership.leftAt === undefined;
+}
+
+async function getActivePropertyCompanyAssignment(
+  ctx: MutationCtx,
+  propertyId: Id<"properties">,
+) {
+  const assignments = await ctx.db
+    .query("companyProperties")
+    .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
+    .collect();
+
+  const active = assignments
+    .filter(isActiveCompanyPropertyAssignment)
+    .sort((a, b) => b.assignedAt - a.assignedAt)[0];
+
+  return active ?? null;
+}
+
+async function getLatestActiveCompanyMembership(
+  ctx: MutationCtx,
+  userId: Id<"users">,
+) {
+  const memberships = await ctx.db
+    .query("companyMembers")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+
+  const active = memberships
+    .filter(isActiveMembership)
+    .sort((a, b) => b.joinedAt - a.joinedAt)[0];
+
+  return active ?? null;
+}
+
 type SubmissionValidation = {
   mode: "standard" | "quick";
   pass: boolean;
@@ -762,29 +804,125 @@ export const assign = mutation({
     jobId: v.id("cleaningJobs"),
     cleanerIds: v.array(v.id("users")),
     notifyCleaners: v.optional(v.boolean()),
+    source: v.optional(v.string()),
+    overrideReason: v.optional(v.string()),
+    returnWarnings: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    const actor = await getCurrentUser(ctx);
+    requirePrivilegedRole(actor);
+
     const job = await ctx.db.get(args.jobId);
     if (!job) {
       throw new ConvexError("Job not found.");
     }
 
-    // Validate each cleaner exists
+    const warnings: string[] = [];
+    const propertyCompanyAssignment = await getActivePropertyCompanyAssignment(
+      ctx,
+      job.propertyId,
+    );
+    const propertyCompanyId = propertyCompanyAssignment?.companyId ?? null;
+
+    let actorCompanyMembership: Doc<"companyMembers"> | null = null;
+    if (actor.role === "manager") {
+      actorCompanyMembership = await getLatestActiveCompanyMembership(ctx, actor._id);
+      if (
+        !actorCompanyMembership ||
+        (actorCompanyMembership.role !== "manager" &&
+          actorCompanyMembership.role !== "owner")
+      ) {
+        throw new ConvexError(
+          "Manager dispatch requires an active cleaning-company manager membership.",
+        );
+      }
+
+      if (!propertyCompanyId) {
+        throw new ConvexError(
+          "Property has no assigned cleaning company. Assign one in Companies Hub.",
+        );
+      }
+
+      if (actorCompanyMembership.companyId !== propertyCompanyId) {
+        throw new ConvexError(
+          "Managers can only dispatch for properties assigned to their company.",
+        );
+      }
+    }
+
+    if (!propertyCompanyId) {
+      warnings.push(
+        "Property has no assigned cleaning company. Manage assignment in Companies Hub.",
+      );
+    }
+
+    // Validate each cleaner exists and belongs to an active company.
     for (const cleanerId of args.cleanerIds) {
       const cleaner = await ctx.db.get(cleanerId);
       if (!cleaner) {
         throw new ConvexError(`Cleaner not found: ${cleanerId}`);
+      }
+      if (cleaner.role !== "cleaner") {
+        throw new ConvexError(
+          `Only users with cleaner role can be assigned (invalid: ${cleaner.email}).`,
+        );
+      }
+
+      const cleanerMembership = await getLatestActiveCompanyMembership(ctx, cleanerId);
+      if (!cleanerMembership) {
+        throw new ConvexError(
+          `Cleaner ${cleaner.name ?? cleaner.email} has no active cleaning-company assignment. Assign company membership in Team before dispatch.`,
+        );
+      }
+
+      if (
+        actor.role === "manager" &&
+        actorCompanyMembership &&
+        cleanerMembership.companyId !== actorCompanyMembership.companyId
+      ) {
+        throw new ConvexError(
+          `Manager dispatch cannot assign cleaner ${cleaner.name ?? cleaner.email} from another company.`,
+        );
+      }
+
+      if (
+        propertyCompanyId &&
+        cleanerMembership.companyId !== propertyCompanyId
+      ) {
+        warnings.push(
+          `Cleaner ${cleaner.name ?? cleaner.email} belongs to a different company than this property.`,
+        );
       }
     }
 
     const updatedStatus =
       job.status === "scheduled" ? "assigned" : job.status;
 
+    const now = Date.now();
     await ctx.db.patch(args.jobId, {
       assignedCleanerIds: args.cleanerIds,
       status: updatedStatus,
-      updatedAt: Date.now(),
+      updatedAt: now,
     });
+
+    await ctx.db.insert("jobAssignmentAuditEvents", {
+      jobId: job._id,
+      propertyId: job.propertyId,
+      assignedBy: actor._id,
+      assignedCleanerIds: args.cleanerIds,
+      propertyCompanyId: propertyCompanyId ?? undefined,
+      warnings,
+      source: args.source?.trim(),
+      overrideReason: args.overrideReason?.trim(),
+      createdAt: now,
+    });
+
+    if (args.returnWarnings) {
+      return {
+        jobId: args.jobId,
+        warnings,
+      };
+    }
 
     return args.jobId;
   },

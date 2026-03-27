@@ -82,9 +82,15 @@ const companyProperties = defineTable({
   propertyId: v.id("properties"),
   assignedAt: v.number(),
   assignedBy: v.optional(v.id("users")),
+  isActive: v.optional(v.boolean()),
+  unassignedAt: v.optional(v.number()),
+  unassignedBy: v.optional(v.id("users")),
+  unassignedReason: v.optional(v.string()),
 })
   .index("by_company", ["companyId"])
-  .index("by_property", ["propertyId"]);
+  .index("by_property", ["propertyId"])
+  .index("by_property_and_is_active", ["propertyId", "isActive"])
+  .index("by_company_and_is_active", ["companyId", "isActive"]);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PROPERTIES
@@ -367,6 +373,22 @@ const jobSubmissions = defineTable({
   .index("by_job", ["jobId"])
   .index("by_job_and_revision", ["jobId", "revision"])
   .index("by_job_and_created", ["jobId", "createdAt"]);
+
+const jobAssignmentAuditEvents = defineTable({
+  jobId: v.id("cleaningJobs"),
+  propertyId: v.id("properties"),
+  assignedBy: v.id("users"),
+  assignedCleanerIds: v.array(v.id("users")),
+  propertyCompanyId: v.optional(v.id("cleaningCompanies")),
+  warnings: v.array(v.string()),
+  source: v.optional(v.string()),
+  overrideReason: v.optional(v.string()),
+  createdAt: v.number(),
+})
+  .index("by_job", ["jobId"])
+  .index("by_property", ["propertyId"])
+  .index("by_assigned_by", ["assignedBy"])
+  .index("by_created_at", ["createdAt"]);
 
 const jobTemplates = defineTable({
   propertyId: v.optional(v.id("properties")),
@@ -655,6 +677,7 @@ export default defineSchema({
   jobTemplates,
   jobExecutionSessions,
   jobSubmissions,
+  jobAssignmentAuditEvents,
 
   // Photos
   photos,

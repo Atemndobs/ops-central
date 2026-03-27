@@ -35,6 +35,12 @@ function latestMembership(
   );
 }
 
+function isActiveCompanyPropertyAssignment(
+  row: Doc<"companyProperties">,
+): boolean {
+  return row.isActive !== false && row.unassignedAt === undefined;
+}
+
 export const createUser = mutation({
   args: {
     clerkId: v.string(),
@@ -184,6 +190,168 @@ export const assignUserCompanyMembership = mutation({
       companyId: args.companyId as Id<"cleaningCompanies">,
       companyName: company.name,
       memberRole: desiredRole,
+    };
+  },
+});
+
+export const createCleaningCompany = mutation({
+  args: {
+    name: v.string(),
+    contactEmail: v.optional(v.string()),
+    contactPhone: v.optional(v.string()),
+    ownerUserId: v.optional(v.id("users")),
+  },
+  handler: async (ctx, args) => {
+    const actor = await requireRole(ctx, ["admin"]);
+    const now = Date.now();
+    const name = args.name.trim();
+    if (!name) {
+      throw new ConvexError("Company name is required.");
+    }
+
+    if (args.ownerUserId) {
+      const owner = await ctx.db.get(args.ownerUserId);
+      if (!owner) {
+        throw new ConvexError("Owner user not found.");
+      }
+    }
+
+    const companyId = await ctx.db.insert("cleaningCompanies", {
+      name,
+      ownerId: args.ownerUserId,
+      contactEmail: args.contactEmail?.trim(),
+      contactPhone: args.contactPhone?.trim(),
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    if (args.ownerUserId) {
+      await ctx.db.insert("companyMembers", {
+        companyId,
+        userId: args.ownerUserId,
+        role: "owner",
+        isActive: true,
+        joinedAt: now,
+      });
+    }
+
+    return {
+      success: true,
+      companyId,
+      createdBy: actor._id,
+    };
+  },
+});
+
+export const assignPropertyToCompany = mutation({
+  args: {
+    propertyId: v.id("properties"),
+    companyId: v.id("cleaningCompanies"),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const actor = await requireRole(ctx, ["admin", "property_ops"]);
+    const now = Date.now();
+
+    const property = await ctx.db.get(args.propertyId);
+    if (!property || !property.isActive) {
+      throw new ConvexError("Property not found.");
+    }
+
+    const company = await ctx.db.get(args.companyId);
+    if (!company || !company.isActive) {
+      throw new ConvexError("Cleaning company not found or inactive.");
+    }
+
+    const assignments = await ctx.db
+      .query("companyProperties")
+      .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId))
+      .collect();
+
+    const activeAssignments = assignments
+      .filter(isActiveCompanyPropertyAssignment)
+      .sort((a, b) => b.assignedAt - a.assignedAt);
+
+    let existingTargetAssignmentId: Id<"companyProperties"> | null = null;
+    for (const assignment of activeAssignments) {
+      if (
+        assignment.companyId === args.companyId &&
+        existingTargetAssignmentId === null
+      ) {
+        existingTargetAssignmentId = assignment._id;
+        continue;
+      }
+
+      await ctx.db.patch(assignment._id, {
+        isActive: false,
+        unassignedAt: now,
+        unassignedBy: actor._id,
+        unassignedReason: args.reason?.trim() || "reassigned",
+      });
+    }
+
+    if (existingTargetAssignmentId) {
+      return {
+        success: true,
+        propertyId: args.propertyId,
+        companyId: args.companyId,
+        assignmentId: existingTargetAssignmentId,
+        changed: false,
+      };
+    }
+
+    const assignmentId = await ctx.db.insert("companyProperties", {
+      propertyId: args.propertyId,
+      companyId: args.companyId,
+      assignedAt: now,
+      assignedBy: actor._id,
+      isActive: true,
+    });
+
+    return {
+      success: true,
+      propertyId: args.propertyId,
+      companyId: args.companyId,
+      assignmentId,
+      changed: true,
+    };
+  },
+});
+
+export const removePropertyCompanyAssignment = mutation({
+  args: {
+    propertyId: v.id("properties"),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const actor = await requireRole(ctx, ["admin", "property_ops"]);
+    const now = Date.now();
+
+    const property = await ctx.db.get(args.propertyId);
+    if (!property || !property.isActive) {
+      throw new ConvexError("Property not found.");
+    }
+
+    const assignments = await ctx.db
+      .query("companyProperties")
+      .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId))
+      .collect();
+
+    const activeAssignments = assignments.filter(isActiveCompanyPropertyAssignment);
+    for (const assignment of activeAssignments) {
+      await ctx.db.patch(assignment._id, {
+        isActive: false,
+        unassignedAt: now,
+        unassignedBy: actor._id,
+        unassignedReason: args.reason?.trim() || "manual_unassign",
+      });
+    }
+
+    return {
+      success: true,
+      propertyId: args.propertyId,
+      removedCount: activeAssignments.length,
     };
   },
 });

@@ -88,6 +88,12 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function isActiveCompanyPropertyAssignment(
+  assignment: Doc<"companyProperties">,
+): boolean {
+  return assignment.isActive !== false && assignment.unassignedAt === undefined;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // USER MANAGEMENT QUERIES
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -112,7 +118,7 @@ export const getAllUsers = query({
     // Require admin or manager role
     await requireRole(ctx, ["admin", "manager"]);
 
-    let usersQuery = ctx.db.query("users");
+    const usersQuery = ctx.db.query("users");
 
     // Get all users
     let users = await usersQuery.collect();
@@ -521,6 +527,8 @@ export const getDashboardStats = query({
  */
 export const getAllCompanies = query({
   handler: async (ctx) => {
+    await requireRole(ctx, ["admin", "property_ops", "manager"]);
+
     const companies = await ctx.db.query("cleaningCompanies").collect();
 
     // Enrich each company with properties and members
@@ -644,6 +652,8 @@ export const getCompanyMembershipsForUsers = query({
 export const getCompanyById = query({
   args: { id: v.id("cleaningCompanies") },
   handler: async (ctx, args) => {
+    await requireRole(ctx, ["admin", "property_ops", "manager"]);
+
     const company = await ctx.db.get(args.id);
     if (!company) return null;
 
@@ -683,6 +693,209 @@ export const getCompanyById = query({
       ...company,
       properties: propertiesWithDetails,
       members: membersWithDetails,
+    };
+  },
+});
+
+export const getPropertyCompanyAssignment = query({
+  args: {
+    propertyId: v.id("properties"),
+  },
+  handler: async (ctx, args) => {
+    await requireRole(ctx, ["admin", "property_ops", "manager"]);
+
+    const property = await ctx.db.get(args.propertyId);
+    if (!property || !property.isActive) {
+      return null;
+    }
+
+    const assignments = await ctx.db
+      .query("companyProperties")
+      .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId))
+      .collect();
+
+    const sortedAssignments = assignments.sort(
+      (a, b) => b.assignedAt - a.assignedAt,
+    );
+    const activeAssignment = sortedAssignments.find(isActiveCompanyPropertyAssignment) ?? null;
+
+    const companyIds = [
+      ...new Set(sortedAssignments.map((assignment) => assignment.companyId)),
+    ];
+    const userIds = [
+      ...new Set(
+        sortedAssignments.flatMap((assignment) =>
+          [assignment.assignedBy, assignment.unassignedBy].filter(
+            (id): id is Id<"users"> => Boolean(id),
+          ),
+        ),
+      ),
+    ];
+
+    const [companies, users] = await Promise.all([
+      Promise.all(companyIds.map((companyId) => ctx.db.get(companyId))),
+      Promise.all(userIds.map((userId) => ctx.db.get(userId))),
+    ]);
+
+    const companyById = new Map(
+      companies
+        .filter((company): company is NonNullable<typeof company> => company !== null)
+        .map((company) => [company._id, company] as const),
+    );
+    const userById = new Map(
+      users
+        .filter((user): user is NonNullable<typeof user> => user !== null)
+        .map((user) => [user._id, user] as const),
+    );
+
+    const history = sortedAssignments.map((assignment) => ({
+      _id: assignment._id,
+      companyId: assignment.companyId,
+      companyName: companyById.get(assignment.companyId)?.name ?? "Unknown company",
+      assignedAt: assignment.assignedAt,
+      assignedBy: assignment.assignedBy ?? null,
+      assignedByName: assignment.assignedBy
+        ? userById.get(assignment.assignedBy)?.name ?? userById.get(assignment.assignedBy)?.email ?? null
+        : null,
+      isActive: isActiveCompanyPropertyAssignment(assignment),
+      unassignedAt: assignment.unassignedAt ?? null,
+      unassignedBy: assignment.unassignedBy ?? null,
+      unassignedByName: assignment.unassignedBy
+        ? userById.get(assignment.unassignedBy)?.name ?? userById.get(assignment.unassignedBy)?.email ?? null
+        : null,
+      unassignedReason: assignment.unassignedReason ?? null,
+    }));
+
+    return {
+      property: {
+        _id: property._id,
+        name: property.name,
+        address: property.address,
+        city: property.city ?? null,
+        state: property.state ?? null,
+      },
+      activeAssignment: activeAssignment
+        ? {
+            _id: activeAssignment._id,
+            companyId: activeAssignment.companyId,
+            companyName:
+              companyById.get(activeAssignment.companyId)?.name ?? "Unknown company",
+            assignedAt: activeAssignment.assignedAt,
+            assignedBy: activeAssignment.assignedBy ?? null,
+            assignedByName: activeAssignment.assignedBy
+              ? userById.get(activeAssignment.assignedBy)?.name ??
+                userById.get(activeAssignment.assignedBy)?.email ??
+                null
+              : null,
+          }
+        : null,
+      history,
+    };
+  },
+});
+
+export const listCompanyPropertyAssignments = query({
+  args: {
+    companyId: v.optional(v.id("cleaningCompanies")),
+    city: v.optional(v.string()),
+    includeUnassigned: v.optional(v.boolean()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await requireRole(ctx, ["admin", "property_ops", "manager"]);
+
+    const includeUnassigned = args.includeUnassigned ?? false;
+    const cityFilter = args.city?.trim().toLowerCase();
+    const limit = Math.max(1, Math.min(args.limit ?? 250, 500));
+
+    const [properties, assignments, companies, users] = await Promise.all([
+      ctx.db
+        .query("properties")
+        .withIndex("by_active", (q) => q.eq("isActive", true))
+        .collect(),
+      ctx.db.query("companyProperties").collect(),
+      ctx.db.query("cleaningCompanies").collect(),
+      ctx.db.query("users").collect(),
+    ]);
+
+    const companyById = new Map(companies.map((company) => [company._id, company] as const));
+    const userById = new Map(users.map((user) => [user._id, user] as const));
+    const assignmentsByPropertyId = new Map<Id<"properties">, Doc<"companyProperties">[]>();
+
+    for (const assignment of assignments) {
+      const existing = assignmentsByPropertyId.get(assignment.propertyId) ?? [];
+      existing.push(assignment);
+      assignmentsByPropertyId.set(assignment.propertyId, existing);
+    }
+
+    const rows = properties
+      .filter((property) => {
+        if (!cityFilter) return true;
+        const value = `${property.city ?? ""} ${property.state ?? ""}`.toLowerCase();
+        return value.includes(cityFilter);
+      })
+      .map((property) => {
+        const propertyAssignments = (assignmentsByPropertyId.get(property._id) ?? []).sort(
+          (a, b) => b.assignedAt - a.assignedAt,
+        );
+        const activeAssignment =
+          propertyAssignments.find(isActiveCompanyPropertyAssignment) ?? null;
+
+        return {
+          propertyId: property._id,
+          propertyName: property.name,
+          address: property.address,
+          city: property.city ?? null,
+          state: property.state ?? null,
+          activeAssignment: activeAssignment
+            ? {
+                assignmentId: activeAssignment._id,
+                companyId: activeAssignment.companyId,
+                companyName:
+                  companyById.get(activeAssignment.companyId)?.name ?? "Unknown company",
+                assignedAt: activeAssignment.assignedAt,
+                assignedBy: activeAssignment.assignedBy ?? null,
+                assignedByName: activeAssignment.assignedBy
+                  ? userById.get(activeAssignment.assignedBy)?.name ??
+                    userById.get(activeAssignment.assignedBy)?.email ??
+                    null
+                  : null,
+              }
+            : null,
+          assignmentsCount: propertyAssignments.length,
+          history: propertyAssignments.slice(0, 6).map((assignment) => ({
+            assignmentId: assignment._id,
+            companyId: assignment.companyId,
+            companyName:
+              companyById.get(assignment.companyId)?.name ?? "Unknown company",
+            assignedAt: assignment.assignedAt,
+            assignedBy: assignment.assignedBy ?? null,
+            assignedByName: assignment.assignedBy
+              ? userById.get(assignment.assignedBy)?.name ??
+                userById.get(assignment.assignedBy)?.email ??
+                null
+              : null,
+            isActive: isActiveCompanyPropertyAssignment(assignment),
+            unassignedAt: assignment.unassignedAt ?? null,
+            unassignedReason: assignment.unassignedReason ?? null,
+          })),
+        };
+      })
+      .filter((row) => {
+        if (args.companyId && row.activeAssignment?.companyId !== args.companyId) {
+          return false;
+        }
+        if (!includeUnassigned && !row.activeAssignment) {
+          return false;
+        }
+        return true;
+      })
+      .sort((a, b) => a.propertyName.localeCompare(b.propertyName))
+      .slice(0, limit);
+
+    return {
+      rows,
+      total: rows.length,
     };
   },
 });

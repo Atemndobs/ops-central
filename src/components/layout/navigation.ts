@@ -4,6 +4,7 @@ import {
   Calendar,
   ClipboardList,
   Building2,
+  Building,
   Users,
   Package,
   Wrench,
@@ -42,6 +43,12 @@ export const navigation: NavigationItem[] = [
     name: "Properties",
     href: "/properties",
     icon: Building2,
+    roles: ["admin", "property_ops", "manager"],
+  },
+  {
+    name: "Companies",
+    href: "/companies",
+    icon: Building,
     roles: ["admin", "property_ops", "manager"],
   },
   {
