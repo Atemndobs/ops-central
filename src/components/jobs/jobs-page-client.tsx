@@ -38,9 +38,13 @@ const workflowStatuses: JobStatus[] = [
   "completed",
 ];
 
-export function JobsPageClient() {
+type JobsPageClientProps = {
+  initialStatus?: JobStatus | "all";
+};
+
+export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<JobStatus | "all">("all");
+  const [status, setStatus] = useState<JobStatus | "all">(initialStatus);
   const [propertyId, setPropertyId] = useState("all");
   const [cleanerId, setCleanerId] = useState("all");
   const [selectedDate, setSelectedDate] = useState("");

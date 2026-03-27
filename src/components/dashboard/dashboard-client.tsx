@@ -27,6 +27,7 @@ type StatItem = {
   value: number;
   hint: string;
   icon: React.ComponentType<{ className?: string }>;
+  href: string;
 };
 
 const readinessLabel: Record<PropertyStatus, string> = {
@@ -68,24 +69,28 @@ export function DashboardClient() {
         value: scheduled,
         hint: "Jobs queued",
         icon: Clock3,
+        href: "/jobs?status=scheduled",
       },
       {
         label: "In Progress",
         value: inProgress,
         hint: "Active field teams",
         icon: Loader2,
+        href: "/jobs?status=in_progress",
       },
       {
         label: "Completed",
         value: completed,
         hint: `${allJobs.length ? Math.round((completed / allJobs.length) * 100) : 0}% completion rate`,
         icon: CheckCircle2,
+        href: "/jobs?status=completed",
       },
       {
         label: "Rework",
         value: rework,
         hint: "Needs attention",
         icon: RotateCcw,
+        href: "/jobs?status=rework_required",
       },
     ];
   }, [jobs]);
@@ -178,7 +183,11 @@ export function DashboardClient() {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {stats.map((item) => (
-          <div key={item.label} className="rounded-2xl border bg-[var(--card)] p-5 shadow-sm">
+          <Link
+            key={item.label}
+            href={item.href}
+            className="group rounded-2xl border bg-[var(--card)] p-5 shadow-sm transition hover:border-[var(--primary)]/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
+          >
             <div className="mb-3 flex items-center justify-between">
               <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)]">
                 {item.label}
@@ -187,7 +196,10 @@ export function DashboardClient() {
             </div>
             <p className="text-4xl font-extrabold leading-none tracking-tight">{item.value}</p>
             <p className="mt-2 text-xs text-[var(--muted-foreground)]">{item.hint}</p>
-          </div>
+            <p className="mt-3 text-xs font-semibold text-[var(--primary)] opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
+              View details
+            </p>
+          </Link>
         ))}
       </div>
 
