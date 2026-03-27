@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
+import Link from "next/link";
 import {
   ChevronLeft,
   ChevronRight,
@@ -438,9 +439,11 @@ export function ScheduleClient() {
                         ) : (
                           <>
                             {cellJobs.slice(0, 3).map((job) => (
-                              <div
+                              <Link
                                 key={job._id}
-                                className={`rounded-md border px-2 py-1 text-[11px] ${STATUS_CLASSNAMES[job.status]}`}
+                                href={`/jobs/${job._id}`}
+                                className={`block cursor-pointer rounded-md border px-2 py-1 text-[11px] transition hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] ${STATUS_CLASSNAMES[job.status]}`}
+                                title="Open task details"
                               >
                                 <p className="truncate font-semibold">{job.property?.name ?? "Cleaning Job"}</p>
                                 <p className="text-[10px] opacity-80">
@@ -451,7 +454,7 @@ export function ScheduleClient() {
                                   {" · "}
                                   {STATUS_LABELS[job.status]}
                                 </p>
-                              </div>
+                              </Link>
                             ))}
                             {cellJobs.length > 3 ? (
                               <p className="text-[10px] text-[var(--muted-foreground)]">
