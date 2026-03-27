@@ -3,7 +3,17 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
-import { ChevronLeft, ChevronRight, Eye, EyeOff, Loader2, Search, Star } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  EyeOff,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  Search,
+  Star,
+} from "lucide-react";
 import {
   STATUS_CLASSNAMES,
   STATUS_LABELS,
@@ -43,6 +53,7 @@ export function ScheduleClient() {
   const [search, setSearch] = useState("");
   const [propertyFilter, setPropertyFilter] = useState("all");
   const [isCleanerPanelVisible, setIsCleanerPanelVisible] = useState(true);
+  const [isGridFitMode, setIsGridFitMode] = useState(false);
 
   const properties = useQuery(
     api.properties.queries.getAll,
@@ -124,6 +135,11 @@ export function ScheduleClient() {
   }, [cleaners, jobs, weekStartTime, weekEndTime]);
 
   const loading = !properties || !jobs || !cleaners;
+  const showCleanerPanel = isCleanerPanelVisible && !isGridFitMode;
+  const scheduleGridTemplateClass = isGridFitMode
+    ? "grid-cols-[minmax(200px,1.8fr)_repeat(7,minmax(88px,1fr))]"
+    : "grid-cols-[260px_repeat(7,minmax(120px,1fr))]";
+  const scheduleMinWidthClass = isGridFitMode ? "min-w-0" : "min-w-[1100px]";
 
   return (
     <div className="space-y-4">
@@ -192,16 +208,30 @@ export function ScheduleClient() {
             )}
             {isCleanerPanelVisible ? "Hide Team" : "Show Team"}
           </button>
+          <button
+            type="button"
+            onClick={() => setIsGridFitMode((prev) => !prev)}
+            className="inline-flex items-center gap-1 rounded-md border px-2 py-1.5 text-sm hover:bg-[var(--accent)]"
+            aria-pressed={isGridFitMode}
+            aria-label={isGridFitMode ? "Return schedule to normal width" : "Fit schedule to screen"}
+          >
+            {isGridFitMode ? (
+              <Minimize2 className="h-4 w-4" />
+            ) : (
+              <Maximize2 className="h-4 w-4" />
+            )}
+            {isGridFitMode ? "Normal Width" : "Fit Screen"}
+          </button>
         </div>
       </header>
 
       <div
         className={cn(
           "grid gap-4",
-          isCleanerPanelVisible ? "lg:grid-cols-[280px_minmax(0,1fr)]" : "grid-cols-1",
+          showCleanerPanel ? "lg:grid-cols-[280px_minmax(0,1fr)]" : "grid-cols-1",
         )}
       >
-        {isCleanerPanelVisible ? (
+        {showCleanerPanel ? (
           <aside className="rounded-2xl border bg-[var(--card)] p-4">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-xs font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
@@ -248,8 +278,19 @@ export function ScheduleClient() {
           </aside>
         ) : null}
 
-        <section className="overflow-x-auto rounded-2xl border bg-[var(--card)]">
-          <div className="grid min-w-[980px] grid-cols-[260px_repeat(7,minmax(120px,1fr))] border-b">
+        <section
+          className={cn(
+            "rounded-2xl border bg-[var(--card)]",
+            isGridFitMode ? "overflow-x-hidden" : "overflow-x-auto",
+          )}
+        >
+          <div
+            className={cn(
+              "grid border-b",
+              scheduleGridTemplateClass,
+              scheduleMinWidthClass,
+            )}
+          >
             <div className="p-3 text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)]">
               Property
             </div>
@@ -281,7 +322,11 @@ export function ScheduleClient() {
               return (
                 <div
                   key={property._id}
-                  className="grid min-w-[980px] grid-cols-[260px_repeat(7,minmax(120px,1fr))] border-b last:border-b-0"
+                  className={cn(
+                    "grid border-b last:border-b-0",
+                    scheduleGridTemplateClass,
+                    scheduleMinWidthClass,
+                  )}
                 >
                   <div className="p-3">
                     <p className="truncate text-sm font-bold">{property.name}</p>
