@@ -3,12 +3,13 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
-import { ChevronLeft, ChevronRight, Loader2, Search, Star } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, EyeOff, Loader2, Search, Star } from "lucide-react";
 import {
   STATUS_CLASSNAMES,
   STATUS_LABELS,
   type JobStatus,
 } from "@/components/jobs/job-status";
+import { cn } from "@/lib/utils";
 import type { PropertyRecord, PropertyStatus } from "@/types/property";
 
 type JobWithRelations = {
@@ -41,6 +42,7 @@ export function ScheduleClient() {
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [search, setSearch] = useState("");
   const [propertyFilter, setPropertyFilter] = useState("all");
+  const [isCleanerPanelVisible, setIsCleanerPanelVisible] = useState(true);
 
   const properties = useQuery(
     api.properties.queries.getAll,
@@ -176,54 +178,75 @@ export function ScheduleClient() {
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            onClick={() => setIsCleanerPanelVisible((prev) => !prev)}
+            className="inline-flex items-center gap-1 rounded-md border px-2 py-1.5 text-sm hover:bg-[var(--accent)]"
+            aria-pressed={!isCleanerPanelVisible}
+            aria-label={isCleanerPanelVisible ? "Hide cleaners panel" : "Show cleaners panel"}
+          >
+            {isCleanerPanelVisible ? (
+              <EyeOff className="h-4 w-4" />
+            ) : (
+              <Eye className="h-4 w-4" />
+            )}
+            {isCleanerPanelVisible ? "Hide Team" : "Show Team"}
+          </button>
         </div>
       </header>
 
-      <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="rounded-2xl border bg-[var(--card)] p-4">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-xs font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
-              Cleaners Available
-            </h2>
-            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-              {cleanerLoads.filter((c) => c.available).length} Active
-            </span>
-          </div>
+      <div
+        className={cn(
+          "grid gap-4",
+          isCleanerPanelVisible ? "lg:grid-cols-[280px_minmax(0,1fr)]" : "grid-cols-1",
+        )}
+      >
+        {isCleanerPanelVisible ? (
+          <aside className="rounded-2xl border bg-[var(--card)] p-4">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xs font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
+                Cleaners Available
+              </h2>
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                {cleanerLoads.filter((c) => c.available).length} Active
+              </span>
+            </div>
 
-          <div className="space-y-3">
-            {loading ? (
-              <div className="flex min-h-40 items-center justify-center text-sm text-[var(--muted-foreground)]">
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Loading team...
-              </div>
-            ) : cleanerLoads.length === 0 ? (
-              <p className="rounded-lg border border-dashed p-3 text-sm text-[var(--muted-foreground)]">
-                No cleaners found.
-              </p>
-            ) : (
-              cleanerLoads.slice(0, 10).map((cleaner) => (
-                <div key={cleaner._id} className="rounded-xl border p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold">{cleaner.name || cleaner.email || "Unknown"}</p>
-                      <p className="flex items-center gap-1 text-[11px] text-[var(--muted-foreground)]">
-                        <Star className="h-3 w-3 text-amber-500" />
-                        {cleaner.rating}
-                      </p>
-                    </div>
-                    <span
-                      className={`h-2.5 w-2.5 rounded-full ${cleaner.available ? "bg-emerald-500" : "bg-slate-400"}`}
-                    />
-                  </div>
-                  <div className="mt-2 flex items-center justify-between text-[11px] text-[var(--muted-foreground)]">
-                    <span>{cleaner.jobsThisWeek} jobs this week</span>
-                    <span>{cleaner.available ? "Available" : "Busy"}</span>
-                  </div>
+            <div className="space-y-3">
+              {loading ? (
+                <div className="flex min-h-40 items-center justify-center text-sm text-[var(--muted-foreground)]">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Loading team...
                 </div>
-              ))
-            )}
-          </div>
-        </aside>
+              ) : cleanerLoads.length === 0 ? (
+                <p className="rounded-lg border border-dashed p-3 text-sm text-[var(--muted-foreground)]">
+                  No cleaners found.
+                </p>
+              ) : (
+                cleanerLoads.slice(0, 10).map((cleaner) => (
+                  <div key={cleaner._id} className="rounded-xl border p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold">{cleaner.name || cleaner.email || "Unknown"}</p>
+                        <p className="flex items-center gap-1 text-[11px] text-[var(--muted-foreground)]">
+                          <Star className="h-3 w-3 text-amber-500" />
+                          {cleaner.rating}
+                        </p>
+                      </div>
+                      <span
+                        className={`h-2.5 w-2.5 rounded-full ${cleaner.available ? "bg-emerald-500" : "bg-slate-400"}`}
+                      />
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-[11px] text-[var(--muted-foreground)]">
+                      <span>{cleaner.jobsThisWeek} jobs this week</span>
+                      <span>{cleaner.available ? "Available" : "Busy"}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </aside>
+        ) : null}
 
         <section className="overflow-x-auto rounded-2xl border bg-[var(--card)]">
           <div className="grid min-w-[980px] grid-cols-[260px_repeat(7,minmax(120px,1fr))] border-b">
