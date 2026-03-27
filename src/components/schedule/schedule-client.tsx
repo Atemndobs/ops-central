@@ -45,7 +45,7 @@ export function ScheduleClient() {
   const [rangeMode, setRangeMode] = useState<"week" | "month" | "custom">("week");
   const [rangeStart, setRangeStart] = useState(() => startOfWeek(new Date()));
   const [rangeEnd, setRangeEnd] = useState(() => addDays(startOfWeek(new Date()), 6));
-  const [visibleDaysCount, setVisibleDaysCount] = useState(7);
+  const visibleDaysCount = 7;
   const [sliderValue, setSliderValue] = useState(0);
   const [search, setSearch] = useState("");
   const [propertyFilter, setPropertyFilter] = useState("all");
@@ -166,8 +166,8 @@ export function ScheduleClient() {
 
   return (
     <div className="space-y-4">
-      <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-[var(--card)] p-4">
-        <div className="flex flex-wrap items-center gap-2">
+      <header className="rounded-2xl border bg-[var(--card)] p-4">
+        <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap pr-2">
           <h1 className="mr-2 text-xl font-extrabold tracking-tight">Schedule Planner</h1>
           <button
             className="rounded-md border px-3 py-1.5 text-sm hover:bg-[var(--accent)]"
@@ -196,12 +196,10 @@ export function ScheduleClient() {
           >
             <ChevronRight className="h-4 w-4" />
           </button>
-          <span className="text-sm font-semibold text-[var(--muted-foreground)]">
+          <span className="px-2 text-sm font-semibold text-[var(--muted-foreground)]">
             {formatRange(rangeStart, rangeEnd)}
           </span>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => {
@@ -268,18 +266,6 @@ export function ScheduleClient() {
             aria-label="Range end date"
           />
 
-          <select
-            value={visibleDaysCount}
-            onChange={(event) => setVisibleDaysCount(Number(event.target.value))}
-            className="rounded-md border bg-[var(--card)] px-2 py-1.5 text-sm"
-            aria-label="Visible days"
-          >
-            <option value={5}>5 days</option>
-            <option value={7}>7 days</option>
-            <option value={10}>10 days</option>
-            <option value={14}>14 days</option>
-          </select>
-
           <div className="flex items-center gap-2 rounded-md border bg-[var(--card)] px-3 py-1.5">
             <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
             <input
@@ -287,7 +273,7 @@ export function ScheduleClient() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search properties"
-              className="w-40 bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)]"
+              className="w-36 bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)]"
             />
           </div>
 
