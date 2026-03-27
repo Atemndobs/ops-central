@@ -46,7 +46,7 @@ export function ScheduleClient() {
   const [rangeStart, setRangeStart] = useState(() => startOfWeek(new Date()));
   const [rangeEnd, setRangeEnd] = useState(() => addDays(startOfWeek(new Date()), 6));
   const [visibleDaysCount, setVisibleDaysCount] = useState(7);
-  const [dayOffset, setDayOffset] = useState(0);
+  const [sliderValue, setSliderValue] = useState(0);
   const [search, setSearch] = useState("");
   const [propertyFilter, setPropertyFilter] = useState("all");
   const [isCleanerPanelVisible, setIsCleanerPanelVisible] = useState(true);
@@ -58,7 +58,8 @@ export function ScheduleClient() {
 
   const rangeDays = useMemo(() => listDaysBetween(rangeStart, rangeEnd), [rangeEnd, rangeStart]);
   const maxDayOffset = Math.max(0, rangeDays.length - visibleDaysCount);
-  const effectiveDayOffset = Math.min(dayOffset, maxDayOffset);
+  const clampedSliderValue = Math.max(0, Math.min(maxDayOffset, sliderValue));
+  const effectiveDayOffset = Math.round(clampedSliderValue);
   const visibleDays = useMemo(
     () => rangeDays.slice(effectiveDayOffset, effectiveDayOffset + visibleDaysCount),
     [effectiveDayOffset, rangeDays, visibleDaysCount],
@@ -137,22 +138,17 @@ export function ScheduleClient() {
     ? undefined
     : `${260 + Math.max(1, visibleDays.length) * 120}px`;
 
-  const visibleWindowLabel =
-    visibleDays.length > 0
-      ? formatRange(visibleDays[0], visibleDays[visibleDays.length - 1])
-      : formatRange(rangeStart, rangeEnd);
-
   const applyWeekRange = (baseDate: Date) => {
     const nextStart = startOfWeek(baseDate);
     setRangeStart(nextStart);
     setRangeEnd(addDays(nextStart, 6));
-    setDayOffset(0);
+    setSliderValue(0);
   };
 
   const applyMonthRange = (baseDate: Date) => {
     setRangeStart(startOfMonth(baseDate));
     setRangeEnd(endOfMonth(baseDate));
-    setDayOffset(0);
+    setSliderValue(0);
   };
 
   const shiftRange = (direction: -1 | 1) => {
@@ -165,7 +161,7 @@ export function ScheduleClient() {
     const deltaDays = direction * (rangeMode === "week" ? 7 : spanDays);
     setRangeStart((current) => addDays(current, deltaDays));
     setRangeEnd((current) => addDays(current, deltaDays));
-    setDayOffset(0);
+    setSliderValue(0);
   };
 
   return (
@@ -247,7 +243,7 @@ export function ScheduleClient() {
                   ? normalizedStart
                   : current,
               );
-              setDayOffset(0);
+              setSliderValue(0);
             }}
             className="rounded-md border bg-[var(--card)] px-2 py-1.5 text-sm"
             aria-label="Range start date"
@@ -266,7 +262,7 @@ export function ScheduleClient() {
                   ? normalizedEnd
                   : current,
               );
-              setDayOffset(0);
+              setSliderValue(0);
             }}
             className="rounded-md border bg-[var(--card)] px-2 py-1.5 text-sm"
             aria-label="Range end date"
@@ -331,24 +327,6 @@ export function ScheduleClient() {
           </button>
         </div>
       </header>
-
-      {maxDayOffset > 0 ? (
-        <div className="rounded-xl border bg-[var(--card)] p-3">
-          <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-[var(--muted-foreground)]">
-            <span>Visible: {visibleWindowLabel}</span>
-            <span>Range: {formatRange(rangeStart, rangeEnd)}</span>
-          </div>
-          <input
-            type="range"
-            min={0}
-            max={maxDayOffset}
-            value={effectiveDayOffset}
-            onChange={(event) => setDayOffset(Number(event.target.value))}
-            className="w-full"
-            aria-label="Slide through selected calendar range"
-          />
-        </div>
-      ) : null}
 
       <div className={cn("grid gap-4", showCleanerPanel ? "lg:grid-cols-[280px_minmax(0,1fr)]" : "grid-cols-1")}>
         {showCleanerPanel ? (
@@ -505,6 +483,37 @@ export function ScheduleClient() {
           )}
         </section>
       </div>
+
+      {maxDayOffset > 0 ? (
+        <div className="rounded-xl border bg-[var(--card)] p-3">
+          <input
+            type="range"
+            min={0}
+            max={maxDayOffset}
+            step={0.05}
+            value={clampedSliderValue}
+            onChange={(event) => setSliderValue(Number(event.target.value))}
+            className={cn(
+              "w-full cursor-grab appearance-none rounded-full bg-[var(--accent)] active:cursor-grabbing",
+              "h-2",
+              "[&::-webkit-slider-runnable-track]:h-2",
+              "[&::-webkit-slider-runnable-track]:rounded-full",
+              "[&::-webkit-slider-thumb]:-mt-2",
+              "[&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:w-6",
+              "[&::-webkit-slider-thumb]:appearance-none",
+              "[&::-webkit-slider-thumb]:rounded-full",
+              "[&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white",
+              "[&::-webkit-slider-thumb]:bg-[var(--primary)]",
+              "[&::-webkit-slider-thumb]:shadow-md",
+              "[&::-moz-range-track]:h-2 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-[var(--accent)]",
+              "[&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:rounded-full",
+              "[&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white",
+              "[&::-moz-range-thumb]:bg-[var(--primary)]",
+            )}
+            aria-label="Slide through selected calendar range"
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
