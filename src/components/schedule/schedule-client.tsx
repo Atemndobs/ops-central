@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import Link from "next/link";
 import type { Id } from "@convex/_generated/dataModel";
@@ -48,6 +48,7 @@ const oneDayMs = 24 * 60 * 60 * 1000;
 
 export function ScheduleClient() {
   const { showToast } = useToast();
+  const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const [rangeMode, setRangeMode] = useState<"week" | "month" | "custom">("week");
   const [rangeStart, setRangeStart] = useState(() => startOfWeek(new Date()));
   const [rangeEnd, setRangeEnd] = useState(() => addDays(startOfWeek(new Date()), 6));
@@ -96,7 +97,9 @@ export function ScheduleClient() {
   );
   const assignableCleanersByProperty = useQuery(
     api.cleaningJobs.queries.getAssignableCleanersByProperty,
-    filteredPropertyIds.length > 0 ? { propertyIds: filteredPropertyIds } : "skip",
+    isAuthenticated && filteredPropertyIds.length > 0
+      ? { propertyIds: filteredPropertyIds }
+      : "skip",
   );
   const assignableByPropertyMap = useMemo(
     () =>
@@ -155,7 +158,7 @@ export function ScheduleClient() {
     }));
   }, [cleaners, jobs, rangeEndExclusiveTime, rangeStartTime]);
 
-  const loading = !properties || !jobs || !cleaners;
+  const loading = isAuthLoading || !properties || !jobs || !cleaners;
   const showCleanerPanel = isCleanerPanelVisible && !isGridFitMode;
 
   const scheduleGridTemplateColumns = isGridFitMode
