@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -35,6 +35,21 @@ function formatDuration(ms?: number | null) {
     .join(":");
 }
 
+function computeElapsedMs({
+  startedAt,
+  endedAt,
+  now,
+}: {
+  startedAt?: number | null;
+  endedAt?: number | null;
+  now: number;
+}) {
+  if (!startedAt) {
+    return null;
+  }
+  return Math.max(0, (endedAt ?? now) - startedAt);
+}
+
 function getWorkflowStepIndex(status: JobStatus) {
   if (status === "rework_required") {
     return WORKFLOW_STEPS.indexOf("in_progress");
@@ -58,7 +73,15 @@ export function JobDetailClient({ id }: { id: string }) {
   const [cleanerId, setCleanerId] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [clockNow, setClockNow] = useState(() => Date.now());
   const { showToast } = useToast();
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setClockNow(Date.now());
+    }, 1000);
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   const cleanerOptions = useQuery(api.users.queries.getByRole, { role: "cleaner" });
 
@@ -198,6 +221,11 @@ export function JobDetailClient({ id }: { id: string }) {
   const currentStepIndex = getWorkflowStepIndex(canonicalJob.status);
   const canRejectOrReopen =
     canonicalJob.status === "awaiting_approval" || canonicalJob.status === "completed";
+  const liveElapsedMs = computeElapsedMs({
+    startedAt: detail.timing.startedAtServer,
+    endedAt: detail.timing.endedAtServer,
+    now: clockNow,
+  });
 
   return (
     <div className="space-y-6">
@@ -345,7 +373,7 @@ export function JobDetailClient({ id }: { id: string }) {
                   Elapsed
                 </p>
                 <p className="mt-2 font-mono text-sm font-semibold">
-                  {formatDuration(detail.timing.elapsedMs)}
+                  {formatDuration(liveElapsedMs ?? detail.timing.elapsedMs)}
                 </p>
               </div>
             </div>
@@ -365,35 +393,58 @@ export function JobDetailClient({ id }: { id: string }) {
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {livePresence.sessions.map((session) => (
-                    <div
-                      key={session._id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded border border-[var(--border)] px-2 py-1.5 text-xs"
-                    >
-                      <div>
-                        <span className="font-semibold">
-                          {session.cleaner?.name ?? `Cleaner ${session.cleanerId.slice(-6)}`}
-                        </span>{" "}
-                        <span className="text-[var(--muted-foreground)]">
-                          {session.status.replace("_", " ")}
-                        </span>
+                  {livePresence.sessions.map((session) => {
+                      const heartbeatAt = session.lastHeartbeatAt ?? session.startedAtServer;
+                      const heartbeatAgeMs = Math.max(0, clockNow - heartbeatAt);
+                      const heartbeatSeconds = Math.floor(heartbeatAgeMs / 1000);
+                      const isStaleNow =
+                        heartbeatAgeMs > (livePresence.staleAfterMs ?? 180_000);
+                      const sessionEndAt =
+                        session.status === "started"
+                          ? clockNow
+                          : session.submittedAtServer ?? session.lastHeartbeatAt ?? clockNow;
+                      const sessionElapsedMs = computeElapsedMs({
+                        startedAt: session.startedAtServer,
+                        endedAt: sessionEndAt,
+                        now: clockNow,
+                      });
+
+                    return (
+                      <div
+                        key={session._id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded border border-[var(--border)] px-2 py-1.5 text-xs"
+                      >
+                        <div>
+                          <span className="font-semibold">
+                            {session.cleaner?.name ?? `Cleaner ${session.cleanerId.slice(-6)}`}
+                          </span>{" "}
+                          <span className="text-[var(--muted-foreground)]">
+                            {session.status.replace("_", " ")}
+                          </span>{" "}
+                          <span className="text-[var(--muted-foreground)]">
+                            since {formatDateTime(session.startedAtServer)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-[var(--muted-foreground)]">
+                            cleaning for {formatDuration(sessionElapsedMs)}
+                          </span>
+                          <span className="font-mono text-[var(--muted-foreground)]">
+                            heartbeat {heartbeatSeconds}s ago
+                          </span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 ${
+                              isStaleNow
+                                ? "bg-rose-100 text-rose-700"
+                                : "bg-emerald-100 text-emerald-700"
+                            }`}
+                          >
+                            {isStaleNow ? "stale" : "live"}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-[var(--muted-foreground)]">
-                          heartbeat {session.secondsSinceHeartbeat}s ago
-                        </span>
-                        <span
-                          className={`rounded-full px-2 py-0.5 ${
-                            session.isStale
-                              ? "bg-rose-100 text-rose-700"
-                              : "bg-emerald-100 text-emerald-700"
-                          }`}
-                        >
-                          {session.isStale ? "stale" : "live"}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
