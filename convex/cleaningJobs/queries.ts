@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { query } from "../_generated/server";
 import type { QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
+import { requireRole } from "../lib/auth";
 
 const CLEANER_SESSION_DONE_STATUSES = new Set(["submitted", "excused"]);
 
@@ -150,6 +151,106 @@ export const getForCleaner = query({
     );
     const enriched = await enrichJobs(ctx, jobs);
     return enriched.sort((a, b) => b.scheduledStartAt - a.scheduledStartAt);
+  },
+});
+
+export const getAssignableCleanersByProperty = query({
+  args: {
+    propertyIds: v.array(v.id("properties")),
+  },
+  handler: async (ctx, args) => {
+    await requireRole(ctx, ["admin", "property_ops", "manager"]);
+
+    const propertyIds = [...new Set(args.propertyIds)];
+    if (propertyIds.length === 0) {
+      return [];
+    }
+
+    const assignmentsByProperty = await Promise.all(
+      propertyIds.map(async (propertyId) => {
+        const assignments = await ctx.db
+          .query("companyProperties")
+          .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
+          .collect();
+
+        const latestAssignment =
+          assignments.sort((a, b) => b.assignedAt - a.assignedAt)[0] ?? null;
+
+        return {
+          propertyId,
+          assignment: latestAssignment,
+        };
+      }),
+    );
+
+    const companyIds = [
+      ...new Set(
+        assignmentsByProperty
+          .map((item) => item.assignment?.companyId)
+          .filter((companyId): companyId is Id<"cleaningCompanies"> =>
+            Boolean(companyId),
+          ),
+      ),
+    ];
+
+    const companyDocs = await Promise.all(
+      companyIds.map((companyId) => ctx.db.get(companyId)),
+    );
+    const companyById = new Map(
+      companyDocs
+        .filter((company): company is Doc<"cleaningCompanies"> => company !== null)
+        .map((company) => [company._id, company] as const),
+    );
+
+    const cleanersByCompany = new Map<
+      Id<"cleaningCompanies">,
+      Array<{
+        _id: Id<"users">;
+        name?: string;
+        email: string;
+      }>
+    >();
+
+    for (const companyId of companyIds) {
+      const members = await ctx.db
+        .query("companyMembers")
+        .withIndex("by_company_role", (q) =>
+          q.eq("companyId", companyId).eq("role", "cleaner"),
+        )
+        .collect();
+
+      const activeMemberIds = members
+        .filter((member) => member.isActive && member.leftAt === undefined)
+        .map((member) => member.userId);
+
+      const cleanerDocs = await Promise.all(
+        activeMemberIds.map((userId) => ctx.db.get(userId)),
+      );
+
+      const cleaners = cleanerDocs
+        .filter((cleaner): cleaner is Doc<"users"> => cleaner !== null)
+        .filter((cleaner) => cleaner.role === "cleaner")
+        .map((cleaner) => ({
+          _id: cleaner._id,
+          name: cleaner.name,
+          email: cleaner.email,
+        }))
+        .sort((a, b) =>
+          (a.name ?? a.email).localeCompare(b.name ?? b.email),
+        );
+
+      cleanersByCompany.set(companyId, cleaners);
+    }
+
+    return assignmentsByProperty.map(({ propertyId, assignment }) => {
+      const companyId = assignment?.companyId ?? null;
+      return {
+        propertyId,
+        companyId,
+        companyName: companyId ? companyById.get(companyId)?.name ?? null : null,
+        cleaners: companyId ? cleanersByCompany.get(companyId) ?? [] : [],
+      };
+    });
   },
 });
 

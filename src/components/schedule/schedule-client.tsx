@@ -1,10 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import Link from "next/link";
+import type { Id } from "@convex/_generated/dataModel";
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
   Eye,
@@ -14,23 +16,25 @@ import {
   Minimize2,
   Search,
   Star,
+  UserPlus,
 } from "lucide-react";
 import {
   STATUS_CLASSNAMES,
   STATUS_LABELS,
   type JobStatus,
 } from "@/components/jobs/job-status";
+import { useToast } from "@/components/ui/toast-provider";
 import { cn } from "@/lib/utils";
 import type { PropertyStatus } from "@/types/property";
 
 type JobWithRelations = {
-  _id: string;
+  _id: Id<"cleaningJobs">;
   notesForCleaner?: string;
   status: JobStatus;
   scheduledStartAt?: number;
-  propertyId: string;
-  property?: { _id: string; name?: string | null };
-  cleaners?: Array<{ _id?: string; name?: string | null }>;
+  propertyId: Id<"properties">;
+  property?: { _id: Id<"properties">; name?: string | null };
+  cleaners?: Array<{ _id?: Id<"users">; name?: string | null }>;
 };
 
 const readinessDotClass: Record<PropertyStatus, string> = {
@@ -43,6 +47,7 @@ const readinessDotClass: Record<PropertyStatus, string> = {
 const oneDayMs = 24 * 60 * 60 * 1000;
 
 export function ScheduleClient() {
+  const { showToast } = useToast();
   const [rangeMode, setRangeMode] = useState<"week" | "month" | "custom">("week");
   const [rangeStart, setRangeStart] = useState(() => startOfWeek(new Date()));
   const [rangeEnd, setRangeEnd] = useState(() => addDays(startOfWeek(new Date()), 6));
@@ -52,10 +57,13 @@ export function ScheduleClient() {
   const [propertyFilter, setPropertyFilter] = useState("all");
   const [isCleanerPanelVisible, setIsCleanerPanelVisible] = useState(true);
   const [isGridFitMode, setIsGridFitMode] = useState(false);
+  const [quickAssignJobId, setQuickAssignJobId] = useState<Id<"cleaningJobs"> | null>(null);
+  const [assigningJobId, setAssigningJobId] = useState<Id<"cleaningJobs"> | null>(null);
 
   const properties = useQuery(api.properties.queries.getAll, { limit: 500 });
   const jobs = useQuery(api.cleaningJobs.queries.getAll, { limit: 1000 });
   const cleaners = useQuery(api.users.queries.getByRole, { role: "cleaner" });
+  const assignJob = useMutation(api.cleaningJobs.mutations.assign);
 
   const rangeDays = useMemo(() => listDaysBetween(rangeStart, rangeEnd), [rangeEnd, rangeStart]);
   const maxDayOffset = Math.max(0, rangeDays.length - visibleDaysCount);
@@ -82,6 +90,24 @@ export function ScheduleClient() {
       return propertyMatches && textMatches;
     });
   }, [properties, propertyFilter, search]);
+  const filteredPropertyIds = useMemo(
+    () => filteredProperties.map((property) => property._id),
+    [filteredProperties],
+  );
+  const assignableCleanersByProperty = useQuery(
+    api.cleaningJobs.queries.getAssignableCleanersByProperty,
+    filteredPropertyIds.length > 0 ? { propertyIds: filteredPropertyIds } : "skip",
+  );
+  const assignableByPropertyMap = useMemo(
+    () =>
+      new Map(
+        (assignableCleanersByProperty ?? []).map((item) => [
+          item.propertyId,
+          item,
+        ]),
+      ),
+    [assignableCleanersByProperty],
+  );
 
   const jobsByCell = useMemo(() => {
     const map = new Map<string, JobWithRelations[]>();
@@ -163,6 +189,26 @@ export function ScheduleClient() {
     setRangeStart((current) => addDays(current, deltaDays));
     setRangeEnd((current) => addDays(current, deltaDays));
     setSliderValue(0);
+  };
+
+  const handleQuickAssign = async (
+    jobId: Id<"cleaningJobs">,
+    cleanerId: Id<"users">,
+  ) => {
+    setAssigningJobId(jobId);
+    try {
+      await assignJob({
+        jobId,
+        cleanerIds: [cleanerId],
+        notifyCleaners: false,
+      });
+      setQuickAssignJobId(null);
+      showToast("Cleaner assigned successfully.");
+    } catch (error) {
+      showToast(getErrorMessage(error, "Unable to assign cleaner."), "error");
+    } finally {
+      setAssigningJobId(null);
+    }
   };
 
   return (
@@ -438,24 +484,98 @@ export function ScheduleClient() {
                           <div className="h-16 rounded-md border border-dashed" />
                         ) : (
                           <>
-                            {cellJobs.slice(0, 3).map((job) => (
-                              <Link
-                                key={job._id}
-                                href={`/jobs/${job._id}`}
-                                className={`block cursor-pointer rounded-md border px-2 py-1 text-[11px] transition hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] ${STATUS_CLASSNAMES[job.status]}`}
-                                title="Open task details"
-                              >
-                                <p className="truncate font-semibold">{job.property?.name ?? "Cleaning Job"}</p>
-                                <p className="text-[10px] opacity-80">
-                                  {new Date(job.scheduledStartAt ?? 0).toLocaleTimeString([], {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })}
-                                  {" · "}
-                                  {STATUS_LABELS[job.status]}
-                                </p>
-                              </Link>
-                            ))}
+                            {cellJobs.slice(0, 3).map((job) => {
+                              const availableAssignment = assignableByPropertyMap.get(
+                                job.propertyId,
+                              );
+                              const companyCleaners = availableAssignment?.cleaners ?? [];
+                              return (
+                                <div key={job._id} className="relative">
+                                  <Link
+                                    href={`/jobs/${job._id}`}
+                                    className={`block cursor-pointer rounded-md border px-2 py-1 pr-8 text-[11px] transition hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] ${STATUS_CLASSNAMES[job.status]}`}
+                                    title="Open task details"
+                                  >
+                                    <p className="truncate font-semibold">{job.property?.name ?? "Cleaning Job"}</p>
+                                    <p className="text-[10px] opacity-80">
+                                      {new Date(job.scheduledStartAt ?? 0).toLocaleTimeString([], {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}
+                                      {" · "}
+                                      {STATUS_LABELS[job.status]}
+                                    </p>
+                                  </Link>
+
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      setQuickAssignJobId((current) =>
+                                        current === job._id ? null : job._id,
+                                      );
+                                    }}
+                                    className="absolute right-1 top-1 rounded p-1 text-[var(--muted-foreground)] hover:bg-black/10 hover:text-[var(--foreground)]"
+                                    aria-label="Quick assign cleaner"
+                                    title="Quick assign cleaner"
+                                  >
+                                    <UserPlus className="h-3 w-3" />
+                                  </button>
+
+                                  {quickAssignJobId === job._id ? (
+                                    <div className="absolute right-0 top-full z-40 mt-1 w-56 rounded-md border bg-[var(--card)] p-2 shadow-xl">
+                                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+                                        Quick Assign
+                                      </p>
+                                      <p className="mb-2 text-[11px] text-[var(--muted-foreground)]">
+                                        {availableAssignment?.companyName
+                                          ? `Company: ${availableAssignment.companyName}`
+                                          : "No company assigned to this property."}
+                                      </p>
+
+                                      {companyCleaners.length === 0 ? (
+                                        <p className="text-[11px] text-[var(--muted-foreground)]">
+                                          No eligible cleaners found.
+                                        </p>
+                                      ) : (
+                                        <div className="space-y-1">
+                                          {companyCleaners.map((cleaner) => {
+                                            const alreadyAssigned = Boolean(
+                                              job.cleaners?.some(
+                                                (currentCleaner) =>
+                                                  currentCleaner?._id === cleaner._id,
+                                              ),
+                                            );
+                                            return (
+                                              <button
+                                                key={cleaner._id}
+                                                type="button"
+                                                disabled={assigningJobId === job._id}
+                                                onClick={() =>
+                                                  void handleQuickAssign(
+                                                    job._id,
+                                                    cleaner._id,
+                                                  )
+                                                }
+                                                className="flex w-full items-center justify-between rounded px-2 py-1 text-left text-[11px] hover:bg-[var(--accent)] disabled:opacity-60"
+                                              >
+                                                <span className="truncate">
+                                                  {cleaner.name ?? cleaner.email}
+                                                </span>
+                                                {alreadyAssigned ? (
+                                                  <Check className="h-3 w-3 text-emerald-500" />
+                                                ) : null}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              );
+                            })}
                             {cellJobs.length > 3 ? (
                               <p className="text-[10px] text-[var(--muted-foreground)]">
                                 +{cellJobs.length - 3} more
@@ -592,4 +712,11 @@ function fromInputDate(value: string) {
   const [y, m, d] = value.split("-").map(Number);
   if (!y || !m || !d) return null;
   return new Date(y, m - 1, d);
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
 }
