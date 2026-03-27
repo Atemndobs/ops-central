@@ -1,5 +1,270 @@
 import { ConvexError, v } from "convex/values";
-import { mutation } from "../_generated/server";
+import { mutation, type MutationCtx } from "../_generated/server";
+import type { Doc, Id } from "../_generated/dataModel";
+import { getCurrentUser } from "../lib/auth";
+
+const qaModeValidator = v.union(v.literal("standard"), v.literal("quick"));
+
+function getCurrentRevision(job: Doc<"cleaningJobs">): number {
+  return job.currentRevision ?? 1;
+}
+
+function normalizeRoom(name: string): string {
+  return name.trim();
+}
+
+function fnv1aHash(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash +=
+      (hash << 1) +
+      (hash << 4) +
+      (hash << 7) +
+      (hash << 8) +
+      (hash << 24);
+  }
+  return `fnv1a-${(hash >>> 0).toString(16)}`;
+}
+
+function requirePrivilegedRole(user: Doc<"users">) {
+  if (
+    user.role !== "admin" &&
+    user.role !== "manager" &&
+    user.role !== "property_ops"
+  ) {
+    throw new ConvexError("Only privileged users can perform this action.");
+  }
+}
+
+type SubmissionValidation = {
+  mode: "standard" | "quick";
+  pass: boolean;
+  warnings: string[];
+  errors: string[];
+  summary: {
+    beforeCount: number;
+    afterCount: number;
+    incidentCount: number;
+    missingBeforeRooms: string[];
+    missingAfterRooms: string[];
+  };
+};
+
+type SubmitForApprovalInput = {
+  jobId: Id<"cleaningJobs">;
+  notes?: string;
+  guestReady?: boolean;
+  submittedAtDevice?: number;
+  qaMode?: "standard" | "quick";
+  quickMinimumBefore?: number;
+  quickMinimumAfter?: number;
+  requiredRooms?: string[];
+  skippedRooms?: Array<{ roomName: string; reason: string }>;
+  force?: boolean;
+};
+
+type SubmitForApprovalResult = {
+  ok: boolean;
+  gatePassed: boolean;
+  jobId: Id<"cleaningJobs">;
+  revision: number;
+  unresolvedCleanerIds: Id<"users">[];
+  submissionId?: Id<"jobSubmissions">;
+  validationResult?: SubmissionValidation;
+};
+
+function buildValidationResult(args: {
+  qaMode?: "standard" | "quick";
+  quickMinimumBefore?: number;
+  quickMinimumAfter?: number;
+  requiredRooms?: string[];
+  skippedRooms?: Array<{ roomName: string; reason: string }>;
+  photos: Array<{
+    roomName: string;
+    type: "before" | "after" | "incident";
+  }>;
+}): SubmissionValidation {
+  const mode = args.qaMode ?? "standard";
+  const warnings: string[] = [];
+  const errors: string[] = [];
+
+  const beforeCount = args.photos.filter((photo) => photo.type === "before").length;
+  const afterCount = args.photos.filter((photo) => photo.type === "after").length;
+  const incidentCount = args.photos.filter((photo) => photo.type === "incident").length;
+
+  const skipped = new Map(
+    (args.skippedRooms ?? []).map((room) => [normalizeRoom(room.roomName), room.reason.trim()]),
+  );
+
+  const observedRooms = [
+    ...new Set(
+      args.photos
+        .map((photo) => normalizeRoom(photo.roomName))
+        .filter((name) => name.length > 0 && name.toLowerCase() !== "batch"),
+    ),
+  ];
+  const requiredRooms = args.requiredRooms?.length
+    ? [...new Set(args.requiredRooms.map(normalizeRoom).filter((name) => name.length > 0))]
+    : observedRooms;
+
+  const beforeRooms = new Set(
+    args.photos
+      .filter((photo) => photo.type === "before")
+      .map((photo) => normalizeRoom(photo.roomName)),
+  );
+  const afterRooms = new Set(
+    args.photos
+      .filter((photo) => photo.type === "after")
+      .map((photo) => normalizeRoom(photo.roomName)),
+  );
+
+  const missingBeforeRooms: string[] = [];
+  const missingAfterRooms: string[] = [];
+
+  if (mode === "quick") {
+    const minBefore = Math.max(1, Math.floor(args.quickMinimumBefore ?? 1));
+    const minAfter = Math.max(1, Math.floor(args.quickMinimumAfter ?? 1));
+
+    if (beforeCount < minBefore) {
+      errors.push(`Quick mode requires at least ${minBefore} before photo(s).`);
+    }
+    if (afterCount < minAfter) {
+      errors.push(`Quick mode requires at least ${minAfter} after photo(s).`);
+    }
+
+    if (beforeCount < 3 || afterCount < 3) {
+      warnings.push("Photo counts are below recommended QA thresholds.");
+    }
+  } else {
+    requiredRooms.forEach((roomName) => {
+      if (skipped.has(roomName)) {
+        return;
+      }
+      if (!beforeRooms.has(roomName)) {
+        missingBeforeRooms.push(roomName);
+      }
+      if (!afterRooms.has(roomName)) {
+        missingAfterRooms.push(roomName);
+      }
+    });
+
+    if (missingBeforeRooms.length > 0) {
+      errors.push(`Missing before photos for ${missingBeforeRooms.length} room(s).`);
+    }
+    if (missingAfterRooms.length > 0) {
+      errors.push(`Missing after photos for ${missingAfterRooms.length} room(s).`);
+    }
+  }
+
+  return {
+    mode,
+    pass: errors.length === 0,
+    warnings,
+    errors,
+    summary: {
+      beforeCount,
+      afterCount,
+      incidentCount,
+      missingBeforeRooms,
+      missingAfterRooms,
+    },
+  };
+}
+
+async function findSession(
+  ctx: MutationCtx,
+  args: {
+    jobId: Id<"cleaningJobs">;
+    cleanerId: Id<"users">;
+    revision: number;
+  },
+) {
+  return await ctx.db
+    .query("jobExecutionSessions")
+    .withIndex("by_job_and_cleaner_and_revision", (q) =>
+      q.eq("jobId", args.jobId).eq("cleanerId", args.cleanerId).eq("revision", args.revision),
+    )
+    .unique();
+}
+
+async function sealSubmission(
+  ctx: MutationCtx,
+  args: {
+    job: Doc<"cleaningJobs">;
+    revision: number;
+    submittedBy: Id<"users">;
+    submittedAtServer: number;
+    submittedAtDevice?: number;
+    validationResult: SubmissionValidation;
+  },
+) {
+  const existing = await ctx.db
+    .query("jobSubmissions")
+    .withIndex("by_job_and_revision", (q) =>
+      q.eq("jobId", args.job._id).eq("revision", args.revision),
+    )
+    .first();
+  if (existing) {
+    return existing._id;
+  }
+
+  const photos = await ctx.db
+    .query("photos")
+    .withIndex("by_job", (q) => q.eq("cleaningJobId", args.job._id))
+    .collect();
+
+  const incidents = await ctx.db
+    .query("incidents")
+    .withIndex("by_job", (q) => q.eq("cleaningJobId", args.job._id))
+    .collect();
+
+  const photoSnapshot = photos.map((photo) => ({
+    photoId: photo._id,
+    storageId: photo.storageId,
+    roomName: photo.roomName,
+    type: photo.type,
+    uploadedAt: photo.uploadedAt,
+    uploadedBy: photo.uploadedBy,
+  }));
+
+  const incidentSnapshot = incidents.map((incident) => ({
+    incidentId: incident._id,
+    title: incident.title,
+    description: incident.description,
+    roomName: incident.roomName,
+    severity: incident.severity,
+    status: incident.status,
+    createdAt: incident.createdAt,
+  }));
+
+  const sealedPayload = JSON.stringify({
+    jobId: args.job._id,
+    revision: args.revision,
+    submittedAtServer: args.submittedAtServer,
+    photoSnapshot,
+    checklistSnapshot: args.job.checklistItems ?? [],
+    incidentSnapshot,
+    validationResult: args.validationResult,
+  });
+
+  const submissionId = await ctx.db.insert("jobSubmissions", {
+    jobId: args.job._id,
+    revision: args.revision,
+    submittedBy: args.submittedBy,
+    submittedAtServer: args.submittedAtServer,
+    submittedAtDevice: args.submittedAtDevice,
+    status: "sealed",
+    photoSnapshot,
+    checklistSnapshot: args.job.checklistItems,
+    incidentSnapshot,
+    validationResult: args.validationResult,
+    sealedHash: fnv1aHash(sealedPayload),
+    createdAt: args.submittedAtServer,
+  });
+
+  return submissionId;
+}
 
 export const create = mutation({
   args: {
@@ -36,6 +301,7 @@ export const create = mutation({
       partyRiskFlag: false,
       opsRiskFlag: false,
       isUrgent: false,
+      currentRevision: 1,
       createdAt: now,
       updatedAt: now,
     });
@@ -45,25 +311,313 @@ export const create = mutation({
 export const start = mutation({
   args: {
     jobId: v.id("cleaningJobs"),
+    startedAtDevice: v.optional(v.number()),
+    offlineStartToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
     const job = await ctx.db.get(args.jobId);
     if (!job) {
       throw new ConvexError("Job not found.");
     }
-    if (job.status !== "assigned") {
+
+    const revision = getCurrentRevision(job);
+
+    if (
+      user.role === "cleaner" &&
+      !job.assignedCleanerIds.includes(user._id)
+    ) {
+      throw new ConvexError("Cleaner is not assigned to this job.");
+    }
+
+    if (
+      job.status !== "assigned" &&
+      job.status !== "rework_required" &&
+      job.status !== "in_progress" &&
+      job.status !== "scheduled"
+    ) {
       throw new ConvexError(
-        `Job cannot be started from status "${job.status}". Job must be in "assigned" status.`,
+        `Job cannot be started from status "${job.status}".`,
       );
     }
 
-    await ctx.db.patch(args.jobId, {
-      status: "in_progress",
-      actualStartAt: Date.now(),
-      updatedAt: Date.now(),
+    const now = Date.now();
+    const session = await findSession(ctx, {
+      jobId: args.jobId,
+      cleanerId: user._id,
+      revision,
     });
 
-    return args.jobId;
+    if (!session) {
+      await ctx.db.insert("jobExecutionSessions", {
+        jobId: args.jobId,
+        revision,
+        cleanerId: user._id,
+        status: "started",
+        startedAtServer: now,
+        startedAtDevice: args.startedAtDevice,
+        lastHeartbeatAt: now,
+        offlineStartToken: args.offlineStartToken?.trim() || undefined,
+        createdAt: now,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.patch(session._id, {
+        lastHeartbeatAt: now,
+        updatedAt: now,
+      });
+    }
+
+    if (job.status !== "in_progress" || job.actualStartAt === undefined) {
+      await ctx.db.patch(args.jobId, {
+        status: "in_progress",
+        actualStartAt: job.actualStartAt ?? now,
+        currentRevision: revision,
+        updatedAt: now,
+      });
+    }
+
+    return {
+      jobId: args.jobId,
+      revision,
+      startedAtServer: job.actualStartAt ?? now,
+      alreadyStarted: Boolean(session),
+    };
+  },
+});
+
+export const pingActiveSession = mutation({
+  args: {
+    jobId: v.id("cleaningJobs"),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    const job = await ctx.db.get(args.jobId);
+    if (!job) {
+      throw new ConvexError("Job not found.");
+    }
+    const revision = getCurrentRevision(job);
+    const now = Date.now();
+    const session = await findSession(ctx, {
+      jobId: args.jobId,
+      cleanerId: user._id,
+      revision,
+    });
+
+    if (!session) {
+      await ctx.db.insert("jobExecutionSessions", {
+        jobId: args.jobId,
+        revision,
+        cleanerId: user._id,
+        status: "started",
+        startedAtServer: job.actualStartAt ?? now,
+        lastHeartbeatAt: now,
+        createdAt: now,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.patch(session._id, {
+        lastHeartbeatAt: now,
+        updatedAt: now,
+      });
+    }
+
+    return {
+      jobId: args.jobId,
+      revision,
+      lastHeartbeatAt: now,
+      status: session?.status ?? "started",
+    };
+  },
+});
+
+async function submitForApprovalInternal(
+  ctx: MutationCtx,
+  user: Doc<"users">,
+  args: SubmitForApprovalInput,
+): Promise<SubmitForApprovalResult> {
+  const job = await ctx.db.get(args.jobId);
+  if (!job) {
+    throw new ConvexError("Job not found.");
+  }
+
+  const revision = getCurrentRevision(job);
+  const now = Date.now();
+  const force = args.force ?? false;
+
+  if (job.status !== "in_progress" && job.status !== "awaiting_approval") {
+    throw new ConvexError(
+      `Job cannot be submitted from status "${job.status}". Job must be in "in_progress" status.`,
+    );
+  }
+
+  if (force && user.role === "cleaner") {
+    throw new ConvexError("Only privileged users can force submit.");
+  }
+
+  if (user.role === "cleaner") {
+    if (!job.assignedCleanerIds.includes(user._id)) {
+      throw new ConvexError("Cleaner is not assigned to this job.");
+    }
+
+    const session = await findSession(ctx, {
+      jobId: args.jobId,
+      cleanerId: user._id,
+      revision,
+    });
+
+    if (!session) {
+      await ctx.db.insert("jobExecutionSessions", {
+        jobId: args.jobId,
+        revision,
+        cleanerId: user._id,
+        status: "submitted",
+        startedAtServer: job.actualStartAt ?? now,
+        submittedAtServer: now,
+        submittedAtDevice: args.submittedAtDevice,
+        lastHeartbeatAt: now,
+        createdAt: now,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.patch(session._id, {
+        status: "submitted",
+        submittedAtServer: now,
+        submittedAtDevice: args.submittedAtDevice,
+        lastHeartbeatAt: now,
+        updatedAt: now,
+      });
+    }
+  } else {
+    requirePrivilegedRole(user);
+  }
+
+  const allSessions = await ctx.db
+    .query("jobExecutionSessions")
+    .withIndex("by_job_and_revision", (q) =>
+      q.eq("jobId", args.jobId).eq("revision", revision),
+    )
+    .collect();
+
+  const sessionsByCleaner = new Map(
+    allSessions.map((session) => [session.cleanerId, session]),
+  );
+  const unresolvedCleanerIds = job.assignedCleanerIds.filter((cleanerId) => {
+    const session = sessionsByCleaner.get(cleanerId);
+    if (!session) {
+      return true;
+    }
+    return session.status !== "submitted" && session.status !== "excused";
+  });
+
+  if (unresolvedCleanerIds.length > 0 && !force) {
+    return {
+      ok: false,
+      gatePassed: false,
+      jobId: args.jobId,
+      revision,
+      unresolvedCleanerIds,
+    };
+  }
+
+  const photos = await ctx.db
+    .query("photos")
+    .withIndex("by_job", (q) => q.eq("cleaningJobId", args.jobId))
+    .collect();
+  const validationResult = buildValidationResult({
+    qaMode: args.qaMode,
+    quickMinimumBefore: args.quickMinimumBefore,
+    quickMinimumAfter: args.quickMinimumAfter,
+    requiredRooms: args.requiredRooms,
+    skippedRooms: args.skippedRooms,
+    photos: photos.map((photo) => ({
+      roomName: photo.roomName,
+      type: photo.type,
+    })),
+  });
+
+  if (!validationResult.pass && !force) {
+    throw new ConvexError(
+      `Evidence validation failed: ${validationResult.errors.join(" ")}`,
+    );
+  }
+
+  const submissionId = await sealSubmission(ctx, {
+    job,
+    revision,
+    submittedBy: user._id,
+    submittedAtServer: now,
+    submittedAtDevice: args.submittedAtDevice,
+    validationResult,
+  });
+
+  const priorSubmissions = await ctx.db
+    .query("jobSubmissions")
+    .withIndex("by_job", (q) => q.eq("jobId", args.jobId))
+    .collect();
+  await Promise.all(
+    priorSubmissions
+      .filter(
+        (submission) =>
+          submission.revision < revision &&
+          submission.status === "sealed" &&
+          submission.supersededAt === undefined,
+      )
+      .map((submission) =>
+        ctx.db.patch(submission._id, {
+          status: "superseded",
+          supersededAt: now,
+        }),
+      ),
+  );
+
+  await ctx.db.patch(args.jobId, {
+    status: "awaiting_approval",
+    actualEndAt: job.actualEndAt ?? now,
+    completionNotes: args.notes?.trim() ?? job.completionNotes,
+    latestSubmissionId: submissionId,
+    updatedAt: now,
+    metadata: {
+      ...(job.metadata && typeof job.metadata === "object" ? job.metadata : {}),
+      qaMode: validationResult.mode,
+      guestReady: args.guestReady,
+    },
+  });
+
+  return {
+    ok: true,
+    gatePassed: true,
+    jobId: args.jobId,
+    revision,
+    unresolvedCleanerIds: [],
+    submissionId,
+    validationResult,
+  };
+}
+
+export const submitForApproval = mutation({
+  args: {
+    jobId: v.id("cleaningJobs"),
+    notes: v.optional(v.string()),
+    guestReady: v.optional(v.boolean()),
+    submittedAtDevice: v.optional(v.number()),
+    qaMode: v.optional(qaModeValidator),
+    quickMinimumBefore: v.optional(v.number()),
+    quickMinimumAfter: v.optional(v.number()),
+    requiredRooms: v.optional(v.array(v.string())),
+    skippedRooms: v.optional(
+      v.array(
+        v.object({
+          roomName: v.string(),
+          reason: v.string(),
+        }),
+      ),
+    ),
+    force: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    return await submitForApprovalInternal(ctx, user, args);
   },
 });
 
@@ -72,28 +626,134 @@ export const complete = mutation({
     jobId: v.id("cleaningJobs"),
     notes: v.optional(v.string()),
     guestReady: v.optional(v.boolean()),
+    submittedAtDevice: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+
+    // Compatibility alias during migration window.
+    const result = await submitForApprovalInternal(ctx, user, {
+      jobId: args.jobId,
+      notes: args.notes,
+      guestReady: args.guestReady,
+      submittedAtDevice: args.submittedAtDevice,
+    });
+
+    if (!result.ok) {
+      throw new ConvexError(
+        `Submission gate not passed. ${result.unresolvedCleanerIds.length} cleaner(s) still pending.`,
+      );
+    }
+
+    return args.jobId;
+  },
+});
+
+export const excuseCleanerSession = mutation({
+  args: {
+    jobId: v.id("cleaningJobs"),
+    cleanerId: v.id("users"),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    requirePrivilegedRole(user);
+
     const job = await ctx.db.get(args.jobId);
     if (!job) {
       throw new ConvexError("Job not found.");
     }
-    if (job.status !== "in_progress") {
+
+    const revision = getCurrentRevision(job);
+    const now = Date.now();
+    const session = await findSession(ctx, {
+      jobId: args.jobId,
+      cleanerId: args.cleanerId,
+      revision,
+    });
+
+    if (!session) {
+      await ctx.db.insert("jobExecutionSessions", {
+        jobId: args.jobId,
+        revision,
+        cleanerId: args.cleanerId,
+        status: "excused",
+        startedAtServer: job.actualStartAt ?? now,
+        submittedAtServer: now,
+        lastHeartbeatAt: now,
+        metadata: { reason: args.reason?.trim() },
+        createdAt: now,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.patch(session._id, {
+        status: "excused",
+        submittedAtServer: session.submittedAtServer ?? now,
+        lastHeartbeatAt: now,
+        metadata: {
+          ...(session.metadata && typeof session.metadata === "object" ? session.metadata : {}),
+          reason: args.reason?.trim(),
+        },
+        updatedAt: now,
+      });
+    }
+
+    return {
+      ok: true,
+      jobId: args.jobId,
+      cleanerId: args.cleanerId,
+      revision,
+    };
+  },
+});
+
+export const reopenForRework = mutation({
+  args: {
+    jobId: v.id("cleaningJobs"),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    requirePrivilegedRole(user);
+
+    const job = await ctx.db.get(args.jobId);
+    if (!job) {
+      throw new ConvexError("Job not found.");
+    }
+
+    if (job.status !== "completed" && job.status !== "awaiting_approval") {
       throw new ConvexError(
-        `Job cannot be completed from status "${job.status}". Job must be in "in_progress" status.`,
+        `Job cannot be reopened from status "${job.status}".`,
       );
     }
 
     const now = Date.now();
+    const nextRevision = getCurrentRevision(job) + 1;
+
+    if (job.latestSubmissionId) {
+      await ctx.db.patch(job.latestSubmissionId, {
+        status: "superseded",
+        supersededAt: now,
+      });
+    }
 
     await ctx.db.patch(args.jobId, {
-      status: "completed",
-      actualEndAt: now,
-      completionNotes: args.notes?.trim(),
+      status: "rework_required",
+      currentRevision: nextRevision,
+      actualStartAt: undefined,
+      actualEndAt: undefined,
+      latestSubmissionId: undefined,
+      rejectedAt: now,
+      rejectedBy: user._id,
+      rejectionReason: args.reason?.trim(),
       updatedAt: now,
     });
 
-    return args.jobId;
+    return {
+      ok: true,
+      jobId: args.jobId,
+      revision: nextRevision,
+    };
   },
 });
 

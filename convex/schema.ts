@@ -231,6 +231,8 @@ const cleaningJobs = defineTable({
   scheduledEndAt: v.number(),
   actualStartAt: v.optional(v.number()),
   actualEndAt: v.optional(v.number()),
+  currentRevision: v.optional(v.number()),
+  latestSubmissionId: v.optional(v.id("jobSubmissions")),
 
   // Approval
   approvedAt: v.optional(v.number()),
@@ -267,6 +269,104 @@ const cleaningJobs = defineTable({
   .index("by_scheduled", ["scheduledStartAt"])
   .index("by_property_status", ["propertyId", "status"])
   .index("by_stay", ["stayId"]);
+
+const jobExecutionSessions = defineTable({
+  jobId: v.id("cleaningJobs"),
+  revision: v.number(),
+  cleanerId: v.id("users"),
+  status: v.union(
+    v.literal("started"),
+    v.literal("submitted"),
+    v.literal("excused"),
+  ),
+  startedAtServer: v.number(),
+  startedAtDevice: v.optional(v.number()),
+  submittedAtServer: v.optional(v.number()),
+  submittedAtDevice: v.optional(v.number()),
+  lastHeartbeatAt: v.optional(v.number()),
+  offlineStartToken: v.optional(v.string()),
+  metadata: v.optional(v.any()),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_job_and_revision", ["jobId", "revision"])
+  .index("by_job_and_cleaner_and_revision", ["jobId", "cleanerId", "revision"])
+  .index("by_job_and_status", ["jobId", "status"]);
+
+const jobSubmissions = defineTable({
+  jobId: v.id("cleaningJobs"),
+  revision: v.number(),
+  submittedBy: v.optional(v.id("users")),
+  submittedAtServer: v.number(),
+  submittedAtDevice: v.optional(v.number()),
+  status: v.union(v.literal("sealed"), v.literal("superseded")),
+  photoSnapshot: v.array(
+    v.object({
+      photoId: v.id("photos"),
+      storageId: v.id("_storage"),
+      roomName: v.string(),
+      type: v.union(
+        v.literal("before"),
+        v.literal("after"),
+        v.literal("incident"),
+      ),
+      uploadedAt: v.number(),
+      uploadedBy: v.optional(v.id("users")),
+    }),
+  ),
+  checklistSnapshot: v.optional(
+    v.array(
+      v.object({
+        id: v.string(),
+        label: v.string(),
+        completed: v.boolean(),
+        completedAt: v.optional(v.number()),
+      }),
+    ),
+  ),
+  incidentSnapshot: v.array(
+    v.object({
+      incidentId: v.id("incidents"),
+      title: v.string(),
+      description: v.optional(v.string()),
+      roomName: v.optional(v.string()),
+      severity: v.optional(
+        v.union(
+          v.literal("low"),
+          v.literal("medium"),
+          v.literal("high"),
+          v.literal("critical"),
+        ),
+      ),
+      status: v.union(
+        v.literal("open"),
+        v.literal("in_progress"),
+        v.literal("resolved"),
+        v.literal("wont_fix"),
+      ),
+      createdAt: v.number(),
+    }),
+  ),
+  validationResult: v.object({
+    mode: v.union(v.literal("standard"), v.literal("quick")),
+    pass: v.boolean(),
+    warnings: v.array(v.string()),
+    errors: v.array(v.string()),
+    summary: v.object({
+      beforeCount: v.number(),
+      afterCount: v.number(),
+      incidentCount: v.number(),
+      missingBeforeRooms: v.array(v.string()),
+      missingAfterRooms: v.array(v.string()),
+    }),
+  }),
+  sealedHash: v.string(),
+  supersededAt: v.optional(v.number()),
+  createdAt: v.number(),
+})
+  .index("by_job", ["jobId"])
+  .index("by_job_and_revision", ["jobId", "revision"])
+  .index("by_job_and_created", ["jobId", "createdAt"]);
 
 const jobTemplates = defineTable({
   propertyId: v.optional(v.id("properties")),
@@ -553,6 +653,8 @@ export default defineSchema({
   // Jobs
   cleaningJobs,
   jobTemplates,
+  jobExecutionSessions,
+  jobSubmissions,
 
   // Photos
   photos,
