@@ -77,7 +77,10 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
   const propertyOptionsFromJobs = useMemo(() => {
     const optionMap = new Map<string, string>();
     (allJobs ?? []).forEach((job) => {
-      const name = job.property?.name || `Property ${job.propertyId.slice(-6)}`;
+      const name = job.property?.name?.trim();
+      if (!name) {
+        return;
+      }
       optionMap.set(job.propertyId, name);
     });
     return Array.from(optionMap.entries()).map(([id, name]) => ({ id, name }));
