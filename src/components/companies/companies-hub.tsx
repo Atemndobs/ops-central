@@ -52,6 +52,7 @@ export function CompaniesHub() {
   const [editContactPhone, setEditContactPhone] = useState("");
   const [isUpdatingCompany, setIsUpdatingCompany] = useState(false);
   const [isArchivingCompany, setIsArchivingCompany] = useState(false);
+  const [isArchiveConfirmOpen, setIsArchiveConfirmOpen] = useState(false);
 
   const createCleaningCompany = useMutation(api.admin.mutations.createCleaningCompany);
   const updateCleaningCompany = useMutation(api.admin.mutations.updateCleaningCompany);
@@ -133,6 +134,7 @@ export function CompaniesHub() {
         .sort((a, b) => b.assignedAt - a.assignedAt),
     [companyDetail],
   );
+  const selectedCompanyActivePropertyCount = activePropertyAssignments.length;
 
   const propertyAssignmentHistory = useMemo(
     () =>
@@ -217,11 +219,13 @@ export function CompaniesHub() {
     if (!selectedCompany) {
       return;
     }
-    if (
-      !window.confirm(
-        `Archive "${selectedCompany.name}"? This will hide it from active company lists.`,
-      )
-    ) {
+    if (selectedCompanyActivePropertyCount > 0) {
+      showToast(
+        `Unassign ${selectedCompanyActivePropertyCount} active propert${
+          selectedCompanyActivePropertyCount === 1 ? "y" : "ies"
+        } before archiving this company.`,
+        "error",
+      );
       return;
     }
 
@@ -233,6 +237,7 @@ export function CompaniesHub() {
       showToast("Company archived.");
       setSelectedCompanyId(null);
       setIsEditOpen(false);
+      setIsArchiveConfirmOpen(false);
     } catch (error) {
       showToast(getErrorMessage(error, "Unable to archive company."), "error");
     } finally {
@@ -316,8 +321,8 @@ export function CompaniesHub() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => void handleArchiveCompany()}
-                  disabled={isArchivingCompany}
+                  onClick={() => setIsArchiveConfirmOpen(true)}
+                  disabled={isArchivingCompany || selectedCompanyActivePropertyCount > 0}
                   className="inline-flex items-center gap-2 rounded-md border border-red-500/40 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-500/10 disabled:opacity-60"
                 >
                   {isArchivingCompany ? "Archiving..." : "Archive Company"}
@@ -334,6 +339,14 @@ export function CompaniesHub() {
             </button>
           </div>
         </div>
+
+        {selectedCompany && selectedCompanyActivePropertyCount > 0 ? (
+          <p className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700">
+            Unassign {selectedCompanyActivePropertyCount} active propert
+            {selectedCompanyActivePropertyCount === 1 ? "y" : "ies"} from{" "}
+            {selectedCompany.name} before archiving.
+          </p>
+        ) : null}
 
         {isCreateOpen ? (
           <form onSubmit={handleCreateCompany} className="mt-4 grid gap-3 rounded-xl border p-4 md:grid-cols-4">
@@ -434,6 +447,48 @@ export function CompaniesHub() {
           </form>
         ) : null}
       </header>
+
+      {isArchiveConfirmOpen && selectedCompany ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl border bg-[var(--card)] p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-lg font-bold">Archive Company</h2>
+              <button
+                className="rounded-md px-2 py-1 text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+                onClick={() => setIsArchiveConfirmOpen(false)}
+                disabled={isArchivingCompany}
+              >
+                Close
+              </button>
+            </div>
+            <p className="text-sm text-[var(--muted-foreground)]">
+              Archive &quot;{selectedCompany.name}&quot;?
+            </p>
+            <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+              This does not delete properties, jobs, or history. It only marks the company
+              inactive and removes it from active assignment lists.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsArchiveConfirmOpen(false)}
+                className="rounded-md border px-3 py-2 text-sm"
+                disabled={isArchivingCompany}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleArchiveCompany()}
+                disabled={isArchivingCompany}
+                className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-500/20 disabled:opacity-60"
+              >
+                {isArchivingCompany ? "Archiving..." : "Confirm Archive"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <section className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="space-y-3 rounded-2xl border bg-[var(--card)] p-4">
