@@ -46,8 +46,16 @@ export function CompaniesHub() {
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [isCreatingCompany, setIsCreatingCompany] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editContactEmail, setEditContactEmail] = useState("");
+  const [editContactPhone, setEditContactPhone] = useState("");
+  const [isUpdatingCompany, setIsUpdatingCompany] = useState(false);
+  const [isArchivingCompany, setIsArchivingCompany] = useState(false);
 
   const createCleaningCompany = useMutation(api.admin.mutations.createCleaningCompany);
+  const updateCleaningCompany = useMutation(api.admin.mutations.updateCleaningCompany);
+  const archiveCleaningCompany = useMutation(api.admin.mutations.archiveCleaningCompany);
   const assignPropertyToCompany = useMutation(api.admin.mutations.assignPropertyToCompany);
   const removePropertyCompanyAssignment = useMutation(
     api.admin.mutations.removePropertyCompanyAssignment,
@@ -172,6 +180,66 @@ export function CompaniesHub() {
     }
   }
 
+  function openEditCompany() {
+    if (!selectedCompany) {
+      return;
+    }
+    setEditName(selectedCompany.name);
+    setEditContactEmail(selectedCompany.contactEmail ?? "");
+    setEditContactPhone(selectedCompany.contactPhone ?? "");
+    setIsEditOpen(true);
+  }
+
+  async function handleEditCompany(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedCompany) {
+      return;
+    }
+
+    setIsUpdatingCompany(true);
+    try {
+      await updateCleaningCompany({
+        companyId: selectedCompany._id,
+        name: editName,
+        contactEmail: editContactEmail.trim() || undefined,
+        contactPhone: editContactPhone.trim() || undefined,
+      });
+      setIsEditOpen(false);
+      showToast("Company updated.");
+    } catch (error) {
+      showToast(getErrorMessage(error, "Unable to update company."), "error");
+    } finally {
+      setIsUpdatingCompany(false);
+    }
+  }
+
+  async function handleArchiveCompany() {
+    if (!selectedCompany) {
+      return;
+    }
+    if (
+      !window.confirm(
+        `Archive "${selectedCompany.name}"? This will hide it from active company lists.`,
+      )
+    ) {
+      return;
+    }
+
+    setIsArchivingCompany(true);
+    try {
+      await archiveCleaningCompany({
+        companyId: selectedCompany._id,
+      });
+      showToast("Company archived.");
+      setSelectedCompanyId(null);
+      setIsEditOpen(false);
+    } catch (error) {
+      showToast(getErrorMessage(error, "Unable to archive company."), "error");
+    } finally {
+      setIsArchivingCompany(false);
+    }
+  }
+
   async function handleAssign(row: (typeof assignmentRows)[number]) {
     const nextCompanyId = getDraftCompanyValue(row);
     if (!nextCompanyId) {
@@ -237,6 +305,25 @@ export function CompaniesHub() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {selectedCompany ? (
+              <>
+                <button
+                  type="button"
+                  onClick={openEditCompany}
+                  className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium hover:bg-[var(--accent)]"
+                >
+                  Edit Company
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleArchiveCompany()}
+                  disabled={isArchivingCompany}
+                  className="inline-flex items-center gap-2 rounded-md border border-red-500/40 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-500/10 disabled:opacity-60"
+                >
+                  {isArchivingCompany ? "Archiving..." : "Archive Company"}
+                </button>
+              </>
+            ) : null}
             <button
               type="button"
               onClick={() => setIsCreateOpen((previous) => !previous)}
@@ -292,6 +379,56 @@ export function CompaniesHub() {
                 className="rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] disabled:opacity-60"
               >
                 {isCreatingCompany ? "Creating..." : "Create Company"}
+              </button>
+            </div>
+          </form>
+        ) : null}
+
+        {isEditOpen ? (
+          <form onSubmit={handleEditCompany} className="mt-4 grid gap-3 rounded-xl border p-4 md:grid-cols-4">
+            <label className="space-y-1 text-sm md:col-span-2">
+              <span className="text-[var(--muted-foreground)]">Company Name</span>
+              <input
+                value={editName}
+                onChange={(event) => setEditName(event.target.value)}
+                className="w-full rounded-md border bg-[var(--background)] px-3 py-2"
+                placeholder="Company name"
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-[var(--muted-foreground)]">Contact Email</span>
+              <input
+                type="email"
+                value={editContactEmail}
+                onChange={(event) => setEditContactEmail(event.target.value)}
+                className="w-full rounded-md border bg-[var(--background)] px-3 py-2"
+                placeholder="dispatch@company.com"
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-[var(--muted-foreground)]">Contact Phone</span>
+              <input
+                value={editContactPhone}
+                onChange={(event) => setEditContactPhone(event.target.value)}
+                className="w-full rounded-md border bg-[var(--background)] px-3 py-2"
+                placeholder="+1 ..."
+              />
+            </label>
+            <div className="md:col-span-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsEditOpen(false)}
+                className="rounded-md border px-3 py-2 text-sm"
+                disabled={isUpdatingCompany}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isUpdatingCompany}
+                className="rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] disabled:opacity-60"
+              >
+                {isUpdatingCompany ? "Saving..." : "Save Changes"}
               </button>
             </div>
           </form>

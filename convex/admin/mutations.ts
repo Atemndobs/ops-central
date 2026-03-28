@@ -343,6 +343,115 @@ export const createCleaningCompany = mutation({
   },
 });
 
+export const updateCleaningCompany = mutation({
+  args: {
+    companyId: v.id("cleaningCompanies"),
+    name: v.string(),
+    contactEmail: v.optional(v.string()),
+    contactPhone: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireRole(ctx, ["admin"]);
+    const now = Date.now();
+
+    const company = await ctx.db.get(args.companyId);
+    if (!company) {
+      throw new ConvexError("Company not found.");
+    }
+    if (!company.isActive) {
+      throw new ConvexError("Cannot edit an archived company.");
+    }
+
+    const name = args.name.trim();
+    if (!name) {
+      throw new ConvexError("Company name is required.");
+    }
+
+    const normalizedName = normalizeCompanyName(name);
+    const existingCompanies = await ctx.db.query("cleaningCompanies").collect();
+    const duplicate = existingCompanies.find(
+      (candidate) =>
+        candidate._id !== args.companyId &&
+        candidate.isActive &&
+        normalizeCompanyName(candidate.name) === normalizedName,
+    );
+    if (duplicate) {
+      throw new ConvexError(`A company named "${duplicate.name}" already exists.`);
+    }
+
+    await ctx.db.patch(args.companyId, {
+      name,
+      contactEmail: hasValue(args.contactEmail) ? args.contactEmail.trim() : undefined,
+      contactPhone: hasValue(args.contactPhone) ? args.contactPhone.trim() : undefined,
+      updatedAt: now,
+    });
+
+    return {
+      success: true,
+      companyId: args.companyId,
+    };
+  },
+});
+
+export const archiveCleaningCompany = mutation({
+  args: {
+    companyId: v.id("cleaningCompanies"),
+  },
+  handler: async (ctx, args) => {
+    await requireRole(ctx, ["admin"]);
+    const now = Date.now();
+
+    const company = await ctx.db.get(args.companyId);
+    if (!company) {
+      throw new ConvexError("Company not found.");
+    }
+    if (!company.isActive) {
+      return {
+        success: true,
+        companyId: args.companyId,
+        archived: false,
+        alreadyArchived: true,
+      };
+    }
+
+    const propertyAssignments = await ctx.db
+      .query("companyProperties")
+      .withIndex("by_company", (q) => q.eq("companyId", args.companyId))
+      .collect();
+    const activeAssignments = propertyAssignments.filter(isActiveCompanyPropertyAssignment);
+    if (activeAssignments.length > 0) {
+      throw new ConvexError(
+        "Unassign all active properties from this company before archiving it.",
+      );
+    }
+
+    const memberships = await ctx.db
+      .query("companyMembers")
+      .withIndex("by_company", (q) => q.eq("companyId", args.companyId))
+      .collect();
+    for (const membership of memberships) {
+      if (membership.isActive) {
+        await ctx.db.patch(membership._id, {
+          isActive: false,
+          leftAt: now,
+        });
+      }
+    }
+
+    await ctx.db.patch(args.companyId, {
+      isActive: false,
+      updatedAt: now,
+    });
+
+    return {
+      success: true,
+      companyId: args.companyId,
+      archived: true,
+      deactivatedMemberships: memberships.filter((membership) => membership.isActive).length,
+    };
+  },
+});
+
 export const assignPropertyToCompany = mutation({
   args: {
     propertyId: v.id("properties"),
