@@ -76,6 +76,9 @@ export function JobDetailClient({ id }: { id: string }) {
 
   const startJob = useMutation(api.cleaningJobs.mutations.start);
   const submitForApproval = useMutation(api.cleaningJobs.mutations.submitForApproval);
+  const excuseCleanerSession = useMutation(
+    api.cleaningJobs.mutations.excuseCleanerSession,
+  );
   const approveCompletion = useMutation(api.cleaningJobs.approve.approveCompletion);
   const rejectCompletion = useMutation(api.cleaningJobs.approve.rejectCompletion);
   const reopenCompleted = useMutation(api.cleaningJobs.approve.reopenCompleted);
@@ -235,9 +238,58 @@ export function JobDetailClient({ id }: { id: string }) {
     }
   }
 
+  async function onForceStopAsAdmin() {
+    if (!canonicalJob || canonicalJob.status !== "in_progress") {
+      return;
+    }
+
+    setError(null);
+    setPending(true);
+    try {
+      const pendingSessions = (livePresence?.sessions ?? []).filter(
+        (session) => session.status === "started",
+      );
+
+      for (const session of pendingSessions) {
+        await excuseCleanerSession({
+          jobId,
+          cleanerId: session.cleanerId,
+          reason: "Force-stopped by admin after cleaner session was left running.",
+        });
+      }
+
+      const result = await submitForApproval({
+        jobId,
+        force: true,
+        notes: "Force-submitted by admin after stopping pending cleaner session(s).",
+      });
+
+      if (!result.ok) {
+        const message = "Unable to force-submit this job for approval.";
+        setError(message);
+        showToast(message, "error");
+        return;
+      }
+
+      showToast("Pending cleaner session(s) stopped. Job moved to Awaiting Approval.");
+    } catch (mutationError) {
+      const message = getErrorMessage(
+        mutationError,
+        "Unable to force-stop and submit this job.",
+      );
+      setError(message);
+      showToast(message, "error");
+    } finally {
+      setPending(false);
+    }
+  }
+
   const currentStepIndex = getWorkflowStepIndex(canonicalJob.status);
   const canRejectOrReopen =
     canonicalJob.status === "awaiting_approval" || canonicalJob.status === "completed";
+  const canForceStopAsAdmin =
+    canonicalJob.status === "in_progress" &&
+    (livePresence?.summary.pendingCount ?? 0) > 0;
   const liveElapsedMs = computeElapsedMs({
     startedAt: detail.timing.startedAtServer,
     endedAt: detail.timing.endedAtServer,
@@ -329,6 +381,16 @@ export function JobDetailClient({ id }: { id: string }) {
               >
                 {nextStatus ? `Move to ${STATUS_LABELS[nextStatus]}` : "No further transition"}
               </button>
+
+              {canForceStopAsAdmin ? (
+                <button
+                  onClick={onForceStopAsAdmin}
+                  disabled={pending}
+                  className="rounded-md border border-amber-500 px-3 py-1.5 text-sm text-amber-600 hover:bg-amber-50 disabled:opacity-50"
+                >
+                  Force Stop (Admin)
+                </button>
+              ) : null}
 
               {canRejectOrReopen ? (
                 <button
