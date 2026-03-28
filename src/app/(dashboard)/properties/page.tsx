@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { Building2, Edit3, Loader2, Plus, Search, Trash2 } from "lucide-react";
@@ -56,7 +56,7 @@ function parseStatusParam(value: string | null): PropertyStatus | "all" {
   return value in statusLabels ? (value as PropertyStatus) : "all";
 }
 
-export default function PropertiesPage() {
+function PropertiesPageContent() {
   const searchParams = useSearchParams();
   const [search, setSearch] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<PropertyStatus | "all">("all");
@@ -375,5 +375,19 @@ export default function PropertiesPage() {
         onSubmit={handleUpdate}
       />
     </div>
+  );
+}
+
+export default function PropertiesPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-40 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--card)]">
+          <Loader2 className="h-5 w-5 animate-spin text-[var(--muted-foreground)]" />
+        </div>
+      }
+    >
+      <PropertiesPageContent />
+    </Suspense>
   );
 }
