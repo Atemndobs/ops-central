@@ -290,6 +290,26 @@ export function CompaniesHub() {
     }
   }
 
+  async function handleRemoveFromArchive(assignment: (typeof activePropertyAssignments)[number]) {
+    const propertyId = assignment.propertyId as Id<"properties">;
+    setBusyPropertyId(propertyId);
+    try {
+      await removePropertyCompanyAssignment({
+        propertyId,
+        reason: "Removed during archive workflow in Companies Hub",
+      });
+      setDraftAssignments((current) => ({
+        ...current,
+        [propertyId]: "",
+      }));
+      showToast("Property unassigned.");
+    } catch (error) {
+      showToast(getErrorMessage(error, "Unable to unassign property."), "error");
+    } finally {
+      setBusyPropertyId(null);
+    }
+  }
+
   if (!companies || !properties || !assignmentsPayload) {
     return (
       <div className="flex min-h-40 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--card)]">
@@ -468,6 +488,43 @@ export function CompaniesHub() {
               This does not delete properties, jobs, or history. It only marks the company
               inactive and removes it from active assignment lists.
             </p>
+
+            {selectedCompanyActivePropertyCount > 0 ? (
+              <div className="mt-4 rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+                <p className="text-sm font-medium text-amber-700">
+                  Unassign active properties first ({selectedCompanyActivePropertyCount})
+                </p>
+                <div className="mt-2 max-h-40 space-y-2 overflow-y-auto pr-1">
+                  {activePropertyAssignments.map((assignment) => {
+                    const propertyId = assignment.propertyId;
+                    const isBusy = busyPropertyId === propertyId;
+                    return (
+                      <div
+                        key={assignment._id}
+                        className="flex items-center justify-between gap-2 rounded-md border bg-[var(--card)] px-2 py-1.5"
+                      >
+                        <p className="truncate text-xs font-medium">
+                          {assignment.property?.name ?? "Unknown property"}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => void handleRemoveFromArchive(assignment)}
+                          disabled={isBusy}
+                          className="rounded-md border border-red-500/40 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-500/10 disabled:opacity-60"
+                        >
+                          {isBusy ? "..." : "Unassign"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <p className="mt-3 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">
+                No active property assignments. You can archive this company now.
+              </p>
+            )}
+
             <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"
@@ -480,7 +537,7 @@ export function CompaniesHub() {
               <button
                 type="button"
                 onClick={() => void handleArchiveCompany()}
-                disabled={isArchivingCompany}
+                disabled={isArchivingCompany || selectedCompanyActivePropertyCount > 0}
                 className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-500/20 disabled:opacity-60"
               >
                 {isArchivingCompany ? "Archiving..." : "Confirm Archive"}
