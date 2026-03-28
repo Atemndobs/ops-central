@@ -1,11 +1,23 @@
 import { v } from "convex/values";
-import { internalAction } from "../_generated/server";
-import { internal } from "../_generated/api";
+import { action, internalAction } from "../_generated/server";
+import { api, internal } from "../_generated/api";
+import type { Doc } from "../_generated/dataModel";
 
 const DEFAULT_HOSPITABLE_BASE_URL = "https://public.api.hospitable.com/v2";
 const DEFAULT_SYNC_WINDOW_DAYS = 30;
 
 type GenericRecord = Record<string, unknown>;
+type AppRole = "cleaner" | "manager" | "property_ops" | "admin";
+
+interface NormalizedTeammateForImport {
+  sourceId?: string;
+  fullName: string;
+  email: string;
+  phone?: string;
+  companyName?: string;
+  roles: string[];
+  appRole: AppRole;
+}
 
 interface NormalizedReservation {
   reservationId: string;
@@ -87,7 +99,163 @@ function getArrayFromApiPayload(payload: unknown): unknown[] {
     return results;
   }
 
+  const teammates = payload.teammates;
+  if (Array.isArray(teammates)) {
+    return teammates;
+  }
+
+  const users = payload.users;
+  if (Array.isArray(users)) {
+    return users;
+  }
+
   return [];
+}
+
+function mapToAppRole(roles: string[]): AppRole {
+  const normalized = roles.map((role) => role.toLowerCase());
+
+  if (
+    normalized.some(
+      (role) =>
+        role.includes("property_ops") ||
+        role.includes("property ops") ||
+        role.includes("operations") ||
+        role.includes("ops")
+    )
+  ) {
+    return "property_ops";
+  }
+
+  if (
+    normalized.some(
+      (role) =>
+        role.includes("manager") ||
+        role.includes("owner") ||
+        role.includes("admin")
+    )
+  ) {
+    return "manager";
+  }
+
+  return "cleaner";
+}
+
+function extractRoles(payload: GenericRecord): string[] {
+  const roles = new Set<string>();
+
+  const pushRole = (value: unknown) => {
+    const role = asString(value);
+    if (role) {
+      roles.add(role.toLowerCase());
+    }
+  };
+
+  pushRole(payload.role);
+
+  for (const roleEntry of Array.isArray(payload.roles) ? payload.roles : []) {
+    if (typeof roleEntry === "string") {
+      pushRole(roleEntry);
+      continue;
+    }
+    if (!isRecord(roleEntry)) {
+      continue;
+    }
+    pushRole(roleEntry.name);
+    pushRole(roleEntry.slug);
+    pushRole(roleEntry.key);
+    pushRole(roleEntry.type);
+    pushRole(roleEntry.title);
+  }
+
+  return Array.from(roles);
+}
+
+function resolveFullName(payload: GenericRecord, fallbackEmail: string): string {
+  const explicitName =
+    asString(payload.full_name) ??
+    asString(payload.name) ??
+    asString(payload.display_name);
+  if (explicitName) {
+    return explicitName;
+  }
+
+  const firstName = asString(payload.first_name) ?? asString(payload.firstName);
+  const lastName = asString(payload.last_name) ?? asString(payload.lastName);
+  const combined = [firstName, lastName].filter(Boolean).join(" ").trim();
+  if (combined.length > 0) {
+    return combined;
+  }
+
+  return fallbackEmail.split("@")[0] || "Team Member";
+}
+
+function normalizeTeammateForImport(
+  rawValue: unknown
+): NormalizedTeammateForImport | null {
+  if (!isRecord(rawValue)) {
+    return null;
+  }
+
+  const contact = isRecord(rawValue.contact) ? rawValue.contact : undefined;
+  const user = isRecord(rawValue.user) ? rawValue.user : undefined;
+  const company = isRecord(rawValue.company) ? rawValue.company : undefined;
+
+  const email =
+    asString(rawValue.email) ?? asString(contact?.email) ?? asString(user?.email);
+  if (!email) {
+    return null;
+  }
+
+  const normalizedEmail = email.toLowerCase();
+  const roles = extractRoles(rawValue);
+
+  return {
+    sourceId: asString(rawValue.id),
+    fullName: resolveFullName(rawValue, normalizedEmail),
+    email: normalizedEmail,
+    phone:
+      asString(rawValue.phone) ??
+      asString(contact?.phone) ??
+      asString(user?.phone),
+    companyName:
+      asString(rawValue.company_name) ??
+      asString(company?.name) ??
+      (typeof rawValue.company === "string" ? asString(rawValue.company) : undefined),
+    roles,
+    appRole: mapToAppRole(roles),
+  };
+}
+
+function mergeTeammatesByEmail(
+  teammates: NormalizedTeammateForImport[]
+): NormalizedTeammateForImport[] {
+  const merged = new Map<string, NormalizedTeammateForImport>();
+
+  for (const teammate of teammates) {
+    const existing = merged.get(teammate.email);
+    if (!existing) {
+      merged.set(teammate.email, teammate);
+      continue;
+    }
+
+    const roleSet = new Set([...existing.roles, ...teammate.roles]);
+    const roles = Array.from(roleSet);
+    merged.set(teammate.email, {
+      ...existing,
+      sourceId: existing.sourceId ?? teammate.sourceId,
+      fullName:
+        existing.fullName.length >= teammate.fullName.length
+          ? existing.fullName
+          : teammate.fullName,
+      phone: existing.phone ?? teammate.phone,
+      companyName: existing.companyName ?? teammate.companyName,
+      roles,
+      appRole: mapToAppRole(roles),
+    });
+  }
+
+  return Array.from(merged.values());
 }
 
 function buildGuestName(reservation: GenericRecord): string {
@@ -282,5 +450,77 @@ export const syncReservations = internalAction({
 
       throw error;
     }
+  },
+});
+
+export const listTeammatesForImport = action({
+  args: {},
+  handler: async (ctx): Promise<{
+    endpointUsed: string;
+    sourceCount: number;
+    skippedMissingEmail: number;
+    teammates: NormalizedTeammateForImport[];
+  }> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated.");
+    }
+
+    const currentUser: Doc<"users"> | null = await ctx.runQuery(
+      api.users.queries.getByClerkId,
+      { clerkId: identity.subject }
+    );
+    if (!currentUser || currentUser.role !== "admin") {
+      throw new Error("Only admins can import teammates from Hospitable.");
+    }
+
+    const apiKey = process.env.HOSPITABLE_API_KEY ?? process.env.HOSPITABLE_API_TOKEN;
+    if (!apiKey) {
+      throw new Error(
+        "Missing HOSPITABLE_API_KEY/HOSPITABLE_API_TOKEN environment variable."
+      );
+    }
+
+    const baseUrl = (process.env.HOSPITABLE_API_URL ?? DEFAULT_HOSPITABLE_BASE_URL).replace(
+      /\/$/,
+      ""
+    );
+    const configuredCandidates = process.env.HOSPITABLE_TEAMMATES_ENDPOINTS
+      ?.split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    const candidates =
+      configuredCandidates && configuredCandidates.length > 0
+        ? configuredCandidates
+        : ["/teammates", "/users?include=roles", "/users"];
+
+    const errors: string[] = [];
+    for (const candidate of candidates) {
+      const endpoint = candidate.startsWith("http")
+        ? candidate
+        : `${baseUrl}${candidate.startsWith("/") ? candidate : `/${candidate}`}`;
+      try {
+        const payload = await fetchHospitableJson(apiKey, endpoint);
+        const rawRows = getArrayFromApiPayload(payload);
+        const normalizedRows = rawRows
+          .map(normalizeTeammateForImport)
+          .filter((row): row is NormalizedTeammateForImport => row !== null);
+        const skippedMissingEmail = Math.max(0, rawRows.length - normalizedRows.length);
+
+        return {
+          endpointUsed: endpoint,
+          sourceCount: rawRows.length,
+          skippedMissingEmail,
+          teammates: mergeTeammatesByEmail(normalizedRows),
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        errors.push(`${endpoint} -> ${message}`);
+      }
+    }
+
+    throw new Error(
+      `Unable to fetch Hospitable teammates. Tried: ${errors.join(" | ") || "no endpoints"}`,
+    );
   },
 });

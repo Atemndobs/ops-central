@@ -329,15 +329,6 @@ export async function POST() {
     );
   }
 
-  const hospitableApiKey =
-    process.env.HOSPITABLE_API_KEY ?? process.env.HOSPITABLE_API_TOKEN;
-  if (!hospitableApiKey) {
-    return NextResponse.json(
-      { error: "Missing HOSPITABLE_API_KEY/HOSPITABLE_API_TOKEN." },
-      { status: 500 },
-    );
-  }
-
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
   if (!convexUrl) {
     return NextResponse.json(
@@ -347,8 +338,24 @@ export async function POST() {
   }
 
   try {
+    const convex = new ConvexHttpClient(convexUrl);
+    const convexToken =
+      (await getToken({ template: "convex" }).catch(() => null)) ??
+      (await getToken());
+    if (!convexToken) {
+      return NextResponse.json(
+        { error: "Unable to authenticate with Convex." },
+        { status: 401 },
+      );
+    }
+    convex.setAuth(convexToken);
+
+    const hospitableApiKey =
+      process.env.HOSPITABLE_API_KEY ?? process.env.HOSPITABLE_API_TOKEN;
     const { teammates, endpointUsed, sourceCount, skippedMissingEmail } =
-      await fetchTeammatesFromHospitable(hospitableApiKey);
+      hospitableApiKey
+        ? await fetchTeammatesFromHospitable(hospitableApiKey)
+        : await convex.action(api.hospitable.actions.listTeammatesForImport, {});
 
     if (teammates.length === 0) {
       return NextResponse.json({
@@ -368,18 +375,6 @@ export async function POST() {
         } satisfies ImportSummary,
       });
     }
-
-    const convex = new ConvexHttpClient(convexUrl);
-    const convexToken =
-      (await getToken({ template: "convex" }).catch(() => null)) ??
-      (await getToken());
-    if (!convexToken) {
-      return NextResponse.json(
-        { error: "Unable to authenticate with Convex." },
-        { status: 401 },
-      );
-    }
-    convex.setAuth(convexToken);
 
     const clerk = await clerkClient();
     const summary: ImportSummary = {
