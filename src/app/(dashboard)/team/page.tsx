@@ -19,6 +19,7 @@ import {
 
 type UserRole = "cleaner" | "manager" | "property_ops" | "admin";
 type CompanyMemberRole = "cleaner" | "manager" | "owner";
+type AvailabilityFilter = "all" | "active" | "working" | "available" | "off";
 
 type MemberActionTarget = {
   userId: Id<"users">;
@@ -33,6 +34,8 @@ export default function TeamPage() {
   const { showToast } = useToast();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | UserRole>("all");
+  const [availabilityFilter, setAvailabilityFilter] =
+    useState<AvailabilityFilter>("all");
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const [openMenuForUserId, setOpenMenuForUserId] = useState<Id<"users"> | null>(
     null,
@@ -103,15 +106,19 @@ export default function TeamPage() {
 
     const filtered = combined.filter((member) => {
       const roleMatches = roleFilter === "all" || member.role === roleFilter;
+      const availabilityMatches =
+        availabilityFilter === "all" ||
+        (availabilityFilter === "active" && member.availability !== "off") ||
+        member.availability === availabilityFilter;
       const textMatches =
         !q ||
         member.name?.toLowerCase().includes(q) ||
         member.email?.toLowerCase().includes(q);
-      return roleMatches && textMatches;
+      return roleMatches && availabilityMatches && textMatches;
     });
 
     return filtered;
-  }, [roleFilter, search, teamMetrics]);
+  }, [availabilityFilter, roleFilter, search, teamMetrics]);
 
   const summary = useMemo(() => {
     const totalCleaners = (teamMetrics?.members ?? []).filter(
@@ -288,6 +295,32 @@ export default function TeamPage() {
     }
   }
 
+  function scrollToSection(sectionId: string) {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      document.getElementById(sectionId)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }
+
+  function drillToMembers(next: {
+    role?: "all" | UserRole;
+    availability?: AvailabilityFilter;
+  }) {
+    if (next.role) {
+      setRoleFilter(next.role);
+    }
+    if (next.availability) {
+      setAvailabilityFilter(next.availability);
+    }
+    setViewMode("list");
+    scrollToSection("team-members-section");
+  }
+
   return (
     <div className="space-y-8">
       <div className="flex items-end justify-between gap-4">
@@ -338,6 +371,19 @@ export default function TeamPage() {
                 <option value="manager">Manager</option>
                 <option value="property_ops">Property Ops</option>
               </select>
+              <select
+                value={availabilityFilter}
+                onChange={(event) =>
+                  setAvailabilityFilter(event.target.value as AvailabilityFilter)
+                }
+                className="rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm outline-none"
+              >
+                <option value="all">All Statuses</option>
+                <option value="active">Active Now</option>
+                <option value="working">Working</option>
+                <option value="available">Available</option>
+                <option value="off">Off</option>
+              </select>
             </div>
             <div className="inline-flex overflow-hidden rounded-none border bg-[var(--card)]">
               <button
@@ -368,21 +414,40 @@ export default function TeamPage() {
           </div>
 
           <div className="grid gap-4 md:grid-cols-4">
-            <StatBox label="Total Cleaners" value={summary.totalCleaners} tone="text-orange-600" />
-            <StatBox label="Active Now" value={summary.activeNow} tone="text-emerald-600" />
+            <StatBox
+              label="Total Cleaners"
+              value={summary.totalCleaners}
+              tone="text-orange-600"
+              onClick={() =>
+                drillToMembers({ role: "cleaner", availability: "all" })
+              }
+            />
+            <StatBox
+              label="Active Now"
+              value={summary.activeNow}
+              tone="text-emerald-600"
+              onClick={() =>
+                drillToMembers({ role: "all", availability: "active" })
+              }
+            />
             <StatBox
               label="On-Time Avg"
               value={
                 summary.avgOnTime === null ? "—" : `${summary.avgOnTime}%`
               }
+              onClick={() =>
+                drillToMembers({ role: "cleaner", availability: "all" })
+              }
             />
             <StatBox
               label="Avg Quality"
               value={summary.avgQuality === null ? "—" : `${summary.avgQuality}/5`}
+              onClick={() => scrollToSection("team-leaderboard-section")}
             />
           </div>
 
-          {loading ? (
+          <div id="team-members-section">
+            {loading ? (
             <div className="flex min-h-48 items-center justify-center rounded-none border bg-[var(--card)] text-sm text-[var(--muted-foreground)]">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Loading team...
@@ -602,10 +667,11 @@ export default function TeamPage() {
               </table>
             </div>
           )}
+          </div>
         </div>
 
         <aside className="xl:col-span-4 space-y-6">
-          <section className="rounded-none border bg-[var(--card)]">
+          <section id="team-leaderboard-section" className="rounded-none border bg-[var(--card)]">
             <div className="border-b border-[var(--border)] p-6">
               <div className="flex items-center gap-3">
                 <Award className="h-6 w-6 text-orange-500" />
@@ -909,15 +975,40 @@ function StatBox({
   label,
   value,
   tone,
+  onClick,
 }: {
   label: string;
   value: string | number;
   tone?: string;
+  onClick?: () => void;
 }) {
-  return (
-    <div className="rounded-none border bg-[var(--card)] p-4">
+  const content = (
+    <>
       <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">{label}</p>
       <p className={`mt-2 text-3xl font-semibold ${tone ?? "text-[var(--foreground)]"}`}>{value}</p>
+      {onClick ? (
+        <p className="mt-3 text-xs font-semibold text-[var(--primary)] opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
+          View details
+        </p>
+      ) : null}
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="group rounded-none border bg-[var(--card)] p-4 text-left transition hover:border-[var(--primary)]/40 hover:bg-[var(--accent)]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-none border bg-[var(--card)] p-4">
+      {content}
     </div>
   );
 }
