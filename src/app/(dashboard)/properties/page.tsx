@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { Building2, Edit3, Loader2, Plus, Search, Trash2 } from "lucide-react";
@@ -48,7 +49,15 @@ function toMutationInput(values: PropertyFormValues) {
   };
 }
 
+function parseStatusParam(value: string | null): PropertyStatus | "all" {
+  if (!value) {
+    return "all";
+  }
+  return value in statusLabels ? (value as PropertyStatus) : "all";
+}
+
 export default function PropertiesPage() {
+  const searchParams = useSearchParams();
   const [search, setSearch] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<PropertyStatus | "all">("all");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -78,6 +87,11 @@ export default function PropertiesPage() {
   const softDeleteProperty = useMutation(
     api.properties.mutations.softDelete,
   );
+
+  const statusFromQuery = parseStatusParam(searchParams.get("status"));
+  useEffect(() => {
+    setSelectedStatus(statusFromQuery);
+  }, [statusFromQuery]);
 
   const cards = useMemo(() => {
     const all = properties ?? [];

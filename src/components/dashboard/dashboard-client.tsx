@@ -223,7 +223,11 @@ export function DashboardClient() {
           ) : (
             <div className="space-y-3">
               {alerts.map((alert) => (
-                <div key={alert.id} className="rounded-xl border border-rose-100 bg-rose-50/40 p-3">
+                <Link
+                  key={alert.id}
+                  href={`/jobs/${alert.id}`}
+                  className="group block rounded-xl border border-rose-100 bg-rose-50/40 p-3 transition hover:border-rose-300 hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
+                >
                   <div className="flex items-start gap-2">
                     <AlertTriangle className="mt-0.5 h-4 w-4 text-rose-600" />
                     <div className="min-w-0">
@@ -236,9 +240,12 @@ export function DashboardClient() {
                         {" · "}
                         {STATUS_LABELS[alert.status]}
                       </p>
+                      <p className="mt-1 text-[11px] font-semibold text-rose-700 opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
+                        View job details
+                      </p>
                     </div>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           )}
@@ -254,7 +261,11 @@ export function DashboardClient() {
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {(Object.keys(readiness) as PropertyStatus[]).map((status) => (
-              <div key={status} className="rounded-xl border p-4">
+              <Link
+                key={status}
+                href={`/properties?status=${status}`}
+                className="group rounded-xl border p-4 transition hover:border-[var(--primary)]/40 hover:bg-[var(--accent)]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
+              >
                 <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
                   {readinessLabel[status]}
                 </p>
@@ -262,7 +273,10 @@ export function DashboardClient() {
                 <span className={`mt-3 inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${readinessColor[status]}`}>
                   {readinessLabel[status]}
                 </span>
-              </div>
+                <p className="mt-3 text-xs font-semibold text-[var(--primary)] opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
+                  View properties
+                </p>
+              </Link>
             ))}
           </div>
         </section>
