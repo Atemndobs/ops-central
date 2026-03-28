@@ -426,7 +426,7 @@ export function JobDetailClient({ id }: { id: string }) {
               </button>
               <Link
                 href={`/jobs/${canonicalJob._id}/photos-review`}
-                className="rounded-md border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--accent)]"
+                className="rounded-md border border-blue-700 bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
               >
                 Review Photos
               </Link>

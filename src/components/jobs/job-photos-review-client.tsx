@@ -2,7 +2,15 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+} from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -17,6 +25,52 @@ type RoomReviewState = {
   note: string;
 };
 type SortMode = "checklist" | "az";
+
+type EvidencePhoto = {
+  photoId: Id<"photos">;
+  roomName: string;
+  type: "before" | "after" | "incident";
+  url: string | null;
+};
+
+type RoomRow = {
+  key: string;
+  roomName: string;
+  before: EvidencePhoto[];
+  after: EvidencePhoto[];
+  incidents: EvidencePhoto[];
+  hasMissingBefore: boolean;
+  hasMissingAfter: boolean;
+  hasCountMismatch: boolean;
+  firstSeenOrder: number;
+};
+
+type ViewerSlide = {
+  key: string;
+  photoId: Id<"photos">;
+  photoKey: string;
+  roomName: string;
+  type: "before" | "after" | "incident";
+  url: string;
+};
+
+type ViewerState = {
+  slides: ViewerSlide[];
+  index: number;
+};
+
+type CircleAnnotation = {
+  x: number;
+  y: number;
+  r: number;
+  color: string;
+};
+
+type DraftCircle = {
+  x: number;
+  y: number;
+  r: number;
+};
 
 function formatDateTime(value?: number | null) {
   if (!value) {
@@ -73,24 +127,23 @@ function buildRejectionReason({
   return reasonParts.join(". ");
 }
 
-type EvidencePhoto = {
-  photoId: Id<"photos">;
-  roomName: string;
-  type: "before" | "after" | "incident";
-  url: string | null;
-};
-
-type RoomRow = {
-  key: string;
-  roomName: string;
-  before: EvidencePhoto[];
-  after: EvidencePhoto[];
-  incidents: EvidencePhoto[];
-  hasMissingBefore: boolean;
-  hasMissingAfter: boolean;
-  hasCountMismatch: boolean;
-  firstSeenOrder: number;
-};
+function buildViewerSlides(photos: EvidencePhoto[]): ViewerSlide[] {
+  return photos.flatMap((photo, index) => {
+    if (!photo.url) {
+      return [];
+    }
+    return [
+      {
+        key: `${photo.photoId}-${index}`,
+        photoId: photo.photoId,
+        photoKey: String(photo.photoId),
+        roomName: cleanRoomName(photo.roomName),
+        type: photo.type,
+        url: photo.url,
+      },
+    ];
+  });
+}
 
 export function JobPhotosReviewClient({ id }: { id: string }) {
   const jobId = id as Id<"cleaningJobs">;
@@ -108,6 +161,15 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const [compareRoomKey, setCompareRoomKey] = useState<string | null>(null);
   const [pendingDecision, setPendingDecision] = useState<"approve" | "reject" | null>(null);
   const [activeRoomKey, setActiveRoomKey] = useState<string | null>(null);
+  const [viewer, setViewer] = useState<ViewerState | null>(null);
+  const [annotateEnabled, setAnnotateEnabled] = useState(false);
+  const [annotationColor, setAnnotationColor] = useState("#ef4444");
+  const [annotationsByPhoto, setAnnotationsByPhoto] = useState<Record<string, CircleAnnotation[]>>(
+    {},
+  );
+  const [isDrawingCircle, setIsDrawingCircle] = useState(false);
+  const [draftCircle, setDraftCircle] = useState<DraftCircle | null>(null);
+  const viewerCanvasRef = useRef<HTMLDivElement | null>(null);
 
   const currentPhotosAll = detail?.evidence.current.byType.all ?? [];
   const latestSubmissionPhotos = detail?.evidence.latestSubmission?.photos ?? [];
@@ -188,6 +250,11 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
     return next;
   }, [filter, reviewByRoom, roomRows, search, sortMode]);
 
+  const incidentPhotos = useMemo(
+    () => evidencePhotos.filter((photo) => photo.type === "incident"),
+    [evidencePhotos],
+  );
+
   const totalRooms = roomRows.length;
   const reviewedCount = roomRows.filter((row) => reviewByRoom[row.key]?.verdict !== null).length;
   const passCount = roomRows.filter((row) => reviewByRoom[row.key]?.verdict === "pass").length;
@@ -196,12 +263,221 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const allReviewed = totalRooms > 0 && reviewedCount === totalRooms;
   const canDecision = detail?.job.status === "awaiting_approval";
 
+  const currentSlide = viewer ? viewer.slides[viewer.index] : null;
+  const currentAnnotations = currentSlide
+    ? (annotationsByPhoto[currentSlide.photoKey] ?? [])
+    : [];
+
+  useEffect(() => {
+    if (!viewer) {
+      return;
+    }
+
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setViewer(null);
+        setDraftCircle(null);
+        setIsDrawingCircle(false);
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setViewer((previous) => {
+          if (!previous) {
+            return previous;
+          }
+          return {
+            ...previous,
+            index: previous.index === 0 ? previous.slides.length - 1 : previous.index - 1,
+          };
+        });
+        setDraftCircle(null);
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setViewer((previous) => {
+          if (!previous) {
+            return previous;
+          }
+          return {
+            ...previous,
+            index: previous.index === previous.slides.length - 1 ? 0 : previous.index + 1,
+          };
+        });
+        setDraftCircle(null);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [viewer]);
+
   if (detail === undefined) {
     return <div className="text-sm text-[var(--muted-foreground)]">Loading photo review...</div>;
   }
 
   if (!detail || !detail.job) {
     return <div className="text-sm text-[var(--muted-foreground)]">Job not found.</div>;
+  }
+
+  function openViewerForPhotos(photos: EvidencePhoto[], startPhotoId?: Id<"photos">) {
+    const slides = buildViewerSlides(photos);
+    if (!slides.length) {
+      showToast("No valid image URL found for this selection.", "error");
+      return;
+    }
+
+    const startKey = startPhotoId ? String(startPhotoId) : null;
+    const startIndex = startKey
+      ? Math.max(
+          0,
+          slides.findIndex((slide) => slide.photoKey === startKey),
+        )
+      : 0;
+
+    setViewer({
+      slides,
+      index: startIndex,
+    });
+    setAnnotateEnabled(false);
+    setDraftCircle(null);
+    setIsDrawingCircle(false);
+  }
+
+  function closeViewer() {
+    setViewer(null);
+    setDraftCircle(null);
+    setIsDrawingCircle(false);
+  }
+
+  function moveViewer(delta: number) {
+    setViewer((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      const nextIndex =
+        (previous.index + delta + previous.slides.length) % previous.slides.length;
+      return {
+        ...previous,
+        index: nextIndex,
+      };
+    });
+    setDraftCircle(null);
+    setIsDrawingCircle(false);
+  }
+
+  function onSelectViewerSlide(index: number) {
+    setViewer((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      if (index < 0 || index > previous.slides.length - 1) {
+        return previous;
+      }
+      return {
+        ...previous,
+        index,
+      };
+    });
+    setDraftCircle(null);
+    setIsDrawingCircle(false);
+  }
+
+  function getNormalizedPointer(event: PointerEvent<HTMLDivElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = rect.width === 0 ? 0 : (event.clientX - rect.left) / rect.width;
+    const y = rect.height === 0 ? 0 : (event.clientY - rect.top) / rect.height;
+    return {
+      x: Math.min(1, Math.max(0, x)),
+      y: Math.min(1, Math.max(0, y)),
+    };
+  }
+
+  function onViewerPointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (!annotateEnabled || !currentSlide) {
+      return;
+    }
+    const point = getNormalizedPointer(event);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDraftCircle({
+      x: point.x,
+      y: point.y,
+      r: 0,
+    });
+    setIsDrawingCircle(true);
+  }
+
+  function onViewerPointerMove(event: PointerEvent<HTMLDivElement>) {
+    if (!annotateEnabled || !isDrawingCircle || !draftCircle) {
+      return;
+    }
+
+    const point = getNormalizedPointer(event);
+    const dx = point.x - draftCircle.x;
+    const dy = point.y - draftCircle.y;
+    const nextRadius = Math.sqrt(dx * dx + dy * dy);
+
+    setDraftCircle((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return {
+        ...previous,
+        r: Math.min(0.6, nextRadius),
+      };
+    });
+  }
+
+  function onViewerPointerUp(event: PointerEvent<HTMLDivElement>) {
+    if (!annotateEnabled || !currentSlide || !draftCircle) {
+      return;
+    }
+
+    event.currentTarget.releasePointerCapture(event.pointerId);
+
+    if (draftCircle.r >= 0.01) {
+      const nextCircle: CircleAnnotation = {
+        x: draftCircle.x,
+        y: draftCircle.y,
+        r: draftCircle.r,
+        color: annotationColor,
+      };
+      setAnnotationsByPhoto((previous) => ({
+        ...previous,
+        [currentSlide.photoKey]: [...(previous[currentSlide.photoKey] ?? []), nextCircle],
+      }));
+    }
+
+    setDraftCircle(null);
+    setIsDrawingCircle(false);
+  }
+
+  function undoLastCircle() {
+    if (!currentSlide) {
+      return;
+    }
+    setAnnotationsByPhoto((previous) => {
+      const current = previous[currentSlide.photoKey] ?? [];
+      if (!current.length) {
+        return previous;
+      }
+      return {
+        ...previous,
+        [currentSlide.photoKey]: current.slice(0, -1),
+      };
+    });
+  }
+
+  function clearAllCirclesForPhoto() {
+    if (!currentSlide) {
+      return;
+    }
+    setAnnotationsByPhoto((previous) => ({
+      ...previous,
+      [currentSlide.photoKey]: [],
+    }));
+    setDraftCircle(null);
+    setIsDrawingCircle(false);
   }
 
   async function onApproveJob() {
@@ -264,10 +540,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
     }));
   }
 
-  function onRoomKeyDown(
-    event: KeyboardEvent<HTMLDivElement>,
-    row: RoomRow,
-  ) {
+  function onRoomKeyDown(event: KeyboardEvent<HTMLDivElement>, row: RoomRow) {
     if (event.key === "1") {
       event.preventDefault();
       setVerdict(row.key, "pass");
@@ -294,8 +567,8 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
             </p>
             <h1 className="mt-1 text-xl font-semibold">Room-by-Room QA</h1>
             <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-              Review each room row with keyboard shortcuts: <kbd>1</kbd> Pass, <kbd>2</kbd>{" "}
-              Needs Rework, <kbd>O</kbd> Open Compare.
+              Click a photo to open the review viewer. Inside viewer: <kbd>←</kbd>/<kbd>→</kbd>
+              to move slides, then enable annotate mode to circle correction areas.
             </p>
           </div>
           <Link
@@ -399,6 +672,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
             {visibleRows.map((row) => {
               const review = reviewByRoom[row.key] ?? { verdict: null, note: "" };
               const incidentsCount = row.incidents.length;
+              const roomSlides = [...row.before, ...row.after, ...row.incidents];
               return (
                 <div
                   key={row.key}
@@ -423,15 +697,9 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                     </div>
 
                     <div className="mt-2 flex flex-wrap gap-1.5">
-                      {row.hasMissingBefore ? (
-                        <Pill tone="warning">Missing Before</Pill>
-                      ) : null}
-                      {row.hasMissingAfter ? (
-                        <Pill tone="warning">Missing After</Pill>
-                      ) : null}
-                      {row.hasCountMismatch ? (
-                        <Pill tone="warning">Count mismatch</Pill>
-                      ) : null}
+                      {row.hasMissingBefore ? <Pill tone="warning">Missing Before</Pill> : null}
+                      {row.hasMissingAfter ? <Pill tone="warning">Missing After</Pill> : null}
+                      {row.hasCountMismatch ? <Pill tone="warning">Count mismatch</Pill> : null}
                       {review.verdict === "pass" ? <Pill tone="success">Pass</Pill> : null}
                       {review.verdict === "rework" ? <Pill tone="danger">Needs Rework</Pill> : null}
                     </div>
@@ -487,10 +755,18 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                   </div>
 
                   <div className="border-r border-[var(--border)] p-4">
-                    <PhotoColumn photos={row.before} label="Before" />
+                    <PhotoColumn
+                      photos={row.before}
+                      label="Before"
+                      onOpenPhoto={(photo) => openViewerForPhotos(roomSlides, photo.photoId)}
+                    />
                   </div>
                   <div className="p-4">
-                    <PhotoColumn photos={row.after} label="After" />
+                    <PhotoColumn
+                      photos={row.after}
+                      label="After"
+                      onOpenPhoto={(photo) => openViewerForPhotos(roomSlides, photo.photoId)}
+                    />
                   </div>
                 </div>
               );
@@ -508,6 +784,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
           <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2">
             {visibleRows.map((row) => {
               const review = reviewByRoom[row.key] ?? { verdict: null, note: "" };
+              const roomSlides = [...row.before, ...row.after, ...row.incidents];
               return (
                 <div
                   key={row.key}
@@ -535,13 +812,21 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                     <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
                       Before
                     </p>
-                    <PhotoColumn photos={row.before} label="Before" />
+                    <PhotoColumn
+                      photos={row.before}
+                      label="Before"
+                      onOpenPhoto={(photo) => openViewerForPhotos(roomSlides, photo.photoId)}
+                    />
                   </div>
                   <div className="mt-3">
                     <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
                       After
                     </p>
-                    <PhotoColumn photos={row.after} label="After" />
+                    <PhotoColumn
+                      photos={row.after}
+                      label="After"
+                      onOpenPhoto={(photo) => openViewerForPhotos(roomSlides, photo.photoId)}
+                    />
                   </div>
 
                   <div className="mt-3 flex gap-2">
@@ -577,21 +862,20 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
 
       <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
         <h3 className="text-sm font-semibold">Incident Evidence</h3>
-        {evidencePhotos.filter((photo) => photo.type === "incident").length === 0 ? (
+        {incidentPhotos.length === 0 ? (
           <p className="mt-2 text-sm text-[var(--muted-foreground)]">
             No incident photos in this submission.
           </p>
         ) : (
           <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
-            {evidencePhotos
-              .filter((photo) => photo.type === "incident")
-              .map((photo, index) => (
-                <ReviewPhotoTile
-                  key={`${photo.photoId}-${index}`}
-                  url={photo.url}
-                  label={photo.roomName}
-                />
-              ))}
+            {incidentPhotos.map((photo, index) => (
+              <ReviewPhotoTile
+                key={`${photo.photoId}-${index}`}
+                url={photo.url}
+                label={photo.roomName}
+                onOpen={() => openViewerForPhotos(incidentPhotos, photo.photoId)}
+              />
+            ))}
           </div>
         )}
       </div>
@@ -659,6 +943,12 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                       key={`${photo.photoId}-${index}`}
                       url={photo.url}
                       label={compareRow.roomName}
+                      onOpen={() =>
+                        openViewerForPhotos(
+                          [...compareRow.before, ...compareRow.after, ...compareRow.incidents],
+                          photo.photoId,
+                        )
+                      }
                     />
                   ))}
                 </div>
@@ -673,10 +963,183 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                       key={`${photo.photoId}-${index}`}
                       url={photo.url}
                       label={compareRow.roomName}
+                      onOpen={() =>
+                        openViewerForPhotos(
+                          [...compareRow.before, ...compareRow.after, ...compareRow.incidents],
+                          photo.photoId,
+                        )
+                      }
                     />
                   ))}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {viewer && currentSlide ? (
+        <div className="fixed inset-0 z-50 bg-black/80 p-3">
+          <div className="mx-auto flex h-full w-full max-w-7xl flex-col rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-base font-semibold">
+                  {currentSlide.roomName} · {currentSlide.type} · {viewer.index + 1}/{viewer.slides.length}
+                </h3>
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  Use the reviewer controls to circle correction areas directly on the photo.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAnnotateEnabled((previous) => !previous)}
+                  className={`rounded-md border px-2.5 py-1 text-xs ${
+                    annotateEnabled
+                      ? "border-blue-700 bg-blue-600 text-white"
+                      : "border-[var(--border)]"
+                  }`}
+                >
+                  {annotateEnabled ? "Annotate: ON" : "Annotate: OFF"}
+                </button>
+                <button
+                  type="button"
+                  onClick={undoLastCircle}
+                  className="rounded-md border border-[var(--border)] px-2.5 py-1 text-xs"
+                >
+                  Undo Circle
+                </button>
+                <button
+                  type="button"
+                  onClick={clearAllCirclesForPhoto}
+                  className="rounded-md border border-[var(--border)] px-2.5 py-1 text-xs"
+                >
+                  Clear Circles
+                </button>
+                <a
+                  href={currentSlide.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-md border border-[var(--border)] px-2.5 py-1 text-xs hover:bg-[var(--accent)]"
+                >
+                  Open Original
+                </a>
+                <button
+                  type="button"
+                  onClick={closeViewer}
+                  className="rounded-md border border-[var(--border)] px-2.5 py-1 text-xs"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <span className="text-xs text-[var(--muted-foreground)]">Circle color:</span>
+              {["#ef4444", "#f59e0b", "#22c55e", "#3b82f6"].map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => setAnnotationColor(color)}
+                  className={`h-5 w-5 rounded-full border ${
+                    annotationColor === color ? "border-2 border-white ring-2 ring-blue-500" : "border-white/50"
+                  }`}
+                  style={{ backgroundColor: color }}
+                  aria-label={`Select annotation color ${color}`}
+                />
+              ))}
+              <span className="ml-2 text-xs text-[var(--muted-foreground)]">
+                Circles on this photo: {currentAnnotations.length}
+              </span>
+            </div>
+
+            <div className="flex min-h-0 flex-1 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => moveViewer(-1)}
+                className="rounded-md border border-[var(--border)] px-3 py-2 text-sm"
+              >
+                Prev
+              </button>
+
+              <div className="relative min-h-0 flex-1">
+                <div
+                  ref={viewerCanvasRef}
+                  onPointerDown={onViewerPointerDown}
+                  onPointerMove={onViewerPointerMove}
+                  onPointerUp={onViewerPointerUp}
+                  className={`relative h-[64vh] rounded-md border border-[var(--border)] bg-black/40 ${
+                    annotateEnabled ? "cursor-crosshair" : "cursor-default"
+                  }`}
+                >
+                  <Image
+                    src={currentSlide.url}
+                    alt={`${currentSlide.roomName} ${currentSlide.type}`}
+                    fill
+                    sizes="100vw"
+                    className="pointer-events-none select-none object-contain"
+                  />
+
+                  <svg className="pointer-events-none absolute inset-0 h-full w-full">
+                    {currentAnnotations.map((circle, index) => (
+                      <circle
+                        key={`${currentSlide.photoKey}-${index}`}
+                        cx={`${circle.x * 100}%`}
+                        cy={`${circle.y * 100}%`}
+                        r={`${circle.r * 100}%`}
+                        fill="none"
+                        stroke={circle.color}
+                        strokeWidth="3"
+                      />
+                    ))}
+                    {draftCircle ? (
+                      <circle
+                        cx={`${draftCircle.x * 100}%`}
+                        cy={`${draftCircle.y * 100}%`}
+                        r={`${draftCircle.r * 100}%`}
+                        fill="none"
+                        stroke={annotationColor}
+                        strokeWidth="2"
+                        strokeDasharray="6 4"
+                      />
+                    ) : null}
+                  </svg>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => moveViewer(1)}
+                className="rounded-md border border-[var(--border)] px-3 py-2 text-sm"
+              >
+                Next
+              </button>
+            </div>
+
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+              {viewer.slides.map((slide, index) => (
+                <button
+                  key={slide.key}
+                  type="button"
+                  onClick={() => onSelectViewerSlide(index)}
+                  className={`overflow-hidden rounded-md border ${
+                    index === viewer.index
+                      ? "border-blue-500 ring-2 ring-blue-500"
+                      : "border-[var(--border)]"
+                  }`}
+                >
+                  <Image
+                    src={slide.url}
+                    alt={`${slide.roomName} ${slide.type}`}
+                    width={120}
+                    height={72}
+                    className="h-16 w-24 object-cover"
+                  />
+                  <p className="px-1 py-0.5 text-[10px] text-[var(--muted-foreground)]">
+                    {slide.type}
+                  </p>
+                </button>
+              ))}
             </div>
           </div>
         </div>
@@ -704,7 +1167,15 @@ function Pill({
   );
 }
 
-function PhotoColumn({ photos, label }: { photos: EvidencePhoto[]; label: string }) {
+function PhotoColumn({
+  photos,
+  label,
+  onOpenPhoto,
+}: {
+  photos: EvidencePhoto[];
+  label: string;
+  onOpenPhoto?: (photo: EvidencePhoto) => void;
+}) {
   if (!photos.length) {
     return (
       <div className="flex h-24 items-center justify-center rounded-md border border-dashed border-[var(--border)] text-xs text-[var(--muted-foreground)]">
@@ -716,13 +1187,26 @@ function PhotoColumn({ photos, label }: { photos: EvidencePhoto[]; label: string
   return (
     <div className="grid grid-cols-2 gap-2">
       {photos.map((photo, index) => (
-        <ReviewPhotoTile key={`${photo.photoId}-${index}`} url={photo.url} label={photo.roomName} />
+        <ReviewPhotoTile
+          key={`${photo.photoId}-${index}`}
+          url={photo.url}
+          label={photo.roomName}
+          onOpen={() => onOpenPhoto?.(photo)}
+        />
       ))}
     </div>
   );
 }
 
-function ReviewPhotoTile({ url, label }: { url: string | null; label: string }) {
+function ReviewPhotoTile({
+  url,
+  label,
+  onOpen,
+}: {
+  url: string | null;
+  label: string;
+  onOpen?: () => void;
+}) {
   if (!url) {
     return (
       <div className="flex h-24 items-center justify-center rounded-md border border-dashed border-[var(--border)] text-[10px] text-[var(--muted-foreground)]">
@@ -732,11 +1216,10 @@ function ReviewPhotoTile({ url, label }: { url: string | null; label: string }) 
   }
 
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noreferrer"
-      className="group overflow-hidden rounded-md border border-[var(--border)]"
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group overflow-hidden rounded-md border border-[var(--border)] text-left"
     >
       <Image
         src={url}
@@ -748,11 +1231,19 @@ function ReviewPhotoTile({ url, label }: { url: string | null; label: string }) 
       <p className="truncate border-t border-[var(--border)] px-2 py-1 text-[10px] text-[var(--muted-foreground)]">
         {cleanRoomName(label)}
       </p>
-    </a>
+    </button>
   );
 }
 
-function ComparePhotoTile({ url, label }: { url: string | null; label: string }) {
+function ComparePhotoTile({
+  url,
+  label,
+  onOpen,
+}: {
+  url: string | null;
+  label: string;
+  onOpen?: () => void;
+}) {
   if (!url) {
     return (
       <div className="flex h-36 items-center justify-center rounded-md border border-dashed border-[var(--border)] text-sm text-[var(--muted-foreground)]">
@@ -762,10 +1253,9 @@ function ComparePhotoTile({ url, label }: { url: string | null; label: string })
   }
 
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noreferrer"
+    <button
+      type="button"
+      onClick={onOpen}
       className="group overflow-hidden rounded-md border border-[var(--border)]"
     >
       <Image
@@ -775,6 +1265,6 @@ function ComparePhotoTile({ url, label }: { url: string | null; label: string })
         height={340}
         className="h-40 w-full object-cover transition-transform group-hover:scale-105"
       />
-    </a>
+    </button>
   );
 }
