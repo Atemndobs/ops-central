@@ -129,12 +129,7 @@ export function Header() {
     };
   }, [isNotificationsOpen]);
 
-  const title =
-    pageTitles[pathname] ||
-    Object.entries(pageTitles).find(([key]) =>
-      key !== "/" && pathname.startsWith(key),
-    )?.[1] ||
-    "ChezSoi";
+  const title = getPageTitle(pathname);
 
   return (
     <>
@@ -333,6 +328,20 @@ export function Header() {
         </div>
       ) : null}
     </>
+  );
+}
+
+function getPageTitle(pathname: string) {
+  if (/^\/jobs\/[^/]+\/photos-review$/.test(pathname)) {
+    return "Photo Review";
+  }
+
+  return (
+    pageTitles[pathname] ||
+    Object.entries(pageTitles).find(([key]) =>
+      key !== "/" && pathname.startsWith(key),
+    )?.[1] ||
+    "ChezSoi"
   );
 }
 

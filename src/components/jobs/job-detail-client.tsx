@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
@@ -423,6 +424,12 @@ export function JobDetailClient({ id }: { id: string }) {
               >
                 Assign Cleaner
               </button>
+              <Link
+                href={`/jobs/${canonicalJob._id}/photos-review`}
+                className="rounded-md border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--accent)]"
+              >
+                Review Photos
+              </Link>
             </div>
 
             {error ? <p className="mt-3 text-sm text-[var(--destructive)]">{error}</p> : null}
