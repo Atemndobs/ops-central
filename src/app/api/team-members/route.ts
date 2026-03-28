@@ -32,21 +32,9 @@ function generateTempPassword() {
 }
 
 export async function POST(request: Request) {
-  const { userId, sessionClaims, getToken } = await auth();
+  const { userId, getToken } = await auth();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const roleFromClaims =
-    (sessionClaims?.role as string | undefined) ??
-    (sessionClaims?.metadata as { role?: string } | undefined)?.role ??
-    (sessionClaims?.publicMetadata as { role?: string } | undefined)?.role;
-
-  if (process.env.NODE_ENV !== "development" && roleFromClaims !== "admin") {
-    return NextResponse.json(
-      { error: "Only admins can add team members." },
-      { status: 403 },
-    );
   }
 
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
@@ -57,21 +45,42 @@ export async function POST(request: Request) {
     );
   }
 
-  let payload: z.infer<typeof createPayloadSchema>;
-  try {
-    const json = await request.json();
-    payload = createPayloadSchema.parse(json);
-  } catch {
+  const convex = new ConvexHttpClient(convexUrl);
+  const convexToken =
+    (await getToken({ template: "convex" }).catch(() => null)) ??
+    (await getToken());
+
+  if (!convexToken) {
     return NextResponse.json(
-      { error: "Invalid request payload." },
-      { status: 400 },
+      { error: "Unable to authenticate with Convex." },
+      { status: 401 },
     );
   }
-
-  const { firstName, lastName } = splitFullName(payload.fullName);
-  const clerk = await clerkClient();
+  convex.setAuth(convexToken);
 
   try {
+    const requesterProfile = await convex.query(api.users.queries.getMyProfile, {});
+    if (process.env.NODE_ENV !== "development" && requesterProfile.role !== "admin") {
+      return NextResponse.json(
+        { error: "Only admins can manage team members." },
+        { status: 403 },
+      );
+    }
+
+    let payload: z.infer<typeof createPayloadSchema>;
+    try {
+      const json = await request.json();
+      payload = createPayloadSchema.parse(json);
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid request payload." },
+        { status: 400 },
+      );
+    }
+
+    const { firstName, lastName } = splitFullName(payload.fullName);
+    const clerk = await clerkClient();
+
     const existingUsers = await clerk.users.getUserList({
       emailAddress: [payload.email],
       limit: 1,
@@ -109,19 +118,6 @@ export async function POST(request: Request) {
         });
       }
     }
-
-    const convex = new ConvexHttpClient(convexUrl);
-    const convexToken =
-      (await getToken({ template: "convex" }).catch(() => null)) ??
-      (await getToken());
-
-    if (!convexToken) {
-      return NextResponse.json(
-        { error: "Unable to authenticate with Convex." },
-        { status: 401 },
-      );
-    }
-    convex.setAuth(convexToken);
 
     const existingConvexUser = await convex.query(
       api.users.queries.getByClerkId,
@@ -164,4 +160,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-
