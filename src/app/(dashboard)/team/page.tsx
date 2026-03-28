@@ -56,6 +56,15 @@ export default function TeamPage() {
     "cleaner",
   );
   const [isUpdatingCompany, setIsUpdatingCompany] = useState(false);
+  const [memberActionSheet, setMemberActionSheet] = useState<MemberActionTarget | null>(
+    null,
+  );
+  const [jobEditor, setJobEditor] = useState<MemberActionTarget | null>(null);
+  const [jobDraft, setJobDraft] = useState<Id<"cleaningJobs"> | "">("");
+  const [isAssigningJob, setIsAssigningJob] = useState(false);
+  const [propertyEditor, setPropertyEditor] = useState<MemberActionTarget | null>(null);
+  const [propertyDraft, setPropertyDraft] = useState<Id<"properties"> | "">("");
+  const [isAssigningProperty, setIsAssigningProperty] = useState(false);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -83,9 +92,19 @@ export default function TeamPage() {
     api.admin.queries.getCompanies,
     isAuthenticated ? {} : "skip",
   );
+  const allProperties = useQuery(
+    api.properties.queries.getAll,
+    isAuthenticated ? { limit: 500 } : "skip",
+  );
+  const allJobs = useQuery(
+    api.cleaningJobs.queries.getAll,
+    isAuthenticated ? { limit: 1000 } : "skip",
+  );
   const assignUserCompanyMembership = useMutation(
     api.admin.mutations.assignUserCompanyMembership,
   );
+  const assignCleanerToJob = useMutation(api.cleaningJobs.mutations.assign);
+  const assignPropertyToCompany = useMutation(api.admin.mutations.assignPropertyToCompany);
 
   useEffect(() => {
     if (!openMenuForUserId) {
@@ -121,6 +140,28 @@ export default function TeamPage() {
 
     return filtered;
   }, [availabilityFilter, roleFilter, search, teamMetrics]);
+  const assignableJobs = useMemo(
+    () =>
+      (allJobs ?? [])
+        .filter((job) =>
+          ["scheduled", "assigned", "in_progress", "rework_required"].includes(
+            job.status,
+          ),
+        )
+        .sort((a, b) => (a.scheduledStartAt ?? 0) - (b.scheduledStartAt ?? 0)),
+    [allJobs],
+  );
+
+  function toMemberActionTarget(member: (typeof members)[number]): MemberActionTarget {
+    return {
+      userId: member._id,
+      name: member.name,
+      email: member.email,
+      role: member.role,
+      companyId: member.companyId,
+      companyMemberRole: member.companyMemberRole,
+    };
+  }
 
   const summary = useMemo(() => {
     const totalCleaners = (teamMetrics?.members ?? []).filter(
@@ -204,6 +245,7 @@ export default function TeamPage() {
   function openRoleEditor(member: MemberActionTarget) {
     setRoleEditor(member);
     setRoleDraft(member.role);
+    setMemberActionSheet(null);
     setOpenMenuForUserId(null);
   }
 
@@ -214,6 +256,21 @@ export default function TeamPage() {
       member.companyMemberRole ??
         (member.role === "manager" ? "manager" : "cleaner"),
     );
+    setMemberActionSheet(null);
+    setOpenMenuForUserId(null);
+  }
+
+  function openJobEditor(member: MemberActionTarget) {
+    setJobEditor(member);
+    setJobDraft("");
+    setMemberActionSheet(null);
+    setOpenMenuForUserId(null);
+  }
+
+  function openPropertyEditor(member: MemberActionTarget) {
+    setPropertyEditor(member);
+    setPropertyDraft("");
+    setMemberActionSheet(null);
     setOpenMenuForUserId(null);
   }
 
@@ -294,6 +351,68 @@ export default function TeamPage() {
       showToast(message, "error");
     } finally {
       setIsUpdatingCompany(false);
+    }
+  }
+
+  async function handleJobAssignment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!jobEditor) {
+      return;
+    }
+    if (!jobDraft) {
+      showToast("Select a job to assign.", "error");
+      return;
+    }
+
+    setIsAssigningJob(true);
+    try {
+      await assignCleanerToJob({
+        jobId: jobDraft,
+        cleanerIds: [jobEditor.userId],
+        notifyCleaners: false,
+      });
+      showToast("User assigned to job.");
+      setJobEditor(null);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to assign user to job.";
+      showToast(message, "error");
+    } finally {
+      setIsAssigningJob(false);
+    }
+  }
+
+  async function handlePropertyAssignment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!propertyEditor) {
+      return;
+    }
+    if (!propertyEditor.companyId) {
+      showToast("Assign a company to this user first.", "error");
+      return;
+    }
+    if (!propertyDraft) {
+      showToast("Select a property to assign.", "error");
+      return;
+    }
+
+    setIsAssigningProperty(true);
+    try {
+      await assignPropertyToCompany({
+        propertyId: propertyDraft,
+        companyId: propertyEditor.companyId,
+        reason: "Assigned from team list view.",
+      });
+      showToast("Property assigned to member company.");
+      setPropertyEditor(null);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to assign property to member company.";
+      showToast(message, "error");
+    } finally {
+      setIsAssigningProperty(false);
     }
   }
 
@@ -593,34 +712,30 @@ export default function TeamPage() {
                             <button
                               type="button"
                               className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                              onClick={() =>
-                                openRoleEditor({
-                                  userId: member._id,
-                                  name: member.name,
-                                  email: member.email,
-                                  role: member.role,
-                                  companyId: member.companyId,
-                                  companyMemberRole: member.companyMemberRole,
-                                })
-                              }
+                              onClick={() => openRoleEditor(toMemberActionTarget(member))}
                             >
                               Assign Role
                             </button>
                             <button
                               type="button"
                               className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                              onClick={() =>
-                                openCompanyEditor({
-                                  userId: member._id,
-                                  name: member.name,
-                                  email: member.email,
-                                  role: member.role,
-                                  companyId: member.companyId,
-                                  companyMemberRole: member.companyMemberRole,
-                                })
-                              }
+                              onClick={() => openCompanyEditor(toMemberActionTarget(member))}
                             >
                               Assign Company
+                            </button>
+                            <button
+                              type="button"
+                              className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
+                              onClick={() => openJobEditor(toMemberActionTarget(member))}
+                            >
+                              Assign Job
+                            </button>
+                            <button
+                              type="button"
+                              className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
+                              onClick={() => openPropertyEditor(toMemberActionTarget(member))}
+                            >
+                              Assign Property
                             </button>
                           </div>
                         ) : null}
@@ -696,19 +811,48 @@ export default function TeamPage() {
                   {members.map((member) => (
                     <tr key={member._id} className="border-t">
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <ProfileImage
-                            avatarUrl={member.avatarUrl}
-                            label={member.name || member.email || "Member"}
-                            className="h-10 w-10"
-                          />
-                          <div className="min-w-0">
-                            <p className="truncate font-semibold text-[var(--foreground)]">
-                              {member.name || member.email || "Unknown"}
-                            </p>
-                            <p className="truncate text-xs text-[var(--muted-foreground)]">{member.email || "—"}</p>
+                        {canManageTeam ? (
+                          <button
+                            type="button"
+                            onClick={() => setMemberActionSheet(toMemberActionTarget(member))}
+                            className="w-full rounded-md p-1 text-left transition hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
+                          >
+                            <div className="flex items-center gap-3">
+                              <ProfileImage
+                                avatarUrl={member.avatarUrl}
+                                label={member.name || member.email || "Member"}
+                                className="h-10 w-10"
+                              />
+                              <div className="min-w-0">
+                                <p className="truncate font-semibold text-[var(--foreground)]">
+                                  {member.name || member.email || "Unknown"}
+                                </p>
+                                <p className="truncate text-xs text-[var(--muted-foreground)]">
+                                  {member.email || "—"}
+                                </p>
+                                <p className="text-[10px] uppercase tracking-wider text-[var(--primary)]">
+                                  Click to edit or assign
+                                </p>
+                              </div>
+                            </div>
+                          </button>
+                        ) : (
+                          <div className="flex items-center gap-3">
+                            <ProfileImage
+                              avatarUrl={member.avatarUrl}
+                              label={member.name || member.email || "Member"}
+                              className="h-10 w-10"
+                            />
+                            <div className="min-w-0">
+                              <p className="truncate font-semibold text-[var(--foreground)]">
+                                {member.name || member.email || "Unknown"}
+                              </p>
+                              <p className="truncate text-xs text-[var(--muted-foreground)]">
+                                {member.email || "—"}
+                              </p>
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-[var(--muted-foreground)]">
                         {formatRoleLabel(member.role)}
@@ -936,6 +1080,57 @@ export default function TeamPage() {
         </div>
       ) : null}
 
+      {memberActionSheet ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl border bg-[var(--card)] p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-lg font-bold">Manage Member</h2>
+              <button
+                className="rounded-md px-2 py-1 text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+                onClick={() => setMemberActionSheet(null)}
+              >
+                Close
+              </button>
+            </div>
+
+            <p className="mb-4 text-sm text-[var(--muted-foreground)]">
+              {memberActionSheet.name || memberActionSheet.email || "Selected user"}
+            </p>
+
+            <div className="grid gap-2">
+              <button
+                type="button"
+                className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
+                onClick={() => openRoleEditor(memberActionSheet)}
+              >
+                Edit Role
+              </button>
+              <button
+                type="button"
+                className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
+                onClick={() => openCompanyEditor(memberActionSheet)}
+              >
+                Assign Company
+              </button>
+              <button
+                type="button"
+                className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
+                onClick={() => openJobEditor(memberActionSheet)}
+              >
+                Assign to Job
+              </button>
+              <button
+                type="button"
+                className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
+                onClick={() => openPropertyEditor(memberActionSheet)}
+              >
+                Assign to Property
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {roleEditor ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-xl border bg-[var(--card)] p-4">
@@ -975,6 +1170,59 @@ export default function TeamPage() {
                 className="w-full rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-black disabled:opacity-60"
               >
                 {isUpdatingRole ? "Saving..." : "Save Role"}
+              </button>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {jobEditor ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl border bg-[var(--card)] p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-lg font-bold">Assign to Job</h2>
+              <button
+                className="rounded-md px-2 py-1 text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+                onClick={() => setJobEditor(null)}
+                disabled={isAssigningJob}
+              >
+                Close
+              </button>
+            </div>
+
+            <p className="mb-3 text-sm text-[var(--muted-foreground)]">
+              {jobEditor.name || jobEditor.email || "Selected user"}
+            </p>
+
+            <form className="space-y-3" onSubmit={handleJobAssignment}>
+              <label className="block text-sm">
+                <span className="mb-1 block text-[var(--muted-foreground)]">Job</span>
+                <select
+                  value={jobDraft}
+                  onChange={(event) =>
+                    setJobDraft(event.target.value as Id<"cleaningJobs"> | "")
+                  }
+                  className="w-full rounded-md border bg-transparent px-3 py-2"
+                >
+                  <option value="">Select Job</option>
+                  {assignableJobs.map((job) => (
+                    <option key={job._id} value={job._id}>
+                      {(job.property?.name ?? "Unknown property") +
+                        " · " +
+                        formatRoleDate(job.scheduledStartAt) +
+                        " · " +
+                        job.status.replace("_", " ")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <button
+                type="submit"
+                disabled={isAssigningJob}
+                className="w-full rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-black disabled:opacity-60"
+              >
+                {isAssigningJob ? "Assigning..." : "Assign Job"}
               </button>
             </form>
           </div>
@@ -1040,6 +1288,61 @@ export default function TeamPage() {
                 className="w-full rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-black disabled:opacity-60"
               >
                 {isUpdatingCompany ? "Saving..." : "Save Company Assignment"}
+              </button>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {propertyEditor ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl border bg-[var(--card)] p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-lg font-bold">Assign to Property</h2>
+              <button
+                className="rounded-md px-2 py-1 text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+                onClick={() => setPropertyEditor(null)}
+                disabled={isAssigningProperty}
+              >
+                Close
+              </button>
+            </div>
+
+            <p className="mb-3 text-sm text-[var(--muted-foreground)]">
+              {propertyEditor.name || propertyEditor.email || "Selected user"}
+            </p>
+
+            {!propertyEditor.companyId ? (
+              <p className="mb-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                This member has no company assigned. Assign a company first.
+              </p>
+            ) : null}
+
+            <form className="space-y-3" onSubmit={handlePropertyAssignment}>
+              <label className="block text-sm">
+                <span className="mb-1 block text-[var(--muted-foreground)]">Property</span>
+                <select
+                  value={propertyDraft}
+                  onChange={(event) =>
+                    setPropertyDraft(event.target.value as Id<"properties"> | "")
+                  }
+                  className="w-full rounded-md border bg-transparent px-3 py-2"
+                >
+                  <option value="">Select Property</option>
+                  {(allProperties ?? []).map((property) => (
+                    <option key={property._id} value={property._id}>
+                      {property.name} · {property.address}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <button
+                type="submit"
+                disabled={isAssigningProperty || !propertyEditor.companyId}
+                className="w-full rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-black disabled:opacity-60"
+              >
+                {isAssigningProperty ? "Assigning..." : "Assign Property"}
               </button>
             </form>
           </div>
@@ -1132,6 +1435,18 @@ function formatDurationMinutes(value: number | null): string {
     return `${minutes}m`;
   }
   return `${hours}h ${minutes}m`;
+}
+
+function formatRoleDate(value?: number | null): string {
+  if (!value) {
+    return "Unscheduled";
+  }
+  return new Date(value).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function ProfileImage({
