@@ -595,8 +595,30 @@ export const getCompanies = query({
   handler: async (ctx) => {
     await requireAuth(ctx);
 
-    const companies = await ctx.db.query("cleaningCompanies").collect();
-    return companies.sort((a, b) => a.name.localeCompare(b.name));
+    const companies = await ctx.db
+      .query("cleaningCompanies")
+      .withIndex("by_active", (q) => q.eq("isActive", true))
+      .collect();
+
+    const dedupedByName = new Map<string, (typeof companies)[number]>();
+    for (const company of companies) {
+      const key = company.name.trim().toLowerCase();
+      const current = dedupedByName.get(key);
+      if (!current) {
+        dedupedByName.set(key, company);
+        continue;
+      }
+
+      const currentUpdatedAt = current.updatedAt ?? current.createdAt;
+      const candidateUpdatedAt = company.updatedAt ?? company.createdAt;
+      if (candidateUpdatedAt > currentUpdatedAt) {
+        dedupedByName.set(key, company);
+      }
+    }
+
+    return Array.from(dedupedByName.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
   },
 });
 

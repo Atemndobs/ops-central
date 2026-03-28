@@ -24,6 +24,10 @@ function hasValue(value: string | undefined): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function normalizeCompanyName(value: string): string {
+  return value.trim().toLowerCase();
+}
+
 function latestMembership(
   rows: Doc<"companyMembers">[],
 ): Doc<"companyMembers"> | null {
@@ -291,6 +295,17 @@ export const createCleaningCompany = mutation({
     const name = args.name.trim();
     if (!name) {
       throw new ConvexError("Company name is required.");
+    }
+
+    const normalizedName = normalizeCompanyName(name);
+    const existingCompanies = await ctx.db.query("cleaningCompanies").collect();
+    const duplicate = existingCompanies.find(
+      (company) => normalizeCompanyName(company.name) === normalizedName,
+    );
+    if (duplicate) {
+      throw new ConvexError(
+        `A company named "${duplicate.name}" already exists.`,
+      );
     }
 
     if (args.ownerUserId) {
