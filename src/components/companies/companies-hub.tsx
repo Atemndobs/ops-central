@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Building2, Loader2, Plus, RefreshCcw, ShieldCheck, Users } from "lucide-react";
@@ -30,9 +30,16 @@ function companyNameKey(name: string) {
 
 export function CompaniesHub() {
   const { showToast } = useToast();
+  const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
 
-  const companies = useQuery(api.admin.queries.getCompanies);
-  const properties = useQuery(api.properties.queries.getAll, { limit: 500 });
+  const companies = useQuery(
+    api.admin.queries.getCompanies,
+    isAuthenticated ? {} : "skip",
+  );
+  const properties = useQuery(
+    api.properties.queries.getAll,
+    isAuthenticated ? { limit: 500 } : "skip",
+  );
 
   const [selectedCompanyId, setSelectedCompanyId] = useState<Id<"cleaningCompanies"> | null>(
     null,
@@ -106,15 +113,22 @@ export function CompaniesHub() {
 
   const companyDetail = useQuery(
     api.admin.queries.getCompanyById,
-    selectedCompanyId ? { id: selectedCompanyId } : "skip",
+    isAuthenticated && selectedCompanyId
+      ? { id: selectedCompanyId }
+      : "skip",
   );
 
-  const assignmentsPayload = useQuery(api.admin.queries.listCompanyPropertyAssignments, {
-    companyId: undefined,
-    city: cityFilter.trim() ? cityFilter.trim() : undefined,
-    includeUnassigned: true,
-    limit: 400,
-  });
+  const assignmentsPayload = useQuery(
+    api.admin.queries.listCompanyPropertyAssignments,
+    isAuthenticated
+      ? {
+          companyId: undefined,
+          city: cityFilter.trim() ? cityFilter.trim() : undefined,
+          includeUnassigned: true,
+          limit: 400,
+        }
+      : "skip",
+  );
 
   const assignmentRows = assignmentsPayload?.rows ?? [];
   const allProperties = properties ?? [];
@@ -312,10 +326,18 @@ export function CompaniesHub() {
     }
   }
 
-  if (!companies || !properties || !assignmentsPayload) {
+  if (isAuthLoading || (isAuthenticated && (!companies || !properties || !assignmentsPayload))) {
     return (
       <div className="flex min-h-40 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--card)]">
         <Loader2 className="h-5 w-5 animate-spin text-[var(--muted-foreground)]" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 text-sm text-[var(--muted-foreground)]">
+        Connected to Clerk. Waiting for backend auth token...
       </div>
     );
   }
