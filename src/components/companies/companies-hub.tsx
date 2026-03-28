@@ -290,13 +290,15 @@ export function CompaniesHub() {
     }
   }
 
-  async function handleRemoveFromArchive(assignment: (typeof activePropertyAssignments)[number]) {
+  async function handleUnassignActiveAssignment(
+    assignment: (typeof activePropertyAssignments)[number],
+  ) {
     const propertyId = assignment.propertyId as Id<"properties">;
     setBusyPropertyId(propertyId);
     try {
       await removePropertyCompanyAssignment({
         propertyId,
-        reason: "Removed during archive workflow in Companies Hub",
+        reason: "Removed from selected company in Companies Hub",
       });
       setDraftAssignments((current) => ({
         ...current,
@@ -508,7 +510,9 @@ export function CompaniesHub() {
                         </p>
                         <button
                           type="button"
-                          onClick={() => void handleRemoveFromArchive(assignment)}
+                          onClick={() =>
+                            void handleUnassignActiveAssignment(assignment)
+                          }
                           disabled={isBusy}
                           className="rounded-md border border-red-500/40 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-500/10 disabled:opacity-60"
                         >
@@ -656,6 +660,56 @@ export function CompaniesHub() {
               </div>
             </section>
           </div>
+
+          <section className="rounded-2xl border bg-[var(--card)]">
+            <div className="flex items-center justify-between border-b px-4 py-3">
+              <div className="flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-[var(--muted-foreground)]" />
+                <h2 className="text-sm font-bold uppercase tracking-wide">
+                  Active Properties ({activePropertyAssignments.length})
+                </h2>
+              </div>
+            </div>
+            <div className="max-h-64 overflow-y-auto px-4 py-3">
+              {activePropertyAssignments.length ? (
+                <div className="space-y-2">
+                  {activePropertyAssignments.map((assignment) => {
+                    const propertyId = assignment.propertyId;
+                    const isBusy = busyPropertyId === propertyId;
+                    return (
+                      <div
+                        key={assignment._id}
+                        className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold">
+                            {assignment.property?.name ?? "Unknown property"}
+                          </p>
+                          <p className="text-xs text-[var(--muted-foreground)]">
+                            Assigned {formatDateTime(assignment.assignedAt)}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void handleUnassignActiveAssignment(assignment)
+                          }
+                          disabled={isBusy}
+                          className="rounded-md border border-red-500/40 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-500/10 disabled:opacity-60"
+                        >
+                          {isBusy ? "..." : "Unassign"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  No active properties assigned.
+                </p>
+              )}
+            </div>
+          </section>
         </div>
       </section>
 
