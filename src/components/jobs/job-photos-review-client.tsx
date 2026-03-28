@@ -60,18 +60,65 @@ type ViewerState = {
   index: number;
 };
 
+type AnnotationPoint = {
+  x: number;
+  y: number;
+};
+
 type CircleAnnotation = {
+  kind: "circle";
   x: number;
   y: number;
   r: number;
   color: string;
 };
 
-type DraftCircle = {
-  x: number;
-  y: number;
-  r: number;
+type FreehandAnnotation = {
+  kind: "freehand";
+  points: AnnotationPoint[];
+  color: string;
 };
+
+type LineAnnotation = {
+  kind: "line";
+  from: AnnotationPoint;
+  to: AnnotationPoint;
+  color: string;
+};
+
+type ArrowAnnotation = {
+  kind: "arrow";
+  from: AnnotationPoint;
+  to: AnnotationPoint;
+  color: string;
+};
+
+type CloudAnnotation = {
+  kind: "cloud";
+  from: AnnotationPoint;
+  to: AnnotationPoint;
+  color: string;
+};
+
+type ReviewShape =
+  | CircleAnnotation
+  | FreehandAnnotation
+  | LineAnnotation
+  | ArrowAnnotation
+  | CloudAnnotation;
+
+type AnnotationTool = "freehand" | "line" | "arrow" | "cloud" | "circle";
+
+type DraftShape =
+  | {
+      kind: "freehand";
+      points: AnnotationPoint[];
+    }
+  | {
+      kind: "line" | "arrow" | "cloud" | "circle";
+      from: AnnotationPoint;
+      to: AnnotationPoint;
+    };
 
 const reviewAnnotationsQuery = makeFunctionReference<
   "query",
@@ -80,7 +127,7 @@ const reviewAnnotationsQuery = makeFunctionReference<
   },
   Array<{
     photoId: Id<"photos">;
-    circles: CircleAnnotation[];
+    shapes: ReviewShape[];
     updatedAt: number | null;
   }>
 >("reviewAnnotations/queries:getForPhotos");
@@ -89,11 +136,11 @@ const reviewAnnotationsMutation = makeFunctionReference<
   "mutation",
   {
     photoId: Id<"photos">;
-    circles: CircleAnnotation[];
+    shapes: ReviewShape[];
   },
   {
     ok: boolean;
-    circleCount: number;
+    shapeCount: number;
     updatedAt: number;
   }
 >("reviewAnnotations/mutations:saveForPhoto");
@@ -171,6 +218,33 @@ function buildViewerSlides(photos: EvidencePhoto[]): ViewerSlide[] {
   });
 }
 
+function normalizedNumber(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Number(value.toFixed(4));
+}
+
+function shapeSignature(shape: ReviewShape): string {
+  if (shape.kind === "circle") {
+    return `circle:${normalizedNumber(shape.x)}:${normalizedNumber(shape.y)}:${normalizedNumber(shape.r)}:${shape.color}`;
+  }
+  if (shape.kind === "freehand") {
+    const points = shape.points
+      .map((point) => `${normalizedNumber(point.x)},${normalizedNumber(point.y)}`)
+      .join("|");
+    return `freehand:${points}:${shape.color}`;
+  }
+  return `${shape.kind}:${normalizedNumber(shape.from.x)}:${normalizedNumber(shape.from.y)}:${normalizedNumber(shape.to.x)}:${normalizedNumber(shape.to.y)}:${shape.color}`;
+}
+
+function areShapesEqual(left: ReviewShape[], right: ReviewShape[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  return left.every((shape, index) => shapeSignature(shape) === shapeSignature(right[index]));
+}
+
 export function JobPhotosReviewClient({ id }: { id: string }) {
   const jobId = id as Id<"cleaningJobs">;
   const { showToast } = useToast();
@@ -190,14 +264,15 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const [activeRoomKey, setActiveRoomKey] = useState<string | null>(null);
   const [viewer, setViewer] = useState<ViewerState | null>(null);
   const [annotateEnabled, setAnnotateEnabled] = useState(false);
+  const [annotationTool, setAnnotationTool] = useState<AnnotationTool>("freehand");
   const [annotationColor, setAnnotationColor] = useState("#ef4444");
-  const [annotationsByPhoto, setAnnotationsByPhoto] = useState<Record<string, CircleAnnotation[]>>(
+  const [annotationsByPhoto, setAnnotationsByPhoto] = useState<Record<string, ReviewShape[]>>(
     {},
   );
   const [dirtyByPhoto, setDirtyByPhoto] = useState<Record<string, boolean>>({});
   const [savingPhotoKey, setSavingPhotoKey] = useState<string | null>(null);
-  const [isDrawingCircle, setIsDrawingCircle] = useState(false);
-  const [draftCircle, setDraftCircle] = useState<DraftCircle | null>(null);
+  const [isDrawingShape, setIsDrawingShape] = useState(false);
+  const [draftShape, setDraftShape] = useState<DraftShape | null>(null);
   const viewerCanvasRef = useRef<HTMLDivElement | null>(null);
 
   const currentPhotosAll = detail?.evidence.current.byType.all ?? [];
@@ -301,9 +376,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const canDecision = detail?.job.status === "awaiting_approval";
 
   const currentSlide = viewer ? viewer.slides[viewer.index] : null;
-  const currentAnnotations = currentSlide
-    ? (annotationsByPhoto[currentSlide.photoKey] ?? [])
-    : [];
+  const currentAnnotations = currentSlide ? (annotationsByPhoto[currentSlide.photoKey] ?? []) : [];
   const isCurrentPhotoDirty = currentSlide
     ? Boolean(dirtyByPhoto[currentSlide.photoKey])
     : false;
@@ -322,26 +395,10 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
         if (dirtyByPhoto[photoKey]) {
           return;
         }
-        const normalized = item.circles.map((circle) => ({
-          x: circle.x,
-          y: circle.y,
-          r: circle.r,
-          color: circle.color,
-        }));
+        const normalized = item.shapes;
 
         const current = next[photoKey] ?? [];
-        const isSameLength = current.length === normalized.length;
-        const isSame =
-          isSameLength &&
-          current.every((circle, index) => {
-            const incoming = normalized[index];
-            return (
-              circle.x === incoming.x &&
-              circle.y === incoming.y &&
-              circle.r === incoming.r &&
-              circle.color === incoming.color
-            );
-          });
+        const isSame = areShapesEqual(current, normalized);
 
         if (isSame) {
           return;
@@ -363,8 +420,8 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") {
         setViewer(null);
-        setDraftCircle(null);
-        setIsDrawingCircle(false);
+        setDraftShape(null);
+        setIsDrawingShape(false);
         return;
       }
       if (event.key === "ArrowLeft") {
@@ -378,7 +435,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
             index: previous.index === 0 ? previous.slides.length - 1 : previous.index - 1,
           };
         });
-        setDraftCircle(null);
+        setDraftShape(null);
       }
       if (event.key === "ArrowRight") {
         event.preventDefault();
@@ -391,7 +448,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
             index: previous.index === previous.slides.length - 1 ? 0 : previous.index + 1,
           };
         });
-        setDraftCircle(null);
+        setDraftShape(null);
       }
     };
 
@@ -434,8 +491,8 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
       index: startIndex,
     });
     setAnnotateEnabled(false);
-    setDraftCircle(null);
-    setIsDrawingCircle(false);
+    setDraftShape(null);
+    setIsDrawingShape(false);
   }
 
   function closeViewer() {
@@ -448,8 +505,8 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
       }
     }
     setViewer(null);
-    setDraftCircle(null);
-    setIsDrawingCircle(false);
+    setDraftShape(null);
+    setIsDrawingShape(false);
   }
 
   function moveViewer(delta: number) {
@@ -464,8 +521,8 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
         index: nextIndex,
       };
     });
-    setDraftCircle(null);
-    setIsDrawingCircle(false);
+    setDraftShape(null);
+    setIsDrawingShape(false);
   }
 
   function onSelectViewerSlide(index: number) {
@@ -481,8 +538,8 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
         index,
       };
     });
-    setDraftCircle(null);
-    setIsDrawingCircle(false);
+    setDraftShape(null);
+    setIsDrawingShape(false);
   }
 
   function getNormalizedPointer(event: PointerEvent<HTMLDivElement>) {
@@ -495,67 +552,133 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
     };
   }
 
+  function distanceBetweenPoints(left: AnnotationPoint, right: AnnotationPoint) {
+    const dx = right.x - left.x;
+    const dy = right.y - left.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function finalizeDraftShape(
+    draft: DraftShape,
+    color: string,
+  ): ReviewShape | null {
+    if (draft.kind === "freehand") {
+      const simplified = draft.points.reduce<AnnotationPoint[]>((points, point, index) => {
+        if (index === 0) {
+          return [point];
+        }
+        const previous = points[points.length - 1];
+        if (distanceBetweenPoints(previous, point) < 0.002) {
+          return points;
+        }
+        points.push(point);
+        return points;
+      }, []);
+      if (simplified.length < 2) {
+        return null;
+      }
+      return {
+        kind: "freehand",
+        points: simplified,
+        color,
+      };
+    }
+
+    const length = distanceBetweenPoints(draft.from, draft.to);
+    if (length < 0.01) {
+      return null;
+    }
+
+    if (draft.kind === "circle") {
+      const radius = Math.min(0.6, length);
+      return {
+        kind: "circle",
+        x: draft.from.x,
+        y: draft.from.y,
+        r: radius,
+        color,
+      };
+    }
+
+    return {
+      kind: draft.kind,
+      from: draft.from,
+      to: draft.to,
+      color,
+    };
+  }
+
   function onViewerPointerDown(event: PointerEvent<HTMLDivElement>) {
     if (!annotateEnabled || !currentSlide) {
       return;
     }
     const point = getNormalizedPointer(event);
     event.currentTarget.setPointerCapture(event.pointerId);
-    setDraftCircle({
-      x: point.x,
-      y: point.y,
-      r: 0,
-    });
-    setIsDrawingCircle(true);
+    if (annotationTool === "freehand") {
+      setDraftShape({
+        kind: "freehand",
+        points: [point],
+      });
+    } else {
+      setDraftShape({
+        kind: annotationTool,
+        from: point,
+        to: point,
+      });
+    }
+    setIsDrawingShape(true);
   }
 
   function onViewerPointerMove(event: PointerEvent<HTMLDivElement>) {
-    if (!annotateEnabled || !isDrawingCircle || !draftCircle) {
+    if (!annotateEnabled || !isDrawingShape || !draftShape) {
       return;
     }
 
     const point = getNormalizedPointer(event);
-    const dx = point.x - draftCircle.x;
-    const dy = point.y - draftCircle.y;
-    const nextRadius = Math.sqrt(dx * dx + dy * dy);
-
-    setDraftCircle((previous) => {
+    setDraftShape((previous) => {
       if (!previous) {
         return previous;
       }
+      if (previous.kind === "freehand") {
+        const last = previous.points[previous.points.length - 1];
+        if (distanceBetweenPoints(last, point) < 0.003) {
+          return previous;
+        }
+        return {
+          ...previous,
+          points: [...previous.points, point],
+        };
+      }
       return {
         ...previous,
-        r: Math.min(0.6, nextRadius),
+        to: point,
       };
     });
   }
 
   function onViewerPointerUp(event: PointerEvent<HTMLDivElement>) {
-    if (!annotateEnabled || !currentSlide || !draftCircle) {
+    if (!annotateEnabled || !currentSlide || !draftShape) {
       return;
     }
 
-    event.currentTarget.releasePointerCapture(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
 
-    if (draftCircle.r >= 0.01) {
-      const nextCircle: CircleAnnotation = {
-        x: draftCircle.x,
-        y: draftCircle.y,
-        r: draftCircle.r,
-        color: annotationColor,
-      };
+    const nextShape = finalizeDraftShape(draftShape, annotationColor);
+    if (nextShape) {
       setAnnotationsByPhoto((previous) => ({
         ...previous,
-        [currentSlide.photoKey]: [...(previous[currentSlide.photoKey] ?? []), nextCircle],
+        [currentSlide.photoKey]: [...(previous[currentSlide.photoKey] ?? []), nextShape],
       }));
       markPhotoDirty(currentSlide.photoKey);
     }
 
-    setDraftCircle(null);
-    setIsDrawingCircle(false);
+    setDraftShape(null);
+    setIsDrawingShape(false);
   }
 
-  function undoLastCircle() {
+  function undoLastShape() {
     if (!currentSlide) {
       return;
     }
@@ -572,7 +695,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
     markPhotoDirty(currentSlide.photoKey);
   }
 
-  function clearAllCirclesForPhoto() {
+  function clearAllShapesForPhoto() {
     if (!currentSlide) {
       return;
     }
@@ -581,8 +704,8 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
       [currentSlide.photoKey]: [],
     }));
     markPhotoDirty(currentSlide.photoKey);
-    setDraftCircle(null);
-    setIsDrawingCircle(false);
+    setDraftShape(null);
+    setIsDrawingShape(false);
   }
 
   async function saveCurrentPhotoAnnotations() {
@@ -594,12 +717,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
     try {
       await savePhotoReviewAnnotations({
         photoId: currentSlide.photoId,
-        circles: currentAnnotations.map((circle) => ({
-          x: circle.x,
-          y: circle.y,
-          r: circle.r,
-          color: circle.color,
-        })),
+        shapes: currentAnnotations.map((shape) => ({ ...shape })),
       });
       setDirtyByPhoto((previous) => ({
         ...previous,
@@ -701,7 +819,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
             <h1 className="mt-1 text-xl font-semibold">Room-by-Room QA</h1>
             <p className="mt-1 text-xs text-[var(--muted-foreground)]">
               Click a photo to open the review viewer. Inside viewer: <kbd>←</kbd>/<kbd>→</kbd>
-              to move slides, then enable annotate mode to circle correction areas.
+              to move slides, then enable markup mode for freehand, arrows, lines, and cloud marks.
             </p>
           </div>
           <Link
@@ -1120,7 +1238,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                   {currentSlide.roomName} · {currentSlide.type} · {viewer.index + 1}/{viewer.slides.length}
                 </h3>
                 <p className="text-xs text-[var(--muted-foreground)]">
-                  Use the reviewer controls to circle correction areas directly on the photo.
+                  Mark corrections with freehand, arrows, lines, or cloud callouts directly on the photo.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -1141,21 +1259,21 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                       : "border-[var(--border)]"
                   }`}
                 >
-                  {annotateEnabled ? "Annotate: ON" : "Annotate: OFF"}
+                  {annotateEnabled ? "Markup: ON" : "Markup: OFF"}
                 </button>
                 <button
                   type="button"
-                  onClick={undoLastCircle}
+                  onClick={undoLastShape}
                   className="rounded-md border border-[var(--border)] px-2.5 py-1 text-xs"
                 >
-                  Undo Circle
+                  Undo
                 </button>
                 <button
                   type="button"
-                  onClick={clearAllCirclesForPhoto}
+                  onClick={clearAllShapesForPhoto}
                   className="rounded-md border border-[var(--border)] px-2.5 py-1 text-xs"
                 >
-                  Clear Circles
+                  Clear Markup
                 </button>
                 <a
                   href={currentSlide.url}
@@ -1176,7 +1294,28 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
             </div>
 
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <span className="text-xs text-[var(--muted-foreground)]">Circle color:</span>
+              <span className="text-xs text-[var(--muted-foreground)]">Tool:</span>
+              {[
+                { key: "freehand", label: "Freehand" },
+                { key: "arrow", label: "Arrow" },
+                { key: "line", label: "Line" },
+                { key: "cloud", label: "Cloud" },
+                { key: "circle", label: "Circle" },
+              ].map((tool) => (
+                <button
+                  key={tool.key}
+                  type="button"
+                  onClick={() => setAnnotationTool(tool.key as AnnotationTool)}
+                  className={`rounded-md border px-2 py-1 text-[11px] ${
+                    annotationTool === tool.key
+                      ? "border-blue-700 bg-blue-600 text-white"
+                      : "border-[var(--border)]"
+                  }`}
+                >
+                  {tool.label}
+                </button>
+              ))}
+              <span className="ml-2 text-xs text-[var(--muted-foreground)]">Color:</span>
               {["#ef4444", "#f59e0b", "#22c55e", "#3b82f6"].map((color) => (
                 <button
                   key={color}
@@ -1190,7 +1329,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                 />
               ))}
               <span className="ml-2 text-xs text-[var(--muted-foreground)]">
-                Circles on this photo: {currentAnnotations.length}
+                Markups on this photo: {currentAnnotations.length}
               </span>
               {isCurrentPhotoDirty ? (
                 <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">
@@ -1218,6 +1357,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                   onPointerDown={onViewerPointerDown}
                   onPointerMove={onViewerPointerMove}
                   onPointerUp={onViewerPointerUp}
+                  onPointerCancel={onViewerPointerUp}
                   className={`relative h-[64vh] rounded-md border border-[var(--border)] bg-black/40 ${
                     annotateEnabled ? "cursor-crosshair" : "cursor-default"
                   }`}
@@ -1230,29 +1370,17 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                     className="pointer-events-none select-none object-contain"
                   />
 
-                  <svg className="pointer-events-none absolute inset-0 h-full w-full">
-                    {currentAnnotations.map((circle, index) => (
-                      <circle
-                        key={`${currentSlide.photoKey}-${index}`}
-                        cx={`${circle.x * 100}%`}
-                        cy={`${circle.y * 100}%`}
-                        r={`${circle.r * 100}%`}
-                        fill="none"
-                        stroke={circle.color}
-                        strokeWidth="3"
-                      />
+                  <svg
+                    viewBox="0 0 100 100"
+                    preserveAspectRatio="none"
+                    className="pointer-events-none absolute inset-0 h-full w-full"
+                  >
+                    {currentAnnotations.map((shape, index) => (
+                      <g key={`${currentSlide.photoKey}-${index}`}>
+                        {renderAnnotationShape(shape, false)}
+                      </g>
                     ))}
-                    {draftCircle ? (
-                      <circle
-                        cx={`${draftCircle.x * 100}%`}
-                        cy={`${draftCircle.y * 100}%`}
-                        r={`${draftCircle.r * 100}%`}
-                        fill="none"
-                        stroke={annotationColor}
-                        strokeWidth="2"
-                        strokeDasharray="6 4"
-                      />
-                    ) : null}
+                    {draftShape ? renderDraftShape(draftShape, annotationColor) : null}
                   </svg>
                 </div>
               </div>
@@ -1300,6 +1428,216 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function clampUnit(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.min(1, Math.max(0, value));
+}
+
+function toViewBox(value: number): number {
+  return Number((clampUnit(value) * 100).toFixed(4));
+}
+
+function pointDistance(left: AnnotationPoint, right: AnnotationPoint): number {
+  const dx = right.x - left.x;
+  const dy = right.y - left.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function getArrowHeadPoints(from: AnnotationPoint, to: AnnotationPoint): AnnotationPoint[] {
+  const length = pointDistance(from, to);
+  if (length < 0.001) {
+    return [];
+  }
+  const ux = (to.x - from.x) / length;
+  const uy = (to.y - from.y) / length;
+  const headLength = Math.max(0.02, Math.min(0.05, length * 0.32));
+  const halfWidth = headLength * 0.45;
+  const baseX = to.x - ux * headLength;
+  const baseY = to.y - uy * headLength;
+  const perpX = -uy;
+  const perpY = ux;
+  return [
+    to,
+    {
+      x: clampUnit(baseX + perpX * halfWidth),
+      y: clampUnit(baseY + perpY * halfWidth),
+    },
+    {
+      x: clampUnit(baseX - perpX * halfWidth),
+      y: clampUnit(baseY - perpY * halfWidth),
+    },
+  ];
+}
+
+function getCloudBubbles(from: AnnotationPoint, to: AnnotationPoint) {
+  const cx = (from.x + to.x) / 2;
+  const cy = (from.y + to.y) / 2;
+  const rx = Math.abs(to.x - from.x) / 2;
+  const ry = Math.abs(to.y - from.y) / 2;
+  if (rx < 0.006 || ry < 0.006) {
+    return [];
+  }
+
+  const perimeter = 2 * Math.PI * Math.sqrt((rx * rx + ry * ry) / 2);
+  const bubbleBase = Math.max(0.008, Math.min(0.03, Math.min(rx, ry) * 0.28));
+  const segmentCount = Math.max(10, Math.min(28, Math.round(perimeter / (bubbleBase * 1.5))));
+  const bubbles: Array<{ x: number; y: number; r: number }> = [];
+  for (let index = 0; index < segmentCount; index += 1) {
+    const theta = (index / segmentCount) * Math.PI * 2;
+    const wobble = 1 + 0.08 * Math.sin(theta * 7);
+    const baseX = cx + rx * Math.cos(theta);
+    const baseY = cy + ry * Math.sin(theta);
+    const outward = bubbleBase * 0.3;
+    bubbles.push({
+      x: clampUnit(baseX + Math.cos(theta) * outward),
+      y: clampUnit(baseY + Math.sin(theta) * outward),
+      r: bubbleBase * wobble,
+    });
+  }
+  return bubbles;
+}
+
+function renderAnnotationShape(shape: ReviewShape, draft: boolean): ReactNode {
+  const strokeWidth = draft ? 0.55 : 0.9;
+  const strokeDasharray = draft ? "2 1.5" : undefined;
+
+  if (shape.kind === "circle") {
+    return (
+      <circle
+        cx={toViewBox(shape.x)}
+        cy={toViewBox(shape.y)}
+        r={toViewBox(shape.r)}
+        fill="none"
+        stroke={shape.color}
+        strokeWidth={strokeWidth}
+        strokeDasharray={strokeDasharray}
+      />
+    );
+  }
+
+  if (shape.kind === "freehand") {
+    const points = shape.points.map((point) => `${toViewBox(point.x)},${toViewBox(point.y)}`).join(" ");
+    return (
+      <polyline
+        points={points}
+        fill="none"
+        stroke={shape.color}
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeDasharray={strokeDasharray}
+      />
+    );
+  }
+
+  if (shape.kind === "line") {
+    return (
+      <line
+        x1={toViewBox(shape.from.x)}
+        y1={toViewBox(shape.from.y)}
+        x2={toViewBox(shape.to.x)}
+        y2={toViewBox(shape.to.y)}
+        stroke={shape.color}
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        strokeDasharray={strokeDasharray}
+      />
+    );
+  }
+
+  if (shape.kind === "arrow") {
+    const arrowHead = getArrowHeadPoints(shape.from, shape.to);
+    const arrowHeadPoints = arrowHead
+      .map((point) => `${toViewBox(point.x)},${toViewBox(point.y)}`)
+      .join(" ");
+
+    return (
+      <>
+        <line
+          x1={toViewBox(shape.from.x)}
+          y1={toViewBox(shape.from.y)}
+          x2={toViewBox(shape.to.x)}
+          y2={toViewBox(shape.to.y)}
+          stroke={shape.color}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeDasharray={strokeDasharray}
+        />
+        {arrowHeadPoints ? (
+          <polygon
+            points={arrowHeadPoints}
+            fill={shape.color}
+            opacity={draft ? 0.8 : 1}
+          />
+        ) : null}
+      </>
+    );
+  }
+
+  const bubbles = getCloudBubbles(shape.from, shape.to);
+  return (
+    <>
+      {bubbles.map((bubble, index) => (
+        <circle
+          key={`${shape.kind}-${index}`}
+          cx={toViewBox(bubble.x)}
+          cy={toViewBox(bubble.y)}
+          r={toViewBox(bubble.r)}
+          fill="none"
+          stroke={shape.color}
+          strokeWidth={strokeWidth}
+          strokeDasharray={strokeDasharray}
+        />
+      ))}
+    </>
+  );
+}
+
+function renderDraftShape(draftShape: DraftShape, color: string): ReactNode {
+  if (draftShape.kind === "freehand") {
+    if (draftShape.points.length < 2) {
+      return null;
+    }
+    return renderAnnotationShape(
+      {
+        kind: "freehand",
+        points: draftShape.points,
+        color,
+      },
+      true,
+    );
+  }
+
+  if (draftShape.kind === "circle") {
+    const radius = Math.min(0.6, pointDistance(draftShape.from, draftShape.to));
+    if (radius < 0.005) {
+      return null;
+    }
+    return renderAnnotationShape(
+      {
+        kind: "circle",
+        x: draftShape.from.x,
+        y: draftShape.from.y,
+        r: radius,
+        color,
+      },
+      true,
+    );
+  }
+
+  return renderAnnotationShape(
+    {
+      kind: draftShape.kind,
+      from: draftShape.from,
+      to: draftShape.to,
+      color,
+    },
+    true,
   );
 }
 
