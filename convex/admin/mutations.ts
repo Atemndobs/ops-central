@@ -74,6 +74,90 @@ export const createUser = mutation({
   },
 });
 
+export const upsertUserFromDirectory = mutation({
+  args: {
+    clerkId: v.string(),
+    email: v.string(),
+    name: v.optional(v.string()),
+    avatarUrl: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    role: v.optional(appRoleValidator),
+  },
+  handler: async (ctx, args) => {
+    await requireRole(ctx, ["admin"]);
+
+    const now = Date.now();
+    const normalizedEmail = normalizeEmail(args.email);
+    const normalizedName = hasValue(args.name) ? args.name.trim() : undefined;
+    const normalizedAvatarUrl = hasValue(args.avatarUrl)
+      ? args.avatarUrl.trim()
+      : undefined;
+    const normalizedPhone = hasValue(args.phone) ? args.phone.trim() : undefined;
+
+    let existingUser = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+
+    if (!existingUser) {
+      existingUser = await ctx.db
+        .query("users")
+        .withIndex("by_email", (q) => q.eq("email", normalizedEmail))
+        .first();
+    }
+
+    if (!existingUser) {
+      const users = await ctx.db.query("users").collect();
+      existingUser =
+        users.find((user) => normalizeEmail(user.email) === normalizedEmail) ??
+        null;
+    }
+
+    if (existingUser) {
+      const updates: Partial<Doc<"users">> = {
+        clerkId: args.clerkId,
+        email: normalizedEmail,
+        updatedAt: now,
+      };
+
+      if (normalizedName !== undefined) {
+        updates.name = normalizedName;
+      }
+      if (normalizedAvatarUrl !== undefined) {
+        updates.avatarUrl = normalizedAvatarUrl;
+      }
+      if (normalizedPhone !== undefined) {
+        updates.phone = normalizedPhone;
+      }
+      if (args.role !== undefined) {
+        updates.role = args.role;
+      }
+
+      await ctx.db.patch(existingUser._id, updates);
+      return {
+        userId: existingUser._id,
+        created: false,
+      };
+    }
+
+    const userId = await ctx.db.insert("users", {
+      clerkId: args.clerkId,
+      email: normalizedEmail,
+      name: normalizedName,
+      avatarUrl: normalizedAvatarUrl,
+      phone: normalizedPhone,
+      role: args.role ?? "cleaner",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return {
+      userId,
+      created: true,
+    };
+  },
+});
+
 export const updateUser = mutation({
   args: {
     id: v.id("users"),

@@ -9,6 +9,7 @@ import { useToast } from "@/components/ui/toast-provider";
 import { getRoleFromSessionClaims } from "@/lib/auth";
 import {
   Award,
+  Download,
   LayoutGrid,
   List,
   Loader2,
@@ -58,6 +59,7 @@ export default function TeamPage() {
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isImportingHospitable, setIsImportingHospitable] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createSuccess, setCreateSuccess] = useState<string | null>(null);
   const [newMember, setNewMember] = useState({
@@ -295,6 +297,68 @@ export default function TeamPage() {
     }
   }
 
+  async function handleHospitableImport() {
+    setCreateError(null);
+    setCreateSuccess(null);
+    setIsImportingHospitable(true);
+    try {
+      const response = await fetch("/api/team-members/hospitable-import", {
+        method: "POST",
+      });
+      const data = (await response.json()) as {
+        success?: boolean;
+        error?: string;
+        message?: string;
+        summary?: {
+          processed: number;
+          createdInClerk: number;
+          updatedInClerk: number;
+          createdInConvex: number;
+          updatedInConvex: number;
+          skippedMissingEmail: number;
+          errors: string[];
+        };
+      };
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to import teammates from Hospitable.");
+      }
+
+      const summary = data.summary;
+      if (!summary) {
+        showToast(data.message || "Import completed.");
+        return;
+      }
+
+      const hasErrors = summary.errors.length > 0;
+      const outcome = hasErrors ? "partial" : "success";
+      const message =
+        `Hospitable import ${outcome}: ${summary.processed} processed, ` +
+        `${summary.createdInClerk} new Clerk, ${summary.updatedInClerk} existing Clerk, ` +
+        `${summary.createdInConvex} new app users, ${summary.updatedInConvex} updated app users.` +
+        (summary.skippedMissingEmail > 0
+          ? ` Skipped ${summary.skippedMissingEmail} without email.`
+          : "");
+
+      setCreateSuccess(message);
+      showToast(message, hasErrors ? "error" : "success");
+      if (hasErrors) {
+        setCreateError(
+          `Some teammates could not be imported (${summary.errors.length}). Check server logs for full details.`,
+        );
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to import teammates from Hospitable.";
+      setCreateError(message);
+      showToast(message, "error");
+    } finally {
+      setIsImportingHospitable(false);
+    }
+  }
+
   function scrollToSection(sectionId: string) {
     if (typeof window === "undefined") {
       return;
@@ -331,13 +395,27 @@ export default function TeamPage() {
           </p>
         </div>
         {canManageTeam ? (
-          <button
-            onClick={() => setIsCreateOpen(true)}
-            className="inline-flex items-center gap-2 rounded-none bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90"
-          >
-            <Plus className="h-4 w-4" />
-            Add Team Member
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleHospitableImport}
+              disabled={isImportingHospitable}
+              className="inline-flex items-center gap-2 rounded-none border border-[var(--border)] bg-[var(--card)] px-4 py-2 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--accent)] disabled:opacity-60"
+            >
+              {isImportingHospitable ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              Import from Hospitable
+            </button>
+            <button
+              onClick={() => setIsCreateOpen(true)}
+              className="inline-flex items-center gap-2 rounded-none bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90"
+            >
+              <Plus className="h-4 w-4" />
+              Add Team Member
+            </button>
+          </div>
         ) : null}
       </div>
 
