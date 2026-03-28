@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { makeFunctionReference } from "convex/server";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useToast } from "@/components/ui/toast-provider";
@@ -71,6 +72,31 @@ type DraftCircle = {
   y: number;
   r: number;
 };
+
+const reviewAnnotationsQuery = makeFunctionReference<
+  "query",
+  {
+    photoIds: Id<"photos">[];
+  },
+  Array<{
+    photoId: Id<"photos">;
+    circles: CircleAnnotation[];
+    updatedAt: number | null;
+  }>
+>("reviewAnnotations/queries:getForPhotos");
+
+const reviewAnnotationsMutation = makeFunctionReference<
+  "mutation",
+  {
+    photoId: Id<"photos">;
+    circles: CircleAnnotation[];
+  },
+  {
+    ok: boolean;
+    circleCount: number;
+    updatedAt: number;
+  }
+>("reviewAnnotations/mutations:saveForPhoto");
 
 function formatDateTime(value?: number | null) {
   if (!value) {
@@ -152,6 +178,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const detail = useQuery(api.cleaningJobs.queries.getJobDetail, { jobId });
   const approveCompletion = useMutation(api.cleaningJobs.approve.approveCompletion);
   const rejectCompletion = useMutation(api.cleaningJobs.approve.rejectCompletion);
+  const savePhotoReviewAnnotations = useMutation(reviewAnnotationsMutation);
 
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<ReviewFilter>("all");
@@ -167,6 +194,8 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const [annotationsByPhoto, setAnnotationsByPhoto] = useState<Record<string, CircleAnnotation[]>>(
     {},
   );
+  const [dirtyByPhoto, setDirtyByPhoto] = useState<Record<string, boolean>>({});
+  const [savingPhotoKey, setSavingPhotoKey] = useState<string | null>(null);
   const [isDrawingCircle, setIsDrawingCircle] = useState(false);
   const [draftCircle, setDraftCircle] = useState<DraftCircle | null>(null);
   const viewerCanvasRef = useRef<HTMLDivElement | null>(null);
@@ -176,6 +205,14 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const evidencePhotos = currentPhotosAll.length
     ? (currentPhotosAll as EvidencePhoto[])
     : (latestSubmissionPhotos as EvidencePhoto[]);
+  const photoIdsForAnnotations = useMemo(
+    () => [...new Set(evidencePhotos.map((photo) => photo.photoId))],
+    [evidencePhotos],
+  );
+  const persistedAnnotations = useQuery(
+    reviewAnnotationsQuery,
+    photoIdsForAnnotations.length > 0 ? { photoIds: photoIdsForAnnotations } : "skip",
+  );
   const fallbackInUse = currentPhotosAll.length === 0 && latestSubmissionPhotos.length > 0;
 
   const roomRows = useMemo(() => {
@@ -267,6 +304,56 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const currentAnnotations = currentSlide
     ? (annotationsByPhoto[currentSlide.photoKey] ?? [])
     : [];
+  const isCurrentPhotoDirty = currentSlide
+    ? Boolean(dirtyByPhoto[currentSlide.photoKey])
+    : false;
+
+  useEffect(() => {
+    if (persistedAnnotations === undefined) {
+      return;
+    }
+
+    setAnnotationsByPhoto((previous) => {
+      const next = { ...previous };
+      let changed = false;
+
+      persistedAnnotations.forEach((item) => {
+        const photoKey = String(item.photoId);
+        if (dirtyByPhoto[photoKey]) {
+          return;
+        }
+        const normalized = item.circles.map((circle) => ({
+          x: circle.x,
+          y: circle.y,
+          r: circle.r,
+          color: circle.color,
+        }));
+
+        const current = next[photoKey] ?? [];
+        const isSameLength = current.length === normalized.length;
+        const isSame =
+          isSameLength &&
+          current.every((circle, index) => {
+            const incoming = normalized[index];
+            return (
+              circle.x === incoming.x &&
+              circle.y === incoming.y &&
+              circle.r === incoming.r &&
+              circle.color === incoming.color
+            );
+          });
+
+        if (isSame) {
+          return;
+        }
+
+        next[photoKey] = normalized;
+        changed = true;
+      });
+
+      return changed ? next : previous;
+    });
+  }, [dirtyByPhoto, persistedAnnotations]);
 
   useEffect(() => {
     if (!viewer) {
@@ -320,6 +407,13 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
     return <div className="text-sm text-[var(--muted-foreground)]">Job not found.</div>;
   }
 
+  function markPhotoDirty(photoKey: string) {
+    setDirtyByPhoto((previous) => ({
+      ...previous,
+      [photoKey]: true,
+    }));
+  }
+
   function openViewerForPhotos(photos: EvidencePhoto[], startPhotoId?: Id<"photos">) {
     const slides = buildViewerSlides(photos);
     if (!slides.length) {
@@ -345,6 +439,14 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   }
 
   function closeViewer() {
+    if (currentSlide && dirtyByPhoto[currentSlide.photoKey]) {
+      const shouldClose = window.confirm(
+        "You have unsaved annotation changes on this photo. Close anyway?",
+      );
+      if (!shouldClose) {
+        return;
+      }
+    }
     setViewer(null);
     setDraftCircle(null);
     setIsDrawingCircle(false);
@@ -446,6 +548,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
         ...previous,
         [currentSlide.photoKey]: [...(previous[currentSlide.photoKey] ?? []), nextCircle],
       }));
+      markPhotoDirty(currentSlide.photoKey);
     }
 
     setDraftCircle(null);
@@ -466,6 +569,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
         [currentSlide.photoKey]: current.slice(0, -1),
       };
     });
+    markPhotoDirty(currentSlide.photoKey);
   }
 
   function clearAllCirclesForPhoto() {
@@ -476,8 +580,37 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
       ...previous,
       [currentSlide.photoKey]: [],
     }));
+    markPhotoDirty(currentSlide.photoKey);
     setDraftCircle(null);
     setIsDrawingCircle(false);
+  }
+
+  async function saveCurrentPhotoAnnotations() {
+    if (!currentSlide || !dirtyByPhoto[currentSlide.photoKey]) {
+      return;
+    }
+
+    setSavingPhotoKey(currentSlide.photoKey);
+    try {
+      await savePhotoReviewAnnotations({
+        photoId: currentSlide.photoId,
+        circles: currentAnnotations.map((circle) => ({
+          x: circle.x,
+          y: circle.y,
+          r: circle.r,
+          color: circle.color,
+        })),
+      });
+      setDirtyByPhoto((previous) => ({
+        ...previous,
+        [currentSlide.photoKey]: false,
+      }));
+      showToast("Photo annotations saved.");
+    } catch (error) {
+      showToast(getErrorMessage(error, "Unable to save photo annotations."), "error");
+    } finally {
+      setSavingPhotoKey(null);
+    }
   }
 
   async function onApproveJob() {
@@ -993,6 +1126,14 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
+                  onClick={saveCurrentPhotoAnnotations}
+                  disabled={!isCurrentPhotoDirty || savingPhotoKey === currentSlide.photoKey}
+                  className="rounded-md border border-blue-700 bg-blue-600 px-2.5 py-1 text-xs text-white disabled:opacity-50"
+                >
+                  {savingPhotoKey === currentSlide.photoKey ? "Saving..." : "Save Annotations"}
+                </button>
+                <button
+                  type="button"
                   onClick={() => setAnnotateEnabled((previous) => !previous)}
                   className={`rounded-md border px-2.5 py-1 text-xs ${
                     annotateEnabled
@@ -1051,6 +1192,15 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
               <span className="ml-2 text-xs text-[var(--muted-foreground)]">
                 Circles on this photo: {currentAnnotations.length}
               </span>
+              {isCurrentPhotoDirty ? (
+                <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">
+                  Unsaved changes
+                </span>
+              ) : (
+                <span className="rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[10px] text-emerald-800">
+                  Saved
+                </span>
+              )}
             </div>
 
             <div className="flex min-h-0 flex-1 items-center gap-2">
@@ -1138,6 +1288,11 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                   <p className="px-1 py-0.5 text-[10px] text-[var(--muted-foreground)]">
                     {slide.type}
                   </p>
+                  {dirtyByPhoto[slide.photoKey] ? (
+                    <p className="border-t border-amber-200 bg-amber-100 px-1 py-0.5 text-[9px] font-semibold text-amber-800">
+                      unsaved
+                    </p>
+                  ) : null}
                 </button>
               ))}
             </div>
