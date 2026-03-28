@@ -24,6 +24,10 @@ function isActiveAssignment(assignment: {
   return assignment.isActive !== false && assignment.unassignedAt === undefined;
 }
 
+function companyNameKey(name: string) {
+  return name.trim().toLowerCase();
+}
+
 export function CompaniesHub() {
   const { showToast } = useToast();
 
@@ -49,24 +53,46 @@ export function CompaniesHub() {
     api.admin.mutations.removePropertyCompanyAssignment,
   );
 
+  const allCompanies = useMemo(() => {
+    const newestByName = new Map<string, NonNullable<typeof companies>[number]>();
+    for (const company of companies ?? []) {
+      if (!company.isActive) {
+        continue;
+      }
+      const key = companyNameKey(company.name);
+      const existing = newestByName.get(key);
+      if (!existing) {
+        newestByName.set(key, company);
+        continue;
+      }
+      const existingTimestamp = existing.updatedAt ?? existing.createdAt ?? 0;
+      const currentTimestamp = company.updatedAt ?? company.createdAt ?? 0;
+      if (currentTimestamp > existingTimestamp) {
+        newestByName.set(key, company);
+      }
+    }
+
+    return [...newestByName.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [companies]);
+
   useEffect(() => {
-    if (!companies || companies.length === 0) {
+    if (allCompanies.length === 0) {
       return;
     }
 
     if (!selectedCompanyId) {
-      setSelectedCompanyId(companies[0]._id);
+      setSelectedCompanyId(allCompanies[0]._id);
       return;
     }
 
-    if (!companies.some((company) => company._id === selectedCompanyId)) {
-      setSelectedCompanyId(companies[0]._id);
+    if (!allCompanies.some((company) => company._id === selectedCompanyId)) {
+      setSelectedCompanyId(allCompanies[0]._id);
     }
-  }, [companies, selectedCompanyId]);
+  }, [allCompanies, selectedCompanyId]);
 
   const selectedCompany = useMemo(
-    () => companies?.find((company) => company._id === selectedCompanyId) ?? null,
-    [companies, selectedCompanyId],
+    () => allCompanies.find((company) => company._id === selectedCompanyId) ?? null,
+    [allCompanies, selectedCompanyId],
   );
 
   const companyDetail = useQuery(
@@ -82,7 +108,6 @@ export function CompaniesHub() {
   });
 
   const assignmentRows = assignmentsPayload?.rows ?? [];
-  const allCompanies = companies ?? [];
   const allProperties = properties ?? [];
 
   const activeMemberCount = useMemo(
