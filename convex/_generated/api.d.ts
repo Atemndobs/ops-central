@@ -28,6 +28,10 @@ import type * as notifications_mutations from "../notifications/mutations.js";
 import type * as notifications_queries from "../notifications/queries.js";
 import type * as properties_mutations from "../properties/mutations.js";
 import type * as properties_queries from "../properties/queries.js";
+import type * as reports_actions from "../reports/actions.js";
+import type * as reports_lib from "../reports/lib.js";
+import type * as reports_mutations from "../reports/mutations.js";
+import type * as reports_queries from "../reports/queries.js";
 import type * as users_mutations from "../users/mutations.js";
 import type * as users_queries from "../users/queries.js";
 
@@ -58,6 +62,10 @@ declare const fullApi: ApiFromModules<{
   "notifications/queries": typeof notifications_queries;
   "properties/mutations": typeof properties_mutations;
   "properties/queries": typeof properties_queries;
+  "reports/actions": typeof reports_actions;
+  "reports/lib": typeof reports_lib;
+  "reports/mutations": typeof reports_mutations;
+  "reports/queries": typeof reports_queries;
   "users/mutations": typeof users_mutations;
   "users/queries": typeof users_queries;
 }>;

@@ -273,6 +273,7 @@ const cleaningJobs = defineTable({
   .index("by_status", ["status"])
   .index("by_manager", ["assignedManagerId"])
   .index("by_scheduled", ["scheduledStartAt"])
+  .index("by_property_and_scheduled", ["propertyId", "scheduledStartAt"])
   .index("by_property_status", ["propertyId", "status"])
   .index("by_stay", ["stayId"]);
 
@@ -494,6 +495,8 @@ const incidents = defineTable({
 })
   .index("by_job", ["cleaningJobId"])
   .index("by_property", ["propertyId"])
+  .index("by_created_at", ["createdAt"])
+  .index("by_property_and_created_at", ["propertyId", "createdAt"])
   .index("by_status", ["status"])
   .index("by_severity", ["severity"]);
 
@@ -630,6 +633,48 @@ const instructions = defineTable({
   .index("by_active", ["isActive"]);
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// REPORT EXPORTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const reportExports = defineTable({
+  requestedBy: v.id("users"),
+  status: v.union(
+    v.literal("queued"),
+    v.literal("running"),
+    v.literal("completed"),
+    v.literal("failed"),
+    v.literal("expired"),
+  ),
+  format: v.union(v.literal("csv"), v.literal("xlsx"), v.literal("pdf")),
+  scope: v.object({
+    preset: v.union(
+      v.literal("7d"),
+      v.literal("30d"),
+      v.literal("90d"),
+      v.literal("custom"),
+    ),
+    fromTs: v.number(),
+    toTs: v.number(),
+    propertyIds: v.array(v.id("properties")),
+  }),
+  storageId: v.optional(v.id("_storage")),
+  mimeType: v.optional(v.string()),
+  fileName: v.optional(v.string()),
+  byteSize: v.optional(v.number()),
+  error: v.optional(v.string()),
+  rowCount: v.optional(v.number()),
+  startedAt: v.optional(v.number()),
+  finishedAt: v.optional(v.number()),
+  expiresAt: v.optional(v.number()),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_requested_by_and_created_at", ["requestedBy", "createdAt"])
+  .index("by_status_and_created_at", ["status", "createdAt"])
+  .index("by_status_and_expires_at", ["status", "expiresAt"])
+  .index("by_created_at", ["createdAt"]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // INTEGRATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -697,6 +742,9 @@ export default defineSchema({
   // Instructions
   instructionCategories,
   instructions,
+
+  // Reports
+  reportExports,
 
   // Integration
   hospitableConfig,

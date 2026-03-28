@@ -10,4 +10,11 @@ crons.interval(
   {}
 );
 
+crons.interval(
+  "expire-report-exports-hourly",
+  { hours: 1 },
+  internal.reports.mutations.expireExports,
+  {},
+);
+
 export default crons;
