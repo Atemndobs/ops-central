@@ -33,6 +33,14 @@ test("getRoleFromSessionClaims falls back through metadata sources", () => {
     getRoleFromSessionClaims({ unsafeMetadata: { role: "admin" } }),
     "admin",
   );
+  assert.equal(
+    getRoleFromSessionClaims({ public_metadata: { role: "property_ops" } }),
+    "property_ops",
+  );
+  assert.equal(
+    getRoleFromSessionClaims({ unsafe_metadata: { role: "manager" } }),
+    "manager",
+  );
 });
 
 test("getRoleFromSessionClaims uses NEXT_PUBLIC_DEFAULT_ROLE for missing or invalid claims", () => {
@@ -41,17 +49,27 @@ test("getRoleFromSessionClaims uses NEXT_PUBLIC_DEFAULT_ROLE for missing or inva
   assert.equal(getRoleFromSessionClaims(null), "cleaner");
   assert.equal(getRoleFromSessionClaims({ role: "invalid-role" }), "cleaner");
 
+  process.env.NEXT_PUBLIC_DEFAULT_ROLE = "property_ops";
+  assert.equal(getRoleFromSessionClaims(undefined), "property_ops");
+
+  process.env.NEXT_PUBLIC_DEFAULT_ROLE = "admin";
+  assert.equal(getRoleFromSessionClaims(undefined), "cleaner");
+
   delete process.env.NEXT_PUBLIC_DEFAULT_ROLE;
-  assert.equal(getRoleFromSessionClaims(undefined), "admin");
+  assert.equal(getRoleFromSessionClaims(undefined), "cleaner");
 });
 
 test("canAccessPath enforces route access by role", () => {
   assert.equal(canAccessPath("manager", "/jobs"), true);
   assert.equal(canAccessPath("manager", "/jobs/123"), true);
+  assert.equal(canAccessPath("manager", "/review"), true);
+  assert.equal(canAccessPath("manager", "/review/jobs/abc"), true);
+  assert.equal(canAccessPath("property_ops", "/review"), true);
   assert.equal(canAccessPath("manager", "/schedule"), false);
   assert.equal(canAccessPath("cleaner", "/"), false);
   assert.equal(canAccessPath("cleaner", "/cleaner"), true);
   assert.equal(canAccessPath("cleaner", "/cleaner/jobs/123"), true);
+  assert.equal(canAccessPath("cleaner", "/review"), false);
   assert.equal(canAccessPath("cleaner", "/jobs"), false);
   assert.equal(canAccessPath("admin", "/settings"), true);
 });
