@@ -1,29 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Broom icon">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#0f172a" />
-      <stop offset="100%" stop-color="#1e293b" />
-    </linearGradient>
-    <linearGradient id="bristle" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#fbbf24" />
-      <stop offset="100%" stop-color="#d97706" />
-    </linearGradient>
-  </defs>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Wireframe broom icon">
+  <rect width="1024" height="1024" rx="220" fill="#f8fafc" />
+  <rect x="24" y="24" width="976" height="976" rx="200" fill="none" stroke="#cbd5e1" stroke-width="24" />
 
-  <rect width="1024" height="1024" rx="220" fill="url(#bg)" />
-
-  <g transform="rotate(-35 512 512)">
-    <rect x="488" y="150" width="58" height="520" rx="28" fill="#f8fafc" opacity="0.96" />
-    <rect x="428" y="612" width="178" height="170" rx="42" fill="url(#bristle)" />
-    <rect x="448" y="575" width="138" height="54" rx="20" fill="#f59e0b" />
-
-    <rect x="454" y="664" width="10" height="92" rx="5" fill="#7c2d12" opacity="0.35" />
-    <rect x="482" y="664" width="10" height="92" rx="5" fill="#7c2d12" opacity="0.35" />
-    <rect x="510" y="664" width="10" height="92" rx="5" fill="#7c2d12" opacity="0.35" />
-    <rect x="538" y="664" width="10" height="92" rx="5" fill="#7c2d12" opacity="0.35" />
-    <rect x="566" y="664" width="10" height="92" rx="5" fill="#7c2d12" opacity="0.35" />
+  <g transform="rotate(-35 512 512)" fill="none" stroke="#0f172a" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="512" y1="170" x2="512" y2="600" stroke-width="56" />
+    <rect x="430" y="600" width="164" height="220" rx="42" stroke-width="40" />
+    <line x1="462" y1="690" x2="462" y2="790" stroke-width="26" />
+    <line x1="512" y1="690" x2="512" y2="790" stroke-width="26" />
+    <line x1="562" y1="690" x2="562" y2="790" stroke-width="26" />
+    <line x1="430" y1="640" x2="594" y2="640" stroke-width="32" />
   </g>
-
-  <circle cx="790" cy="250" r="14" fill="#38bdf8" opacity="0.8" />
-  <circle cx="842" cy="310" r="8" fill="#22d3ee" opacity="0.75" />
 </svg>
