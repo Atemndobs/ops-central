@@ -1,9 +1,22 @@
 "use client";
 
+import { useAuth } from "@clerk/nextjs";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import { ClipboardList, History, AlertTriangle, Settings, Wifi, WifiOff } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ClipboardList,
+  History,
+  AlertTriangle,
+  Settings,
+  Wifi,
+  WifiOff,
+  LogOut,
+  Moon,
+  Sun,
+} from "lucide-react";
+import { api } from "@convex/_generated/api";
 import { InstallPrompt } from "@/components/cleaner/install-prompt";
 
 const NAV_ITEMS = [
@@ -13,11 +26,52 @@ const NAV_ITEMS = [
   { href: "/cleaner/settings", label: "Settings", icon: Settings },
 ];
 
+const THEME_STORAGE_KEY = "opscentral-theme";
+
+type ThemePreference = "dark" | "light";
+
+function readClientThemePreference(): ThemePreference {
+  if (typeof window === "undefined") {
+    return "light";
+  }
+
+  const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+  if (stored === "dark" || stored === "light") {
+    return stored;
+  }
+
+  return "light";
+}
+
+function applyTheme(theme: ThemePreference) {
+  document.documentElement.classList.toggle("dark", theme === "dark");
+}
+
 export function CleanerShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { signOut, userId } = useAuth();
+  const { isAuthenticated: isConvexAuthenticated, isLoading: isConvexAuthLoading } =
+    useConvexAuth();
+  const themePreference = useQuery(
+    api.users.queries.getThemePreference,
+    isConvexAuthenticated ? {} : "skip",
+  );
+  const setThemePreference = useMutation(api.users.mutations.setThemePreference);
   const [isOnline, setIsOnline] = useState(true);
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
+  const [localTheme, setLocalTheme] = useState<ThemePreference>(() =>
+    readClientThemePreference(),
+  );
+  const initializedThemeScopeRef = useRef<string | null>(null);
+  const themeScopeKey = isConvexAuthenticated
+    ? `auth:${userId ?? "unknown"}`
+    : "anon";
+  const resolvedTheme: ThemePreference =
+    isConvexAuthenticated && themePreference?.theme
+      ? themePreference.theme
+      : localTheme;
+  const isDarkMode = resolvedTheme === "dark";
 
   useEffect(() => {
     const updateOnlineState = () => setIsOnline(window.navigator.onLine);
@@ -80,6 +134,54 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (initializedThemeScopeRef.current === themeScopeKey) {
+      return;
+    }
+    if (isConvexAuthLoading) {
+      return;
+    }
+    if (isConvexAuthenticated && themePreference === undefined) {
+      return;
+    }
+
+    applyTheme(resolvedTheme);
+    window.localStorage.setItem(THEME_STORAGE_KEY, resolvedTheme);
+
+    if (
+      isConvexAuthenticated &&
+      !themePreference?.theme &&
+      initializedThemeScopeRef.current !== themeScopeKey
+    ) {
+      void setThemePreference({ theme: resolvedTheme }).catch((error) => {
+        console.warn("[CleanerTheme] Failed to initialize theme in Convex", error);
+      });
+      initializedThemeScopeRef.current = themeScopeKey;
+    } else if (isConvexAuthenticated && themePreference?.theme) {
+      initializedThemeScopeRef.current = themeScopeKey;
+    }
+  }, [
+    resolvedTheme,
+    isConvexAuthenticated,
+    isConvexAuthLoading,
+    setThemePreference,
+    themePreference,
+    themeScopeKey,
+  ]);
+
+  const toggleTheme = useCallback(() => {
+    const nextTheme: ThemePreference = resolvedTheme === "dark" ? "light" : "dark";
+    setLocalTheme(nextTheme);
+    applyTheme(nextTheme);
+    window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+
+    if (isConvexAuthenticated) {
+      void setThemePreference({ theme: nextTheme }).catch((error) => {
+        console.warn("[CleanerTheme] Failed to save theme in Convex", error);
+      });
+    }
+  }, [isConvexAuthenticated, resolvedTheme, setThemePreference]);
+
   const title = useMemo(() => {
     if (!pathname) {
       return "Cleaner";
@@ -107,9 +209,32 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
             <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">OpsCentral</p>
             <h1 className="text-base font-semibold">{title}</h1>
           </div>
-          <div className="flex items-center gap-1 rounded-md border border-[var(--border)] px-2 py-1 text-xs">
-            {isOnline ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
-            <span>{isOnline ? "Online" : "Offline"}</span>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 rounded-md border border-[var(--border)] px-2 py-1 text-xs">
+              {isOnline ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
+              <span>{isOnline ? "Online" : "Offline"}</span>
+            </div>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="rounded-md border border-[var(--border)] p-2 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+              aria-label={isDarkMode ? "Switch to light theme" : "Switch to dark theme"}
+              title={isDarkMode ? "Light Mode" : "Dark Mode"}
+            >
+              {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                await signOut();
+                window.location.href = "/sign-in";
+              }}
+              className="rounded-md border border-[var(--border)] p-2 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+              aria-label="Sign out"
+              title="Sign out"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           </div>
         </div>
         <div className="mt-3">

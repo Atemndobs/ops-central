@@ -1,11 +1,27 @@
 "use client";
 
+import { useAuth } from "@clerk/nextjs";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
-import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { clearPendingUploads, listPendingUploads } from "@/features/cleaner/offline/indexeddb";
 
+const THEME_STORAGE_KEY = "opscentral-theme";
+
+type ThemePreference = "dark" | "light";
+
+function applyTheme(theme: ThemePreference) {
+  document.documentElement.classList.toggle("dark", theme === "dark");
+}
+
 export function CleanerSettingsClient() {
+  const { signOut } = useAuth();
+  const { isAuthenticated: isConvexAuthenticated } = useConvexAuth();
+  const themePreference = useQuery(
+    api.users.queries.getThemePreference,
+    isConvexAuthenticated ? {} : "skip",
+  );
+  const setThemePreference = useMutation(api.users.mutations.setThemePreference);
   const notifications = useQuery(api.notifications.queries.getMyNotifications, {
     includeRead: true,
     limit: 20,
@@ -14,6 +30,16 @@ export function CleanerSettingsClient() {
     | undefined;
 
   const [pendingUploads, setPendingUploads] = useState(0);
+  const [localTheme, setLocalTheme] = useState<ThemePreference>(() => {
+    if (typeof window === "undefined") {
+      return "light";
+    }
+
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return stored === "dark" || stored === "light" ? stored : "light";
+  });
+  const resolvedTheme: ThemePreference = themePreference?.theme ?? localTheme;
+  const isDarkMode = resolvedTheme === "dark";
 
   useEffect(() => {
     let active = true;
@@ -27,8 +53,44 @@ export function CleanerSettingsClient() {
     };
   }, []);
 
+  useEffect(() => {
+    applyTheme(resolvedTheme);
+    window.localStorage.setItem(THEME_STORAGE_KEY, resolvedTheme);
+  }, [resolvedTheme]);
+
   return (
     <div className="space-y-4">
+      <section className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
+        <h2 className="text-base font-semibold">Account</h2>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs"
+            onClick={async () => {
+              const nextTheme: ThemePreference = isDarkMode ? "light" : "dark";
+              setLocalTheme(nextTheme);
+              applyTheme(nextTheme);
+              window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+              if (isConvexAuthenticated) {
+                await setThemePreference({ theme: nextTheme });
+              }
+            }}
+          >
+            Switch to {isDarkMode ? "Light" : "Dark"} Theme
+          </button>
+          <button
+            type="button"
+            className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs"
+            onClick={async () => {
+              await signOut();
+              window.location.href = "/sign-in";
+            }}
+          >
+            Sign Out
+          </button>
+        </div>
+      </section>
+
       <section className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
         <h2 className="text-base font-semibold">Offline Sync</h2>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">

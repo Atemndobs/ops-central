@@ -7,8 +7,8 @@
   "scope": "/cleaner",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#081018",
-  "theme_color": "#081018",
+  "background_color": "#f3f7ff",
+  "theme_color": "#f3f7ff",
   "icons": [
     {
       "src": "/icons/cleaner-icon-192.png",

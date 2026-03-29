@@ -28,7 +28,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#081018",
+  themeColor: "#f3f7ff",
 };
 
 export default function CleanerLayout({
@@ -36,12 +36,5 @@ export default function CleanerLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <section
-      className="min-h-screen [--background:#081018] [--foreground:#f8fafc] [--card:#111a2a] [--card-foreground:#f8fafc] [--muted:#162236] [--muted-foreground:#94a3b8] [--border:#20304a] [--primary:#22d3ee] [--primary-foreground:#082f49] [--destructive:#fb7185]"
-      style={{ colorScheme: "dark" }}
-    >
-      <CleanerShell>{children}</CleanerShell>
-    </section>
-  );
+  return <CleanerShell>{children}</CleanerShell>;
 }
