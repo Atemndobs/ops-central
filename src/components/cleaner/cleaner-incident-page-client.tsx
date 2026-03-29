@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { getErrorMessage } from "@/lib/errors";
@@ -18,7 +18,8 @@ const INCIDENT_TYPES = [
 const SEVERITIES = ["low", "medium", "high", "critical"] as const;
 
 export function CleanerIncidentPageClient() {
-  const jobs = useQuery(api.cleaningJobs.queries.getMyAssigned, { limit: 200 }) as
+  const { isAuthenticated, isLoading } = useConvexAuth();
+  const jobs = useQuery(api.cleaningJobs.queries.getMyAssigned, isAuthenticated ? { limit: 200 } : "skip") as
     | Array<{
         _id: string;
         propertyId: string;
@@ -44,6 +45,14 @@ export function CleanerIncidentPageClient() {
   const selectedJob = useMemo(() => {
     return (jobs ?? []).find((job) => job._id === selectedJobId) ?? null;
   }, [jobs, selectedJobId]);
+
+  if (isLoading || !isAuthenticated) {
+    return (
+      <div className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4 text-sm text-[var(--muted-foreground)]">
+        Loading incident form...
+      </div>
+    );
+  }
 
   async function uploadIncidentPhotos(jobId: Id<"cleaningJobs">): Promise<Id<"photos">[]> {
     if (!files || files.length === 0) {

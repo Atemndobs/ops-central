@@ -16,16 +16,21 @@ function applyTheme(theme: ThemePreference) {
 
 export function CleanerSettingsClient() {
   const { signOut } = useAuth();
-  const { isAuthenticated: isConvexAuthenticated } = useConvexAuth();
+  const { isAuthenticated: isConvexAuthenticated, isLoading: isConvexAuthLoading } = useConvexAuth();
   const themePreference = useQuery(
     api.users.queries.getThemePreference,
     isConvexAuthenticated ? {} : "skip",
   );
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
-  const notifications = useQuery(api.notifications.queries.getMyNotifications, {
-    includeRead: true,
-    limit: 20,
-  }) as
+  const notifications = useQuery(
+    api.notifications.queries.getMyNotifications,
+    isConvexAuthenticated
+      ? {
+          includeRead: true,
+          limit: 20,
+        }
+      : "skip",
+  ) as
     | Array<{ _id: string; title: string; message: string; createdAt: number; readAt?: number }>
     | undefined;
 
@@ -42,6 +47,9 @@ export function CleanerSettingsClient() {
   const isDarkMode = resolvedTheme === "dark";
 
   useEffect(() => {
+    if (!isConvexAuthenticated) {
+      return;
+    }
     let active = true;
     void listPendingUploads().then((items) => {
       if (!active) return;
@@ -51,7 +59,7 @@ export function CleanerSettingsClient() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [isConvexAuthenticated]);
 
   useEffect(() => {
     applyTheme(resolvedTheme);
@@ -110,7 +118,7 @@ export function CleanerSettingsClient() {
 
       <section className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
         <h2 className="text-base font-semibold">Recent Notifications</h2>
-        {notifications === undefined ? (
+        {isConvexAuthLoading || !isConvexAuthenticated || notifications === undefined ? (
           <p className="mt-2 text-sm text-[var(--muted-foreground)]">Loading notifications...</p>
         ) : notifications.length === 0 ? (
           <p className="mt-2 text-sm text-[var(--muted-foreground)]">No notifications yet.</p>

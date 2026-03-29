@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { getErrorMessage } from "@/lib/errors";
@@ -14,8 +14,12 @@ function formatDate(value?: number | null) {
 
 export function CleanerJobDetailClient({ id }: { id: string }) {
   const jobId = id as Id<"cleaningJobs">;
+  const { isAuthenticated, isLoading } = useConvexAuth();
 
-  const detail = useQuery(api.cleaningJobs.queries.getMyJobDetail, { jobId }) as
+  const detail = useQuery(
+    api.cleaningJobs.queries.getMyJobDetail,
+    isAuthenticated ? { jobId } : "skip",
+  ) as
     | {
         job: {
           _id: string;
@@ -42,7 +46,7 @@ export function CleanerJobDetailClient({ id }: { id: string }) {
     return status === "scheduled" || status === "assigned" || status === "rework_required";
   }, [detail?.job.status]);
 
-  if (detail === undefined) {
+  if (isLoading || !isAuthenticated || detail === undefined) {
     return <p className="text-sm text-[var(--muted-foreground)]">Loading job details...</p>;
   }
 

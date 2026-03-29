@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -110,8 +110,12 @@ type JobDetailLike = {
 export function CleanerActiveJobClient({ id }: { id: string }) {
   const router = useRouter();
   const jobId = id as Id<"cleaningJobs">;
+  const { isAuthenticated, isLoading } = useConvexAuth();
 
-  const detail = useQuery(api.cleaningJobs.queries.getMyJobDetail, { jobId }) as
+  const detail = useQuery(
+    api.cleaningJobs.queries.getMyJobDetail,
+    isAuthenticated ? { jobId } : "skip",
+  ) as
     | JobDetailLike
     | null
     | undefined;
@@ -380,7 +384,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
     [drainQueue, isOnline, jobId],
   );
 
-  if (detail === undefined) {
+  if (isLoading || !isAuthenticated || detail === undefined) {
     return <p className="text-sm text-[var(--muted-foreground)]">Loading active job...</p>;
   }
 

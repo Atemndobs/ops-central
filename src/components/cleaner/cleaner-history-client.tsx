@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 
 function formatDate(value?: number) {
@@ -11,7 +11,8 @@ function formatDate(value?: number) {
 }
 
 export function CleanerHistoryClient() {
-  const jobs = useQuery(api.cleaningJobs.queries.getMyAssigned, { limit: 500 }) as
+  const { isAuthenticated, isLoading } = useConvexAuth();
+  const jobs = useQuery(api.cleaningJobs.queries.getMyAssigned, isAuthenticated ? { limit: 500 } : "skip") as
     | Array<{ _id: string; status: string; scheduledStartAt: number; property?: { name?: string | null } | null }>
     | undefined;
 
@@ -21,6 +22,10 @@ export function CleanerHistoryClient() {
       .filter((job) => job.status === "completed" || job.status === "awaiting_approval" || job.status === "cancelled")
       .sort((a, b) => b.scheduledStartAt - a.scheduledStartAt);
   }, [jobs]);
+
+  if (isLoading || !isAuthenticated) {
+    return <p className="text-sm text-[var(--muted-foreground)]">Loading history...</p>;
+  }
 
   if (jobs === undefined) {
     return <p className="text-sm text-[var(--muted-foreground)]">Loading history...</p>;
