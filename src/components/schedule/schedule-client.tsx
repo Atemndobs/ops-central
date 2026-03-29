@@ -113,7 +113,7 @@ export function ScheduleClient() {
   const [sliderValue, setSliderValue] = useState(0);
 
   // --- Day count (3 or 7) ---
-  const [dayCount, setDayCount] = useState<3 | 7>(3);
+  const [dayCount, setDayCount] = useState<3 | 7>(7);
   const visibleDaysCount = dayCount;
 
   // --- Filters ---
@@ -252,9 +252,11 @@ export function ScheduleClient() {
           ? "160px"
           : "80px";
 
+  // On desktop, always use comfortable column widths for full job cards
+  // On mobile with 7-day, use compact 40px columns for dot view
   const scheduleGridTemplateColumns = isGridFitMode
     ? `${propertyLabelMode === "hidden" ? "" : `${propertyColWidth} `}repeat(${Math.max(1, visibleDays.length)}, minmax(0, 1fr))`
-    : `${propertyColWidth} repeat(${Math.max(1, visibleDays.length)}, minmax(${dayCount <= 3 ? "100px" : "40px"}, 1fr))`;
+    : `${propertyColWidth} repeat(${Math.max(1, visibleDays.length)}, minmax(120px, 1fr))`;
 
   // --- Navigation helpers ---
   const applyWeekRange = (baseDate: Date) => {
@@ -370,29 +372,98 @@ export function ScheduleClient() {
       return <div key={key} className="h-10 border-l sm:h-16" />;
     }
 
-    // 7-day compact mode: dots/numbers
+    // 7-day compact mode: dots on mobile only, desktop always shows full cards
     if (dayCount === 7) {
       const worst = worstStatus(cellJobs);
       const dotColor = statusDotClass[worst] ?? "bg-slate-400";
       return (
-        <button
-          key={key}
-          type="button"
-          className="flex items-center justify-center border-l p-1"
-          onClick={() => setSelectedCell((c) => (c?.propertyId === propertyId && c.dayKey === dateKeyFn(day) ? null : { propertyId, dayKey: dateKeyFn(day) }))}
-        >
-          {cellJobs.length === 1 ? (
-            <span className={`h-2.5 w-2.5 rounded-full ${dotColor}`} />
-          ) : (
-            <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold text-white ${dotColor}`}>
-              {cellJobs.length}
-            </span>
-          )}
-        </button>
+        <div key={key} className="border-l">
+          {/* Mobile: dot/number view */}
+          <button
+            type="button"
+            className="flex h-full w-full items-center justify-center p-1 md:hidden"
+            onClick={() => setSelectedCell((c) => (c?.propertyId === propertyId && c.dayKey === dateKeyFn(day) ? null : { propertyId, dayKey: dateKeyFn(day) }))}
+          >
+            {cellJobs.length === 1 ? (
+              <span className={`h-2.5 w-2.5 rounded-full ${dotColor}`} />
+            ) : (
+              <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold text-white ${dotColor}`}>
+                {cellJobs.length}
+              </span>
+            )}
+          </button>
+          {/* Desktop: full job cards */}
+          <div className="hidden space-y-1 p-2 md:block">
+            {cellJobs.slice(0, 3).map((job) => {
+              const availableAssignment = assignableByPropertyMap.get(job.propertyId);
+              const companyCleaners = availableAssignment?.cleaners ?? [];
+              return (
+                <div key={job._id} className="relative">
+                  <Link
+                    href={`/jobs/${job._id}`}
+                    className={`block cursor-pointer rounded-md border px-2 py-1 pr-8 text-[11px] transition hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] ${STATUS_CLASSNAMES[job.status]}`}
+                    title="Open task details"
+                  >
+                    <p className="truncate font-semibold">{job.property?.name ?? "Job"}</p>
+                    <p className="truncate text-[10px] opacity-80">
+                      {new Date(job.scheduledStartAt ?? 0).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {" · "}
+                      {STATUS_LABELS[job.status]}
+                    </p>
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setQuickAssignJobId((current) => (current === job._id ? null : job._id));
+                    }}
+                    className="absolute right-1 top-1 rounded p-0.5 text-[var(--muted-foreground)] hover:bg-black/10 hover:text-[var(--foreground)]"
+                    aria-label="Quick assign cleaner"
+                  >
+                    <UserPlus className="h-3 w-3" />
+                  </button>
+                  {quickAssignJobId === job._id ? (
+                    <div className="absolute right-0 top-full z-40 mt-1 w-56 rounded-md border bg-[var(--card)] p-2 shadow-xl">
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Quick Assign</p>
+                      <p className="mb-2 text-[11px] text-[var(--muted-foreground)]">
+                        {availableAssignment?.companyName ? `Company: ${availableAssignment.companyName}` : "No company assigned."}
+                      </p>
+                      {companyCleaners.length === 0 ? (
+                        <p className="text-[11px] text-[var(--muted-foreground)]">No eligible cleaners.</p>
+                      ) : (
+                        <div className="space-y-1">
+                          {companyCleaners.map((cleaner) => {
+                            const alreadyAssigned = Boolean(job.cleaners?.some((c) => c?._id === cleaner._id));
+                            return (
+                              <button
+                                key={cleaner._id}
+                                type="button"
+                                disabled={assigningJobId === job._id}
+                                onClick={() => void handleQuickAssign(job._id, cleaner._id)}
+                                className="flex w-full items-center justify-between rounded px-2 py-1 text-left text-[11px] hover:bg-[var(--accent)] disabled:opacity-60"
+                              >
+                                <span className="truncate">{cleaner.name ?? cleaner.email}</span>
+                                {alreadyAssigned ? <Check className="h-3 w-3 text-emerald-500" /> : null}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+            {cellJobs.length > 3 ? (
+              <p className="text-[10px] text-[var(--muted-foreground)]">+{cellJobs.length - 3} more</p>
+            ) : null}
+          </div>
+        </div>
       );
     }
 
-    // 3-day mode: full job cards (existing behavior)
+    // 3-day mode: full job cards
     return (
       <div key={key} className="space-y-1 border-l p-1 sm:p-2">
         {cellJobs.slice(0, 3).map((job) => {
