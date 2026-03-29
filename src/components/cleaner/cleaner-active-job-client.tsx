@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "@convex/_generated/api";
@@ -145,6 +145,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
   const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
   const [isOnline, setIsOnline] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  const isSyncingRef = useRef(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [pendingSubmit, setPendingSubmit] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -181,10 +182,11 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
   }, [jobId]);
 
   const drainQueue = useCallback(async () => {
-    if (!isOnline || isSyncing) {
+    if (!isOnline || isSyncingRef.current) {
       return;
     }
 
+    isSyncingRef.current = true;
     setIsSyncing(true);
     setSyncError(null);
 
@@ -259,8 +261,9 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
     if (queue.every((item) => item.status !== "failed")) {
       setSyncError(null);
     }
+    isSyncingRef.current = false;
     setIsSyncing(false);
-  }, [generateUploadUrl, isOnline, isSyncing, jobId, uploadJobPhoto]);
+  }, [generateUploadUrl, isOnline, jobId, uploadJobPhoto]);
 
   useEffect(() => {
     void hydrateLocalState();
@@ -278,11 +281,14 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
     };
   }, []);
 
+  const drainQueueRef = useRef(drainQueue);
+  drainQueueRef.current = drainQueue;
+
   useEffect(() => {
     if (isOnline) {
-      void drainQueue();
+      void drainQueueRef.current();
     }
-  }, [drainQueue, isOnline]);
+  }, [isOnline]);
 
   useEffect(() => {
     if (!detail) {
