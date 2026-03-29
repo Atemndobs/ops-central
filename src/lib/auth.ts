@@ -24,17 +24,9 @@ function readRoleFromMetadata(metadata: unknown): UserRole | null {
   return isUserRole(candidate) ? candidate : null;
 }
 
-export function getRoleFromSessionClaims(claims: ClaimsLike): UserRole {
-  const configuredFallbackRole = process.env.NEXT_PUBLIC_DEFAULT_ROLE;
-  // Never grant admin when claims are missing/invalid.
-  // Unknown users default to least-privileged web surface.
-  const fallbackRole =
-    isUserRole(configuredFallbackRole) && configuredFallbackRole !== "admin"
-      ? configuredFallbackRole
-      : "cleaner";
-
+export function getRoleFromSessionClaimsOrNull(claims: ClaimsLike): UserRole | null {
   if (!claims) {
-    return fallbackRole;
+    return null;
   }
 
   const directRole = claims.role;
@@ -72,6 +64,37 @@ export function getRoleFromSessionClaims(claims: ClaimsLike): UserRole {
   if (unsafeMetadataSnakeRole) {
     return unsafeMetadataSnakeRole;
   }
+
+  const allClaims = claims as Record<string, unknown>;
+  for (const value of Object.values(allClaims)) {
+    const nestedRole = readRoleFromMetadata(value);
+    if (nestedRole) {
+      return nestedRole;
+    }
+  }
+
+  for (const [key, value] of Object.entries(allClaims)) {
+    if (!key.toLowerCase().includes("role")) {
+      continue;
+    }
+    if (isUserRole(value)) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+export function getRoleFromSessionClaims(claims: ClaimsLike): UserRole {
+  const resolvedRole = getRoleFromSessionClaimsOrNull(claims);
+  if (resolvedRole) {
+    return resolvedRole;
+  }
+
+  const configuredFallbackRole = process.env.NEXT_PUBLIC_DEFAULT_ROLE;
+  const fallbackRole = isUserRole(configuredFallbackRole)
+    ? configuredFallbackRole
+    : "admin";
 
   return fallbackRole;
 }

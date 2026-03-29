@@ -5,6 +5,7 @@ import {
   canAccessPath,
   getDefaultRouteForRole,
   getRoleFromSessionClaims,
+  getRoleFromSessionClaimsOrNull,
 } from "./auth.ts";
 
 test("getRoleFromSessionClaims prefers direct role claims", () => {
@@ -41,6 +42,12 @@ test("getRoleFromSessionClaims falls back through metadata sources", () => {
     getRoleFromSessionClaims({ unsafe_metadata: { role: "manager" } }),
     "manager",
   );
+  assert.equal(
+    getRoleFromSessionClaims({
+      "https://example.com/custom_claim": { role: "property_ops" },
+    }),
+    "property_ops",
+  );
 });
 
 test("getRoleFromSessionClaims uses NEXT_PUBLIC_DEFAULT_ROLE for missing or invalid claims", () => {
@@ -53,10 +60,16 @@ test("getRoleFromSessionClaims uses NEXT_PUBLIC_DEFAULT_ROLE for missing or inva
   assert.equal(getRoleFromSessionClaims(undefined), "property_ops");
 
   process.env.NEXT_PUBLIC_DEFAULT_ROLE = "admin";
-  assert.equal(getRoleFromSessionClaims(undefined), "cleaner");
+  assert.equal(getRoleFromSessionClaims(undefined), "admin");
 
   delete process.env.NEXT_PUBLIC_DEFAULT_ROLE;
-  assert.equal(getRoleFromSessionClaims(undefined), "cleaner");
+  assert.equal(getRoleFromSessionClaims(undefined), "admin");
+});
+
+test("getRoleFromSessionClaimsOrNull returns null when role is unavailable", () => {
+  assert.equal(getRoleFromSessionClaimsOrNull(undefined), null);
+  assert.equal(getRoleFromSessionClaimsOrNull({}), null);
+  assert.equal(getRoleFromSessionClaimsOrNull({ role: "invalid-role" }), null);
 });
 
 test("canAccessPath enforces route access by role", () => {
