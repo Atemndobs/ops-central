@@ -73,9 +73,11 @@ export default function AuthLayout({
           </div>
         </div>
 
-        {/* Auth widget panel */}
+        {/* Auth widget panel — light card for Clerk readability */}
         <div className="flex flex-1 items-center justify-center px-4 py-12 lg:px-12">
-          <div className="w-full max-w-[440px]">{children}</div>
+          <div className="w-full max-w-[440px] rounded-2xl bg-white p-6 shadow-2xl" style={{ colorScheme: "light" }}>
+            {children}
+          </div>
         </div>
       </div>
     </div>
