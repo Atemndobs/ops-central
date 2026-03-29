@@ -8,7 +8,11 @@ import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@convex/_generated/api";
 import { cn } from "@/lib/utils";
-import { getRoleFromSessionClaims, type UserRole } from "@/lib/auth";
+import {
+  getRoleFromMetadata,
+  getRoleFromSessionClaimsOrNull,
+  type UserRole,
+} from "@/lib/auth";
 import { navigation } from "@/components/layout/navigation";
 import {
   HelpCircle,
@@ -44,7 +48,7 @@ function applyTheme(theme: ThemePreference) {
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { sessionClaims, signOut } = useAuth();
+  const { isLoaded, isSignedIn, userId, sessionClaims, signOut } = useAuth();
   const { user } = useUser();
   const { isAuthenticated: isConvexAuthenticated, isLoading: isConvexAuthLoading } =
     useConvexAuth();
@@ -53,14 +57,28 @@ export function Sidebar() {
     isConvexAuthenticated ? {} : "skip",
   );
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
+  const convexUser = useQuery(
+    api.users.queries.getByClerkId,
+    isLoaded && isSignedIn && userId && isConvexAuthenticated
+      ? { clerkId: userId }
+      : "skip",
+  );
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const [hasMounted, setHasMounted] = useState(false);
+  const [localTheme, setLocalTheme] = useState<ThemePreference>(() =>
+    readClientThemePreference(),
+  );
   const initializedThemeScopeRef = useRef<string | null>(null);
-  const role = getRoleFromSessionClaims(
+  const roleFromClaims = getRoleFromSessionClaimsOrNull(
     sessionClaims as Record<string, unknown> | null,
   );
+  const roleFromMetadata = getRoleFromMetadata(user?.publicMetadata);
+  const role: UserRole = roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "manager";
+  const resolvedTheme: ThemePreference =
+    isConvexAuthenticated && themePreference?.theme
+      ? themePreference.theme
+      : localTheme;
+  const isDarkMode = resolvedTheme === "dark";
   const roleLabel: Record<UserRole, string> = {
     admin: "Admin",
     property_ops: "Property Ops",
@@ -85,16 +103,8 @@ export function Sidebar() {
       return;
     }
 
-    const fallbackTheme = readClientThemePreference();
-    const resolvedTheme =
-      isConvexAuthenticated && themePreference?.theme
-        ? themePreference.theme
-        : fallbackTheme;
-
-    setIsDarkMode(resolvedTheme === "dark");
     applyTheme(resolvedTheme);
     window.localStorage.setItem(THEME_STORAGE_KEY, resolvedTheme);
-    setHasMounted(true);
     initializedThemeScopeRef.current = themeScopeKey;
 
     if (isConvexAuthenticated && !themePreference?.theme) {
@@ -108,31 +118,21 @@ export function Sidebar() {
     setThemePreference,
     themePreference,
     themeScopeKey,
+    resolvedTheme,
   ]);
 
-  useEffect(() => {
-    if (!hasMounted) return;
-    const theme: ThemePreference = isDarkMode ? "dark" : "light";
-    applyTheme(theme);
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-  }, [isDarkMode, hasMounted]);
-
   const toggleTheme = useCallback(() => {
-    setIsDarkMode((previous) => {
-      const nextIsDarkMode = !previous;
-      const nextTheme: ThemePreference = nextIsDarkMode ? "dark" : "light";
-      applyTheme(nextTheme);
-      window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+    const nextTheme: ThemePreference = resolvedTheme === "dark" ? "light" : "dark";
+    setLocalTheme(nextTheme);
+    applyTheme(nextTheme);
+    window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
 
-      if (isConvexAuthenticated) {
-        void setThemePreference({ theme: nextTheme }).catch((error) => {
-          console.warn("[ThemePreference] Failed to save theme in Convex", error);
-        });
-      }
-
-      return nextIsDarkMode;
-    });
-  }, [isConvexAuthenticated, setThemePreference]);
+    if (isConvexAuthenticated) {
+      void setThemePreference({ theme: nextTheme }).catch((error) => {
+        console.warn("[ThemePreference] Failed to save theme in Convex", error);
+      });
+    }
+  }, [isConvexAuthenticated, resolvedTheme, setThemePreference]);
 
   return (
     <aside

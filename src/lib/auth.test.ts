@@ -60,10 +60,10 @@ test("getRoleFromSessionClaims uses NEXT_PUBLIC_DEFAULT_ROLE for missing or inva
   assert.equal(getRoleFromSessionClaims(undefined), "property_ops");
 
   process.env.NEXT_PUBLIC_DEFAULT_ROLE = "admin";
-  assert.equal(getRoleFromSessionClaims(undefined), "admin");
+  assert.equal(getRoleFromSessionClaims(undefined), "manager");
 
   delete process.env.NEXT_PUBLIC_DEFAULT_ROLE;
-  assert.equal(getRoleFromSessionClaims(undefined), "admin");
+  assert.equal(getRoleFromSessionClaims(undefined), "manager");
 });
 
 test("getRoleFromSessionClaimsOrNull returns null when role is unavailable", () => {

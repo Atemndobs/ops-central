@@ -1,9 +1,10 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkClient, clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import {
   USER_ROLES,
   canAccessPath,
   getDefaultRouteForRole,
+  getRoleFromMetadata,
   getRoleFromSessionClaims,
   getRoleFromSessionClaimsOrNull,
   type UserRole,
@@ -58,6 +59,17 @@ async function getRoleFromConvexByClerkId(clerkId: string): Promise<UserRole | n
   }
 }
 
+async function getRoleFromClerkMetadata(clerkId: string): Promise<UserRole | null> {
+  try {
+    const clerk = await clerkClient();
+    const user = await clerk.users.getUser(clerkId);
+    return getRoleFromMetadata(user.publicMetadata);
+  } catch (error) {
+    console.warn("[ProxyAuth] Failed to resolve role from Clerk metadata", error);
+    return null;
+  }
+}
+
 export default clerkMiddleware(async (auth, req) => {
   if (isPublicRoute(req)) {
     return NextResponse.next();
@@ -71,10 +83,17 @@ export default clerkMiddleware(async (auth, req) => {
 
   const claims = sessionClaims as Record<string, unknown> | null;
   const roleFromClaims = getRoleFromSessionClaimsOrNull(claims);
-  const roleFromConvex = roleFromClaims
+  const roleFromClerkMetadata = roleFromClaims
+    ? null
+    : await getRoleFromClerkMetadata(userId);
+  const roleFromConvex = roleFromClaims || roleFromClerkMetadata
     ? null
     : await getRoleFromConvexByClerkId(userId);
-  const role = roleFromClaims ?? roleFromConvex ?? getRoleFromSessionClaims(claims);
+  const role =
+    roleFromClaims ??
+    roleFromClerkMetadata ??
+    roleFromConvex ??
+    getRoleFromSessionClaims(claims);
   const pathname = req.nextUrl.pathname;
 
   if (role === "cleaner" && (pathname === "/jobs" || pathname.startsWith("/jobs/"))) {

@@ -2,11 +2,14 @@
 
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
-import { useAuth } from "@clerk/nextjs";
+import { useAuth, useUser } from "@clerk/nextjs";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useToast } from "@/components/ui/toast-provider";
-import { getRoleFromSessionClaims } from "@/lib/auth";
+import {
+  getRoleFromMetadata,
+  getRoleFromSessionClaimsOrNull,
+} from "@/lib/auth";
 import {
   Award,
   Download,
@@ -78,12 +81,21 @@ export default function TeamPage() {
     phone: "",
   });
 
-  const { isLoaded: isClerkLoaded, isSignedIn, sessionClaims } = useAuth();
-  const currentRole = getRoleFromSessionClaims(
+  const { isLoaded: isClerkLoaded, isSignedIn, sessionClaims, userId } = useAuth();
+  const { user } = useUser();
+  const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
+  const convexUser = useQuery(
+    api.users.queries.getByClerkId,
+    isAuthenticated && isClerkLoaded && isSignedIn && userId
+      ? { clerkId: userId }
+      : "skip",
+  );
+  const roleFromClaims = getRoleFromSessionClaimsOrNull(
     (sessionClaims as Record<string, unknown> | null | undefined) ?? null,
   );
+  const roleFromMetadata = getRoleFromMetadata(user?.publicMetadata);
+  const currentRole = roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "manager";
   const canManageTeam = currentRole === "admin";
-  const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const teamMetrics = useQuery(
     api.admin.queries.getTeamMetrics,
     isAuthenticated ? {} : "skip",

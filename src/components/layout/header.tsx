@@ -1,13 +1,18 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
+import { useAuth, useUser } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@convex/_generated/api";
 import { Bell, LogOut, Menu, Moon, Settings, Sun, X } from "lucide-react";
-import { canAccessPath, getRoleFromSessionClaims } from "@/lib/auth";
+import {
+  canAccessPath,
+  getRoleFromMetadata,
+  getRoleFromSessionClaimsOrNull,
+  type UserRole,
+} from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { navigation } from "@/components/layout/navigation";
 
@@ -47,21 +52,24 @@ function applyTheme(theme: ThemePreference) {
 export function Header() {
   const pathname = usePathname();
   const { isLoaded, isSignedIn, userId, sessionClaims, signOut } = useAuth();
+  const { user } = useUser();
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => readThemeFromClient() === "dark");
   const notificationPanelRef = useRef<HTMLDivElement | null>(null);
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
-  const role = getRoleFromSessionClaims(
-    sessionClaims as Record<string, unknown> | null,
-  );
-  const canViewSettings = isLoaded && canAccessPath(role, "/settings");
-  const mobileNavigation = navigation.filter((item) => item.roles.includes(role));
 
   const convexUser = useQuery(
     api.users.queries.getByClerkId,
     isLoaded && isSignedIn && userId ? { clerkId: userId } : "skip",
   );
+  const roleFromClaims = getRoleFromSessionClaimsOrNull(
+    sessionClaims as Record<string, unknown> | null,
+  );
+  const roleFromMetadata = getRoleFromMetadata(user?.publicMetadata);
+  const role: UserRole = roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "manager";
+  const canViewSettings = isLoaded && canAccessPath(role, "/settings");
+  const mobileNavigation = navigation.filter((item) => item.roles.includes(role));
 
   const notifications = useQuery(
     api.notifications.queries.getUserNotifications,

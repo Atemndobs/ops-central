@@ -24,6 +24,10 @@ function readRoleFromMetadata(metadata: unknown): UserRole | null {
   return isUserRole(candidate) ? candidate : null;
 }
 
+export function getRoleFromMetadata(metadata: unknown): UserRole | null {
+  return readRoleFromMetadata(metadata);
+}
+
 export function getRoleFromSessionClaimsOrNull(claims: ClaimsLike): UserRole | null {
   if (!claims) {
     return null;
@@ -92,9 +96,10 @@ export function getRoleFromSessionClaims(claims: ClaimsLike): UserRole {
   }
 
   const configuredFallbackRole = process.env.NEXT_PUBLIC_DEFAULT_ROLE;
-  const fallbackRole = isUserRole(configuredFallbackRole)
-    ? configuredFallbackRole
-    : "admin";
+  const fallbackRole =
+    isUserRole(configuredFallbackRole) && configuredFallbackRole !== "admin"
+      ? configuredFallbackRole
+      : "manager";
 
   return fallbackRole;
 }
