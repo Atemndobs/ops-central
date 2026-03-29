@@ -17,4 +17,15 @@ crons.interval(
   {},
 );
 
+crons.cron(
+  "archive-photos-to-minio-every-7-days",
+  "0 2 */7 * *",
+  internal.files.archiveActions.archiveSevenDayPhotos,
+  {
+    olderThanDays: 7,
+    batchSize: 100,
+    dryRun: false,
+  },
+);
+
 export default crons;

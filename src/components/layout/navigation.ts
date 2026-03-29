@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Calendar,
   ClipboardList,
+  ClipboardCheck,
   Building2,
   Building,
   Users,
@@ -38,6 +39,12 @@ export const navigation: NavigationItem[] = [
     href: "/jobs",
     icon: ClipboardList,
     roles: ["admin", "property_ops", "manager", "cleaner"],
+  },
+  {
+    name: "Review",
+    href: "/review",
+    icon: ClipboardCheck,
+    roles: ["property_ops", "manager"],
   },
   {
     name: "Properties",

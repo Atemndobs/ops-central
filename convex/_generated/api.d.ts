@@ -14,6 +14,7 @@ import type * as admin_userSync from "../admin/userSync.js";
 import type * as cleaningJobs_approve from "../cleaningJobs/approve.js";
 import type * as cleaningJobs_mutations from "../cleaningJobs/mutations.js";
 import type * as cleaningJobs_queries from "../cleaningJobs/queries.js";
+import type * as cleaningJobs_reviewAccess from "../cleaningJobs/reviewAccess.js";
 import type * as crons from "../crons.js";
 import type * as dashboard_queries from "../dashboard/queries.js";
 import type * as files_archiveActions from "../files/archiveActions.js";
@@ -54,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   "cleaningJobs/approve": typeof cleaningJobs_approve;
   "cleaningJobs/mutations": typeof cleaningJobs_mutations;
   "cleaningJobs/queries": typeof cleaningJobs_queries;
+  "cleaningJobs/reviewAccess": typeof cleaningJobs_reviewAccess;
   crons: typeof crons;
   "dashboard/queries": typeof dashboard_queries;
   "files/archiveActions": typeof files_archiveActions;

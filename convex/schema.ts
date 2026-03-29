@@ -310,7 +310,11 @@ const jobSubmissions = defineTable({
   photoSnapshot: v.array(
     v.object({
       photoId: v.id("photos"),
-      storageId: v.id("_storage"),
+      storageId: v.optional(v.id("_storage")),
+      provider: v.optional(v.string()),
+      bucket: v.optional(v.string()),
+      objectKey: v.optional(v.string()),
+      objectVersion: v.optional(v.string()),
       roomName: v.string(),
       type: v.union(
         v.literal("before"),
@@ -422,7 +426,13 @@ const jobTemplates = defineTable({
 
 const photos = defineTable({
   cleaningJobId: v.id("cleaningJobs"),
-  storageId: v.id("_storage"),
+  storageId: v.optional(v.id("_storage")),
+  provider: v.optional(v.string()),
+  bucket: v.optional(v.string()),
+  objectKey: v.optional(v.string()),
+  objectVersion: v.optional(v.string()),
+  archivedTier: v.optional(v.string()),
+  archivedAt: v.optional(v.number()),
 
   roomName: v.string(),
   type: v.union(
@@ -443,7 +453,29 @@ const photos = defineTable({
 })
   .index("by_job", ["cleaningJobId"])
   .index("by_job_room", ["cleaningJobId", "roomName"])
-  .index("by_job_type", ["cleaningJobId", "type"]);
+  .index("by_job_type", ["cleaningJobId", "type"])
+  .index("by_uploaded_at", ["uploadedAt"]);
+
+const photoArchives = defineTable({
+  photoId: v.id("photos"),
+  sourceProvider: v.string(),
+  sourceBucket: v.string(),
+  sourceObjectKey: v.string(),
+  archiveProvider: v.string(),
+  archiveBucket: v.string(),
+  archiveObjectKey: v.string(),
+  status: v.union(v.literal("archived"), v.literal("failed")),
+  attempts: v.number(),
+  lastAttemptAt: v.number(),
+  archivedAt: v.optional(v.number()),
+  failedAt: v.optional(v.number()),
+  lastError: v.optional(v.string()),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_photo", ["photoId"])
+  .index("by_status", ["status"])
+  .index("by_archived_at", ["archivedAt"]);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // INCIDENTS
@@ -726,6 +758,7 @@ export default defineSchema({
 
   // Photos
   photos,
+  photoArchives,
 
   // Incidents
   incidents,

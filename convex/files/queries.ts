@@ -1,6 +1,7 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { getCurrentUser } from "../lib/auth";
+import { resolvePhotoAccessUrl } from "../lib/photoUrls";
 
 export const getFileUrl = query({
   args: {
@@ -24,6 +25,22 @@ export const getPhotoUrl = query({
       return null;
     }
 
-    return await ctx.storage.getUrl(photo.storageId);
+    return resolvePhotoAccessUrl(ctx, photo);
+  },
+});
+
+export const getPhotoAccessUrl = query({
+  args: {
+    photoId: v.id("photos"),
+  },
+  handler: async (ctx, args) => {
+    await getCurrentUser(ctx);
+
+    const photo = await ctx.db.get(args.photoId);
+    if (!photo) {
+      return null;
+    }
+
+    return resolvePhotoAccessUrl(ctx, photo);
   },
 });

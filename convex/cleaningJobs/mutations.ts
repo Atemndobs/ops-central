@@ -264,6 +264,10 @@ async function sealSubmission(
   const photoSnapshot = photos.map((photo) => ({
     photoId: photo._id,
     storageId: photo.storageId,
+    provider: photo.provider,
+    bucket: photo.bucket,
+    objectKey: photo.objectKey,
+    objectVersion: photo.objectVersion,
     roomName: photo.roomName,
     type: photo.type,
     uploadedAt: photo.uploadedAt,
