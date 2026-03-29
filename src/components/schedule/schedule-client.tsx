@@ -120,6 +120,7 @@ export function ScheduleClient() {
   const [search, setSearch] = useState("");
   const [propertyFilter, setPropertyFilter] = useState("all");
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
 
   // --- Desktop toggles ---
   const [isCleanerPanelVisible, setIsCleanerPanelVisible] = useState(true);
@@ -549,96 +550,193 @@ export function ScheduleClient() {
 
         {/* Secondary row: always on desktop, collapsible on mobile */}
         <div className={cn(
-          "mt-3 flex flex-wrap items-center gap-2",
-          showMobileFilters ? "flex" : "hidden md:flex",
+          "mt-2 sm:mt-3",
+          showMobileFilters ? "block" : "hidden md:block",
         )}>
-          <button
-            type="button"
-            onClick={() => { setRangeMode("week"); applyWeekRange(rangeStart); }}
-            className={cn("rounded-md border px-2 py-1.5 text-sm", rangeMode === "week" ? "bg-[var(--accent)] font-semibold" : "hover:bg-[var(--accent)]")}
-          >
-            Week
-          </button>
-          <button
-            type="button"
-            onClick={() => { setRangeMode("month"); applyMonthRange(rangeStart); }}
-            className={cn("rounded-md border px-2 py-1.5 text-sm", rangeMode === "month" ? "bg-[var(--accent)] font-semibold" : "hover:bg-[var(--accent)]")}
-          >
-            Month
-          </button>
+          {/* Mobile: compact layout */}
+          <div className="flex flex-wrap items-center gap-1.5 md:hidden">
+            {/* Single W↔M toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                if (rangeMode === "month") {
+                  setRangeMode("week");
+                  applyWeekRange(rangeStart);
+                } else {
+                  setRangeMode("month");
+                  applyMonthRange(rangeStart);
+                }
+              }}
+              className="rounded-md border px-2 py-1 text-[10px] font-semibold hover:bg-[var(--accent)]"
+            >
+              {rangeMode === "month" ? "→ Week" : "→ Month"}
+            </button>
 
-          <input
-            type="date"
-            value={toInputDate(rangeStart)}
-            onChange={(event) => {
-              const nextStart = fromInputDate(event.target.value);
-              if (!nextStart) return;
-              const normalizedStart = startOfDay(nextStart);
-              setRangeMode("custom");
-              setRangeStart(normalizedStart);
-              setRangeEnd((current) => (startOfDay(current).getTime() < normalizedStart.getTime() ? normalizedStart : current));
-              setSliderValue(0);
-            }}
-            className="rounded-md border bg-[var(--card)] px-2 py-1.5 text-sm"
-            aria-label="Range start date"
-          />
-          <input
-            type="date"
-            value={toInputDate(rangeEnd)}
-            onChange={(event) => {
-              const nextEnd = fromInputDate(event.target.value);
-              if (!nextEnd) return;
-              const normalizedEnd = startOfDay(nextEnd);
-              setRangeMode("custom");
-              setRangeEnd(normalizedEnd);
-              setRangeStart((current) => (startOfDay(current).getTime() > normalizedEnd.getTime() ? normalizedEnd : current));
-              setSliderValue(0);
-            }}
-            className="rounded-md border bg-[var(--card)] px-2 py-1.5 text-sm"
-            aria-label="Range end date"
-          />
+            {/* Inline date range */}
+            <div className="flex items-center gap-1 rounded-md border px-1.5 py-1 text-[10px]">
+              <input
+                type="date"
+                value={toInputDate(rangeStart)}
+                onChange={(event) => {
+                  const nextStart = fromInputDate(event.target.value);
+                  if (!nextStart) return;
+                  const normalizedStart = startOfDay(nextStart);
+                  setRangeMode("custom");
+                  setRangeStart(normalizedStart);
+                  setRangeEnd((current) => (startOfDay(current).getTime() < normalizedStart.getTime() ? normalizedStart : current));
+                  setSliderValue(0);
+                }}
+                className="w-[90px] bg-transparent text-[10px] outline-none"
+                aria-label="Start"
+              />
+              <span className="text-[var(--muted-foreground)]">–</span>
+              <input
+                type="date"
+                value={toInputDate(rangeEnd)}
+                onChange={(event) => {
+                  const nextEnd = fromInputDate(event.target.value);
+                  if (!nextEnd) return;
+                  const normalizedEnd = startOfDay(nextEnd);
+                  setRangeMode("custom");
+                  setRangeEnd(normalizedEnd);
+                  setRangeStart((current) => (startOfDay(current).getTime() > normalizedEnd.getTime() ? normalizedEnd : current));
+                  setSliderValue(0);
+                }}
+                className="w-[90px] bg-transparent text-[10px] outline-none"
+                aria-label="End"
+              />
+            </div>
 
-          <div className="flex items-center gap-2 rounded-md border bg-[var(--card)] px-3 py-1.5">
-            <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
-            <input
-              type="text"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search properties"
-              className="w-36 bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)]"
-            />
+            {/* Search: icon that expands inline */}
+            {isMobileSearchOpen ? (
+              <div className="flex flex-1 items-center gap-1 rounded-md border px-2 py-1">
+                <Search className="h-3 w-3 shrink-0 text-[var(--muted-foreground)]" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search"
+                  className="w-full min-w-0 bg-transparent text-[11px] outline-none placeholder:text-[var(--muted-foreground)]"
+                  autoFocus
+                />
+                <button type="button" onClick={() => { setSearch(""); setIsMobileSearchOpen(false); }} className="shrink-0">
+                  <X className="h-3 w-3 text-[var(--muted-foreground)]" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsMobileSearchOpen(true)}
+                className="rounded-md border p-1 hover:bg-[var(--accent)]"
+                aria-label="Search properties"
+              >
+                <Search className="h-3 w-3" />
+              </button>
+            )}
+
+            {/* Property dropdown */}
+            <select
+              value={propertyFilter}
+              onChange={(event) => setPropertyFilter(event.target.value)}
+              className="max-w-[120px] truncate rounded-md border bg-[var(--card)] px-1.5 py-1 text-[10px]"
+            >
+              <option value="all">All</option>
+              {(properties ?? []).map((property) => (
+                <option key={property._id} value={property._id}>{property.name}</option>
+              ))}
+            </select>
           </div>
 
-          <select
-            value={propertyFilter}
-            onChange={(event) => setPropertyFilter(event.target.value)}
-            className="rounded-md border bg-[var(--card)] px-2 py-1.5 text-sm"
-          >
-            <option value="all">All Properties</option>
-            {(properties ?? []).map((property) => (
-              <option key={property._id} value={property._id}>{property.name}</option>
-            ))}
-          </select>
+          {/* Desktop: full row (unchanged) */}
+          <div className="hidden flex-wrap items-center gap-2 md:flex">
+            <button
+              type="button"
+              onClick={() => { setRangeMode("week"); applyWeekRange(rangeStart); }}
+              className={cn("rounded-md border px-2 py-1.5 text-sm", rangeMode === "week" ? "bg-[var(--accent)] font-semibold" : "hover:bg-[var(--accent)]")}
+            >
+              Week
+            </button>
+            <button
+              type="button"
+              onClick={() => { setRangeMode("month"); applyMonthRange(rangeStart); }}
+              className={cn("rounded-md border px-2 py-1.5 text-sm", rangeMode === "month" ? "bg-[var(--accent)] font-semibold" : "hover:bg-[var(--accent)]")}
+            >
+              Month
+            </button>
 
-          {/* Desktop-only toggles */}
-          <button
-            type="button"
-            onClick={() => setIsCleanerPanelVisible((prev) => !prev)}
-            className="hidden items-center gap-1 rounded-md border px-2 py-1.5 text-sm hover:bg-[var(--accent)] md:inline-flex"
-            aria-pressed={!isCleanerPanelVisible}
-          >
-            {isCleanerPanelVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            {isCleanerPanelVisible ? "Hide Team" : "Show Team"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsGridFitMode((prev) => !prev)}
-            className="hidden items-center gap-1 rounded-md border px-2 py-1.5 text-sm hover:bg-[var(--accent)] md:inline-flex"
-            aria-pressed={isGridFitMode}
-          >
-            {isGridFitMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-            {isGridFitMode ? "Normal" : "Fit Screen"}
-          </button>
+            <input
+              type="date"
+              value={toInputDate(rangeStart)}
+              onChange={(event) => {
+                const nextStart = fromInputDate(event.target.value);
+                if (!nextStart) return;
+                const normalizedStart = startOfDay(nextStart);
+                setRangeMode("custom");
+                setRangeStart(normalizedStart);
+                setRangeEnd((current) => (startOfDay(current).getTime() < normalizedStart.getTime() ? normalizedStart : current));
+                setSliderValue(0);
+              }}
+              className="rounded-md border bg-[var(--card)] px-2 py-1.5 text-sm"
+              aria-label="Range start date"
+            />
+            <input
+              type="date"
+              value={toInputDate(rangeEnd)}
+              onChange={(event) => {
+                const nextEnd = fromInputDate(event.target.value);
+                if (!nextEnd) return;
+                const normalizedEnd = startOfDay(nextEnd);
+                setRangeMode("custom");
+                setRangeEnd(normalizedEnd);
+                setRangeStart((current) => (startOfDay(current).getTime() > normalizedEnd.getTime() ? normalizedEnd : current));
+                setSliderValue(0);
+              }}
+              className="rounded-md border bg-[var(--card)] px-2 py-1.5 text-sm"
+              aria-label="Range end date"
+            />
+
+            <div className="flex items-center gap-2 rounded-md border bg-[var(--card)] px-3 py-1.5">
+              <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
+              <input
+                type="text"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search properties"
+                className="w-36 bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)]"
+              />
+            </div>
+
+            <select
+              value={propertyFilter}
+              onChange={(event) => setPropertyFilter(event.target.value)}
+              className="rounded-md border bg-[var(--card)] px-2 py-1.5 text-sm"
+            >
+              <option value="all">All Properties</option>
+              {(properties ?? []).map((property) => (
+                <option key={property._id} value={property._id}>{property.name}</option>
+              ))}
+            </select>
+
+            {/* Desktop-only toggles */}
+            <button
+              type="button"
+              onClick={() => setIsCleanerPanelVisible((prev) => !prev)}
+              className="inline-flex items-center gap-1 rounded-md border px-2 py-1.5 text-sm hover:bg-[var(--accent)]"
+              aria-pressed={!isCleanerPanelVisible}
+            >
+              {isCleanerPanelVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {isCleanerPanelVisible ? "Hide Team" : "Show Team"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsGridFitMode((prev) => !prev)}
+              className="inline-flex items-center gap-1 rounded-md border px-2 py-1.5 text-sm hover:bg-[var(--accent)]"
+              aria-pressed={isGridFitMode}
+            >
+              {isGridFitMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              {isGridFitMode ? "Normal" : "Fit Screen"}
+            </button>
+          </div>
         </div>
       </header>
 
