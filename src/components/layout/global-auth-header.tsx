@@ -10,7 +10,12 @@ import { usePathname } from "next/navigation";
 
 export function GlobalAuthHeader() {
   const pathname = usePathname();
-  if (pathname?.startsWith("/cleaner") || pathname?.startsWith("/review")) {
+  if (
+    pathname?.startsWith("/cleaner") ||
+    pathname?.startsWith("/review") ||
+    pathname?.startsWith("/sign-in") ||
+    pathname?.startsWith("/sign-up")
+  ) {
     return null;
   }
 

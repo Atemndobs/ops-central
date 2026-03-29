@@ -1,0 +1,12 @@
+<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- House roof -->
+  <path d="M24 4L4 22h6v18h28V22h6L24 4z" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- Door -->
+  <rect x="19" y="28" width="10" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="2"/>
+  <!-- Window left -->
+  <rect x="11" y="24" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/>
+  <!-- Window right -->
+  <rect x="31" y="24" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/>
+  <!-- Chimney -->
+  <rect x="33" y="10" width="5" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/>
+</svg>
