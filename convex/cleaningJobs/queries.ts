@@ -5,6 +5,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { getCurrentUser, requireRole } from "../lib/auth";
 import { createExternalReadUrl, getExternalStorageConfigOrNull } from "../lib/externalStorage";
 import { resolvePhotoAccessUrl } from "../lib/photoUrls";
+import { assertReviewerRole } from "./reviewAccess";
 
 const CLEANER_SESSION_DONE_STATUSES = new Set(["submitted", "excused"]);
 const JOB_STATUS_FILTER = v.union(
@@ -181,9 +182,6 @@ export const getMyAssigned = query({
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
-    if (user.role !== "cleaner") {
-      throw new Error("Cleaner-only query.");
-    }
 
     const allJobs = await ctx.db.query("cleaningJobs").collect();
     let jobs = allJobs.filter((job) => job.assignedCleanerIds.includes(user._id));
@@ -220,14 +218,96 @@ export const getMyJobDetail = query({
 
     const isPrivileged =
       user.role === "admin" || user.role === "manager" || user.role === "property_ops";
-    const isAssignedCleaner =
-      user.role === "cleaner" && detail.job.assignedCleanerIds.includes(user._id);
+    const isAssignedCleaner = detail.job.assignedCleanerIds.includes(user._id);
 
     if (!isPrivileged && !isAssignedCleaner) {
       throw new Error("You are not authorized to access this job.");
     }
 
     return detail;
+  },
+});
+
+export const getReviewQueue = query({
+  args: {
+    status: v.optional(JOB_STATUS_FILTER),
+    propertyId: v.optional(v.id("properties")),
+    from: v.optional(v.number()),
+    to: v.optional(v.number()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    assertReviewerRole(user.role);
+
+    let jobs;
+    if (args.status && args.propertyId) {
+      jobs = await ctx.db
+        .query("cleaningJobs")
+        .withIndex("by_property_status", (q) =>
+          q.eq("propertyId", args.propertyId!).eq("status", args.status!),
+        )
+        .collect();
+    } else if (args.status) {
+      jobs = await ctx.db
+        .query("cleaningJobs")
+        .withIndex("by_status", (q) => q.eq("status", args.status!))
+        .collect();
+    } else if (args.propertyId) {
+      jobs = await ctx.db
+        .query("cleaningJobs")
+        .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId!))
+        .collect();
+    } else {
+      jobs = await ctx.db
+        .query("cleaningJobs")
+        .withIndex("by_scheduled")
+        .collect();
+    }
+
+    if (typeof args.from === "number") {
+      jobs = jobs.filter((job) => job.scheduledStartAt >= args.from!);
+    }
+    if (typeof args.to === "number") {
+      jobs = jobs.filter((job) => job.scheduledStartAt <= args.to!);
+    }
+
+    const statusPriority: Record<Doc<"cleaningJobs">["status"], number> = {
+      awaiting_approval: 0,
+      rework_required: 1,
+      in_progress: 2,
+      assigned: 3,
+      scheduled: 4,
+      completed: 5,
+      cancelled: 6,
+    };
+
+    const sorted = jobs.sort((a, b) => {
+      const priorityDiff = statusPriority[a.status] - statusPriority[b.status];
+      if (priorityDiff !== 0) {
+        return priorityDiff;
+      }
+      return b.scheduledStartAt - a.scheduledStartAt;
+    });
+
+    const safeLimit =
+      typeof args.limit === "number" && Number.isFinite(args.limit)
+        ? Math.max(1, Math.min(500, Math.floor(args.limit)))
+        : 200;
+
+    return await enrichJobs(ctx, sorted.slice(0, safeLimit));
+  },
+});
+
+export const getReviewJobDetail = query({
+  args: {
+    jobId: v.id("cleaningJobs"),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    assertReviewerRole(user.role);
+
+    return await getJobDetailInternal(ctx, args.jobId);
   },
 });
 

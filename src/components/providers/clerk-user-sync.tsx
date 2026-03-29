@@ -19,8 +19,59 @@ function parseRole(value: unknown): UserRole | undefined {
   return undefined;
 }
 
+type ClaimsLike = Record<string, unknown> | null | undefined;
+
+function parseRoleFromMetadata(metadata: unknown): UserRole | undefined {
+  if (!metadata || typeof metadata !== "object") {
+    return undefined;
+  }
+  return parseRole((metadata as Record<string, unknown>).role);
+}
+
+function parseRoleFromSessionClaims(claims: ClaimsLike): UserRole | undefined {
+  if (!claims) {
+    return undefined;
+  }
+
+  const directRole = parseRole(claims.role);
+  if (directRole) {
+    return directRole;
+  }
+
+  const metadataRole = parseRoleFromMetadata(claims.metadata);
+  if (metadataRole) {
+    return metadataRole;
+  }
+
+  const publicMetadataRole = parseRoleFromMetadata(claims.publicMetadata);
+  if (publicMetadataRole) {
+    return publicMetadataRole;
+  }
+
+  const publicMetadataSnakeRole = parseRoleFromMetadata(
+    claims.public_metadata,
+  );
+  if (publicMetadataSnakeRole) {
+    return publicMetadataSnakeRole;
+  }
+
+  const unsafeMetadataRole = parseRoleFromMetadata(claims.unsafeMetadata);
+  if (unsafeMetadataRole) {
+    return unsafeMetadataRole;
+  }
+
+  const unsafeMetadataSnakeRole = parseRoleFromMetadata(
+    claims.unsafe_metadata,
+  );
+  if (unsafeMetadataSnakeRole) {
+    return unsafeMetadataSnakeRole;
+  }
+
+  return undefined;
+}
+
 export function ClerkUserSync() {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, sessionClaims } = useAuth();
   const { user } = useUser();
   const { isAuthenticated: isConvexAuthenticated, isLoading: isConvexAuthLoading } =
     useConvexAuth();
@@ -46,8 +97,17 @@ export function ClerkUserSync() {
       user.firstName?.trim() ||
       email.split("@")[0] ||
       "User";
-    const metadata = user.publicMetadata as Record<string, unknown> | undefined;
-    const role = parseRole(metadata?.role);
+    const publicMetadata = user.publicMetadata as
+      | Record<string, unknown>
+      | undefined;
+    const unsafeMetadata = (user as { unsafeMetadata?: Record<string, unknown> })
+      .unsafeMetadata;
+    const role =
+      parseRoleFromSessionClaims(
+        sessionClaims as Record<string, unknown> | null | undefined,
+      ) ??
+      parseRole(publicMetadata?.role) ??
+      parseRole(unsafeMetadata?.role);
     const avatarUrl = user.imageUrl?.trim() || undefined;
 
     const syncKey = `${user.id}:${email}:${name}:${role ?? ""}:${avatarUrl ?? ""}`;
@@ -76,6 +136,7 @@ export function ClerkUserSync() {
     isLoaded,
     isSignedIn,
     user,
+    sessionClaims,
   ]);
 
   return null;
