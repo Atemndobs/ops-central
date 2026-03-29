@@ -157,6 +157,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [pendingSubmit, setPendingSubmit] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [canForceSubmit, setCanForceSubmit] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
 
   const roomList = useMemo(() => buildRoomList(detail), [detail]);
@@ -703,6 +704,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
             onClick={async () => {
               setPendingSubmit(true);
               setSubmitError(null);
+              setCanForceSubmit(false);
               setSubmitSuccess(null);
 
               try {
@@ -746,7 +748,10 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                 setSubmitSuccess("Work submitted for approval.");
                 router.push(`/cleaner/jobs/${jobId}`);
               } catch (error) {
-                setSubmitError(getErrorMessage(error, "Unable to submit for approval."));
+                const msg = getErrorMessage(error, "Unable to submit for approval.");
+                const isValidation = msg.includes("Evidence validation failed");
+                setSubmitError(isValidation ? msg.replace("Evidence validation failed: ", "") : msg);
+                setCanForceSubmit(isValidation);
               } finally {
                 setPendingSubmit(false);
               }
@@ -755,7 +760,52 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
             {pendingSubmit ? "Submitting..." : "Submit For Approval"}
           </button>
 
-          {submitError ? <p className="text-xs text-[var(--destructive)]">{submitError}</p> : null}
+          {submitError ? (
+            <div className="space-y-2">
+              <p className="text-xs text-[var(--destructive)]">{submitError}</p>
+              {canForceSubmit ? (
+                <button
+                  type="button"
+                  disabled={pendingSubmit}
+                  className="rounded-lg border border-[var(--destructive)] px-3 py-1.5 text-xs font-semibold text-[var(--destructive)] hover:bg-[var(--destructive)]/10"
+                  onClick={async () => {
+                    try {
+                      setPendingSubmit(true);
+                      setSubmitError(null);
+                      setCanForceSubmit(false);
+
+                      const result = (await submitForApproval({
+                        jobId,
+                        notes: completionNotes.trim() || undefined,
+                        guestReady,
+                        qaMode,
+                        quickMinimumBefore: qaMode === "quick" ? quickMinimumBefore : undefined,
+                        quickMinimumAfter: qaMode === "quick" ? quickMinimumAfter : undefined,
+                        requiredRooms: roomList,
+                        skippedRooms: skippedRooms.length > 0 ? skippedRooms : undefined,
+                        submittedAtDevice: Date.now(),
+                        force: true,
+                      })) as { ok?: boolean };
+
+                      if (result && result.ok === false) {
+                        throw new Error("Unable to force-submit.");
+                      }
+
+                      await clearDraftProgress(jobId);
+                      setSubmitSuccess("Work submitted for approval (with override).");
+                      router.push(`/cleaner/jobs/${jobId}`);
+                    } catch (error) {
+                      setSubmitError(getErrorMessage(error, "Unable to force-submit."));
+                    } finally {
+                      setPendingSubmit(false);
+                    }
+                  }}
+                >
+                  {pendingSubmit ? "Submitting..." : "Submit Anyway"}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           {submitSuccess ? <p className="text-xs text-emerald-300">{submitSuccess}</p> : null}
         </section>
       ) : null}
