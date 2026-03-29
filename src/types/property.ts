@@ -1,5 +1,14 @@
 export type PropertyStatus = "ready" | "dirty" | "in_progress" | "vacant";
 
+export function isPropertyStatus(value: unknown): value is PropertyStatus {
+  return (
+    value === "ready" ||
+    value === "dirty" ||
+    value === "in_progress" ||
+    value === "vacant"
+  );
+}
+
 export interface PropertyRecord {
   _id: string;
   name: string;
