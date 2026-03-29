@@ -7,6 +7,10 @@ description: Designs and builds Convex components with isolated tables, clear bo
 
 Create reusable Convex components with clear boundaries and a small app-facing API.
 
+## Workspace Guardrail (OpsCentral + Cleaners)
+
+Components created in this repository run on the shared Cleaning Operations deployment (`dev:usable-anaconda-394`) used by both OpsCentral and the cleaners mobile app. Keep component APIs stable and avoid breaking shared function contracts without coordinated updates in both apps.
+
 ## When to Use
 
 - Creating a new Convex component in an existing app

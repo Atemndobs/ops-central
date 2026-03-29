@@ -7,6 +7,15 @@ description: Plans and executes safe Convex schema and data migrations using the
 
 Safely migrate Convex schemas and data when making breaking changes.
 
+## Workspace Guardrail (OpsCentral + Cleaners)
+
+This repo shares Convex with the cleaners mobile app:
+
+- Deployment: `dev:usable-anaconda-394`
+- Shared clients: `opscentral-admin` and `jna-cleaners-app`
+
+Treat every schema/function migration as cross-app impact. Validate both web and mobile callsites before narrowing schemas or removing functions.
+
 ## When to Use
 
 - Adding new required fields to existing tables

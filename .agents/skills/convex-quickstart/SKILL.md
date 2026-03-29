@@ -7,6 +7,15 @@ description: Initializes a new Convex project from scratch or adds Convex to an 
 
 Set up a working Convex project as fast as possible.
 
+## Workspace Guardrail (OpsCentral + Cleaners)
+
+In this workspace, `opscentral-admin` is not a greenfield Convex app. It already shares a production-critical deployment with `jna-cleaners-app`:
+
+- Deployment: `dev:usable-anaconda-394`
+- URL: `https://usable-anaconda-394.eu-west-1.convex.cloud`
+
+Before following generic quickstart steps, verify whether the task is actually "add Convex" or a change to the existing shared deployment. Do not run setup flows that create/switch deployments unless explicitly requested by the user.
+
 ## When to Use
 
 - Starting a brand new project with Convex

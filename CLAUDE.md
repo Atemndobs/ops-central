@@ -25,8 +25,8 @@ OpsCentral is the admin web dashboard for J&A Business Solutions' property care 
 ```
 
 - **Frontend:** Next.js 16 (App Router) + Tailwind CSS + shadcn/ui
-- **Backend:** Convex (shared deployment `dev:upbeat-donkey-677`)
-- **Auth:** Clerk (`informed-marlin-31.clerk.accounts.dev`)
+- **Backend:** Convex (shared deployment `dev:usable-anaconda-394`)
+- **Auth:** Clerk (`good-bluejay-68.clerk.accounts.dev`)
 - **Charts:** Recharts
 - **Icons:** Lucide React
 
@@ -36,12 +36,30 @@ OpsCentral is the admin web dashboard for J&A Business Solutions' property care 
 
 **CRITICAL:** This app shares a Convex deployment with the cleaners mobile app.
 
-- URL: `https://upbeat-donkey-677.convex.cloud`
-- Deployment: `dev:upbeat-donkey-677`
+- URL: `https://usable-anaconda-394.eu-west-1.convex.cloud`
+- Deployment: `dev:usable-anaconda-394`
 - Team: `bertrand-atemkeng`
-- Project: `jnabs`
+- Project: `opscentral-admin`
 
 **Any schema change affects both apps.** Coordinate carefully.
+
+## 🚨 BIG FAT WARNING: VERY DANGEROUS CONVEX DEPLOYMENT RULE
+
+- This repo (`opscentral-admin`) is the Convex backend owner.
+- Do **NOT** run Convex deploy/dev/codegen from `jna-cleaners-app`.
+- Wrong-folder deployment can overwrite shared backend functions for both apps.
+
+Owner command path:
+```bash
+cd /Users/atem/sites/jnabusiness_solutions/apps-ja/opscentral-admin
+npx convex <command>
+```
+
+After backend changes here, mirror to cleaners:
+```bash
+cd /Users/atem/sites/jnabusiness_solutions/apps-ja/jna-cleaners-app
+npm run sync:convex-backend
+```
 
 ---
 

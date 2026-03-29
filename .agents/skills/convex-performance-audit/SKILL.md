@@ -7,6 +7,10 @@ description: Audits and optimizes Convex application performance across hot-path
 
 Diagnose and fix performance problems in Convex applications, one problem class at a time.
 
+## Workspace Guardrail (OpsCentral + Cleaners)
+
+Performance changes in this repo affect a shared deployment (`dev:usable-anaconda-394`) consumed by both OpsCentral and the cleaners mobile app. When optimizing queries or mutations, check for regressions in both clients before finalizing.
+
 ## When to Use
 
 - A Convex page or feature feels slow or expensive

@@ -25,8 +25,8 @@ OpsCentral is the admin web dashboard for J&A Business Solutions' property care 
 ```
 
 - **Frontend:** Next.js 16 (App Router) + Tailwind CSS + shadcn/ui
-- **Backend:** Convex (shared deployment `dev:upbeat-donkey-677`)
-- **Auth:** Clerk (`informed-marlin-31.clerk.accounts.dev`)
+- **Backend:** Convex (shared deployment `dev:usable-anaconda-394`)
+- **Auth:** Clerk (`good-bluejay-68.clerk.accounts.dev`)
 - **Charts:** Recharts
 - **Icons:** Lucide React
 
@@ -36,12 +36,44 @@ OpsCentral is the admin web dashboard for J&A Business Solutions' property care 
 
 **CRITICAL:** This app shares a Convex deployment with the cleaners mobile app.
 
-- URL: `https://upbeat-donkey-677.convex.cloud`
-- Deployment: `dev:upbeat-donkey-677`
+- URL: `https://usable-anaconda-394.eu-west-1.convex.cloud`
+- Deployment: `dev:usable-anaconda-394`
 - Team: `bertrand-atemkeng`
-- Project: `jnabs`
+- Project: `opscentral-admin`
 
 **Any schema change affects both apps.** Coordinate carefully.
+
+## 🚨 BIG FAT WARNING: CONVEX OWNER REPO
+
+- `opscentral-admin` is the **only** backend owner for Convex deploy/dev/codegen.
+- Running Convex from the wrong repo can overwrite shared functions and break both apps.
+- Always run Convex commands here:
+
+```bash
+cd /Users/atem/sites/jnabusiness_solutions/apps-ja/opscentral-admin
+npx convex <command>
+```
+
+- After owner backend changes, sync cleaners mirror:
+
+```bash
+cd /Users/atem/sites/jnabusiness_solutions/apps-ja/jna-cleaners-app
+npm run sync:convex-backend
+```
+
+### Isolation Rule
+
+- `jna-bs-admin` is a separate system and must not be re-coupled to this Convex deployment.
+- Do not switch this app back to `upbeat-donkey-677` unless the user explicitly requests a rollback.
+
+---
+
+## Clerk Deployment
+
+- Issuer URL: `https://good-bluejay-68.clerk.accounts.dev`
+- Publishable key family: `pk_test_Z29vZC1ibHVlamF5LTY4...`
+
+Both OpsCentral and cleaners mobile must use this same Clerk instance to share users.
 
 ---
 

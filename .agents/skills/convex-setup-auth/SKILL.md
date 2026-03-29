@@ -7,6 +7,15 @@ description: Sets up Convex authentication with user management, identity mappin
 
 Implement secure authentication in Convex with user management and access control.
 
+## Workspace Guardrail (OpsCentral + Cleaners)
+
+For this repository, default to the shared Cleaning Operations auth stack unless the user explicitly requests a migration:
+
+- Convex deployment: `dev:usable-anaconda-394`
+- Clerk issuer: `https://good-bluejay-68.clerk.accounts.dev`
+
+Do not switch to another Clerk tenant or reintroduce legacy issuer/deployment values by default. Auth changes here must stay compatible with `jna-cleaners-app`.
+
 ## When to Use
 
 - Setting up authentication for the first time
