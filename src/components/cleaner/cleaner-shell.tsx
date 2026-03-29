@@ -58,6 +58,8 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     isConvexAuthenticated ? {} : "skip",
   );
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
+  const setThemePreferenceRef = useRef(setThemePreference);
+  setThemePreferenceRef.current = setThemePreference;
   const [isOnline, setIsOnline] = useState(true);
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
@@ -154,7 +156,7 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
       !themePreference?.theme &&
       initializedThemeScopeRef.current !== themeScopeKey
     ) {
-      void setThemePreference({ theme: resolvedTheme }).catch((error) => {
+      void setThemePreferenceRef.current({ theme: resolvedTheme }).catch((error) => {
         console.warn("[CleanerTheme] Failed to initialize theme in Convex", error);
       });
       initializedThemeScopeRef.current = themeScopeKey;
@@ -165,7 +167,6 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     resolvedTheme,
     isConvexAuthenticated,
     isConvexAuthLoading,
-    setThemePreference,
     themePreference,
     themeScopeKey,
   ]);
@@ -177,11 +178,11 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
 
     if (isConvexAuthenticated) {
-      void setThemePreference({ theme: nextTheme }).catch((error) => {
+      void setThemePreferenceRef.current({ theme: nextTheme }).catch((error) => {
         console.warn("[CleanerTheme] Failed to save theme in Convex", error);
       });
     }
-  }, [isConvexAuthenticated, resolvedTheme, setThemePreference]);
+  }, [isConvexAuthenticated, resolvedTheme]);
 
   const title = useMemo(() => {
     if (!pathname) {

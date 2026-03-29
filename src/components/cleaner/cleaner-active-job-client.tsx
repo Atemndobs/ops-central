@@ -121,11 +121,19 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
     | undefined;
 
   const startJob = useMutation(api.cleaningJobs.mutations.start);
+  const startJobRef = useRef(startJob);
+  startJobRef.current = startJob;
   const pingActiveSession = useMutation(api.cleaningJobs.mutations.pingActiveSession);
+  const pingActiveSessionRef = useRef(pingActiveSession);
+  pingActiveSessionRef.current = pingActiveSession;
   const submitForApproval = useMutation(api.cleaningJobs.mutations.submitForApproval);
   const createIncident = useMutation(api.incidents.mutations.createIncident);
   const generateUploadUrl = useMutation(api.files.mutations.generateUploadUrl);
+  const generateUploadUrlRef = useRef(generateUploadUrl);
+  generateUploadUrlRef.current = generateUploadUrl;
   const uploadJobPhoto = useMutation(api.files.mutations.uploadJobPhoto);
+  const uploadJobPhotoRef = useRef(uploadJobPhoto);
+  uploadJobPhotoRef.current = uploadJobPhoto;
 
   const [phase, setPhase] = useState<ActivePhase>("before_photos");
   const [checklistDoneRooms, setChecklistDoneRooms] = useState<string[]>([]);
@@ -216,7 +224,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
         setPendingUploads(queue);
 
         const blob = dataUrlToBlob(syncing.fileDataUrl);
-        const uploadUrl = await generateUploadUrl({});
+        const uploadUrl = await generateUploadUrlRef.current({});
 
         const uploadResponse = await fetch(uploadUrl, {
           method: "POST",
@@ -233,7 +241,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
           throw new Error("Upload response missing storageId.");
         }
 
-        await uploadJobPhoto({
+        await uploadJobPhotoRef.current({
           storageId: payload.storageId,
           jobId,
           roomName: syncing.roomName,
@@ -263,7 +271,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
     }
     isSyncingRef.current = false;
     setIsSyncing(false);
-  }, [generateUploadUrl, isOnline, jobId, uploadJobPhoto]);
+  }, [isOnline, jobId]);
 
   useEffect(() => {
     void hydrateLocalState();
@@ -301,14 +309,14 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
       return;
     }
 
-    void startJob({
+    void startJobRef.current({
       jobId,
       startedAtDevice: Date.now(),
       offlineStartToken: `${jobId}-${Date.now()}`,
     }).catch((error) => {
       console.warn("[CleanerActiveJob] Unable to ensure start", error);
     });
-  }, [detail, jobId, startJob]);
+  }, [detail, jobId]);
 
   useEffect(() => {
     if (!detail || detail.job.status !== "in_progress") {
@@ -316,7 +324,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
     }
 
     const sendHeartbeat = () => {
-      void pingActiveSession({ jobId }).catch((error: unknown) => {
+      void pingActiveSessionRef.current({ jobId }).catch((error: unknown) => {
         console.warn("[CleanerActiveJob] Heartbeat failed", error);
       });
     };
@@ -326,7 +334,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
     return () => {
       window.clearInterval(timer);
     };
-  }, [detail, jobId, pingActiveSession]);
+  }, [detail, jobId]);
 
   useEffect(() => {
     if (!detail) {

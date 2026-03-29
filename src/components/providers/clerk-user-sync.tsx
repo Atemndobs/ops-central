@@ -76,6 +76,8 @@ export function ClerkUserSync() {
   const { isAuthenticated: isConvexAuthenticated, isLoading: isConvexAuthLoading } =
     useConvexAuth();
   const ensureUser = useMutation(api.users.mutations.ensureUser);
+  const ensureUserRef = useRef(ensureUser);
+  ensureUserRef.current = ensureUser;
   const lastSyncedKey = useRef<string | null>(null);
   const inFlightKey = useRef<string | null>(null);
 
@@ -116,7 +118,7 @@ export function ClerkUserSync() {
     }
     inFlightKey.current = syncKey;
 
-    void ensureUser({ name, email, role, avatarUrl })
+    void ensureUserRef.current({ name, email, role, avatarUrl })
       .then(() => {
         lastSyncedKey.current = syncKey;
       })
@@ -130,7 +132,6 @@ export function ClerkUserSync() {
         }
       });
   }, [
-    ensureUser,
     isConvexAuthenticated,
     isConvexAuthLoading,
     isLoaded,

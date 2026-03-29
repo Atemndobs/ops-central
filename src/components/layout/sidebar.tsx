@@ -57,6 +57,8 @@ export function Sidebar() {
     isConvexAuthenticated ? {} : "skip",
   );
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
+  const setThemePreferenceRef = useRef(setThemePreference);
+  setThemePreferenceRef.current = setThemePreference;
   const convexUser = useQuery(
     api.users.queries.getByClerkId,
     isLoaded && isSignedIn && userId && isConvexAuthenticated
@@ -108,14 +110,13 @@ export function Sidebar() {
     initializedThemeScopeRef.current = themeScopeKey;
 
     if (isConvexAuthenticated && !themePreference?.theme) {
-      void setThemePreference({ theme: resolvedTheme }).catch((error) => {
+      void setThemePreferenceRef.current({ theme: resolvedTheme }).catch((error) => {
         console.warn("[ThemePreference] Failed to initialize theme in Convex", error);
       });
     }
   }, [
     isConvexAuthenticated,
     isConvexAuthLoading,
-    setThemePreference,
     themePreference,
     themeScopeKey,
     resolvedTheme,
@@ -128,11 +129,11 @@ export function Sidebar() {
     window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
 
     if (isConvexAuthenticated) {
-      void setThemePreference({ theme: nextTheme }).catch((error) => {
+      void setThemePreferenceRef.current({ theme: nextTheme }).catch((error) => {
         console.warn("[ThemePreference] Failed to save theme in Convex", error);
       });
     }
-  }, [isConvexAuthenticated, resolvedTheme, setThemePreference]);
+  }, [isConvexAuthenticated, resolvedTheme]);
 
   return (
     <aside
