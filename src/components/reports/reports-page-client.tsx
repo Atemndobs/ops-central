@@ -1,10 +1,10 @@
 "use client";
 
-import { type ChangeEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { Download, FileDown, Loader2 } from "lucide-react";
+import { Check, ChevronDown, Download, FileDown, Loader2 } from "lucide-react";
 import {
   CartesianGrid,
   Line,
@@ -100,11 +100,26 @@ export function ReportsPageClient() {
     [exportHistory],
   );
 
-  const handlePropertySelection = (event: ChangeEvent<HTMLSelectElement>) => {
-    const values = Array.from(event.target.selectedOptions).map(
-      (option) => option.value as Id<"properties">,
+  const [isPropertyDropdownOpen, setIsPropertyDropdownOpen] = useState(false);
+  const propertyDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isPropertyDropdownOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (propertyDropdownRef.current && !propertyDropdownRef.current.contains(event.target as Node)) {
+        setIsPropertyDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isPropertyDropdownOpen]);
+
+  const toggleProperty = (propertyId: Id<"properties">) => {
+    setSelectedPropertyIds((previous) =>
+      previous.includes(propertyId)
+        ? previous.filter((id) => id !== propertyId)
+        : [...previous, propertyId],
     );
-    setSelectedPropertyIds(values);
   };
 
   const onExport = async () => {
@@ -213,18 +228,49 @@ export function ReportsPageClient() {
           <p className="mb-2 text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)]">
             Property Filter
           </p>
-          <select
-            multiple
-            value={selectedPropertyIds}
-            onChange={handlePropertySelection}
-            className="h-28 w-full border bg-[var(--card)] px-3 py-2 text-sm"
-          >
-            {availableProperties.map((property) => (
-              <option key={property._id} value={property._id}>
-                {property.name}
-              </option>
-            ))}
-          </select>
+          <div className="relative" ref={propertyDropdownRef}>
+            <button
+              type="button"
+              onClick={() => setIsPropertyDropdownOpen((open) => !open)}
+              className="flex h-10 w-full items-center justify-between border bg-[var(--card)] px-3 text-sm"
+            >
+              <span className={selectedPropertyIds.length === 0 ? "text-[var(--muted-foreground)]" : ""}>
+                {selectedPropertyIds.length === 0
+                  ? "All properties"
+                  : `${selectedPropertyIds.length} selected`}
+              </span>
+              <ChevronDown className="h-4 w-4 text-[var(--muted-foreground)]" />
+            </button>
+            {isPropertyDropdownOpen && (
+              <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto border bg-[var(--card)] py-1 shadow-lg">
+                {selectedPropertyIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPropertyIds([])}
+                    className="w-full px-3 py-1.5 text-left text-xs font-medium text-[var(--primary)] hover:bg-[var(--accent)]"
+                  >
+                    Clear selection
+                  </button>
+                )}
+                {availableProperties.map((property) => {
+                  const isSelected = selectedPropertyIds.includes(property._id);
+                  return (
+                    <button
+                      key={property._id}
+                      type="button"
+                      onClick={() => toggleProperty(property._id)}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--accent)]"
+                    >
+                      <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${isSelected ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]" : "border-[var(--border)]"}`}>
+                        {isSelected && <Check className="h-3 w-3" />}
+                      </span>
+                      {property.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
           <p className="mt-1 text-xs text-[var(--muted-foreground)]">
             Leave empty to include all authorized properties.
           </p>
