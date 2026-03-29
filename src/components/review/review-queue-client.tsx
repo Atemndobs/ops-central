@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import { Camera, CheckCircle2, Clock3, Loader2, RotateCcw } from "lucide-react";
 import { JOB_STATUSES, STATUS_CLASSNAMES, STATUS_LABELS, type JobStatus } from "@/components/jobs/job-status";
 
 function startOfDay(dateString: string): number | undefined {
@@ -57,130 +58,199 @@ export function ReviewQueueClient() {
     };
   }, [jobs]);
 
-  if (jobs === undefined || properties === undefined) {
-    return <p className="text-sm text-[var(--muted-foreground)]">Loading review queue...</p>;
-  }
+  const loading = jobs === undefined || properties === undefined;
 
   return (
-    <div className="space-y-4">
-      <section className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-md border border-indigo-500/40 bg-indigo-500/10 p-3">
-          <p className="text-xs text-indigo-200">Awaiting Approval</p>
-          <p className="mt-1 text-2xl font-semibold">{counts.awaiting_approval}</p>
-        </div>
-        <div className="rounded-md border border-rose-500/40 bg-rose-500/10 p-3">
-          <p className="text-xs text-rose-200">Rework Required</p>
-          <p className="mt-1 text-2xl font-semibold">{counts.rework_required}</p>
-        </div>
-        <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3">
-          <p className="text-xs text-emerald-200">Completed</p>
-          <p className="mt-1 text-2xl font-semibold">{counts.completed}</p>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-extrabold tracking-tight">Review Queue</h1>
+        <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+          Review and approve completed cleaning jobs.
+        </p>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-3 gap-3 sm:gap-4">
+        <button
+          type="button"
+          onClick={() => setStatus("awaiting_approval")}
+          className={`group rounded-2xl border p-4 text-left transition hover:shadow-md sm:p-5 ${
+            status === "awaiting_approval"
+              ? "border-indigo-500/60 bg-indigo-500/10"
+              : "border-[var(--border)] bg-[var(--card)] hover:border-indigo-500/40"
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted-foreground)] sm:text-xs">
+              Awaiting
+            </p>
+            <Clock3 className="hidden h-4 w-4 text-indigo-400 sm:block" />
+          </div>
+          <p className="mt-1 text-2xl font-extrabold leading-none tracking-tight sm:text-4xl">
+            {loading ? "—" : counts.awaiting_approval}
+          </p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setStatus("rework_required")}
+          className={`group rounded-2xl border p-4 text-left transition hover:shadow-md sm:p-5 ${
+            status === "rework_required"
+              ? "border-rose-500/60 bg-rose-500/10"
+              : "border-[var(--border)] bg-[var(--card)] hover:border-rose-500/40"
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted-foreground)] sm:text-xs">
+              Rework
+            </p>
+            <RotateCcw className="hidden h-4 w-4 text-rose-400 sm:block" />
+          </div>
+          <p className="mt-1 text-2xl font-extrabold leading-none tracking-tight sm:text-4xl">
+            {loading ? "—" : counts.rework_required}
+          </p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setStatus("completed")}
+          className={`group rounded-2xl border p-4 text-left transition hover:shadow-md sm:p-5 ${
+            status === "completed"
+              ? "border-emerald-500/60 bg-emerald-500/10"
+              : "border-[var(--border)] bg-[var(--card)] hover:border-emerald-500/40"
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted-foreground)] sm:text-xs">
+              Completed
+            </p>
+            <CheckCircle2 className="hidden h-4 w-4 text-emerald-400 sm:block" />
+          </div>
+          <p className="mt-1 text-2xl font-extrabold leading-none tracking-tight sm:text-4xl">
+            {loading ? "—" : counts.completed}
+          </p>
+        </button>
+      </div>
+
+      {/* Filters */}
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
+        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
+          <div>
+            <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Status</label>
+            <select
+              value={status}
+              onChange={(event) => setStatus(event.target.value as JobStatus | "all")}
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+            >
+              <option value="all">All statuses</option>
+              {JOB_STATUSES.map((value) => (
+                <option key={value} value={value}>
+                  {STATUS_LABELS[value]}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Property</label>
+            <select
+              value={propertyId}
+              onChange={(event) => setPropertyId(event.target.value)}
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+            >
+              <option value="all">All properties</option>
+              {(properties ?? []).map((property) => (
+                <option key={property._id} value={property._id}>
+                  {property.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-[var(--muted-foreground)]">From</label>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(event) => setFromDate(event.target.value)}
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+              aria-label="From date"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-[var(--muted-foreground)]">To</label>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(event) => setToDate(event.target.value)}
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+              aria-label="To date"
+            />
+          </div>
         </div>
       </section>
 
-      <section className="rounded-md border border-[var(--border)] bg-[var(--card)] p-3">
-        <div className="grid gap-2 md:grid-cols-4">
-          <select
-            value={status}
-            onChange={(event) => setStatus(event.target.value as JobStatus | "all")}
-            className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-sm"
-          >
-            <option value="all">All statuses</option>
-            {JOB_STATUSES.map((value) => (
-              <option key={value} value={value}>
-                {STATUS_LABELS[value]}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={propertyId}
-            onChange={(event) => setPropertyId(event.target.value)}
-            className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-sm"
-          >
-            <option value="all">All properties</option>
-            {properties.map((property) => (
-              <option key={property._id} value={property._id}>
-                {property.name}
-              </option>
-            ))}
-          </select>
-
-          <input
-            type="date"
-            value={fromDate}
-            onChange={(event) => setFromDate(event.target.value)}
-            className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-sm"
-            aria-label="From date"
-          />
-
-          <input
-            type="date"
-            value={toDate}
-            onChange={(event) => setToDate(event.target.value)}
-            className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-sm"
-            aria-label="To date"
-          />
+      {/* Job list */}
+      {loading ? (
+        <div className="flex min-h-48 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--card)] text-sm text-[var(--muted-foreground)]">
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          Loading review queue...
         </div>
-      </section>
+      ) : jobs.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--card)] px-4 py-12 text-center text-sm text-[var(--muted-foreground)]">
+          No jobs match current filters.
+        </div>
+      ) : (
+        <section className="space-y-3">
+          {jobs.map((job) => {
+            const cleanerNames =
+              job.cleaners
+                ?.map((c) => (c ? c.name ?? c.email ?? c._id : null))
+                .filter((v): v is string => Boolean(v)) ?? [];
 
-      <section className="overflow-hidden rounded-md border border-[var(--border)] bg-[var(--card)]">
-        <table className="min-w-full text-left text-sm">
-          <thead className="border-b border-[var(--border)] text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
-            <tr>
-              <th className="px-3 py-2">Property</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2">Scheduled</th>
-              <th className="px-3 py-2">Assigned Cleaner(s)</th>
-              <th className="px-3 py-2">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {jobs.map((job) => (
-              <tr key={job._id} className="border-b border-[var(--border)] last:border-b-0">
-                <td className="px-3 py-2">
-                  <p className="font-medium">{job.property?.name ?? "Unknown property"}</p>
-                  <p className="text-xs text-[var(--muted-foreground)]">{job._id}</p>
-                </td>
-                <td className="px-3 py-2">
-                  <span className={`rounded-full border px-2 py-0.5 text-xs ${STATUS_CLASSNAMES[job.status]}`}>
+            return (
+              <div
+                key={job._id}
+                className="group rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4 transition hover:border-[var(--primary)]/40 hover:shadow-md"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold">{job.property?.name ?? "Unknown property"}</p>
+                    <p className="mt-0.5 font-mono text-[11px] text-[var(--muted-foreground)]">
+                      {job._id.slice(-8)}
+                    </p>
+                  </div>
+                  <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${STATUS_CLASSNAMES[job.status]}`}>
                     {STATUS_LABELS[job.status]}
                   </span>
-                </td>
-                <td className="px-3 py-2">{new Date(job.scheduledStartAt).toLocaleString()}</td>
-                <td className="px-3 py-2">
-                  {(() => {
-                    const names =
-                      job.cleaners
-                        ?.map((cleaner) => {
-                          if (!cleaner) {
-                            return null;
-                          }
-                          return cleaner.name ?? cleaner.email ?? cleaner._id;
-                        })
-                        .filter((value): value is string => Boolean(value)) ?? [];
-                    return names.length > 0 ? names.join(", ") : "Unassigned";
-                  })()}
-                </td>
-                <td className="px-3 py-2">
-                  <div className="flex flex-wrap gap-3">
-                    <Link href={`/review/jobs/${job._id}`} className="text-[var(--primary)] hover:underline">
-                      Review
-                    </Link>
-                    <Link href={`/review/jobs/${job._id}/photos-review`} className="text-[var(--primary)] hover:underline">
-                      Photos
-                    </Link>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
 
-        {jobs.length === 0 ? (
-          <div className="px-3 py-10 text-center text-sm text-[var(--muted-foreground)]">No jobs match current filters.</div>
-        ) : null}
-      </section>
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--muted-foreground)]">
+                  <span>{new Date(job.scheduledStartAt).toLocaleDateString()} · {new Date(job.scheduledStartAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                  <span>{cleanerNames.length > 0 ? cleanerNames.join(", ") : "Unassigned"}</span>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Link
+                    href={`/review/jobs/${job._id}`}
+                    className="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-foreground)] transition hover:opacity-90"
+                  >
+                    Review
+                  </Link>
+                  <Link
+                    href={`/review/jobs/${job._id}/photos-review`}
+                    className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-semibold text-[var(--muted-foreground)] transition hover:border-[var(--primary)]/40 hover:text-[var(--foreground)]"
+                  >
+                    <Camera className="h-3 w-3" />
+                    Photos
+                  </Link>
+                </div>
+              </div>
+            );
+          })}
+        </section>
+      )}
     </div>
   );
 }

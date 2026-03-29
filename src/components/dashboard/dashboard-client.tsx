@@ -33,6 +33,13 @@ const readinessColor: Record<PropertyStatus, string> = {
   vacant: "bg-slate-100 text-slate-700 border-slate-200",
 };
 
+const readinessBorder: Record<PropertyStatus, string> = {
+  ready: "border-emerald-300",
+  dirty: "border-rose-300",
+  in_progress: "border-amber-300",
+  vacant: "border-slate-300",
+};
+
 export function DashboardClient() {
   const [showAllAlerts, setShowAllAlerts] = useState(false);
   const [now, setNow] = useState<number | null>(null);
@@ -341,21 +348,21 @@ export function DashboardClient() {
             No mapped readiness statuses found yet. Vacant is no longer inferred by default.
           </p>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-4 gap-2 sm:grid-cols-2 sm:gap-3 xl:grid-cols-4">
             {(Object.keys(readiness.summary) as PropertyStatus[]).map((status) => (
               <Link
                 key={status}
                 href={`/properties?status=${status}`}
-                className="group rounded-xl border p-4 transition hover:border-[var(--primary)]/40 hover:bg-[var(--accent)]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
+                className={`group rounded-xl border p-2 transition hover:border-[var(--primary)]/40 hover:bg-[var(--accent)]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40 sm:rounded-2xl sm:p-4 ${readinessBorder[status]}`}
               >
-                <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+                <p className="truncate text-[9px] font-bold uppercase tracking-wider text-[var(--muted-foreground)] sm:text-xs">
                   {readinessLabel[status]}
                 </p>
-                <p className="mt-2 text-3xl font-extrabold leading-none tracking-tight">{readiness.summary[status]}</p>
-                <span className={`mt-3 inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${readinessColor[status]}`}>
+                <p className="mt-1 text-xl font-extrabold leading-none tracking-tight sm:mt-2 sm:text-3xl">{readiness.summary[status]}</p>
+                <span className={`mt-2 hidden rounded-full border px-2 py-0.5 text-xs font-semibold sm:inline-flex ${readinessColor[status]}`}>
                   {readinessLabel[status]}
                 </span>
-                <p className="mt-3 text-xs font-semibold text-[var(--primary)] opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
+                <p className="mt-2 hidden text-xs font-semibold text-[var(--primary)] opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100 sm:block">
                   View properties
                 </p>
               </Link>
