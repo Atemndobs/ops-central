@@ -8,7 +8,7 @@ const ROUTE_ACCESS: Record<UserRole, string[]> = {
   admin: ["/"],
   property_ops: ["/", "/schedule", "/jobs", "/properties", "/companies", "/team", "/reports"],
   manager: ["/", "/jobs", "/properties", "/companies", "/team", "/reports"],
-  cleaner: ["/jobs"],
+  cleaner: ["/cleaner"],
 };
 
 function isUserRole(value: unknown): value is UserRole {
@@ -79,7 +79,7 @@ export function getDefaultRouteForRole(role: UserRole): string {
     case "manager":
       return "/jobs";
     case "cleaner":
-      return "/jobs";
+      return "/cleaner";
     default:
       return "/";
   }

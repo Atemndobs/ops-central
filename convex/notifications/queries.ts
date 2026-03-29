@@ -3,7 +3,8 @@
 
 import { v } from "convex/values";
 import { query, internalQuery } from "../_generated/server";
-import { Doc, Id } from "../_generated/dataModel";
+import { Doc } from "../_generated/dataModel";
+import { getCurrentUser } from "../lib/auth";
 
 /**
  * Get a user by ID (internal)
@@ -76,6 +77,41 @@ export const getUserNotifications = query({
 
     const limit = args.limit ?? 50;
     return await queryBuilder.take(limit);
+  },
+});
+
+/**
+ * Get authenticated user's notifications (cleaner/mobile-safe contract)
+ */
+export const getMyNotifications = query({
+  args: {
+    limit: v.optional(v.number()),
+    includeRead: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    const limit =
+      typeof args.limit === "number" && Number.isFinite(args.limit)
+        ? Math.max(1, Math.min(100, Math.floor(args.limit)))
+        : 50;
+
+    const all = await ctx.db
+      .query("notifications")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .order("desc")
+      .take(200);
+
+    const filtered = all.filter((notification) => {
+      if (notification.dismissedAt !== undefined) {
+        return false;
+      }
+      if (args.includeRead) {
+        return true;
+      }
+      return notification.readAt === undefined;
+    });
+
+    return filtered.slice(0, limit);
   },
 });
 

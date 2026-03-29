@@ -1,14 +1,9 @@
 import type { Metadata } from "next";
-import {
-  ClerkProvider,
-  Show,
-  SignInButton,
-  SignUpButton,
-  UserButton,
-} from "@clerk/nextjs";
+import { ClerkProvider } from "@clerk/nextjs";
 import { ConvexClientProvider } from "@/components/providers/convex-provider";
 import { ClerkUserSync } from "@/components/providers/clerk-user-sync";
 import { ToastProvider } from "@/components/ui/toast-provider";
+import { GlobalAuthHeader } from "@/components/layout/global-auth-header";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -28,15 +23,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased">
         <ClerkProvider>
-          <header className="flex items-center justify-end gap-3 border-b bg-[var(--card)] px-4 py-3">
-            <Show when="signed-out">
-              <SignInButton />
-              <SignUpButton />
-            </Show>
-            <Show when="signed-in">
-              <UserButton />
-            </Show>
-          </header>
+          <GlobalAuthHeader />
           <ConvexClientProvider>
             <ClerkUserSync />
             <ToastProvider>{children}</ToastProvider>

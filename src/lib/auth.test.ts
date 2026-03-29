@@ -50,6 +50,9 @@ test("canAccessPath enforces route access by role", () => {
   assert.equal(canAccessPath("manager", "/jobs/123"), true);
   assert.equal(canAccessPath("manager", "/schedule"), false);
   assert.equal(canAccessPath("cleaner", "/"), false);
+  assert.equal(canAccessPath("cleaner", "/cleaner"), true);
+  assert.equal(canAccessPath("cleaner", "/cleaner/jobs/123"), true);
+  assert.equal(canAccessPath("cleaner", "/jobs"), false);
   assert.equal(canAccessPath("admin", "/settings"), true);
 });
 
@@ -57,5 +60,5 @@ test("getDefaultRouteForRole returns the expected landing page", () => {
   assert.equal(getDefaultRouteForRole("admin"), "/");
   assert.equal(getDefaultRouteForRole("property_ops"), "/schedule");
   assert.equal(getDefaultRouteForRole("manager"), "/jobs");
-  assert.equal(getDefaultRouteForRole("cleaner"), "/jobs");
+  assert.equal(getDefaultRouteForRole("cleaner"), "/cleaner");
 });

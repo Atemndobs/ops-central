@@ -29,6 +29,13 @@ export default clerkMiddleware(async (auth, req) => {
   );
   const pathname = req.nextUrl.pathname;
 
+  if (role === "cleaner" && (pathname === "/jobs" || pathname.startsWith("/jobs/"))) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/cleaner";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
   if (!canAccessPath(role, pathname)) {
     const url = req.nextUrl.clone();
     url.pathname = getDefaultRouteForRole(role);

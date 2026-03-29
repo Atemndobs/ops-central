@@ -28,6 +28,7 @@ export const createIncident = mutation({
     inventoryItemId: v.optional(v.id("inventoryItems")),
     quantityMissing: v.optional(v.number()),
     photoStorageIds: v.optional(v.array(v.id("_storage"))),
+    photoIds: v.optional(v.array(v.id("photos"))),
     customItemDescription: v.optional(v.string()),
     incidentContext: v.optional(v.string()),
   },
@@ -55,6 +56,12 @@ export const createIncident = mutation({
       ]
         .filter(Boolean)
         .join(" ");
+    const mergedPhotoIds = [
+      ...new Set([
+        ...(args.photoStorageIds ?? []).map((id) => id as string),
+        ...(args.photoIds ?? []).map((id) => id as string),
+      ]),
+    ];
 
     const incidentId = await ctx.db.insert("incidents", {
       cleaningJobId: args.cleaningJobId,
@@ -67,7 +74,7 @@ export const createIncident = mutation({
       roomName: args.roomName,
       inventoryItemId: args.inventoryItemId,
       quantityMissing: args.quantityMissing,
-      photoIds: (args.photoStorageIds ?? []).map((id) => id as string),
+      photoIds: mergedPhotoIds,
       customItemDescription: args.customItemDescription,
       incidentContext: args.incidentContext,
       status: "open",

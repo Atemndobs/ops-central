@@ -1,0 +1,49 @@
+{
+  "name": "OpsCentral Cleaner",
+  "short_name": "Cleaner",
+  "description": "Cleaner-first workspace for assigned jobs, photos, and incident reports.",
+  "id": "/cleaner",
+  "start_url": "/cleaner",
+  "scope": "/cleaner",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#081018",
+  "theme_color": "#081018",
+  "icons": [
+    {
+      "src": "/icons/cleaner-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/cleaner-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/cleaner-icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "My Jobs",
+      "short_name": "Jobs",
+      "url": "/cleaner"
+    },
+    {
+      "name": "History",
+      "short_name": "History",
+      "url": "/cleaner/history"
+    },
+    {
+      "name": "New Incident",
+      "short_name": "Incident",
+      "url": "/cleaner/incidents/new"
+    }
+  ]
+}

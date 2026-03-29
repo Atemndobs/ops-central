@@ -2,9 +2,20 @@ import { v } from "convex/values";
 import { query } from "../_generated/server";
 import type { QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import { requireRole } from "../lib/auth";
+import { getCurrentUser, requireRole } from "../lib/auth";
+import { createExternalReadUrl, getExternalStorageConfigOrNull } from "../lib/externalStorage";
+import { resolvePhotoAccessUrl } from "../lib/photoUrls";
 
 const CLEANER_SESSION_DONE_STATUSES = new Set(["submitted", "excused"]);
+const JOB_STATUS_FILTER = v.union(
+  v.literal("scheduled"),
+  v.literal("assigned"),
+  v.literal("in_progress"),
+  v.literal("awaiting_approval"),
+  v.literal("rework_required"),
+  v.literal("completed"),
+  v.literal("cancelled"),
+);
 
 async function enrichJobs(ctx: QueryCtx, jobs: Doc<"cleaningJobs">[]) {
   const uniquePropertyIds = [...new Set(jobs.map((job) => job.propertyId))];
@@ -58,15 +69,40 @@ async function enrichJobs(ctx: QueryCtx, jobs: Doc<"cleaningJobs">[]) {
   }));
 }
 
-async function getPhotoUrlMap(
+async function resolveSnapshotPhotoUrl(
   ctx: QueryCtx,
-  storageIds: Id<"_storage">[],
-): Promise<Map<Id<"_storage">, string | null>> {
-  const uniqueStorageIds = [...new Set(storageIds)];
-  const urls = await Promise.all(
-    uniqueStorageIds.map((storageId) => ctx.storage.getUrl(storageId)),
-  );
-  return new Map(uniqueStorageIds.map((storageId, index) => [storageId, urls[index] ?? null]));
+  snapshotPhoto: {
+    photoId: Id<"photos">;
+    storageId?: Id<"_storage">;
+    provider?: string;
+    bucket?: string;
+    objectKey?: string;
+  },
+): Promise<string | null> {
+  if (snapshotPhoto.storageId) {
+    return ctx.storage.getUrl(snapshotPhoto.storageId);
+  }
+
+  if (snapshotPhoto.provider && snapshotPhoto.bucket && snapshotPhoto.objectKey) {
+    const config = getExternalStorageConfigOrNull();
+    if (!config) {
+      return null;
+    }
+    try {
+      return await createExternalReadUrl({
+        bucket: snapshotPhoto.bucket,
+        objectKey: snapshotPhoto.objectKey,
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  const livePhoto = await ctx.db.get(snapshotPhoto.photoId);
+  if (!livePhoto) {
+    return null;
+  }
+  return resolvePhotoAccessUrl(ctx, livePhoto);
 }
 
 function getCurrentRevision(job: Doc<"cleaningJobs">): number {
@@ -81,17 +117,7 @@ function isActiveCompanyPropertyAssignment(
 
 export const getAll = query({
   args: {
-    status: v.optional(
-      v.union(
-        v.literal("scheduled"),
-        v.literal("assigned"),
-        v.literal("in_progress"),
-        v.literal("awaiting_approval"),
-        v.literal("rework_required"),
-        v.literal("completed"),
-        v.literal("cancelled"),
-      ),
-    ),
+    status: v.optional(JOB_STATUS_FILTER),
     propertyId: v.optional(v.id("properties")),
     limit: v.optional(v.number()),
   },
@@ -143,6 +169,65 @@ export const getById = query({
       cleaners: detail.cleaners,
       photos: detail.evidence.current.byType.all,
     };
+  },
+});
+
+export const getMyAssigned = query({
+  args: {
+    status: v.optional(JOB_STATUS_FILTER),
+    from: v.optional(v.number()),
+    to: v.optional(v.number()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    if (user.role !== "cleaner") {
+      throw new Error("Cleaner-only query.");
+    }
+
+    const allJobs = await ctx.db.query("cleaningJobs").collect();
+    let jobs = allJobs.filter((job) => job.assignedCleanerIds.includes(user._id));
+
+    if (args.status) {
+      jobs = jobs.filter((job) => job.status === args.status);
+    }
+    if (typeof args.from === "number") {
+      jobs = jobs.filter((job) => job.scheduledStartAt >= args.from!);
+    }
+    if (typeof args.to === "number") {
+      jobs = jobs.filter((job) => job.scheduledStartAt <= args.to!);
+    }
+
+    const sorted = jobs.sort((a, b) => a.scheduledStartAt - b.scheduledStartAt);
+    const safeLimit =
+      typeof args.limit === "number" && Number.isFinite(args.limit)
+        ? Math.max(1, Math.min(500, Math.floor(args.limit)))
+        : 200;
+    return await enrichJobs(ctx, sorted.slice(0, safeLimit));
+  },
+});
+
+export const getMyJobDetail = query({
+  args: {
+    jobId: v.id("cleaningJobs"),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    const detail = await getJobDetailInternal(ctx, args.jobId);
+    if (!detail) {
+      return null;
+    }
+
+    const isPrivileged =
+      user.role === "admin" || user.role === "manager" || user.role === "property_ops";
+    const isAssignedCleaner =
+      user.role === "cleaner" && detail.job.assignedCleanerIds.includes(user._id);
+
+    if (!isPrivileged && !isAssignedCleaner) {
+      throw new Error("You are not authorized to access this job.");
+    }
+
+    return detail;
   },
 });
 
@@ -302,20 +387,23 @@ async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
       .map((cleaner) => [cleaner!._id, cleaner!] as const),
   );
 
-  const photoUrlMap = await getPhotoUrlMap(
-    ctx,
-    photos.map((photo) => photo.storageId),
+  const currentPhotoUrls = await Promise.all(
+    photos.map((photo) => resolvePhotoAccessUrl(ctx, photo)),
   );
-  const currentPhotos = photos.map((photo) => ({
+  const currentPhotos = photos.map((photo, index) => ({
     photoId: photo._id,
     storageId: photo.storageId,
+    provider: photo.provider,
+    bucket: photo.bucket,
+    objectKey: photo.objectKey,
+    objectVersion: photo.objectVersion,
     roomName: photo.roomName,
     type: photo.type,
     source: photo.source,
     notes: photo.notes,
     uploadedAt: photo.uploadedAt,
     uploadedBy: photo.uploadedBy,
-    url: photoUrlMap.get(photo.storageId) ?? null,
+    url: currentPhotoUrls[index] ?? null,
   }));
 
   const currentByRoomMap = new Map<
@@ -349,7 +437,11 @@ async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
 
   let latestSubmissionEvidence: Array<{
     photoId: Id<"photos">;
-    storageId: Id<"_storage">;
+    storageId?: Id<"_storage">;
+    provider?: string;
+    bucket?: string;
+    objectKey?: string;
+    objectVersion?: string;
     roomName: string;
     type: "before" | "after" | "incident";
     uploadedAt: number;
@@ -358,13 +450,12 @@ async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
   }> = [];
 
   if (latestSubmission) {
-    const latestUrlMap = await getPhotoUrlMap(
-      ctx,
-      latestSubmission.photoSnapshot.map((photo) => photo.storageId),
+    const latestUrls = await Promise.all(
+      latestSubmission.photoSnapshot.map((photo) => resolveSnapshotPhotoUrl(ctx, photo)),
     );
-    latestSubmissionEvidence = latestSubmission.photoSnapshot.map((photo) => ({
+    latestSubmissionEvidence = latestSubmission.photoSnapshot.map((photo, index) => ({
       ...photo,
-      url: latestUrlMap.get(photo.storageId) ?? null,
+      url: latestUrls[index] ?? null,
     }));
   }
 
