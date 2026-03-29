@@ -2,6 +2,7 @@
 
 import { useAuth } from "@clerk/nextjs";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -205,9 +206,19 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <header className="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--card)]/95 px-4 py-3 backdrop-blur">
         <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">OpsCentral</p>
-            <h1 className="text-base font-semibold">{title}</h1>
+          <div className="flex items-center gap-3">
+            <Image
+              src="https://chezsoistays.com/wp-content/uploads/2026/02/cropped-chezsoi_favicon@2x.png"
+              alt="ChezSoisCleaning logo"
+              width={32}
+              height={32}
+              className="h-8 w-8 rounded-md border border-[var(--border)]"
+              priority
+            />
+            <div>
+              <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">ChezSoisCleaning</p>
+              <h1 className="text-base font-semibold">{title}</h1>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 rounded-md border border-[var(--border)] px-2 py-1 text-xs">

@@ -1,7 +1,7 @@
 {
-  "name": "OpsCentral Cleaner",
-  "short_name": "Cleaner",
-  "description": "Cleaner-first workspace for assigned jobs, photos, and incident reports.",
+  "name": "ChezSoisCleaning",
+  "short_name": "ChezSoi",
+  "description": "ChezSoisCleaning workspace for assigned jobs, photos, and incident reports.",
   "id": "/cleaner",
   "start_url": "/cleaner",
   "scope": "/cleaner",

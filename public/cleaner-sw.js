@@ -1,4 +1,4 @@
-const SW_VERSION = "cleaner-v1";
+const SW_VERSION = "cleaner-v2";
 const STATIC_CACHE = `${SW_VERSION}-static`;
 const DATA_CACHE = `${SW_VERSION}-data`;
 
@@ -10,7 +10,8 @@ const APP_SHELL_ROUTES = [
   "/cleaner-manifest.webmanifest",
   "/icons/cleaner-icon-192.png",
   "/icons/cleaner-icon-512.png",
-  "/icons/cleaner-icon-maskable-512.png"
+  "/icons/cleaner-icon-maskable-512.png",
+  "/icons/cleaner-apple-touch-icon.png"
 ];
 
 const QUERY_FUNCTIONS_TO_CACHE = [
