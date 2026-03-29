@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -62,10 +62,11 @@ type ReviewDetail = {
 };
 
 export function ReviewJobDetailClient({ id }: { id: string }) {
+  const { isAuthenticated } = useConvexAuth();
   const router = useRouter();
   const jobId = id as Id<"cleaningJobs">;
 
-  const detail = useQuery(api.cleaningJobs.queries.getReviewJobDetail, { jobId }) as ReviewDetail | null | undefined;
+  const detail = useQuery(api.cleaningJobs.queries.getReviewJobDetail, isAuthenticated ? { jobId } : "skip") as ReviewDetail | null | undefined;
   const approveCompletion = useMutation(api.cleaningJobs.approve.approveCompletion);
   const rejectCompletion = useMutation(api.cleaningJobs.approve.rejectCompletion);
   const reopenCompleted = useMutation(api.cleaningJobs.approve.reopenCompleted);

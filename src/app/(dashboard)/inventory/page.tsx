@@ -1,10 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import Link from "next/link";
-import { useAuth } from "@clerk/nextjs";
 import { AlertTriangle, Loader2, Plus, Search } from "lucide-react";
 
 type InventoryStatus = "ok" | "low_stock" | "out_of_stock" | "reorder_pending";
@@ -55,12 +54,11 @@ export default function InventoryPage() {
   const [search, setSearch] = useState("");
   const [propertyFilter, setPropertyFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<"all" | InventoryStatus>("all");
-  const { isLoaded, isSignedIn } = useAuth();
-  const canQuery = isLoaded && Boolean(isSignedIn);
+  const { isAuthenticated } = useConvexAuth();
 
   const inventory = useQuery(
     api.inventory.queries.getAll,
-    canQuery
+    isAuthenticated
       ? {
           propertyId: propertyFilter === "all" ? undefined : (propertyFilter as never),
           status: statusFilter === "all" ? undefined : statusFilter,
@@ -70,15 +68,15 @@ export default function InventoryPage() {
 
   const lowStock = useQuery(
     api.inventory.queries.getLowStock,
-    canQuery ? {} : "skip",
+    isAuthenticated ? {} : "skip",
   );
   const globalStats = useQuery(
     api.inventory.queries.getGlobalStats,
-    canQuery ? {} : "skip",
+    isAuthenticated ? {} : "skip",
   );
   const properties = useQuery(
     api.properties.queries.getAll,
-    canQuery ? { limit: 500 } : "skip",
+    isAuthenticated ? { limit: 500 } : "skip",
   );
 
   const filteredItems = useMemo(() => {
@@ -95,29 +93,13 @@ export default function InventoryPage() {
     });
   }, [inventory, search]);
 
-  const loading = canQuery && (!inventory || !lowStock || !globalStats || !properties);
+  const loading = isAuthenticated && (!inventory || !lowStock || !globalStats || !properties);
 
-  if (!isLoaded) {
+  if (!isAuthenticated) {
     return (
       <div className="flex min-h-48 items-center justify-center rounded-2xl border bg-[var(--card)] text-[var(--muted-foreground)]">
         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
         Loading...
-      </div>
-    );
-  }
-
-  if (!isSignedIn) {
-    return (
-      <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-2xl border bg-[var(--card)] p-6 text-center">
-        <p className="text-sm text-[var(--muted-foreground)]">
-          Inventory is protected. Please sign in to view inventory data.
-        </p>
-        <Link
-          href="/sign-in"
-          className="rounded-none bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)]"
-        >
-          Go to Sign In
-        </Link>
       </div>
     );
   }

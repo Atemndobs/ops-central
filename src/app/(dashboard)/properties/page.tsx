@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { Building2, Edit3, Loader2, Plus, Search, Trash2 } from "lucide-react";
 import { PropertyFormModal } from "@/components/properties/property-form-modal";
@@ -57,6 +57,7 @@ function parseStatusParam(value: string | null): PropertyStatus | "all" {
 }
 
 function PropertiesPageContent() {
+  const { isAuthenticated } = useConvexAuth();
   const searchParams = useSearchParams();
   const [search, setSearch] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<PropertyStatus | "all">("all");
@@ -68,14 +69,13 @@ function PropertiesPageContent() {
 
   const properties = useQuery(
     api.properties.queries.getAll,
-    { limit: 500 },
+    isAuthenticated ? { limit: 500 } : "skip",
   );
   const propertyAssignments = useQuery(
     api.admin.queries.listCompanyPropertyAssignments,
-    {
-      includeUnassigned: true,
-      limit: 500,
-    },
+    isAuthenticated
+      ? { includeUnassigned: true, limit: 500 }
+      : "skip",
   );
 
   const createProperty = useMutation(

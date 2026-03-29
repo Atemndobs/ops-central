@@ -1,15 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { ChevronRight, Loader2 } from "lucide-react";
 import { JobPhotosReviewClient } from "@/components/jobs/job-photos-review-client";
 
 export function ReviewPhotosReviewClient({ id }: { id: string }) {
+  const { isAuthenticated } = useConvexAuth();
   const jobId = id as Id<"cleaningJobs">;
-  const detail = useQuery(api.cleaningJobs.queries.getReviewJobDetail, { jobId });
+  const detail = useQuery(api.cleaningJobs.queries.getReviewJobDetail, isAuthenticated ? { jobId } : "skip");
 
   if (detail === undefined) {
     return (

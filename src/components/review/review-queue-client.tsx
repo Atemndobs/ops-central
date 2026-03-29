@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Camera, CheckCircle2, Clock3, Loader2, RotateCcw } from "lucide-react";
@@ -29,12 +29,13 @@ function endOfDay(dateString: string): number | undefined {
 }
 
 export function ReviewQueueClient() {
+  const { isAuthenticated } = useConvexAuth();
   const [status, setStatus] = useState<JobStatus | "all">("awaiting_approval");
   const [propertyId, setPropertyId] = useState("all");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
-  const properties = useQuery(api.properties.queries.getAll, { limit: 500 });
+  const properties = useQuery(api.properties.queries.getAll, isAuthenticated ? { limit: 500 } : "skip");
 
   const queryArgs = useMemo(
     () => ({
@@ -47,7 +48,7 @@ export function ReviewQueueClient() {
     [fromDate, propertyId, status, toDate],
   );
 
-  const jobs = useQuery(api.cleaningJobs.queries.getReviewQueue, queryArgs);
+  const jobs = useQuery(api.cleaningJobs.queries.getReviewQueue, isAuthenticated ? queryArgs : "skip");
 
   const counts = useMemo(() => {
     const source = jobs ?? [];

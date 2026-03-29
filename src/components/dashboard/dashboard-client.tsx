@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { AlertTriangle, CheckCircle2, Clock3, Loader2, RotateCcw } from "lucide-react";
 import {
@@ -41,16 +41,17 @@ const readinessBorder: Record<PropertyStatus, string> = {
 };
 
 export function DashboardClient() {
+  const { isAuthenticated } = useConvexAuth();
   const [showAllAlerts, setShowAllAlerts] = useState(false);
   const [now, setNow] = useState<number | null>(null);
 
   const jobs = useQuery(
     api.cleaningJobs.queries.getAll,
-    { limit: 500 },
+    isAuthenticated ? { limit: 500 } : "skip",
   );
   const properties = useQuery(
     api.properties.queries.getAll,
-    { limit: 500 },
+    isAuthenticated ? { limit: 500 } : "skip",
   );
 
   useEffect(() => {
@@ -199,20 +200,20 @@ export function DashboardClient() {
     <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3 sm:items-start sm:gap-4">
         <div className="min-w-0">
-          <h1 className="sr-only sm:not-sr-only sm:text-3xl sm:font-extrabold sm:tracking-tight">
+          <h1 className="hidden text-3xl font-extrabold tracking-tight sm:block">
             Operations Dashboard
           </h1>
           <p className="mt-1 hidden text-sm text-[var(--muted-foreground)] sm:block">
             Real-time status of property readiness and field jobs.
           </p>
         </div>
-        <div className="flex w-full items-center gap-2 sm:w-auto">
-          <button className="flex-1 rounded-xl bg-[var(--secondary)] px-3 py-2 text-sm font-semibold text-[var(--secondary-foreground)] sm:flex-none sm:px-4">
+        <div className="flex items-center gap-2">
+          <button className="rounded-xl bg-[var(--secondary)] px-3 py-1.5 text-xs font-semibold text-[var(--secondary-foreground)] sm:px-4 sm:py-2 sm:text-sm">
             Generate Report
           </button>
           <Link
             href="/jobs"
-            className="flex-1 rounded-xl bg-[var(--primary)] px-3 py-2 text-center text-sm font-semibold text-[var(--primary-foreground)] sm:flex-none sm:px-4"
+            className="rounded-xl bg-[var(--primary)] px-3 py-1.5 text-center text-xs font-semibold text-[var(--primary-foreground)] sm:px-4 sm:py-2 sm:text-sm"
           >
             New Job
           </Link>
@@ -224,15 +225,15 @@ export function DashboardClient() {
           <Link
             key={item.label}
             href={item.href}
-            className="group rounded-xl border bg-[var(--card)] p-2.5 shadow-sm transition hover:border-[var(--primary)]/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40 sm:rounded-2xl sm:p-5"
+            className="group rounded-none border bg-[var(--card)] px-3 py-3 text-center shadow-sm transition hover:border-[var(--primary)]/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40 sm:rounded-2xl sm:p-5 sm:text-left"
           >
-            <div className="flex items-center justify-between sm:mb-3">
+            <div className="sm:flex sm:items-center sm:justify-between sm:mb-3">
               <p className="truncate text-[9px] font-bold uppercase tracking-wider text-[var(--muted-foreground)] sm:text-xs">
                 {item.label}
               </p>
               <item.icon className="hidden h-4 w-4 text-[var(--muted-foreground)] sm:block" />
             </div>
-            <p className="mt-1 text-2xl font-extrabold leading-none tracking-tight sm:mt-0 sm:text-4xl">{item.value}</p>
+            <p className="mt-1.5 text-xl font-extrabold leading-none tracking-tight sm:mt-0 sm:text-4xl">{item.value}</p>
             <p className="mt-2 hidden text-xs text-[var(--muted-foreground)] sm:block">{item.hint}</p>
             <p className="mt-3 hidden text-xs font-semibold text-[var(--primary)] opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100 sm:block">
               View details
@@ -241,10 +242,10 @@ export function DashboardClient() {
         ))}
       </div>
 
-      <section className="rounded-2xl border bg-[var(--card)] p-5">
-        <div className="mb-4 flex items-center justify-between">
+      <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5">
+        <div className="mb-3 flex items-center justify-between sm:mb-4">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold">Critical Alerts</h2>
+            <h2 className="text-base font-bold sm:text-lg">Critical Alerts</h2>
             <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-rose-700">
               Urgent
             </span>
@@ -300,9 +301,9 @@ export function DashboardClient() {
       </section>
 
       <section className="rounded-2xl border bg-[var(--card)]">
-        <div className="flex items-center justify-between border-b px-4 py-3">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Today&apos;s Jobs</h2>
-          <Link href="/jobs" className="text-sm font-semibold text-[var(--primary)] hover:underline">
+        <div className="flex items-center justify-between border-b px-3 py-2 sm:px-4 sm:py-3">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] sm:text-sm">Today&apos;s Jobs</h2>
+          <Link href="/jobs" className="text-xs font-semibold text-[var(--primary)] hover:underline sm:text-sm">
             View all jobs
           </Link>
         </div>
@@ -317,7 +318,7 @@ export function DashboardClient() {
         ) : (
           <div className="divide-y">
             {todayJobs.map((job) => (
-              <div key={job._id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+              <div key={job._id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:gap-3 sm:px-4 sm:py-3">
                 <div>
                   <p className="text-sm font-semibold">{job.property?.name ?? "Unknown property"}</p>
                   <p className="text-xs text-[var(--muted-foreground)]">
@@ -338,9 +339,9 @@ export function DashboardClient() {
         )}
       </section>
 
-      <section className="rounded-2xl border bg-[var(--card)] p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Property Readiness</h2>
+      <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5">
+        <div className="mb-3 flex items-center justify-between sm:mb-4">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] sm:text-sm">Property Readiness</h2>
         </div>
 
         {readiness.mappedCount === 0 ? (

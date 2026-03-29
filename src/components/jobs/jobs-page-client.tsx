@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Loader2, Plus, Search } from "lucide-react";
@@ -43,6 +43,7 @@ type JobsPageClientProps = {
 };
 
 export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
+  const { isAuthenticated } = useConvexAuth();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<JobStatus | "all">(initialStatus);
   const [propertyId, setPropertyId] = useState("all");
@@ -52,26 +53,28 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
 
   const jobs = useQuery(
     api.cleaningJobs.queries.getAll,
-    {
-      status: status === "all" ? undefined : status,
-      propertyId: propertyId === "all" ? undefined : propertyId as Id<"properties">,
-      limit: 1000,
-    },
+    isAuthenticated
+      ? {
+          status: status === "all" ? undefined : status,
+          propertyId: propertyId === "all" ? undefined : propertyId as Id<"properties">,
+          limit: 1000,
+        }
+      : "skip",
   );
 
   const allJobs = useQuery(
     api.cleaningJobs.queries.getAll,
-    { limit: 1000 },
+    isAuthenticated ? { limit: 1000 } : "skip",
   );
 
   const cleanerOptionsFromUsers = useQuery(
     api.users.queries.getByRole,
-    { role: "cleaner" },
+    isAuthenticated ? { role: "cleaner" } : "skip",
   );
 
   const propertiesForCreate = useQuery(
     api.properties.queries.getAll,
-    { limit: 500 },
+    isAuthenticated ? { limit: 500 } : "skip",
   );
 
   const propertyOptionsFromJobs = useMemo(() => {

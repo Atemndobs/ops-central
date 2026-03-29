@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import {
@@ -70,10 +70,11 @@ function getAssignWarnings(result: unknown): string[] {
 }
 
 export function JobDetailClient({ id }: { id: string }) {
+  const { isAuthenticated } = useConvexAuth();
   const jobId = id as Id<"cleaningJobs">;
 
-  const detail = useQuery(api.cleaningJobs.queries.getJobDetail, { jobId });
-  const livePresence = useQuery(api.cleaningJobs.queries.getJobLivePresence, { jobId });
+  const detail = useQuery(api.cleaningJobs.queries.getJobDetail, isAuthenticated ? { jobId } : "skip");
+  const livePresence = useQuery(api.cleaningJobs.queries.getJobLivePresence, isAuthenticated ? { jobId } : "skip");
 
   const startJob = useMutation(api.cleaningJobs.mutations.start);
   const submitForApproval = useMutation(api.cleaningJobs.mutations.submitForApproval);
@@ -98,7 +99,7 @@ export function JobDetailClient({ id }: { id: string }) {
     return () => window.clearInterval(intervalId);
   }, []);
 
-  const cleanerOptions = useQuery(api.users.queries.getByRole, { role: "cleaner" });
+  const cleanerOptions = useQuery(api.users.queries.getByRole, isAuthenticated ? { role: "cleaner" } : "skip");
 
   const cleanerJobs = useQuery(
     api.cleaningJobs.queries.getForCleaner,

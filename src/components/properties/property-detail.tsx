@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { ArrowLeft, Loader2, MapPin, Pencil } from "lucide-react";
 import { PropertyFormModal } from "@/components/properties/property-form-modal";
@@ -36,27 +36,24 @@ function toMutationInput(values: PropertyFormValues) {
 }
 
 export function PropertyDetail({ id }: { id: string }) {
+  const { isAuthenticated } = useConvexAuth();
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const { showToast } = useToast();
 
-  const property = useQuery(api.properties.queries.getById, {
-    id: id as never,
-  }) as PropertyRecord | null | undefined;
+  const property = useQuery(
+    api.properties.queries.getById,
+    isAuthenticated ? { id: id as never } : "skip",
+  ) as PropertyRecord | null | undefined;
 
   const jobs = useQuery(
     api.cleaningJobs.queries.getAll,
-    {
-      propertyId: id as never,
-      limit: 30,
-    },
+    isAuthenticated ? { propertyId: id as never, limit: 30 } : "skip",
   );
   const propertyCompanyAssignment = useQuery(
     api.admin.queries.getPropertyCompanyAssignment,
-    {
-      propertyId: id as never,
-    },
+    isAuthenticated ? { propertyId: id as never } : "skip",
   );
 
   const updateProperty = useMutation(

@@ -11,7 +11,7 @@ import {
   type PointerEvent,
   type ReactNode,
 } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { makeFunctionReference } from "convex/server";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -246,10 +246,11 @@ function areShapesEqual(left: ReviewShape[], right: ReviewShape[]): boolean {
 }
 
 export function JobPhotosReviewClient({ id }: { id: string }) {
+  const { isAuthenticated } = useConvexAuth();
   const jobId = id as Id<"cleaningJobs">;
   const { showToast } = useToast();
 
-  const detail = useQuery(api.cleaningJobs.queries.getJobDetail, { jobId });
+  const detail = useQuery(api.cleaningJobs.queries.getJobDetail, isAuthenticated ? { jobId } : "skip");
   const approveCompletion = useMutation(api.cleaningJobs.approve.approveCompletion);
   const rejectCompletion = useMutation(api.cleaningJobs.approve.rejectCompletion);
   const savePhotoReviewAnnotations = useMutation(reviewAnnotationsMutation);
