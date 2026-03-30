@@ -32,6 +32,7 @@ type EvidencePhoto = {
   roomName: string;
   type: "before" | "after" | "incident";
   url: string | null;
+  uploadedAt?: number | null;
 };
 
 type RoomRow = {
@@ -53,6 +54,7 @@ type ViewerSlide = {
   roomName: string;
   type: "before" | "after" | "incident";
   url: string;
+  uploadedAt?: number | null;
 };
 
 type ViewerState = {
@@ -152,6 +154,17 @@ function formatDateTime(value?: number | null) {
   return new Date(value).toLocaleString();
 }
 
+function formatPhotoTimestamp(value: number): string {
+  const d = new Date(value);
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
 function normalizeRoomKey(value: string) {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -213,6 +226,7 @@ function buildViewerSlides(photos: EvidencePhoto[]): ViewerSlide[] {
         roomName: cleanRoomName(photo.roomName),
         type: photo.type,
         url: photo.url,
+        uploadedAt: photo.uploadedAt,
       },
     ];
   });
@@ -1239,6 +1253,9 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                   {currentSlide.roomName} · {currentSlide.type} · {viewer.index + 1}/{viewer.slides.length}
                 </h3>
                 <p className="text-xs text-[var(--muted-foreground)]">
+                  {currentSlide.uploadedAt ? (
+                    <span className="mr-2 font-mono">{formatPhotoTimestamp(currentSlide.uploadedAt)}</span>
+                  ) : null}
                   Mark corrections with freehand, arrows, lines, or cloud callouts directly on the photo.
                 </p>
               </div>
@@ -1685,6 +1702,7 @@ function PhotoColumn({
           key={`${photo.photoId}-${index}`}
           url={photo.url}
           label={photo.roomName}
+          uploadedAt={photo.uploadedAt}
           onOpen={() => onOpenPhoto?.(photo)}
         />
       ))}
@@ -1695,10 +1713,12 @@ function PhotoColumn({
 function ReviewPhotoTile({
   url,
   label,
+  uploadedAt,
   onOpen,
 }: {
   url: string | null;
   label: string;
+  uploadedAt?: number | null;
   onOpen?: () => void;
 }) {
   if (!url) {
@@ -1715,13 +1735,20 @@ function ReviewPhotoTile({
       onClick={onOpen}
       className="group overflow-hidden rounded-md border border-[var(--border)] text-left"
     >
-      <Image
-        src={url}
-        alt={label}
-        width={320}
-        height={160}
-        className="h-24 w-full object-cover transition-transform group-hover:scale-105"
-      />
+      <div className="relative h-24">
+        <Image
+          src={url}
+          alt={label}
+          width={320}
+          height={160}
+          className="h-24 w-full object-cover transition-transform group-hover:scale-105"
+        />
+        {uploadedAt ? (
+          <span className="absolute bottom-0 left-0 right-0 bg-black/60 px-1.5 py-0.5 font-mono text-[9px] text-white/90">
+            {formatPhotoTimestamp(uploadedAt)}
+          </span>
+        ) : null}
+      </div>
       <p className="truncate border-t border-[var(--border)] px-2 py-1 text-[10px] text-[var(--muted-foreground)]">
         {cleanRoomName(label)}
       </p>

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { SyncBanner } from "@/components/cleaner/sync-banner";
-import { dataUrlToBlob, fileToDataUrl } from "@/features/cleaner/offline/blob";
+import { dataUrlToBlob, fileToDataUrl, stampImageWithTimestamp } from "@/features/cleaner/offline/blob";
 import {
   clearDraftProgress,
   deletePendingUpload,
@@ -481,6 +481,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
     const { status } = detail.job;
     if (status === "awaiting_approval" || status === "completed" || status === "cancelled") {
       goToStep(STEPS.length - 1);
+      setPendingSubmit(false);
       return;
     }
     void startJobRef.current({
@@ -525,7 +526,9 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
   // ── Photo upload helper ───────────────────────────────────────────────────
   const addUploadFromFile = useCallback(
     async (args: { file: File; roomName: string; photoType: "before" | "after" | "incident" }) => {
-      const fileDataUrl = await fileToDataUrl(args.file);
+      const rawDataUrl = await fileToDataUrl(args.file);
+      const capturedAt = new Date();
+      const fileDataUrl = await stampImageWithTimestamp(rawDataUrl, capturedAt);
       const upload: PendingUpload = {
         id: `upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         jobId,
@@ -818,102 +821,118 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
             ))}
           </div>
 
-          {/* QA mode */}
-          <div>
-            <label className="mb-1 block text-xs font-medium text-[var(--muted-foreground)]">QA Mode</label>
-            <select
-              value={qaMode}
-              onChange={(e) => setQaMode(e.target.value as "standard" | "quick")}
-              className="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
-            >
-              <option value="standard">Standard</option>
-              <option value="quick">Quick (minimum photos)</option>
-            </select>
-          </div>
-
-          {qaMode === "quick" && (
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Min before photos</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={quickMinimumBefore}
-                  onChange={(e) => setQuickMinimumBefore(Math.max(1, Number(e.target.value) || 1))}
-                  className="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Min after photos</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={quickMinimumAfter}
-                  onChange={(e) => setQuickMinimumAfter(Math.max(1, Number(e.target.value) || 1))}
-                  className="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
-                />
-              </div>
+          {/* Already submitted — show status banner instead of submit form */}
+          {(detail?.job.status === "awaiting_approval" || detail?.job.status === "completed") ? (
+            <div className="rounded-md border border-[var(--warning,oklch(0.75_0.15_80))]/40 bg-[var(--warning,oklch(0.75_0.15_80))]/10 p-3 text-center">
+              <p className="text-sm font-semibold text-[var(--foreground)]">
+                {detail.job.status === "completed" ? "✓ Job Approved" : "⏳ Awaiting Approval"}
+              </p>
+              <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                {detail.job.status === "completed"
+                  ? "This job has been reviewed and approved."
+                  : "Your work has been submitted and is being reviewed."}
+              </p>
             </div>
-          )}
-
-          {/* Notes */}
-          <div>
-            <label className="mb-1 block text-xs font-medium text-[var(--muted-foreground)]">
-              Completion notes (optional)
-            </label>
-            <textarea
-              value={completionNotes}
-              onChange={(e) => setCompletionNotes(e.target.value)}
-              rows={3}
-              className="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
-              placeholder="Any notes for the reviewer..."
-            />
-          </div>
-
-          {/* Guest ready */}
-          <label className="flex cursor-pointer items-center gap-3">
-            <span className={[
-              "flex h-5 w-5 items-center justify-center rounded border text-xs font-bold",
-              guestReady
-                ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
-                : "border-[var(--border)] bg-[var(--card)]",
-            ].join(" ")}>
-              {guestReady ? "✓" : ""}
-            </span>
-            <input type="checkbox" checked={guestReady} className="sr-only" onChange={(e) => setGuestReady(e.target.checked)} />
-            <span className="text-sm text-[var(--foreground)]">Unit is guest-ready</span>
-          </label>
-
-          {/* Submit button */}
-          <button
-            type="button"
-            disabled={submitDisabled}
-            onClick={() => void handleSubmit(false)}
-            className="w-full rounded-md bg-[var(--primary)] py-3 text-sm font-semibold text-[var(--primary-foreground)] hover:opacity-90 active:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {pendingSubmit ? "Submitting..." : "Submit for Approval"}
-          </button>
-
-          {submitError && (
-            <div className="space-y-2 rounded-md border border-[var(--destructive)]/40 bg-[var(--destructive)]/10 p-3">
-              <p className="text-xs text-[var(--destructive)]">{submitError}</p>
-              {canForceSubmit && (
-                <button
-                  type="button"
-                  disabled={pendingSubmit}
-                  onClick={() => void handleSubmit(true)}
-                  className="rounded-md border border-[var(--destructive)] px-3 py-1.5 text-xs font-semibold text-[var(--destructive)] hover:opacity-80 disabled:opacity-50"
+          ) : (
+            <>
+              {/* QA mode */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-[var(--muted-foreground)]">QA Mode</label>
+                <select
+                  value={qaMode}
+                  onChange={(e) => setQaMode(e.target.value as "standard" | "quick")}
+                  className="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
                 >
-                  {pendingSubmit ? "Submitting..." : "Submit Anyway"}
-                </button>
-              )}
-            </div>
-          )}
+                  <option value="standard">Standard</option>
+                  <option value="quick">Quick (minimum photos)</option>
+                </select>
+              </div>
 
-          {submitSuccess && (
-            <p className="text-center text-xs font-medium text-[var(--success,oklch(0.66_0.18_150))]">
-              {submitSuccess}
-            </p>
+              {qaMode === "quick" && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Min before photos</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={quickMinimumBefore}
+                      onChange={(e) => setQuickMinimumBefore(Math.max(1, Number(e.target.value) || 1))}
+                      className="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Min after photos</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={quickMinimumAfter}
+                      onChange={(e) => setQuickMinimumAfter(Math.max(1, Number(e.target.value) || 1))}
+                      className="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Notes */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-[var(--muted-foreground)]">
+                  Completion notes (optional)
+                </label>
+                <textarea
+                  value={completionNotes}
+                  onChange={(e) => setCompletionNotes(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
+                  placeholder="Any notes for the reviewer..."
+                />
+              </div>
+
+              {/* Guest ready */}
+              <label className="flex cursor-pointer items-center gap-3">
+                <span className={[
+                  "flex h-5 w-5 items-center justify-center rounded border text-xs font-bold",
+                  guestReady
+                    ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
+                    : "border-[var(--border)] bg-[var(--card)]",
+                ].join(" ")}>
+                  {guestReady ? "✓" : ""}
+                </span>
+                <input type="checkbox" checked={guestReady} className="sr-only" onChange={(e) => setGuestReady(e.target.checked)} />
+                <span className="text-sm text-[var(--foreground)]">Unit is guest-ready</span>
+              </label>
+
+              {/* Submit button */}
+              <button
+                type="button"
+                disabled={submitDisabled}
+                onClick={() => void handleSubmit(false)}
+                className="w-full rounded-md bg-[var(--primary)] py-3 text-sm font-semibold text-[var(--primary-foreground)] hover:opacity-90 active:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {pendingSubmit ? "Submitting..." : "Submit for Approval"}
+              </button>
+
+              {submitError && (
+                <div className="space-y-2 rounded-md border border-[var(--destructive)]/40 bg-[var(--destructive)]/10 p-3">
+                  <p className="text-xs text-[var(--destructive)]">{submitError}</p>
+                  {canForceSubmit && (
+                    <button
+                      type="button"
+                      disabled={pendingSubmit}
+                      onClick={() => void handleSubmit(true)}
+                      className="rounded-md border border-[var(--destructive)] px-3 py-1.5 text-xs font-semibold text-[var(--destructive)] hover:opacity-80 disabled:opacity-50"
+                    >
+                      {pendingSubmit ? "Submitting..." : "Submit Anyway"}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {submitSuccess && (
+                <p className="text-center text-xs font-medium text-[var(--success,oklch(0.66_0.18_150))]">
+                  {submitSuccess}
+                </p>
+              )}
+            </>
           )}
         </section>
       )}
