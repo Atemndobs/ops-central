@@ -79,6 +79,23 @@ function getCountByRoom(args: {
   return serverCount + localCount;
 }
 
+function getPhotoUrlsByRoom(args: {
+  roomName: string;
+  type: "before" | "after";
+  detail: JobDetailLike | null | undefined;
+  pendingUploads: PendingUpload[];
+}): string[] {
+  const serverUrls = (args.detail?.evidence?.current?.byType?.[args.type] ?? [])
+    .filter((p) => readRoomName((p as { roomName?: unknown }).roomName) === args.roomName)
+    .map((p) => (p as { url?: string | null }).url)
+    .filter((u): u is string => typeof u === "string" && u.length > 0);
+  const localUrls = args.pendingUploads
+    .filter((u) => u.roomName === args.roomName && u.photoType === args.type)
+    .map((u) => u.fileDataUrl)
+    .filter((u) => u.length > 0);
+  return [...serverUrls, ...localUrls];
+}
+
 type JobDetailLike = {
   job: {
     _id: Id<"cleaningJobs">;
@@ -90,9 +107,9 @@ type JobDetailLike = {
   evidence: {
     current: {
       byType: {
-        before: Array<{ roomName?: string | null }>;
-        after:  Array<{ roomName?: string | null }>;
-        incident: Array<{ roomName?: string | null }>;
+        before: Array<{ roomName?: string | null; url?: string | null }>;
+        after:  Array<{ roomName?: string | null; url?: string | null }>;
+        incident: Array<{ roomName?: string | null; url?: string | null }>;
       };
       byRoom: Array<{ roomName?: string | null }>;
     };
@@ -169,18 +186,22 @@ function RoomPhotoCard({
   roomName,
   photoType,
   photoCount,
+  photoUrls,
   skippedReason,
   onAddFile,
   onSkip,
   onUnskip,
+  onPreview,
 }: {
   roomName: string;
   photoType: "before" | "after";
   photoCount: number;
+  photoUrls: string[];
   skippedReason: string | undefined;
   onAddFile: (file: File) => Promise<void>;
   onSkip: (reason: string) => void;
   onUnskip: () => void;
+  onPreview: (url: string) => void;
 }) {
   const [showSkipInput, setShowSkipInput] = useState(false);
   const [skipReason, setSkipReason] = useState("");
@@ -226,6 +247,23 @@ function RoomPhotoCard({
           <span className="text-xs text-[var(--muted-foreground)]">No photos yet</span>
         )}
       </div>
+
+      {/* Photo thumbnails */}
+      {photoUrls.length > 0 && (
+        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+          {photoUrls.map((url, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => onPreview(url)}
+              className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-[var(--border)] active:opacity-70"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={url} alt="" className="h-full w-full object-cover" />
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Add photo */}
       <label className="mt-2 flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-[var(--border)] py-2.5 text-xs text-[var(--muted-foreground)] transition-colors hover:border-[var(--primary)] hover:text-[var(--primary)] active:opacity-70">
@@ -355,6 +393,9 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
   const [isSyncing, setIsSyncing]           = useState(false);
   const isSyncingRef                        = useRef(false);
   const [syncError, setSyncError]           = useState<string | null>(null);
+
+  // Lightbox
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   // Incident prompt — shown between after_photos and incidents steps
   const [showIncidentPrompt, setShowIncidentPrompt] = useState(false);
@@ -708,6 +749,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
             {roomList.map((roomName) => {
               const photoType = phase === "before_photos" ? "before" : "after";
               const count = getCountByRoom({ roomName, type: photoType, detail, pendingUploads });
+              const urls = getPhotoUrlsByRoom({ roomName, type: photoType, detail, pendingUploads });
               const skippedEntry = skippedRooms.find((r) => r.roomName === roomName);
 
               return (
@@ -716,6 +758,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                   roomName={roomName}
                   photoType={photoType}
                   photoCount={count}
+                  photoUrls={urls}
                   skippedReason={phase === "before_photos" ? skippedEntry?.reason : undefined}
                   onAddFile={(file) => addUploadFromFile({ file, roomName, photoType })}
                   onSkip={(reason) => {
@@ -727,6 +770,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                   onUnskip={() => {
                     setSkippedRooms((current) => current.filter((r) => r.roomName !== roomName));
                   }}
+                  onPreview={setLightboxUrl}
                 />
               );
             })}
@@ -885,6 +929,71 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
             ))}
           </div>
 
+          {/* Per-room before/after photo preview */}
+          {roomList.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+                Before &amp; After Photos
+              </p>
+              {roomList.map((roomName) => {
+                const beforeUrls = getPhotoUrlsByRoom({ roomName, type: "before", detail, pendingUploads });
+                const afterUrls  = getPhotoUrlsByRoom({ roomName, type: "after",  detail, pendingUploads });
+                const skipped = skippedRooms.find((r) => r.roomName === roomName);
+                if (skipped) {
+                  return (
+                    <div key={roomName} className="rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2">
+                      <p className="text-xs font-medium text-[var(--foreground)]">{roomName}</p>
+                      <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">Skipped{skipped.reason ? `: ${skipped.reason}` : ""}</p>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={roomName} className="rounded-md border border-[var(--border)] bg-[var(--background)] p-3">
+                    <p className="mb-2 text-xs font-medium text-[var(--foreground)]">{roomName}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <p className="mb-1 text-[10px] text-[var(--muted-foreground)]">Before ({beforeUrls.length})</p>
+                        {beforeUrls.length > 0 ? (
+                          <div className="flex gap-1 overflow-x-auto">
+                            {beforeUrls.map((url, i) => (
+                              <button key={i} type="button" onClick={() => setLightboxUrl(url)}
+                                className="h-14 w-14 shrink-0 overflow-hidden rounded border border-[var(--border)] active:opacity-70">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={url} alt="" className="h-full w-full object-cover" />
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="flex h-14 items-center justify-center rounded border border-dashed border-[var(--border)] text-[10px] text-[var(--muted-foreground)]">
+                            None
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <p className="mb-1 text-[10px] text-[var(--muted-foreground)]">After ({afterUrls.length})</p>
+                        {afterUrls.length > 0 ? (
+                          <div className="flex gap-1 overflow-x-auto">
+                            {afterUrls.map((url, i) => (
+                              <button key={i} type="button" onClick={() => setLightboxUrl(url)}
+                                className="h-14 w-14 shrink-0 overflow-hidden rounded border border-[var(--border)] active:opacity-70">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={url} alt="" className="h-full w-full object-cover" />
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="flex h-14 items-center justify-center rounded border border-dashed border-[var(--border)] text-[10px] text-[var(--muted-foreground)]">
+                            None
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {/* Already submitted — show status banner instead of submit form */}
           {(detail?.job.status === "awaiting_approval" || detail?.job.status === "completed") ? (
             <div className="rounded-md border border-[var(--warning,oklch(0.75_0.15_80))]/40 bg-[var(--warning,oklch(0.75_0.15_80))]/10 p-3 text-center">
@@ -1024,6 +1133,30 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
 
         {(isLastStep || showIncidentPrompt) && <div className="flex-1" />}
       </div>
+
+      {/* Lightbox */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxUrl(null)}
+            className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/30"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightboxUrl}
+            alt=""
+            className="max-h-[90dvh] max-w-[90dvw] rounded object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
 
     </div>
   );
