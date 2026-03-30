@@ -27,13 +27,13 @@ import {
 import type { DraftIncident, DraftProgress, PendingUpload } from "@/features/cleaner/offline/types";
 import { getErrorMessage } from "@/lib/errors";
 
-type ActivePhase = DraftProgress["phase"];
+// Steps: cleaning step removed — skip is merged into before_photos
+type ActivePhase = "before_photos" | "after_photos" | "incidents" | "review";
 
 const STEPS: Array<{ phase: ActivePhase; label: string; shortLabel: string }> = [
   { phase: "before_photos", label: "Before Photos", shortLabel: "Before" },
-  { phase: "cleaning",      label: "Cleaning Checklist", shortLabel: "Checklist" },
-  { phase: "after_photos",  label: "After Photos", shortLabel: "After" },
-  { phase: "incidents",     label: "Incidents", shortLabel: "Issues" },
+  { phase: "after_photos",  label: "After Photos",  shortLabel: "After"  },
+  { phase: "incidents",     label: "Incidents",     shortLabel: "Issues" },
   { phase: "review",        label: "Review & Submit", shortLabel: "Submit" },
 ];
 
@@ -41,8 +41,8 @@ const DEFAULT_ROOMS = ["Living Room", "Kitchen", "Bedroom", "Bathroom"];
 
 function readRoomName(value: unknown): string | null {
   if (!value || typeof value !== "string") return null;
-  const roomName = value.trim();
-  return roomName.length > 0 ? roomName : null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function buildRoomList(detail: JobDetailLike | null | undefined): string[] {
@@ -51,18 +51,14 @@ function buildRoomList(detail: JobDetailLike | null | undefined): string[] {
 
   const byRoom = detail.evidence?.current?.byRoom ?? [];
   byRoom.forEach((row) => {
-    const roomName = readRoomName((row as { roomName?: unknown }).roomName);
-    if (roomName) set.add(roomName);
+    const name = readRoomName((row as { roomName?: unknown }).roomName);
+    if (name) set.add(name);
   });
 
   const byType = detail.evidence?.current?.byType;
-  (byType?.before ?? []).forEach((photo) => {
-    const roomName = readRoomName((photo as { roomName?: unknown }).roomName);
-    if (roomName) set.add(roomName);
-  });
-  (byType?.after ?? []).forEach((photo) => {
-    const roomName = readRoomName((photo as { roomName?: unknown }).roomName);
-    if (roomName) set.add(roomName);
+  [...(byType?.before ?? []), ...(byType?.after ?? [])].forEach((photo) => {
+    const name = readRoomName((photo as { roomName?: unknown }).roomName);
+    if (name) set.add(name);
   });
 
   return [...set];
@@ -75,10 +71,10 @@ function getCountByRoom(args: {
   pendingUploads: PendingUpload[];
 }) {
   const serverCount = (args.detail?.evidence?.current?.byType?.[args.type] ?? []).filter(
-    (photo) => readRoomName((photo as { roomName?: unknown }).roomName) === args.roomName,
+    (p) => readRoomName((p as { roomName?: unknown }).roomName) === args.roomName,
   ).length;
   const localCount = args.pendingUploads.filter(
-    (upload) => upload.roomName === args.roomName && upload.photoType === args.type,
+    (u) => u.roomName === args.roomName && u.photoType === args.type,
   ).length;
   return serverCount + localCount;
 }
@@ -95,7 +91,7 @@ type JobDetailLike = {
     current: {
       byType: {
         before: Array<{ roomName?: string | null }>;
-        after: Array<{ roomName?: string | null }>;
+        after:  Array<{ roomName?: string | null }>;
         incident: Array<{ roomName?: string | null }>;
       };
       byRoom: Array<{ roomName?: string | null }>;
@@ -115,16 +111,14 @@ function StepIndicator({
   onGoTo: (index: number) => void;
 }) {
   return (
-    <div className="flex items-center gap-0">
+    <div className="flex items-center">
       {STEPS.map((step, index) => {
         const isActive    = index === currentIndex;
-        const isCompleted = visitedIndices.has(index) && index < currentIndex;
-        const isVisited   = visitedIndices.has(index);
-        const isClickable = isVisited || index <= currentIndex;
+        const isCompleted = index < currentIndex;
+        const isClickable = visitedIndices.has(index) || index <= currentIndex;
 
         return (
           <div key={step.phase} className="flex flex-1 items-center">
-            {/* Step dot + label */}
             <button
               type="button"
               disabled={!isClickable}
@@ -135,12 +129,10 @@ function StepIndicator({
                 className={[
                   "flex h-7 w-7 items-center justify-center rounded-full border-2 text-xs font-bold transition-colors",
                   isActive
-                    ? "border-blue-500 bg-blue-500 text-white"
+                    ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
                     : isCompleted
-                    ? "border-blue-500 bg-blue-500/20 text-blue-400"
-                    : isVisited
-                    ? "border-zinc-500 bg-zinc-700 text-zinc-300"
-                    : "border-zinc-700 bg-zinc-800 text-zinc-600",
+                    ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]"
+                    : "border-[var(--border)] bg-[var(--muted)] text-[var(--muted-foreground)]",
                 ].join(" ")}
               >
                 {isCompleted ? "✓" : index + 1}
@@ -148,25 +140,157 @@ function StepIndicator({
               <span
                 className={[
                   "hidden text-[10px] font-medium sm:block",
-                  isActive ? "text-blue-400" : isCompleted ? "text-blue-500" : "text-zinc-500",
+                  isActive    ? "text-[var(--primary)]"          : "",
+                  isCompleted ? "text-[var(--primary)]"          : "",
+                  !isActive && !isCompleted ? "text-[var(--muted-foreground)]" : "",
                 ].join(" ")}
               >
                 {step.shortLabel}
               </span>
             </button>
-
-            {/* Connector line between steps */}
             {index < STEPS.length - 1 && (
               <div
                 className={[
                   "h-0.5 flex-1 transition-colors",
-                  index < currentIndex ? "bg-blue-500/50" : "bg-zinc-700",
+                  index < currentIndex ? "bg-[var(--primary)]/40" : "bg-[var(--border)]",
                 ].join(" ")}
               />
             )}
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ─── Room card with photos + skip ────────────────────────────────────────────
+
+function RoomPhotoCard({
+  roomName,
+  photoType,
+  photoCount,
+  skippedReason,
+  onAddFile,
+  onSkip,
+  onUnskip,
+}: {
+  roomName: string;
+  photoType: "before" | "after";
+  photoCount: number;
+  skippedReason: string | undefined;
+  onAddFile: (file: File) => Promise<void>;
+  onSkip: (reason: string) => void;
+  onUnskip: () => void;
+}) {
+  const [showSkipInput, setShowSkipInput] = useState(false);
+  const [skipReason, setSkipReason] = useState("");
+
+  const isSkipped = skippedReason !== undefined;
+  const hasPhotos = photoCount > 0;
+
+  if (isSkipped) {
+    return (
+      <div className="rounded-md border border-[var(--border)] bg-[var(--card)] p-3">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p className="text-sm font-medium text-[var(--foreground)]">{roomName}</p>
+            <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
+              Skipped{skippedReason ? `: ${skippedReason}` : ""}
+            </p>
+          </div>
+          <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+            Skipped
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onUnskip}
+          className="mt-2 text-xs text-[var(--primary)] underline-offset-2 hover:underline"
+        >
+          Undo skip
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-md border border-[var(--border)] bg-[var(--card)] p-3">
+      {/* Room header */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium text-[var(--foreground)]">{roomName}</p>
+        {hasPhotos ? (
+          <span className="text-xs font-semibold text-[var(--success,oklch(0.66_0.18_150))]">
+            {photoCount} photo{photoCount !== 1 ? "s" : ""}
+          </span>
+        ) : (
+          <span className="text-xs text-[var(--muted-foreground)]">No photos yet</span>
+        )}
+      </div>
+
+      {/* Add photo */}
+      <label className="mt-2 flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-[var(--border)] py-2.5 text-xs text-[var(--muted-foreground)] transition-colors hover:border-[var(--primary)] hover:text-[var(--primary)] active:opacity-70">
+        <span>+ Add photo</span>
+        <input
+          type="file"
+          accept="image/*"
+          capture="environment"
+          multiple
+          className="sr-only"
+          onChange={async (event) => {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+            for (const file of Array.from(files)) {
+              await onAddFile(file);
+            }
+            event.currentTarget.value = "";
+          }}
+        />
+      </label>
+
+      {/* Skip toggle */}
+      {!showSkipInput && (
+        <button
+          type="button"
+          onClick={() => setShowSkipInput(true)}
+          className="mt-2 text-xs text-[var(--muted-foreground)] underline-offset-2 hover:text-[var(--foreground)] hover:underline"
+        >
+          Skip this room
+        </button>
+      )}
+
+      {/* Skip reason form */}
+      {showSkipInput && (
+        <div className="mt-2 space-y-2 rounded-md border border-[var(--border)] bg-[var(--muted)]/40 p-2">
+          <p className="text-xs font-medium text-[var(--foreground)]">Reason for skipping (optional)</p>
+          <input
+            autoFocus
+            value={skipReason}
+            onChange={(e) => setSkipReason(e.target.value)}
+            placeholder="e.g. Room locked, guest still inside"
+            className="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-xs text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                onSkip(skipReason.trim());
+                setSkipReason("");
+                setShowSkipInput(false);
+              }}
+              className="flex-1 rounded-md bg-[var(--primary)] py-1.5 text-xs font-semibold text-[var(--primary-foreground)]"
+            >
+              Confirm Skip
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowSkipInput(false); setSkipReason(""); }}
+              className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)]"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -183,25 +307,24 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
     isAuthenticated ? { jobId } : "skip",
   ) as JobDetailLike | null | undefined;
 
-  const startJob            = useMutation(api.cleaningJobs.mutations.start);
-  const startJobRef         = useRef(startJob);
-  startJobRef.current       = startJob;
-  const pingActiveSession   = useMutation(api.cleaningJobs.mutations.pingActiveSession);
-  const pingActiveSessionRef = useRef(pingActiveSession);
-  pingActiveSessionRef.current = pingActiveSession;
-  const submitForApproval   = useMutation(api.cleaningJobs.mutations.submitForApproval);
-  const createIncident      = useMutation(api.incidents.mutations.createIncident);
-  const generateUploadUrl   = useMutation(api.files.mutations.generateUploadUrl);
-  const generateUploadUrlRef = useRef(generateUploadUrl);
-  generateUploadUrlRef.current = generateUploadUrl;
-  const uploadJobPhoto      = useMutation(api.files.mutations.uploadJobPhoto);
-  const uploadJobPhotoRef   = useRef(uploadJobPhoto);
-  uploadJobPhotoRef.current = uploadJobPhoto;
+  const startJob                = useMutation(api.cleaningJobs.mutations.start);
+  const startJobRef             = useRef(startJob);
+  startJobRef.current           = startJob;
+  const pingActiveSession       = useMutation(api.cleaningJobs.mutations.pingActiveSession);
+  const pingActiveSessionRef    = useRef(pingActiveSession);
+  pingActiveSessionRef.current  = pingActiveSession;
+  const submitForApproval       = useMutation(api.cleaningJobs.mutations.submitForApproval);
+  const createIncident          = useMutation(api.incidents.mutations.createIncident);
+  const generateUploadUrl       = useMutation(api.files.mutations.generateUploadUrl);
+  const generateUploadUrlRef    = useRef(generateUploadUrl);
+  generateUploadUrlRef.current  = generateUploadUrl;
+  const uploadJobPhoto          = useMutation(api.files.mutations.uploadJobPhoto);
+  const uploadJobPhotoRef       = useRef(uploadJobPhoto);
+  uploadJobPhotoRef.current     = uploadJobPhoto;
 
-  // Phase / stepper state
-  const [phase, setPhase] = useState<ActivePhase>("before_photos");
+  // Stepper
+  const [phase, setPhase]                   = useState<ActivePhase>("before_photos");
   const [visitedIndices, setVisitedIndices] = useState<Set<number>>(new Set([0]));
-
   const currentStepIndex = STEPS.findIndex((s) => s.phase === phase);
 
   const goToStep = (index: number) => {
@@ -209,12 +332,10 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
     setPhase(STEPS[clamped].phase);
     setVisitedIndices((prev) => new Set([...prev, clamped]));
   };
-
   const goNext = () => goToStep(currentStepIndex + 1);
   const goBack = () => goToStep(currentStepIndex - 1);
 
-  // Job execution state
-  const [checklistDoneRooms, setChecklistDoneRooms] = useState<string[]>([]);
+  // Job state — checklistDoneRooms kept for type compat but unused
   const [skippedRooms, setSkippedRooms]             = useState<Array<{ roomName: string; reason: string }>>([]);
   const [qaMode, setQaMode]                         = useState<"standard" | "quick">("standard");
   const [quickMinimumBefore, setQuickMinimumBefore] = useState(2);
@@ -228,36 +349,38 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
   const [newIncidentRoomName, setNewIncidentRoomName]       = useState("");
   const [newIncidentSeverity, setNewIncidentSeverity]       = useState<"low" | "medium" | "high" | "critical">("medium");
 
-  // Offline / sync state
+  // Offline / sync
   const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
   const [isOnline, setIsOnline]             = useState(true);
   const [isSyncing, setIsSyncing]           = useState(false);
   const isSyncingRef                        = useRef(false);
   const [syncError, setSyncError]           = useState<string | null>(null);
 
-  // Submit state
+  // Submit
   const [pendingSubmit, setPendingSubmit]   = useState(false);
   const [submitError, setSubmitError]       = useState<string | null>(null);
   const [canForceSubmit, setCanForceSubmit] = useState(false);
   const [submitSuccess, setSubmitSuccess]   = useState<string | null>(null);
 
-  const roomList = useMemo(() => buildRoomList(detail), [detail]);
-
+  const roomList  = useMemo(() => buildRoomList(detail), [detail]);
   const syncState = useMemo(
     () => buildSyncState({ queue: pendingUploads, isOnline, isSyncing, lastError: syncError ?? undefined }),
     [isOnline, isSyncing, pendingUploads, syncError],
   );
 
-  // ── Hydrate local draft from IndexedDB on mount ──────────────────────────
+  // ── Hydrate draft ─────────────────────────────────────────────────────────
   const hydrateLocalState = useCallback(async () => {
     const [queue, draft] = await Promise.all([listPendingUploads(), loadDraftProgress(jobId)]);
     setPendingUploads(queue.filter((u) => u.jobId === jobId));
 
     if (draft) {
-      const draftStepIndex = STEPS.findIndex((s) => s.phase === draft.phase);
-      setPhase(draft.phase);
-      setVisitedIndices(new Set(STEPS.map((_, i) => i).filter((i) => i <= draftStepIndex)));
-      setChecklistDoneRooms(draft.checklistDoneRooms);
+      // Map old "cleaning" phase (from previous drafts) to before_photos
+      const restoredPhase: ActivePhase =
+        draft.phase === "cleaning" ? "before_photos"
+        : (draft.phase as ActivePhase);
+      const restoredIndex = STEPS.findIndex((s) => s.phase === restoredPhase);
+      setPhase(restoredPhase);
+      setVisitedIndices(new Set(STEPS.map((_, i) => i).filter((i) => i <= restoredIndex)));
       setSkippedRooms(draft.skippedRooms);
       setQaMode(draft.qaMode);
       setQuickMinimumBefore(draft.quickMinimumBefore);
@@ -268,10 +391,9 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
     }
   }, [jobId]);
 
-  // ── Upload queue drainer ─────────────────────────────────────────────────
+  // ── Upload queue drainer ──────────────────────────────────────────────────
   const drainQueue = useCallback(async () => {
     if (!isOnline || isSyncingRef.current) return;
-
     isSyncingRef.current = true;
     setIsSyncing(true);
     setSyncError(null);
@@ -279,13 +401,13 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
     let queue = (await listPendingUploads()).filter((item) => item.jobId === jobId);
 
     if (isOnline && queue.some((item) => item.status === "failed")) {
-      const resetQueue = resetFailedUploads(queue);
-      const updatedEntries = resetQueue.filter((item) => {
-        const previous = queue.find((c) => c.id === item.id);
-        return previous?.status !== item.status || previous?.lastError !== item.lastError;
+      const reset = resetFailedUploads(queue);
+      const changed = reset.filter((item) => {
+        const prev = queue.find((c) => c.id === item.id);
+        return prev?.status !== item.status || prev?.lastError !== item.lastError;
       });
-      await Promise.all(updatedEntries.map((item) => upsertPendingUpload(item)));
-      queue = resetQueue;
+      await Promise.all(changed.map((item) => upsertPendingUpload(item)));
+      queue = reset;
     }
     setPendingUploads(queue);
 
@@ -301,15 +423,14 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
 
         const blob = dataUrlToBlob(syncing.fileDataUrl);
         const uploadUrl = await generateUploadUrlRef.current({});
-        const uploadResponse = await fetch(uploadUrl, {
+        const res = await fetch(uploadUrl, {
           method: "POST",
           headers: { "Content-Type": syncing.mimeType || "application/octet-stream" },
           body: blob,
         });
+        if (!res.ok) throw new Error(`File upload failed (${res.status}).`);
 
-        if (!uploadResponse.ok) throw new Error(`File upload failed (${uploadResponse.status}).`);
-
-        const payload = (await uploadResponse.json()) as { storageId?: Id<"_storage"> };
+        const payload = (await res.json()) as { storageId?: Id<"_storage"> };
         if (!payload.storageId) throw new Error("Upload response missing storageId.");
 
         await uploadJobPhotoRef.current({
@@ -355,7 +476,6 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
   drainQueueRef.current = drainQueue;
   useEffect(() => { if (isOnline) void drainQueueRef.current(); }, [isOnline]);
 
-  // Auto-start job and redirect finished jobs to review step
   useEffect(() => {
     if (!detail) return;
     const { status } = detail.job;
@@ -367,26 +487,28 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
       jobId,
       startedAtDevice: Date.now(),
       offlineStartToken: `${jobId}-${Date.now()}`,
-    }).catch((error) => { console.warn("[CleanerActiveJob] Unable to ensure start", error); });
+    }).catch((e) => { console.warn("[CleanerActiveJob] start failed", e); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail, jobId]);
 
-  // Heartbeat
   useEffect(() => {
     if (!detail || detail.job.status !== "in_progress") return;
-    const send = () => { void pingActiveSessionRef.current({ jobId }).catch((e: unknown) => { console.warn("[CleanerActiveJob] Heartbeat failed", e); }); };
+    const send = () => { void pingActiveSessionRef.current({ jobId }).catch((e: unknown) => { console.warn("[CleanerActiveJob] heartbeat failed", e); }); };
     send();
     const timer = window.setInterval(send, 30_000);
     return () => { window.clearInterval(timer); };
   }, [detail, jobId]);
 
-  // Persist draft to IndexedDB whenever execution state changes
+  // Persist draft
   useEffect(() => {
     if (!detail) return;
-    void saveDraftProgress({
+    const draft: DraftProgress = {
       jobId,
-      phase,
-      checklistDoneRooms,
+      phase: phase === "before_photos" ? "before_photos"
+           : phase === "after_photos"  ? "after_photos"
+           : phase === "incidents"     ? "incidents"
+           : "review",
+      checklistDoneRooms: [], // unused — kept for type compat
       skippedRooms,
       qaMode,
       quickMinimumBefore,
@@ -396,8 +518,9 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
       guestReady,
       incidents,
       updatedAt: Date.now(),
-    });
-  }, [checklistDoneRooms, completionNotes, guestReady, incidents, jobId, phase, qaMode, quickMinimumAfter, quickMinimumBefore, roomList, skippedRooms, detail]);
+    };
+    void saveDraftProgress(draft);
+  }, [completionNotes, guestReady, incidents, jobId, phase, qaMode, quickMinimumAfter, quickMinimumBefore, roomList, skippedRooms, detail]);
 
   // ── Photo upload helper ───────────────────────────────────────────────────
   const addUploadFromFile = useCallback(
@@ -422,27 +545,27 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
     [drainQueue, isOnline, jobId],
   );
 
-  // ── Loading / error guards ────────────────────────────────────────────────
+  // ── Guards ────────────────────────────────────────────────────────────────
   if (isLoading || !isAuthenticated || detail === undefined) {
-    return <p className="p-4 text-sm text-zinc-400">Loading active job...</p>;
+    return <p className="p-4 text-sm text-[var(--muted-foreground)]">Loading active job...</p>;
   }
   if (!detail) {
-    return <p className="p-4 text-sm text-zinc-400">Job not found.</p>;
+    return <p className="p-4 text-sm text-[var(--muted-foreground)]">Job not found.</p>;
   }
 
-  // ── Totals for review summary ─────────────────────────────────────────────
+  // ── Summary counts ────────────────────────────────────────────────────────
   const currentBeforeTotal = roomList.reduce(
-    (sum, roomName) => sum + getCountByRoom({ roomName, type: "before", detail, pendingUploads }), 0,
+    (sum, rn) => sum + getCountByRoom({ roomName: rn, type: "before", detail, pendingUploads }), 0,
   );
   const currentAfterTotal = roomList.reduce(
-    (sum, roomName) => sum + getCountByRoom({ roomName, type: "after", detail, pendingUploads }), 0,
+    (sum, rn) => sum + getCountByRoom({ roomName: rn, type: "after", detail, pendingUploads }), 0,
   );
 
-  const submitDisabled = !syncState.canSubmit || pendingSubmit;
-  const isLastStep = currentStepIndex === STEPS.length - 1;
+  const isLastStep  = currentStepIndex === STEPS.length - 1;
   const isFirstStep = currentStepIndex === 0;
+  const submitDisabled = !syncState.canSubmit || pendingSubmit;
 
-  // ── Submit handler ────────────────────────────────────────────────────────
+  // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async (force = false) => {
     setPendingSubmit(true);
     setSubmitError(null);
@@ -480,7 +603,9 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
       })) as { ok?: boolean; unresolvedCleanerIds?: string[] };
 
       if (result?.ok === false) {
-        throw new Error(`Cannot submit yet. ${result.unresolvedCleanerIds?.length ?? 0} cleaner session(s) are unresolved.`);
+        throw new Error(
+          `Cannot submit yet. ${result.unresolvedCleanerIds?.length ?? 0} cleaner session(s) are unresolved.`,
+        );
       }
 
       await clearDraftProgress(jobId);
@@ -498,16 +623,18 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex min-h-0 flex-col gap-4">
+    <div className="flex flex-col gap-4">
 
       {/* Property header */}
-      <section className="rounded-xl border border-zinc-700 bg-zinc-800/60 p-4">
-        <h2 className="text-base font-semibold text-zinc-100">
+      <section className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
+        <h2 className="text-base font-semibold text-[var(--foreground)]">
           {detail.property?.name ?? "Unknown property"}
         </h2>
-        <p className="mt-0.5 text-xs text-zinc-400">{detail.property?.address ?? "No address"}</p>
+        <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
+          {detail.property?.address ?? "No address"}
+        </p>
         {detail.job.notesForCleaner ? (
-          <p className="mt-2 rounded-md bg-yellow-900/30 px-2 py-1.5 text-xs text-yellow-300">
+          <p className="mt-2 rounded-md bg-[var(--warning)]/15 px-2 py-1.5 text-xs text-[var(--warning-foreground,var(--foreground))]">
             {detail.job.notesForCleaner}
           </p>
         ) : null}
@@ -516,140 +643,90 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
       <SyncBanner syncState={syncState} />
 
       {/* Step indicator */}
-      <section className="rounded-xl border border-zinc-700 bg-zinc-800/60 px-4 py-3">
+      <section className="rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3">
         <StepIndicator
           currentIndex={currentStepIndex}
           visitedIndices={visitedIndices}
           onGoTo={goToStep}
         />
-        <p className="mt-3 text-center text-xs text-zinc-500">
-          Step {currentStepIndex + 1} of {STEPS.length} — <span className="text-zinc-300">{STEPS[currentStepIndex].label}</span>
+        <p className="mt-3 text-center text-xs text-[var(--muted-foreground)]">
+          Step {currentStepIndex + 1} of {STEPS.length} —{" "}
+          <span className="font-medium text-[var(--foreground)]">{STEPS[currentStepIndex].label}</span>
         </p>
       </section>
 
-      {/* ── Step content ─────────────────────────────────────────────────── */}
-
-      {/* STEP: Before / After photos */}
+      {/* ── STEP: Before / After photos ─────────────────────────────────── */}
       {(phase === "before_photos" || phase === "after_photos") && (
-        <section className="space-y-3 rounded-xl border border-zinc-700 bg-zinc-800/60 p-4">
-          <h3 className="text-sm font-semibold text-zinc-100">
-            {phase === "before_photos" ? "Before Photos" : "After Photos"}
-          </h3>
-          <p className="text-xs text-zinc-500">
-            Take at least one photo per room{phase === "before_photos" ? " before you start cleaning" : " after cleaning is complete"}.
-          </p>
+        <section className="space-y-3 rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
+          <div>
+            <h3 className="text-sm font-semibold text-[var(--foreground)]">
+              {phase === "before_photos" ? "Before Photos" : "After Photos"}
+            </h3>
+            <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
+              {phase === "before_photos"
+                ? "Take at least one photo per room before you start cleaning. Skip a room if you can't access it."
+                : "Take at least one photo per room after cleaning is complete."}
+            </p>
+          </div>
+
           <div className="space-y-2">
             {roomList.map((roomName) => {
               const photoType = phase === "before_photos" ? "before" : "after";
               const count = getCountByRoom({ roomName, type: photoType, detail, pendingUploads });
+              const skippedEntry = skippedRooms.find((r) => r.roomName === roomName);
+
               return (
-                <div key={roomName} className="rounded-lg border border-zinc-700 bg-zinc-900/50 p-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium text-zinc-200">{roomName}</p>
-                    <span className={["text-xs font-semibold tabular-nums", count > 0 ? "text-emerald-400" : "text-zinc-500"].join(" ")}>
-                      {count > 0 ? `${count} photo${count !== 1 ? "s" : ""}` : "No photos yet"}
-                    </span>
-                  </div>
-                  <label className="mt-2 flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-zinc-600 py-2 text-xs text-zinc-400 hover:border-blue-500 hover:text-blue-400 active:opacity-70">
-                    <span>＋ Add photo</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      multiple
-                      className="sr-only"
-                      onChange={async (event) => {
-                        const files = event.target.files;
-                        if (!files || files.length === 0) return;
-                        for (const file of Array.from(files)) {
-                          await addUploadFromFile({ file, roomName, photoType });
-                        }
-                        event.currentTarget.value = "";
-                      }}
-                    />
-                  </label>
-                </div>
+                <RoomPhotoCard
+                  key={roomName}
+                  roomName={roomName}
+                  photoType={photoType}
+                  photoCount={count}
+                  skippedReason={phase === "before_photos" ? skippedEntry?.reason : undefined}
+                  onAddFile={(file) => addUploadFromFile({ file, roomName, photoType })}
+                  onSkip={(reason) => {
+                    setSkippedRooms((current) => {
+                      const next = current.filter((r) => r.roomName !== roomName);
+                      return [...next, { roomName, reason }];
+                    });
+                  }}
+                  onUnskip={() => {
+                    setSkippedRooms((current) => current.filter((r) => r.roomName !== roomName));
+                  }}
+                />
               );
             })}
           </div>
         </section>
       )}
 
-      {/* STEP: Cleaning checklist */}
-      {phase === "cleaning" && (
-        <section className="space-y-2 rounded-xl border border-zinc-700 bg-zinc-800/60 p-4">
-          <h3 className="text-sm font-semibold text-zinc-100">Room Checklist</h3>
-          <p className="text-xs text-zinc-500">Mark each room as done, or add a skip reason if you couldn't clean it.</p>
-          <div className="space-y-2 pt-1">
-            {roomList.map((roomName) => {
-              const checked = checklistDoneRooms.includes(roomName);
-              const skipped = skippedRooms.find((room) => room.roomName === roomName);
-              return (
-                <div key={roomName} className="rounded-lg border border-zinc-700 bg-zinc-900/50 p-3">
-                  <label className="flex cursor-pointer items-center gap-3 text-sm">
-                    <span className={["flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs font-bold", checked ? "border-emerald-500 bg-emerald-500 text-white" : "border-zinc-600 bg-zinc-800"].join(" ")}>
-                      {checked ? "✓" : ""}
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      className="sr-only"
-                      onChange={(event) => {
-                        const enabled = event.target.checked;
-                        setChecklistDoneRooms((current) =>
-                          enabled ? Array.from(new Set([...current, roomName])) : current.filter((v) => v !== roomName),
-                        );
-                      }}
-                    />
-                    <span className={checked ? "text-zinc-300 line-through" : "text-zinc-200"}>{roomName}</span>
-                  </label>
-                  {!checked && (
-                    <input
-                      value={skipped?.reason ?? ""}
-                      onChange={(event) => {
-                        const reason = event.target.value;
-                        setSkippedRooms((current) => {
-                          const next = current.filter((item) => item.roomName !== roomName);
-                          return reason.trim().length === 0 ? next : [...next, { roomName, reason: reason.trim() }];
-                        });
-                      }}
-                      placeholder="Skip reason (optional)"
-                      className="mt-2 w-full rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-xs text-zinc-300 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-500"
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* STEP: Incidents */}
+      {/* ── STEP: Incidents ──────────────────────────────────────────────── */}
       {phase === "incidents" && (
-        <section className="space-y-4 rounded-xl border border-zinc-700 bg-zinc-800/60 p-4">
+        <section className="space-y-4 rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
           <div>
-            <h3 className="text-sm font-semibold text-zinc-100">Report Incidents</h3>
-            <p className="mt-0.5 text-xs text-zinc-500">Log any damage, maintenance needs, or unexpected issues. You can skip this step if there's nothing to report.</p>
+            <h3 className="text-sm font-semibold text-[var(--foreground)]">Report Incidents</h3>
+            <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
+              Log any damage, maintenance needs, or unexpected issues. Skip this step if there's nothing to report.
+            </p>
           </div>
 
-          <div className="space-y-2 rounded-lg border border-zinc-700 bg-zinc-900/50 p-3">
+          <div className="space-y-2 rounded-md border border-[var(--border)] bg-[var(--background)] p-3">
             <input
               value={newIncidentTitle}
-              onChange={(event) => setNewIncidentTitle(event.target.value)}
-              className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+              onChange={(e) => setNewIncidentTitle(e.target.value)}
+              className="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
               placeholder="Title (e.g. Broken lamp)"
             />
             <div className="grid grid-cols-2 gap-2">
               <input
                 value={newIncidentRoomName}
-                onChange={(event) => setNewIncidentRoomName(event.target.value)}
-                className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+                onChange={(e) => setNewIncidentRoomName(e.target.value)}
+                className="rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
                 placeholder="Room (optional)"
               />
               <select
                 value={newIncidentSeverity}
-                onChange={(event) => setNewIncidentSeverity(event.target.value as "low" | "medium" | "high" | "critical")}
-                className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+                onChange={(e) => setNewIncidentSeverity(e.target.value as "low" | "medium" | "high" | "critical")}
+                className="rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
               >
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
@@ -659,14 +736,14 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
             </div>
             <textarea
               value={newIncidentDescription}
-              onChange={(event) => setNewIncidentDescription(event.target.value)}
+              onChange={(e) => setNewIncidentDescription(e.target.value)}
               rows={2}
-              className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+              className="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
               placeholder="Description (optional)"
             />
             <button
               type="button"
-              className="w-full rounded-md border border-zinc-600 py-1.5 text-xs font-medium text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 active:opacity-70"
+              className="w-full rounded-md border border-[var(--border)] py-1.5 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--muted)] active:opacity-70"
               onClick={() => {
                 const title = newIncidentTitle.trim();
                 if (!title) return;
@@ -693,17 +770,19 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
           {incidents.length > 0 && (
             <ul className="space-y-2">
               {incidents.map((incident) => (
-                <li key={incident.id} className="flex items-start justify-between gap-2 rounded-lg border border-zinc-700 bg-zinc-900/50 p-3 text-xs">
+                <li key={incident.id} className="flex items-start justify-between gap-2 rounded-md border border-[var(--border)] bg-[var(--card)] p-3 text-xs">
                   <div>
-                    <p className="font-semibold text-zinc-200">{incident.title}</p>
-                    <p className="mt-0.5 text-zinc-500">
+                    <p className="font-semibold text-[var(--foreground)]">{incident.title}</p>
+                    <p className="mt-0.5 text-[var(--muted-foreground)]">
                       {incident.roomName ?? "No room"} · <span className="capitalize">{incident.severity}</span>
                     </p>
-                    {incident.description && <p className="mt-1 text-zinc-400">{incident.description}</p>}
+                    {incident.description && (
+                      <p className="mt-1 text-[var(--muted-foreground)]">{incident.description}</p>
+                    )}
                   </div>
                   <button
                     type="button"
-                    className="shrink-0 text-red-400 hover:text-red-300"
+                    className="shrink-0 text-[var(--destructive)] hover:opacity-80"
                     onClick={() => setIncidents((current) => current.filter((item) => item.id !== incident.id))}
                   >
                     ✕
@@ -715,32 +794,37 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
         </section>
       )}
 
-      {/* STEP: Review & Submit */}
+      {/* ── STEP: Review & Submit ────────────────────────────────────────── */}
       {phase === "review" && (
-        <section className="space-y-4 rounded-xl border border-zinc-700 bg-zinc-800/60 p-4">
-          <h3 className="text-sm font-semibold text-zinc-100">Review & Submit</h3>
+        <section className="space-y-4 rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
+          <h3 className="text-sm font-semibold text-[var(--foreground)]">Review & Submit</h3>
 
           {/* Summary counts */}
           <div className="grid grid-cols-3 gap-2 text-center">
             {[
-              { label: "Before Photos", value: currentBeforeTotal },
-              { label: "After Photos",  value: currentAfterTotal },
-              { label: "Incidents",     value: incidents.length },
+              { label: "Before",    value: currentBeforeTotal },
+              { label: "After",     value: currentAfterTotal  },
+              { label: "Incidents", value: incidents.length   },
             ].map(({ label, value }) => (
-              <div key={label} className="rounded-lg border border-zinc-700 bg-zinc-900/50 py-2">
-                <p className={["text-lg font-bold tabular-nums", value > 0 ? "text-zinc-100" : "text-zinc-600"].join(" ")}>{value}</p>
-                <p className="text-[10px] text-zinc-500">{label}</p>
+              <div key={label} className="rounded-md border border-[var(--border)] bg-[var(--background)] py-2">
+                <p className={[
+                  "text-lg font-bold tabular-nums",
+                  value > 0 ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)]",
+                ].join(" ")}>
+                  {value}
+                </p>
+                <p className="text-[10px] text-[var(--muted-foreground)]">{label}</p>
               </div>
             ))}
           </div>
 
           {/* QA mode */}
           <div>
-            <label className="mb-1 block text-xs font-medium text-zinc-400">QA Mode</label>
+            <label className="mb-1 block text-xs font-medium text-[var(--muted-foreground)]">QA Mode</label>
             <select
               value={qaMode}
-              onChange={(event) => setQaMode(event.target.value as "standard" | "quick")}
-              className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+              onChange={(e) => setQaMode(e.target.value as "standard" | "quick")}
+              className="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
             >
               <option value="standard">Standard</option>
               <option value="quick">Quick (minimum photos)</option>
@@ -750,68 +834,75 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
           {qaMode === "quick" && (
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="mb-1 block text-xs text-zinc-500">Min before photos</label>
+                <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Min before photos</label>
                 <input
                   type="number"
                   min={1}
                   value={quickMinimumBefore}
-                  onChange={(event) => setQuickMinimumBefore(Math.max(1, Number(event.target.value) || 1))}
-                  className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+                  onChange={(e) => setQuickMinimumBefore(Math.max(1, Number(e.target.value) || 1))}
+                  className="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-zinc-500">Min after photos</label>
+                <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Min after photos</label>
                 <input
                   type="number"
                   min={1}
                   value={quickMinimumAfter}
-                  onChange={(event) => setQuickMinimumAfter(Math.max(1, Number(event.target.value) || 1))}
-                  className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+                  onChange={(e) => setQuickMinimumAfter(Math.max(1, Number(e.target.value) || 1))}
+                  className="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
                 />
               </div>
             </div>
           )}
 
-          {/* Completion notes */}
+          {/* Notes */}
           <div>
-            <label className="mb-1 block text-xs font-medium text-zinc-400">Completion notes (optional)</label>
+            <label className="mb-1 block text-xs font-medium text-[var(--muted-foreground)]">
+              Completion notes (optional)
+            </label>
             <textarea
               value={completionNotes}
-              onChange={(event) => setCompletionNotes(event.target.value)}
+              onChange={(e) => setCompletionNotes(e.target.value)}
               rows={3}
-              className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+              className="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
               placeholder="Any notes for the reviewer..."
             />
           </div>
 
           {/* Guest ready */}
           <label className="flex cursor-pointer items-center gap-3">
-            <span className={["flex h-5 w-5 items-center justify-center rounded border text-xs font-bold", guestReady ? "border-emerald-500 bg-emerald-500 text-white" : "border-zinc-600 bg-zinc-800"].join(" ")}>
+            <span className={[
+              "flex h-5 w-5 items-center justify-center rounded border text-xs font-bold",
+              guestReady
+                ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
+                : "border-[var(--border)] bg-[var(--card)]",
+            ].join(" ")}>
               {guestReady ? "✓" : ""}
             </span>
             <input type="checkbox" checked={guestReady} className="sr-only" onChange={(e) => setGuestReady(e.target.checked)} />
-            <span className="text-sm text-zinc-200">Unit is guest-ready</span>
+            <span className="text-sm text-[var(--foreground)]">Unit is guest-ready</span>
           </label>
 
-          {/* Submit */}
+          {/* Submit button */}
           <button
             type="button"
             disabled={submitDisabled}
             onClick={() => void handleSubmit(false)}
-            className="w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white shadow-lg hover:bg-blue-500 active:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
+            className="w-full rounded-md bg-[var(--primary)] py-3 text-sm font-semibold text-[var(--primary-foreground)] hover:opacity-90 active:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {pendingSubmit ? "Submitting..." : "Submit for Approval"}
           </button>
 
           {submitError && (
-            <div className="space-y-2 rounded-lg border border-red-800 bg-red-900/20 p-3">
-              <p className="text-xs text-red-400">{submitError}</p>
+            <div className="space-y-2 rounded-md border border-[var(--destructive)]/40 bg-[var(--destructive)]/10 p-3">
+              <p className="text-xs text-[var(--destructive)]">{submitError}</p>
               {canForceSubmit && (
                 <button
                   type="button"
                   disabled={pendingSubmit}
                   onClick={() => void handleSubmit(true)}
-                  className="rounded-md border border-red-600 px-3 py-1.5 text-xs font-semibold text-red-400 hover:bg-red-900/40 disabled:opacity-50"
+                  className="rounded-md border border-[var(--destructive)] px-3 py-1.5 text-xs font-semibold text-[var(--destructive)] hover:opacity-80 disabled:opacity-50"
                 >
                   {pendingSubmit ? "Submitting..." : "Submit Anyway"}
                 </button>
@@ -820,18 +911,20 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
           )}
 
           {submitSuccess && (
-            <p className="text-center text-xs font-medium text-emerald-400">{submitSuccess}</p>
+            <p className="text-center text-xs font-medium text-[var(--success,oklch(0.66_0.18_150))]">
+              {submitSuccess}
+            </p>
           )}
         </section>
       )}
 
-      {/* ── Navigation footer ───────────────────────────────────────────────── */}
+      {/* ── Navigation footer ────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-3 pb-6">
         <button
           type="button"
           onClick={goBack}
           disabled={isFirstStep}
-          className="flex items-center gap-1.5 rounded-xl border border-zinc-700 px-5 py-2.5 text-sm font-medium text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 active:opacity-70 disabled:invisible"
+          className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] px-5 py-2.5 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--muted)] active:opacity-70 disabled:invisible"
         >
           ← Back
         </button>
@@ -840,15 +933,13 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
           <button
             type="button"
             onClick={goNext}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-zinc-700 py-2.5 text-sm font-semibold text-zinc-100 hover:bg-zinc-600 active:opacity-70"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-[var(--primary)] py-2.5 text-sm font-semibold text-[var(--primary-foreground)] hover:opacity-90 active:opacity-70"
           >
             Next →
           </button>
         )}
 
-        {isLastStep && (
-          <div className="flex-1" /> // spacer so Back stays left-aligned on review step
-        )}
+        {isLastStep && <div className="flex-1" />}
       </div>
 
     </div>
