@@ -495,29 +495,42 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
   drainQueueRef.current = drainQueue;
   useEffect(() => { if (isOnline) void drainQueueRef.current(); }, [isOnline]);
 
+  // Derive status once so effects depend on the scalar, not the full detail object.
+  // This prevents loops where startJob/pingActiveSession update a field inside
+  // detail, which re-fires the effect, which calls the mutation again, ad infinitum.
+  const jobStatus = detail?.job.status;
+
+  const hasStartedJobRef = useRef(false);
   useEffect(() => {
-    if (!detail) return;
-    const { status } = detail.job;
-    if (status === "awaiting_approval" || status === "completed" || status === "cancelled") {
+    if (!jobStatus) return;
+    if (jobStatus === "awaiting_approval" || jobStatus === "completed" || jobStatus === "cancelled") {
       goToStep(STEPS.length - 1);
       setPendingSubmit(false);
       return;
     }
-    void startJobRef.current({
-      jobId,
-      startedAtDevice: Date.now(),
-      offlineStartToken: `${jobId}-${Date.now()}`,
-    }).catch((e) => { console.warn("[CleanerActiveJob] start failed", e); });
+    // Only call startJob once per page load — it is not idempotent and calling
+    // it on every detail update causes an infinite Convex mutation loop.
+    if (!hasStartedJobRef.current) {
+      hasStartedJobRef.current = true;
+      void startJobRef.current({
+        jobId,
+        startedAtDevice: Date.now(),
+        offlineStartToken: `${jobId}-${Date.now()}`,
+      }).catch((e) => { console.warn("[CleanerActiveJob] start failed", e); });
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detail, jobId]);
+  }, [jobStatus, jobId]);
 
   useEffect(() => {
-    if (!detail || detail.job.status !== "in_progress") return;
+    if (jobStatus !== "in_progress") return;
+    // Depend only on jobStatus (scalar), not on detail, so that pingActiveSession
+    // updating any field in the detail query does not re-trigger this effect and
+    // cause send() to be called in a tight loop (billing issue).
     const send = () => { void pingActiveSessionRef.current({ jobId }).catch((e: unknown) => { console.warn("[CleanerActiveJob] heartbeat failed", e); }); };
     send();
     const timer = window.setInterval(send, 30_000);
     return () => { window.clearInterval(timer); };
-  }, [detail, jobId]);
+  }, [jobStatus, jobId]);
 
   // Persist draft
   useEffect(() => {
