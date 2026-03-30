@@ -1,4 +1,4 @@
-const SW_VERSION = "cleaner-v3";
+const SW_VERSION = "cleaner-v4";
 const STATIC_CACHE = `${SW_VERSION}-static`;
 const DATA_CACHE = `${SW_VERSION}-data`;
 
@@ -47,8 +47,23 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("message", (event) => {
-  if (event.data && event.data.type === "SKIP_WAITING") {
+  if (!event.data) return;
+
+  if (event.data.type === "SKIP_WAITING") {
     self.skipWaiting();
+    return;
+  }
+
+  if (event.data.type === "CLEAR_ALL_CACHES") {
+    event.waitUntil(
+      caches.keys()
+        .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+        .then(() => {
+          if (event.source) {
+            event.source.postMessage({ type: "CACHES_CLEARED" });
+          }
+        })
+    );
   }
 });
 

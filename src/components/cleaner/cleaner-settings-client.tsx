@@ -35,6 +35,8 @@ export function CleanerSettingsClient() {
     | undefined;
 
   const [pendingUploads, setPendingUploads] = useState(0);
+  const [clearingCache, setClearingCache] = useState(false);
+  const [cacheCleared, setCacheCleared] = useState(false);
   const [localTheme, setLocalTheme] = useState<ThemePreference>(() => {
     if (typeof window === "undefined") {
       return "light";
@@ -65,6 +67,33 @@ export function CleanerSettingsClient() {
     applyTheme(resolvedTheme);
     window.localStorage.setItem(THEME_STORAGE_KEY, resolvedTheme);
   }, [resolvedTheme]);
+
+  const handleClearCache = async () => {
+    setClearingCache(true);
+    try {
+      // 1. Delete all caches directly from the page context (works without SW messaging)
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+
+      // 2. Tell the active SW to also wipe its own caches and skip waiting
+      const reg = await navigator.serviceWorker?.getRegistration?.();
+      if (reg) {
+        reg.active?.postMessage({ type: "CLEAR_ALL_CACHES" });
+        // Trigger an update check so the new SW installs immediately
+        await reg.update().catch(() => undefined);
+        reg.waiting?.postMessage({ type: "SKIP_WAITING" });
+      }
+
+      setCacheCleared(true);
+      // Short pause so the user sees the confirmation, then reload fresh
+      await new Promise<void>((resolve) => setTimeout(resolve, 800));
+      window.location.reload();
+    } catch {
+      setClearingCache(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -113,6 +142,21 @@ export function CleanerSettingsClient() {
           }}
         >
           Clear Offline Queue
+        </button>
+      </section>
+
+      <section className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
+        <h2 className="text-base font-semibold">App Cache</h2>
+        <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+          If the app is showing outdated information or behaving strangely, clear the cache and reload.
+        </p>
+        <button
+          type="button"
+          disabled={clearingCache}
+          className="mt-3 rounded-md border border-[var(--destructive)]/50 bg-[var(--destructive)]/10 px-3 py-1.5 text-xs font-semibold text-[var(--destructive)] hover:bg-[var(--destructive)]/20 active:opacity-70 disabled:opacity-50"
+          onClick={() => { void handleClearCache(); }}
+        >
+          {cacheCleared ? "✓ Cache cleared — reloading…" : clearingCache ? "Clearing…" : "Clear Cache & Refresh"}
         </button>
       </section>
 
