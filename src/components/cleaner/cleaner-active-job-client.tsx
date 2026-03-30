@@ -356,6 +356,9 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
   const isSyncingRef                        = useRef(false);
   const [syncError, setSyncError]           = useState<string | null>(null);
 
+  // Incident prompt — shown between after_photos and incidents steps
+  const [showIncidentPrompt, setShowIncidentPrompt] = useState(false);
+
   // Submit
   const [pendingSubmit, setPendingSubmit]   = useState(false);
   const [submitError, setSubmitError]       = useState<string | null>(null);
@@ -659,7 +662,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
       </section>
 
       {/* ── STEP: Before / After photos ─────────────────────────────────── */}
-      {(phase === "before_photos" || phase === "after_photos") && (
+      {(phase === "before_photos" || phase === "after_photos") && !showIncidentPrompt && (
         <section className="space-y-3 rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
           <div>
             <h3 className="text-sm font-semibold text-[var(--foreground)]">
@@ -698,6 +701,38 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                 />
               );
             })}
+          </div>
+        </section>
+      )}
+
+      {/* ── Incident prompt — shown when leaving after_photos ────────────── */}
+      {phase === "after_photos" && showIncidentPrompt && (
+        <section className="space-y-4 rounded-md border border-[var(--border)] bg-[var(--card)] p-6 text-center">
+          <p className="text-3xl">⚠️</p>
+          <h3 className="text-base font-semibold text-[var(--foreground)]">Any incidents to report?</h3>
+          <p className="text-sm text-[var(--muted-foreground)]">
+            Log damage, maintenance needs, or unexpected issues found during cleaning.
+          </p>
+          <div className="flex flex-col gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => { setShowIncidentPrompt(false); goToStep(STEPS.findIndex((s) => s.phase === "incidents")); }}
+              className="w-full rounded-md border border-[var(--destructive)]/50 bg-[var(--destructive)]/10 py-3 text-sm font-semibold text-[var(--destructive)] hover:bg-[var(--destructive)]/20 active:opacity-70"
+            >
+              Yes, report an incident
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowIncidentPrompt(false);
+                // Mark the incidents step as visited so the stepper doesn't block it
+                setVisitedIndices((prev) => new Set([...prev, STEPS.findIndex((s) => s.phase === "incidents")]));
+                goToStep(STEPS.findIndex((s) => s.phase === "review"));
+              }}
+              className="w-full rounded-md bg-[var(--primary)] py-3 text-sm font-semibold text-[var(--primary-foreground)] hover:opacity-90 active:opacity-70"
+            >
+              No, skip to review →
+            </button>
           </div>
         </section>
       )}
@@ -941,24 +976,24 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
       <div className="flex items-center justify-between gap-3 pb-6">
         <button
           type="button"
-          onClick={goBack}
-          disabled={isFirstStep}
+          onClick={() => { if (showIncidentPrompt) { setShowIncidentPrompt(false); } else { goBack(); } }}
+          disabled={isFirstStep && !showIncidentPrompt}
           className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] px-5 py-2.5 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--muted)] active:opacity-70 disabled:invisible"
         >
           ← Back
         </button>
 
-        {!isLastStep && (
+        {!isLastStep && !showIncidentPrompt && (
           <button
             type="button"
-            onClick={goNext}
+            onClick={phase === "after_photos" ? () => setShowIncidentPrompt(true) : goNext}
             className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-[var(--primary)] py-2.5 text-sm font-semibold text-[var(--primary-foreground)] hover:opacity-90 active:opacity-70"
           >
             Next →
           </button>
         )}
 
-        {isLastStep && <div className="flex-1" />}
+        {(isLastStep || showIncidentPrompt) && <div className="flex-1" />}
       </div>
 
     </div>
