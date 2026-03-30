@@ -275,6 +275,9 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const [reviewByRoom, setReviewByRoom] = useState<Record<string, RoomReviewState>>({});
   const [notesOpenByRoom, setNotesOpenByRoom] = useState<Record<string, boolean>>({});
   const [compareRoomKey, setCompareRoomKey] = useState<string | null>(null);
+  const [compareBeforeIndex, setCompareBeforeIndex] = useState(0);
+  const [compareAfterIndex, setCompareAfterIndex] = useState(0);
+  const [compareLinked, setCompareLinked] = useState(true);
   const [pendingDecision, setPendingDecision] = useState<"approve" | "reject" | null>(null);
   const [activeRoomKey, setActiveRoomKey] = useState<string | null>(null);
   const [viewer, setViewer] = useState<ViewerState | null>(null);
@@ -396,6 +399,16 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
     ? Boolean(dirtyByPhoto[currentSlide.photoKey])
     : false;
 
+  // Compare canvas derived values
+  const compareRoomIdx = visibleRows.findIndex((r) => r.key === compareRoomKey);
+  const prevCompareRoom = compareRoomIdx > 0 ? visibleRows[compareRoomIdx - 1] : null;
+  const nextCompareRoom =
+    compareRoomIdx >= 0 && compareRoomIdx < visibleRows.length - 1
+      ? visibleRows[compareRoomIdx + 1]
+      : null;
+  const compareBeforePhoto = compareRow?.before[compareBeforeIndex] ?? null;
+  const compareAfterPhoto = compareRow?.after[compareAfterIndex] ?? null;
+
   useEffect(() => {
     if (persistedAnnotations === undefined) {
       return;
@@ -470,6 +483,51 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [viewer]);
+
+  useEffect(() => {
+    if (!compareRoomKey || viewer) {
+      return;
+    }
+
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setCompareRoomKey(null);
+        return;
+      }
+      const beforeMax = (compareRow?.before.length ?? 1) - 1;
+      const afterMax = (compareRow?.after.length ?? 1) - 1;
+
+      // Linked or before-side navigation: ArrowLeft / ArrowRight
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setCompareBeforeIndex((i) => Math.max(0, i - 1));
+        if (compareLinked) {
+          setCompareAfterIndex((i) => Math.max(0, i - 1));
+        }
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setCompareBeforeIndex((i) => Math.min(beforeMax, i + 1));
+        if (compareLinked) {
+          setCompareAfterIndex((i) => Math.min(afterMax, i + 1));
+        }
+      }
+      // After-side only navigation when unlinked: ; and '
+      if (!compareLinked) {
+        if (event.key === ";") {
+          event.preventDefault();
+          setCompareAfterIndex((i) => Math.max(0, i - 1));
+        }
+        if (event.key === "'") {
+          event.preventDefault();
+          setCompareAfterIndex((i) => Math.min(afterMax, i + 1));
+        }
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [compareRoomKey, compareLinked, compareRow, viewer]);
 
   if (detail === undefined) {
     return <div className="text-sm text-[var(--muted-foreground)]">Loading photo review...</div>;
@@ -806,6 +864,31 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
     }));
   }
 
+  function openCompare(roomKey: string) {
+    setCompareRoomKey(roomKey);
+    setCompareBeforeIndex(0);
+    setCompareAfterIndex(0);
+  }
+
+  function compareNavigate(delta: number, side: "before" | "after") {
+    if (compareLinked) {
+      setCompareBeforeIndex((i) =>
+        Math.max(0, Math.min(i + delta, (compareRow?.before.length ?? 1) - 1)),
+      );
+      setCompareAfterIndex((i) =>
+        Math.max(0, Math.min(i + delta, (compareRow?.after.length ?? 1) - 1)),
+      );
+    } else if (side === "before") {
+      setCompareBeforeIndex((i) =>
+        Math.max(0, Math.min(i + delta, (compareRow?.before.length ?? 1) - 1)),
+      );
+    } else {
+      setCompareAfterIndex((i) =>
+        Math.max(0, Math.min(i + delta, (compareRow?.after.length ?? 1) - 1)),
+      );
+    }
+  }
+
   function onRoomKeyDown(event: KeyboardEvent<HTMLDivElement>, row: RoomRow) {
     if (event.key === "1") {
       event.preventDefault();
@@ -1002,7 +1085,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setCompareRoomKey(row.key)}
+                        onClick={() => openCompare(row.key)}
                         className="rounded-md border border-[var(--border)] px-2.5 py-1 text-xs"
                       >
                         Open Compare
@@ -1060,7 +1143,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                     <h3 className="text-sm font-semibold">{row.roomName}</h3>
                     <button
                       type="button"
-                      onClick={() => setCompareRoomKey(row.key)}
+                      onClick={() => openCompare(row.key)}
                       className="rounded-md border border-[var(--border)] px-2 py-1 text-xs"
                     >
                       Compare
@@ -1186,60 +1269,260 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
       </div>
 
       {compareRow ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/65 p-4">
-          <div className="max-h-[90vh] w-full max-w-6xl overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">{compareRow.roomName} · Compare</h2>
-              <button
-                type="button"
-                onClick={() => setCompareRoomKey(null)}
-                className="rounded-md border border-[var(--border)] px-3 py-1 text-sm"
-              >
-                Close
-              </button>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
-                  Before ({compareRow.before.length})
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {compareRow.before.map((photo, index) => (
-                    <ComparePhotoTile
-                      key={`${photo.photoId}-${index}`}
-                      url={photo.url}
-                      label={compareRow.roomName}
-                      onOpen={() =>
-                        openViewerForPhotos(
-                          [...compareRow.before, ...compareRow.after, ...compareRow.incidents],
-                          photo.photoId,
-                        )
-                      }
+        <div className="fixed inset-0 z-40 flex flex-col bg-black/90 p-2">
+          {/* ── Top bar ─────────────────────────────────────────── */}
+          <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2">
+            <h2 className="mr-auto text-sm font-semibold">{compareRow.roomName} · Compare</h2>
+            <button
+              type="button"
+              onClick={() => setCompareLinked((v) => !v)}
+              title={
+                compareLinked
+                  ? "Sides linked — arrows move both together. Click to unlink."
+                  : "Sides unlinked — arrows move each side independently. Click to link."
+              }
+              className={`rounded-md border px-2.5 py-1 text-xs ${
+                compareLinked
+                  ? "border-blue-700 bg-blue-600 text-white"
+                  : "border-[var(--border)]"
+              }`}
+            >
+              {compareLinked ? "Linked ⇔" : "Unlinked ⇔"}
+            </button>
+            {(() => {
+              const review = reviewByRoom[compareRow.key] ?? { verdict: null, note: "" };
+              return (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setVerdict(compareRow.key, "pass")}
+                    className={`rounded-md border px-2.5 py-1 text-xs ${
+                      review.verdict === "pass"
+                        ? "border-emerald-600 bg-emerald-100 text-emerald-700"
+                        : "border-[var(--border)]"
+                    }`}
+                  >
+                    Pass
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVerdict(compareRow.key, "rework")}
+                    className={`rounded-md border px-2.5 py-1 text-xs ${
+                      review.verdict === "rework"
+                        ? "border-rose-600 bg-rose-100 text-rose-700"
+                        : "border-[var(--border)]"
+                    }`}
+                  >
+                    Rework
+                  </button>
+                </>
+              );
+            })()}
+            <button
+              type="button"
+              onClick={() => setCompareRoomKey(null)}
+              className="rounded-md border border-[var(--border)] px-2.5 py-1 text-xs"
+            >
+              ✕ Close
+            </button>
+          </div>
+
+          {/* ── Two-column split ─────────────────────────────────── */}
+          <div className="grid min-h-0 flex-1 grid-cols-2 gap-2">
+            {/* BEFORE column */}
+            <div className="flex flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)]">
+              <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+                  Before
+                </span>
+                <span className="ml-auto font-mono text-xs text-[var(--muted-foreground)]">
+                  {compareRow.before.length === 0
+                    ? "0 photos"
+                    : `${compareBeforeIndex + 1} / ${compareRow.before.length}`}
+                </span>
+              </div>
+
+              {/* Main photo */}
+              <div className="relative min-h-0 flex-1 bg-black">
+                {compareBeforePhoto?.url ? (
+                  <>
+                    <Image
+                      src={compareBeforePhoto.url}
+                      alt={`${compareRow.roomName} before`}
+                      fill
+                      className="object-contain"
                     />
+                    {compareBeforeIndex > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => compareNavigate(-1, "before")}
+                        aria-label="Previous before photo"
+                        className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/60 px-3 py-2 text-sm text-white hover:bg-black/80"
+                      >
+                        ◀
+                      </button>
+                    ) : null}
+                    {compareBeforeIndex < compareRow.before.length - 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => compareNavigate(1, "before")}
+                        aria-label="Next before photo"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/60 px-3 py-2 text-sm text-white hover:bg-black/80"
+                      >
+                        ▶
+                      </button>
+                    ) : null}
+                  </>
+                ) : (
+                  <div className="flex h-full items-center justify-center text-xs text-[var(--muted-foreground)]">
+                    No photo
+                  </div>
+                )}
+              </div>
+
+              {/* Timestamp */}
+              <p className="min-h-[1.5rem] px-3 py-1 font-mono text-[10px] text-[var(--muted-foreground)]">
+                {compareBeforePhoto?.uploadedAt
+                  ? formatPhotoTimestamp(compareBeforePhoto.uploadedAt)
+                  : null}
+              </p>
+
+              {/* Filmstrip */}
+              {compareRow.before.length > 1 ? (
+                <div className="flex gap-1.5 overflow-x-auto border-t border-[var(--border)] px-3 py-2">
+                  {compareRow.before.map((photo, idx) => (
+                    <button
+                      key={`before-${photo.photoId}-${idx}`}
+                      type="button"
+                      onClick={() => setCompareBeforeIndex(idx)}
+                      aria-label={`Before photo ${idx + 1}`}
+                      className={`relative h-11 w-16 shrink-0 overflow-hidden rounded border-2 transition-colors ${
+                        idx === compareBeforeIndex
+                          ? "border-blue-500"
+                          : "border-transparent opacity-60 hover:opacity-100"
+                      }`}
+                    >
+                      {photo.url ? (
+                        <Image src={photo.url} alt={`Before ${idx + 1}`} fill className="object-cover" />
+                      ) : (
+                        <div className="flex h-full items-center justify-center bg-[var(--muted)] text-[8px] text-[var(--muted-foreground)]">
+                          —
+                        </div>
+                      )}
+                    </button>
                   ))}
                 </div>
+              ) : null}
+            </div>
+
+            {/* AFTER column */}
+            <div className="flex flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)]">
+              <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+                  After
+                </span>
+                <span className="ml-auto font-mono text-xs text-[var(--muted-foreground)]">
+                  {compareRow.after.length === 0
+                    ? "0 photos"
+                    : `${compareAfterIndex + 1} / ${compareRow.after.length}`}
+                </span>
               </div>
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
-                  After ({compareRow.after.length})
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {compareRow.after.map((photo, index) => (
-                    <ComparePhotoTile
-                      key={`${photo.photoId}-${index}`}
-                      url={photo.url}
-                      label={compareRow.roomName}
-                      onOpen={() =>
-                        openViewerForPhotos(
-                          [...compareRow.before, ...compareRow.after, ...compareRow.incidents],
-                          photo.photoId,
-                        )
-                      }
+
+              {/* Main photo */}
+              <div className="relative min-h-0 flex-1 bg-black">
+                {compareAfterPhoto?.url ? (
+                  <>
+                    <Image
+                      src={compareAfterPhoto.url}
+                      alt={`${compareRow.roomName} after`}
+                      fill
+                      className="object-contain"
                     />
+                    {compareAfterIndex > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => compareNavigate(-1, "after")}
+                        aria-label="Previous after photo"
+                        className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/60 px-3 py-2 text-sm text-white hover:bg-black/80"
+                      >
+                        ◀
+                      </button>
+                    ) : null}
+                    {compareAfterIndex < compareRow.after.length - 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => compareNavigate(1, "after")}
+                        aria-label="Next after photo"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/60 px-3 py-2 text-sm text-white hover:bg-black/80"
+                      >
+                        ▶
+                      </button>
+                    ) : null}
+                  </>
+                ) : (
+                  <div className="flex h-full items-center justify-center text-xs text-[var(--muted-foreground)]">
+                    No photo
+                  </div>
+                )}
+              </div>
+
+              {/* Timestamp */}
+              <p className="min-h-[1.5rem] px-3 py-1 font-mono text-[10px] text-[var(--muted-foreground)]">
+                {compareAfterPhoto?.uploadedAt
+                  ? formatPhotoTimestamp(compareAfterPhoto.uploadedAt)
+                  : null}
+              </p>
+
+              {/* Filmstrip */}
+              {compareRow.after.length > 1 ? (
+                <div className="flex gap-1.5 overflow-x-auto border-t border-[var(--border)] px-3 py-2">
+                  {compareRow.after.map((photo, idx) => (
+                    <button
+                      key={`after-${photo.photoId}-${idx}`}
+                      type="button"
+                      onClick={() => setCompareAfterIndex(idx)}
+                      aria-label={`After photo ${idx + 1}`}
+                      className={`relative h-11 w-16 shrink-0 overflow-hidden rounded border-2 transition-colors ${
+                        idx === compareAfterIndex
+                          ? "border-blue-500"
+                          : "border-transparent opacity-60 hover:opacity-100"
+                      }`}
+                    >
+                      {photo.url ? (
+                        <Image src={photo.url} alt={`After ${idx + 1}`} fill className="object-cover" />
+                      ) : (
+                        <div className="flex h-full items-center justify-center bg-[var(--muted)] text-[8px] text-[var(--muted-foreground)]">
+                          —
+                        </div>
+                      )}
+                    </button>
                   ))}
                 </div>
-              </div>
+              ) : null}
             </div>
+          </div>
+
+          {/* ── Prev / Next Room bar ─────────────────────────────── */}
+          <div className="mt-2 flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2">
+            <button
+              type="button"
+              disabled={!prevCompareRoom}
+              onClick={() => prevCompareRoom && openCompare(prevCompareRoom.key)}
+              className="rounded-md border border-[var(--border)] px-3 py-1 text-xs disabled:opacity-40"
+            >
+              ◀ {prevCompareRoom ? prevCompareRoom.roomName : "Prev Room"}
+            </button>
+            <span className="font-mono text-xs text-[var(--muted-foreground)]">
+              {compareRoomIdx + 1} / {visibleRows.length}
+            </span>
+            <button
+              type="button"
+              disabled={!nextCompareRoom}
+              onClick={() => nextCompareRoom && openCompare(nextCompareRoom.key)}
+              className="rounded-md border border-[var(--border)] px-3 py-1 text-xs disabled:opacity-40"
+            >
+              {nextCompareRoom ? nextCompareRoom.roomName : "Next Room"} ▶
+            </button>
           </div>
         </div>
       ) : null}
