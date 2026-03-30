@@ -44,11 +44,6 @@ export default function AuthLayout({
             <h1 className="mb-3 text-3xl font-bold tracking-tight text-gray-900 lg:text-4xl">
               Operations Console
             </h1>
-            <p className="text-base leading-relaxed text-gray-500">
-              Property readiness starts here. Manage schedules, teams, and
-              inspections from one place.
-            </p>
-
             {/* Decorative stat chips — desktop only */}
             <div className="mt-10 hidden gap-3 lg:flex">
               <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5">
