@@ -373,8 +373,24 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
 
   // ── Hydrate draft ─────────────────────────────────────────────────────────
   const hydrateLocalState = useCallback(async () => {
-    const [queue, draft] = await Promise.all([listPendingUploads(), loadDraftProgress(jobId)]);
-    setPendingUploads(queue.filter((u) => u.jobId === jobId));
+    const [rawQueue, draft] = await Promise.all([listPendingUploads(), loadDraftProgress(jobId)]);
+
+    // Reset any uploads stuck in "syncing" from a previous interrupted session.
+    // On a fresh page load nothing is actually in-flight, so "syncing" items are
+    // orphaned and must be retried — otherwise canSubmit stays false forever.
+    const jobQueue = rawQueue.filter((u) => u.jobId === jobId);
+    const stuckSyncing = jobQueue.filter((u) => u.status === "syncing");
+    if (stuckSyncing.length > 0) {
+      await Promise.all(
+        stuckSyncing.map((item) =>
+          upsertPendingUpload({ ...item, status: "pending", lastError: undefined }),
+        ),
+      );
+    }
+    const cleanedQueue = jobQueue.map((u) =>
+      u.status === "syncing" ? { ...u, status: "pending" as const, lastError: undefined } : u,
+    );
+    setPendingUploads(cleanedQueue);
 
     if (draft) {
       // Map old "cleaning" phase (from previous drafts) to before_photos
