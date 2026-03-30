@@ -11,19 +11,19 @@
   "theme_color": "#f3f7ff",
   "icons": [
     {
-      "src": "/icons/cleaner-icon-192.png",
+      "src": "/icons/chezsoi-icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/cleaner-icon-512.png",
+      "src": "/icons/chezsoi-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/cleaner-icon-maskable-512.png",
+      "src": "/icons/chezsoi-icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

@@ -40,10 +40,6 @@ export default function AuthLayout({
               </span>
             </div>
 
-            {/* Tagline */}
-            <h1 className="mb-3 text-3xl font-bold tracking-tight text-gray-900 lg:text-4xl">
-              Operations Console
-            </h1>
             {/* Decorative stat chips — desktop only */}
             <div className="mt-10 hidden gap-3 lg:flex">
               <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5">
@@ -69,7 +65,7 @@ export default function AuthLayout({
         </div>
 
         {/* Auth widget panel */}
-        <div className="flex flex-1 items-center justify-center px-4 py-12 lg:px-12">
+        <div className="flex flex-1 items-start justify-center px-4 pt-8 lg:items-center lg:px-12 lg:pt-0">
           <div className="w-full max-w-[440px]">
             {children}
           </div>

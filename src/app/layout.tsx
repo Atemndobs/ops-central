@@ -11,7 +11,11 @@ export const metadata: Metadata = {
   title: "ChezSoi",
   description: "Property operations management for J&A Business Solutions",
   icons: {
-    icon: "https://chezsoistays.com/wp-content/uploads/2026/02/chezsoi_favicon@2x.png",
+    icon: [
+      { url: "/icons/chezsoi-icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/chezsoi-icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/chezsoi-apple-touch-icon.png", sizes: "180x180" }],
   },
 };
 
