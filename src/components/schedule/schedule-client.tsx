@@ -407,8 +407,6 @@ export function ScheduleClient() {
                     <p className="truncate font-semibold">{job.property?.name ?? "Job"}</p>
                     <p className="truncate text-[10px] opacity-80">
                       {new Date(job.scheduledStartAt ?? 0).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                      {" · "}
-                      {STATUS_LABELS[job.status]}
                     </p>
                   </Link>
                   <button
@@ -479,8 +477,6 @@ export function ScheduleClient() {
                 <p className="truncate font-semibold">{job.property?.name ?? "Job"}</p>
                 <p className="truncate text-[9px] opacity-80 sm:text-[10px]">
                   {new Date(job.scheduledStartAt ?? 0).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                  {" · "}
-                  {STATUS_LABELS[job.status]}
                 </p>
               </Link>
               <button
@@ -550,24 +546,32 @@ export function ScheduleClient() {
   return (
     <div className="space-y-3 sm:space-y-4">
       {/* === HEADER === */}
-      <header className="rounded-2xl border bg-[var(--card)] p-3 sm:p-4">
-        {/* Primary row: always visible */}
+      <header className="rounded-2xl border bg-[var(--card)] px-3 py-2 sm:px-4 sm:py-2.5">
+        {/* Single row: everything on one line */}
         <div className="flex items-center gap-1.5 sm:gap-2">
-          <h1 className="mr-1 text-base font-extrabold tracking-tight sm:mr-2 sm:text-xl">Schedule</h1>
-
+          {/* Cycling mode button: Today → Week → Month → Today … */}
           <button
-            className="rounded-md border px-2 py-1 text-xs hover:bg-[var(--accent)] sm:px-3 sm:py-1.5 sm:text-sm"
+            className="shrink-0 rounded-md border px-2 py-1 text-xs font-semibold hover:bg-[var(--accent)] sm:px-3 sm:py-1.5 sm:text-sm"
             onClick={() => {
-              if (rangeMode === "month") {
+              if (rangeMode === "week") {
+                // Week → jump to today first, then switch to month
                 applyMonthRange(new Date());
+                setRangeMode("month");
+              } else if (rangeMode === "month") {
+                // Month → Today (week, current week)
+                setRangeMode("week");
+                applyWeekRange(new Date());
               } else {
+                // custom / anything else → Today
                 setRangeMode("week");
                 applyWeekRange(new Date());
               }
             }}
+            title="Cycle: Today → Month → Today"
           >
-            Today
+            {rangeMode === "month" ? "Month" : "Today"}
           </button>
+
           <button className="rounded-md p-1 hover:bg-[var(--accent)] sm:p-1.5" onClick={() => shiftRange(-1)} aria-label="Previous">
             <ChevronLeft className="h-4 w-4" />
           </button>
@@ -578,7 +582,81 @@ export function ScheduleClient() {
             {formatRange(rangeStart, rangeEnd)}
           </span>
 
+          {/* Date pickers — desktop only, inline in the single row */}
+          <div className="hidden items-center gap-1 rounded-md border bg-[var(--card)] px-2 py-1 text-xs md:flex">
+            <input
+              type="date"
+              value={toInputDate(rangeStart)}
+              onChange={(event) => {
+                const nextStart = fromInputDate(event.target.value);
+                if (!nextStart) return;
+                const normalizedStart = startOfDay(nextStart);
+                setRangeMode("custom");
+                setRangeStart(normalizedStart);
+                setRangeEnd((current) =>
+                  startOfDay(current).getTime() < normalizedStart.getTime() ? normalizedStart : current,
+                );
+                setSliderValue(0);
+              }}
+              className="bg-transparent text-xs outline-none"
+              aria-label="Range start date"
+            />
+            <span className="text-[var(--muted-foreground)]">–</span>
+            <input
+              type="date"
+              value={toInputDate(rangeEnd)}
+              onChange={(event) => {
+                const nextEnd = fromInputDate(event.target.value);
+                if (!nextEnd) return;
+                const normalizedEnd = startOfDay(nextEnd);
+                setRangeMode("custom");
+                setRangeEnd(normalizedEnd);
+                setRangeStart((current) =>
+                  startOfDay(current).getTime() > normalizedEnd.getTime() ? normalizedEnd : current,
+                );
+                setSliderValue(0);
+              }}
+              className="bg-transparent text-xs outline-none"
+              aria-label="Range end date"
+            />
+          </div>
+
           <div className="ml-auto flex items-center gap-1">
+            {/* Search (desktop) */}
+            <div className="hidden items-center gap-1 rounded-md border bg-[var(--card)] px-2 py-1 md:flex">
+              <Search className="h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground)]" />
+              <input
+                type="text"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search properties"
+                className="w-28 bg-transparent text-xs outline-none placeholder:text-[var(--muted-foreground)]"
+              />
+            </div>
+
+            {/* Property filter (desktop) */}
+            <select
+              value={propertyFilter}
+              onChange={(event) => setPropertyFilter(event.target.value)}
+              className="hidden rounded-md border bg-[var(--card)] px-2 py-1 text-xs md:block"
+            >
+              <option value="all">All Properties</option>
+              {(properties ?? []).map((property) => (
+                <option key={property._id} value={property._id}>{property.name}</option>
+              ))}
+            </select>
+
+            {/* Show/hide team (desktop) */}
+            <button
+              type="button"
+              onClick={() => setIsCleanerPanelVisible((prev) => !prev)}
+              className="hidden items-center gap-1 rounded-md border px-2 py-1 text-xs hover:bg-[var(--accent)] md:inline-flex"
+              aria-pressed={!isCleanerPanelVisible}
+            >
+              {isCleanerPanelVisible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              {isCleanerPanelVisible ? "Hide Team" : "Show Team"}
+            </button>
+
             {/* Day count toggle */}
             <div className="flex overflow-hidden rounded-md border text-[10px] font-semibold sm:text-xs">
               <button
@@ -597,11 +675,22 @@ export function ScheduleClient() {
               </button>
             </div>
 
+            {/* Fit screen (desktop) */}
+            <button
+              type="button"
+              onClick={() => setIsGridFitMode((prev) => !prev)}
+              className="hidden items-center gap-1 rounded-md border px-2 py-1 text-xs hover:bg-[var(--accent)] md:inline-flex"
+              aria-pressed={isGridFitMode}
+            >
+              {isGridFitMode ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+              {isGridFitMode ? "Normal" : "Fit"}
+            </button>
+
             {/* Label mode cycle */}
             <button
               type="button"
               onClick={cycleLabelMode}
-              className="rounded-md border p-1 text-[10px] hover:bg-[var(--accent)] sm:px-2 sm:py-1 sm:text-xs"
+              className="rounded-md border px-2 py-1 text-[10px] hover:bg-[var(--accent)] sm:text-xs"
               title={`Property labels: ${propertyLabelMode}`}
             >
               {propertyLabelMode === "full" ? "Aa" : propertyLabelMode === "initials" ? "AB" : "··"}
@@ -619,14 +708,9 @@ export function ScheduleClient() {
           </div>
         </div>
 
-        {/* Secondary row: always on desktop, collapsible on mobile */}
-        <div className={cn(
-          "mt-2 sm:mt-3",
-          showMobileFilters ? "block" : "hidden md:block",
-        )}>
-          {/* Mobile: compact layout */}
-          <div className="flex flex-wrap items-center gap-1.5 md:hidden">
-            {/* Single W↔M toggle */}
+        {/* Mobile collapsible filters */}
+        {showMobileFilters ? (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 md:hidden">
             <button
               type="button"
               onClick={() => {
@@ -643,42 +727,6 @@ export function ScheduleClient() {
               {rangeMode === "month" ? "→ Week" : "→ Month"}
             </button>
 
-            {/* Inline date range */}
-            <div className="flex items-center gap-1 rounded-md border px-1.5 py-1 text-[10px]">
-              <input
-                type="date"
-                value={toInputDate(rangeStart)}
-                onChange={(event) => {
-                  const nextStart = fromInputDate(event.target.value);
-                  if (!nextStart) return;
-                  const normalizedStart = startOfDay(nextStart);
-                  setRangeMode("custom");
-                  setRangeStart(normalizedStart);
-                  setRangeEnd((current) => (startOfDay(current).getTime() < normalizedStart.getTime() ? normalizedStart : current));
-                  setSliderValue(0);
-                }}
-                className="w-[90px] bg-transparent text-[10px] outline-none"
-                aria-label="Start"
-              />
-              <span className="text-[var(--muted-foreground)]">–</span>
-              <input
-                type="date"
-                value={toInputDate(rangeEnd)}
-                onChange={(event) => {
-                  const nextEnd = fromInputDate(event.target.value);
-                  if (!nextEnd) return;
-                  const normalizedEnd = startOfDay(nextEnd);
-                  setRangeMode("custom");
-                  setRangeEnd(normalizedEnd);
-                  setRangeStart((current) => (startOfDay(current).getTime() > normalizedEnd.getTime() ? normalizedEnd : current));
-                  setSliderValue(0);
-                }}
-                className="w-[90px] bg-transparent text-[10px] outline-none"
-                aria-label="End"
-              />
-            </div>
-
-            {/* Search: icon that expands inline */}
             {isMobileSearchOpen ? (
               <div className="flex flex-1 items-center gap-1 rounded-md border px-2 py-1">
                 <Search className="h-3 w-3 shrink-0 text-[var(--muted-foreground)]" />
@@ -705,7 +753,6 @@ export function ScheduleClient() {
               </button>
             )}
 
-            {/* Property dropdown */}
             <select
               value={propertyFilter}
               onChange={(event) => setPropertyFilter(event.target.value)}
@@ -717,98 +764,7 @@ export function ScheduleClient() {
               ))}
             </select>
           </div>
-
-          {/* Desktop: full row (unchanged) */}
-          <div className="hidden flex-wrap items-center gap-2 md:flex">
-            <button
-              type="button"
-              onClick={() => { setRangeMode("week"); applyWeekRange(rangeStart); }}
-              className={cn("rounded-md border px-2 py-1.5 text-sm", rangeMode === "week" ? "bg-[var(--accent)] font-semibold" : "hover:bg-[var(--accent)]")}
-            >
-              Week
-            </button>
-            <button
-              type="button"
-              onClick={() => { setRangeMode("month"); applyMonthRange(rangeStart); }}
-              className={cn("rounded-md border px-2 py-1.5 text-sm", rangeMode === "month" ? "bg-[var(--accent)] font-semibold" : "hover:bg-[var(--accent)]")}
-            >
-              Month
-            </button>
-
-            <input
-              type="date"
-              value={toInputDate(rangeStart)}
-              onChange={(event) => {
-                const nextStart = fromInputDate(event.target.value);
-                if (!nextStart) return;
-                const normalizedStart = startOfDay(nextStart);
-                setRangeMode("custom");
-                setRangeStart(normalizedStart);
-                setRangeEnd((current) => (startOfDay(current).getTime() < normalizedStart.getTime() ? normalizedStart : current));
-                setSliderValue(0);
-              }}
-              className="rounded-md border bg-[var(--card)] px-2 py-1.5 text-sm"
-              aria-label="Range start date"
-            />
-            <input
-              type="date"
-              value={toInputDate(rangeEnd)}
-              onChange={(event) => {
-                const nextEnd = fromInputDate(event.target.value);
-                if (!nextEnd) return;
-                const normalizedEnd = startOfDay(nextEnd);
-                setRangeMode("custom");
-                setRangeEnd(normalizedEnd);
-                setRangeStart((current) => (startOfDay(current).getTime() > normalizedEnd.getTime() ? normalizedEnd : current));
-                setSliderValue(0);
-              }}
-              className="rounded-md border bg-[var(--card)] px-2 py-1.5 text-sm"
-              aria-label="Range end date"
-            />
-
-            <div className="flex items-center gap-2 rounded-md border bg-[var(--card)] px-3 py-1.5">
-              <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
-              <input
-                type="text"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search properties"
-                className="w-36 bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)]"
-              />
-            </div>
-
-            <select
-              value={propertyFilter}
-              onChange={(event) => setPropertyFilter(event.target.value)}
-              className="rounded-md border bg-[var(--card)] px-2 py-1.5 text-sm"
-            >
-              <option value="all">All Properties</option>
-              {(properties ?? []).map((property) => (
-                <option key={property._id} value={property._id}>{property.name}</option>
-              ))}
-            </select>
-
-            {/* Desktop-only toggles */}
-            <button
-              type="button"
-              onClick={() => setIsCleanerPanelVisible((prev) => !prev)}
-              className="inline-flex items-center gap-1 rounded-md border px-2 py-1.5 text-sm hover:bg-[var(--accent)]"
-              aria-pressed={!isCleanerPanelVisible}
-            >
-              {isCleanerPanelVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              {isCleanerPanelVisible ? "Hide Team" : "Show Team"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsGridFitMode((prev) => !prev)}
-              className="inline-flex items-center gap-1 rounded-md border px-2 py-1.5 text-sm hover:bg-[var(--accent)]"
-              aria-pressed={isGridFitMode}
-            >
-              {isGridFitMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-              {isGridFitMode ? "Normal" : "Fit Screen"}
-            </button>
-          </div>
-        </div>
+        ) : null}
       </header>
 
       {/* === MOBILE TAB BAR === */}
