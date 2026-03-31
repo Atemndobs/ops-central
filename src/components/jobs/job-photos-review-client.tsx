@@ -1057,38 +1057,38 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                       <button
                         type="button"
                         onClick={() => setVerdict(row.key, "pass")}
-                        className={`rounded-md border px-2.5 py-1 text-xs ${
+                        className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
                           review.verdict === "pass"
-                            ? "border-emerald-600 bg-emerald-100 text-emerald-700"
-                            : "border-[var(--border)]"
+                            ? "border-emerald-600 bg-emerald-500 text-white"
+                            : "border-[var(--border)] hover:border-emerald-500 hover:text-emerald-600"
                         }`}
                       >
-                        Pass
+                        <span>✓</span> Pass
                       </button>
                       <button
                         type="button"
                         onClick={() => setVerdict(row.key, "rework")}
-                        className={`rounded-md border px-2.5 py-1 text-xs ${
+                        className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
                           review.verdict === "rework"
-                            ? "border-rose-600 bg-rose-100 text-rose-700"
-                            : "border-[var(--border)]"
+                            ? "border-rose-600 bg-rose-500 text-white"
+                            : "border-[var(--border)] hover:border-rose-500 hover:text-rose-600"
                         }`}
                       >
-                        Needs Rework
+                        <span>✗</span> Rework
                       </button>
                       <button
                         type="button"
                         onClick={() => toggleNotes(row.key)}
-                        className="rounded-md border border-[var(--border)] px-2.5 py-1 text-xs"
+                        className="rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs hover:bg-[var(--accent)]"
                       >
-                        Add Note
+                        {notesOpenByRoom[row.key] ? "Hide Note" : "Add Note"}
                       </button>
                       <button
                         type="button"
                         onClick={() => openCompare(row.key)}
-                        className="rounded-md border border-[var(--border)] px-2.5 py-1 text-xs"
+                        className="rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs hover:bg-[var(--accent)]"
                       >
-                        Open Compare
+                        Compare
                       </button>
                     </div>
 
@@ -1125,26 +1125,50 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
       </div>
 
       <div className="md:hidden">
+        <div className="mb-3 flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2">
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--muted)]">
+            <div
+              className={`h-full rounded-full transition-all ${allReviewed ? "bg-[var(--success)]" : "bg-[var(--primary)]"}`}
+              style={{ width: `${reviewPercent}%` }}
+            />
+          </div>
+          <p className="shrink-0 text-xs font-semibold tabular-nums">
+            {reviewedCount}/{totalRooms}
+            {passCount > 0 ? <span className="ml-2 text-emerald-500">✓{passCount}</span> : null}
+            {reworkCount > 0 ? <span className="ml-1 text-rose-500">✗{reworkCount}</span> : null}
+          </p>
+        </div>
         {!visibleRows.length ? (
           <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-10 text-center text-sm text-[var(--muted-foreground)]">
             No rooms match this filter.
           </div>
         ) : (
           <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2">
-            {visibleRows.map((row) => {
+            {visibleRows.map((row, rowIdx) => {
               const review = reviewByRoom[row.key] ?? { verdict: null, note: "" };
               const roomSlides = [...row.before, ...row.after, ...row.incidents];
               return (
                 <div
                   key={row.key}
-                  className="w-[94%] shrink-0 snap-start rounded-lg border border-[var(--border)] bg-[var(--card)] p-3"
+                  className={`w-[94%] shrink-0 snap-start rounded-lg border bg-[var(--card)] p-3 ${
+                    review.verdict === "pass"
+                      ? "border-emerald-500/60"
+                      : review.verdict === "rework"
+                        ? "border-rose-500/60"
+                        : "border-[var(--border)]"
+                  }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-sm font-semibold">{row.roomName}</h3>
+                    <div className="min-w-0">
+                      <p className="text-[10px] text-[var(--muted-foreground)]">
+                        {rowIdx + 1} of {visibleRows.length}
+                      </p>
+                      <h3 className="truncate text-sm font-semibold">{row.roomName}</h3>
+                    </div>
                     <button
                       type="button"
                       onClick={() => openCompare(row.key)}
-                      className="rounded-md border border-[var(--border)] px-2 py-1 text-xs"
+                      className="shrink-0 rounded-md border border-[var(--border)] px-2 py-1 text-xs"
                     >
                       Compare
                     </button>
@@ -1153,8 +1177,6 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                     {row.hasMissingBefore ? <Pill tone="warning">Missing Before</Pill> : null}
                     {row.hasMissingAfter ? <Pill tone="warning">Missing After</Pill> : null}
                     {row.hasCountMismatch ? <Pill tone="warning">Count mismatch</Pill> : null}
-                    {review.verdict === "pass" ? <Pill tone="success">Pass</Pill> : null}
-                    {review.verdict === "rework" ? <Pill tone="danger">Needs Rework</Pill> : null}
                   </div>
 
                   <div className="mt-3">
@@ -1178,28 +1200,30 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                     />
                   </div>
 
-                  <div className="mt-3 flex gap-2">
+                  <div className="mt-4 grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => setVerdict(row.key, "pass")}
-                      className={`flex-1 rounded-md border px-2 py-1.5 text-xs ${
+                      className={`flex flex-col items-center justify-center gap-1 rounded-lg border py-3 font-semibold transition-colors ${
                         review.verdict === "pass"
-                          ? "border-emerald-600 bg-emerald-100 text-emerald-700"
-                          : "border-[var(--border)]"
+                          ? "border-emerald-600 bg-emerald-500 text-white"
+                          : "border-[var(--border)] text-[var(--muted-foreground)]"
                       }`}
                     >
-                      Pass
+                      <span className="text-xl leading-none">✓</span>
+                      <span className="text-sm">Pass</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setVerdict(row.key, "rework")}
-                      className={`flex-1 rounded-md border px-2 py-1.5 text-xs ${
+                      className={`flex flex-col items-center justify-center gap-1 rounded-lg border py-3 font-semibold transition-colors ${
                         review.verdict === "rework"
-                          ? "border-rose-600 bg-rose-100 text-rose-700"
-                          : "border-[var(--border)]"
+                          ? "border-rose-600 bg-rose-500 text-white"
+                          : "border-[var(--border)] text-[var(--muted-foreground)]"
                       }`}
                     >
-                      Needs Rework
+                      <span className="text-xl leading-none">✗</span>
+                      <span className="text-sm">Rework</span>
                     </button>
                   </div>
                 </div>
@@ -1231,16 +1255,39 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
 
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--border)] bg-[var(--card)]/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-[1200px] flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold">
-              Reviewed {reviewedCount}/{Math.max(totalRooms, 1)} · Pass {passCount} · Rework{" "}
-              {reworkCount}
-            </p>
-            <p className="text-xs text-[var(--muted-foreground)]">
-              {canDecision
-                ? "Finalize once all rooms are reviewed."
-                : `Current job status is ${STATUS_LABELS[detail.job.status]}. Decision actions are available only in Awaiting Approval.`}
-            </p>
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="h-2 w-28 shrink-0 overflow-hidden rounded-full bg-[var(--muted)]">
+              <div
+                className={`h-full rounded-full transition-all ${allReviewed ? "bg-[var(--success)]" : "bg-[var(--primary)]"}`}
+                style={{ width: `${reviewPercent}%` }}
+              />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">
+                {allReviewed ? (
+                  <>
+                    {reworkCount > 0 ? (
+                      <span className="text-rose-500">{reworkCount} room{reworkCount !== 1 ? "s" : ""} need rework</span>
+                    ) : (
+                      <span className="text-[var(--success)]">All {totalRooms} rooms passed ✓</span>
+                    )}
+                  </>
+                ) : (
+                  <>{totalRooms - reviewedCount} room{totalRooms - reviewedCount !== 1 ? "s" : ""} still need review</>
+                )}
+              </p>
+              <p className="text-xs text-[var(--muted-foreground)]">
+                {passCount > 0 ? <span className="text-emerald-600">{passCount} pass</span> : null}
+                {passCount > 0 && reworkCount > 0 ? <span> · </span> : null}
+                {reworkCount > 0 ? <span className="text-rose-500">{reworkCount} rework</span> : null}
+                {!canDecision && (
+                  <span className="ml-1">
+                    · Decision requires{" "}
+                    <span className="font-medium">Awaiting Approval</span> status
+                  </span>
+                )}
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -1249,7 +1296,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
               disabled={!canDecision || !allReviewed || pendingDecision !== null}
               className="rounded-md border border-[var(--destructive)] px-3 py-1.5 text-sm text-[var(--destructive)] disabled:opacity-50"
             >
-              {pendingDecision === "reject" ? "Rejecting..." : "Reject to Rework"}
+              {pendingDecision === "reject" ? "Rejecting..." : "Reject"}
             </button>
             <button
               type="button"
