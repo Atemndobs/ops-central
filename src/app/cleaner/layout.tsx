@@ -2,13 +2,13 @@ import type { Metadata, Viewport } from "next";
 import { CleanerShell } from "@/components/cleaner/cleaner-shell";
 
 export const metadata: Metadata = {
-  title: "ChezSoisCleaning",
-  description: "ChezSoisCleaning workspace for assigned jobs, evidence capture, and incident reporting.",
+  title: "ChezSoiCleaning",
+  description: "ChezSoiCleaning workspace for assigned jobs, evidence capture, and incident reporting.",
   manifest: "/cleaner-manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "ChezSoisCleaning",
+    title: "ChezSoiCleaning",
   },
   formatDetection: {
     telephone: false,

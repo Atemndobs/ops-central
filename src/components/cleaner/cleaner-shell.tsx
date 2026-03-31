@@ -215,14 +215,14 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-3">
             <Image
               src="https://chezsoistays.com/wp-content/uploads/2026/02/cropped-chezsoi_favicon@2x.png"
-              alt="ChezSoisCleaning logo"
+              alt="ChezSoiCleaning logo"
               width={32}
               height={32}
               className="h-8 w-8 rounded-md border border-[var(--border)]"
               priority
             />
             <div>
-              <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">ChezSoisCleaning</p>
+              <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">ChezSoiCleaning</p>
               <h1 className="text-base font-semibold">{title}</h1>
             </div>
           </div>
