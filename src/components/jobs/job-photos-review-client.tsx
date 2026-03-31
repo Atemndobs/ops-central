@@ -1271,64 +1271,70 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
       {compareRow ? (
         <div className="fixed inset-0 z-40 flex flex-col bg-black/90 p-2">
           {/* ── Top bar ─────────────────────────────────────────── */}
-          <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2">
-            <h2 className="mr-auto text-sm font-semibold">{compareRow.roomName} · Compare</h2>
-            <button
-              type="button"
-              onClick={() => setCompareLinked((v) => !v)}
-              title={
-                compareLinked
-                  ? "Sides linked — arrows move both together. Click to unlink."
-                  : "Sides unlinked — arrows move each side independently. Click to link."
-              }
-              className={`rounded-md border px-2.5 py-1 text-xs ${
-                compareLinked
-                  ? "border-blue-700 bg-blue-600 text-white"
-                  : "border-[var(--border)]"
-              }`}
-            >
-              {compareLinked ? "Linked ⇔" : "Unlinked ⇔"}
-            </button>
-            {(() => {
-              const review = reviewByRoom[compareRow.key] ?? { verdict: null, note: "" };
-              return (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setVerdict(compareRow.key, "pass")}
-                    className={`rounded-md border px-2.5 py-1 text-xs ${
-                      review.verdict === "pass"
-                        ? "border-emerald-600 bg-emerald-100 text-emerald-700"
-                        : "border-[var(--border)]"
-                    }`}
-                  >
-                    Pass
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setVerdict(compareRow.key, "rework")}
-                    className={`rounded-md border px-2.5 py-1 text-xs ${
-                      review.verdict === "rework"
-                        ? "border-rose-600 bg-rose-100 text-rose-700"
-                        : "border-[var(--border)]"
-                    }`}
-                  >
-                    Rework
-                  </button>
-                </>
-              );
-            })()}
-            <button
-              type="button"
-              onClick={() => setCompareRoomKey(null)}
-              className="rounded-md border border-[var(--border)] px-2.5 py-1 text-xs"
-            >
-              ✕ Close
-            </button>
+          <div className="mb-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2">
+            {/* Row 1: room name + close */}
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="truncate text-sm font-semibold">{compareRow.roomName} · Compare</h2>
+              <button
+                type="button"
+                onClick={() => setCompareRoomKey(null)}
+                className="shrink-0 rounded-md border border-[var(--border)] px-2.5 py-1 text-xs"
+              >
+                ✕ Close
+              </button>
+            </div>
+            {/* Row 2: verdict + linked buttons */}
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setCompareLinked((v) => !v)}
+                title={
+                  compareLinked
+                    ? "Sides linked — arrows move both together. Click to unlink."
+                    : "Sides unlinked — arrows move each side independently. Click to link."
+                }
+                className={`rounded-md border px-2.5 py-1 text-[11px] ${
+                  compareLinked
+                    ? "border-blue-700 bg-blue-600 text-white"
+                    : "border-[var(--border)]"
+                }`}
+              >
+                {compareLinked ? "Linked ⇔" : "Unlinked ⇔"}
+              </button>
+              {(() => {
+                const review = reviewByRoom[compareRow.key] ?? { verdict: null, note: "" };
+                return (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setVerdict(compareRow.key, "pass")}
+                      className={`rounded-md border px-2.5 py-1 text-[11px] ${
+                        review.verdict === "pass"
+                          ? "border-emerald-600 bg-emerald-100 text-emerald-700"
+                          : "border-[var(--border)]"
+                      }`}
+                    >
+                      Pass
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVerdict(compareRow.key, "rework")}
+                      className={`rounded-md border px-2.5 py-1 text-[11px] ${
+                        review.verdict === "rework"
+                          ? "border-rose-600 bg-rose-100 text-rose-700"
+                          : "border-[var(--border)]"
+                      }`}
+                    >
+                      Rework
+                    </button>
+                  </>
+                );
+              })()}
+            </div>
           </div>
 
-          {/* ── Two-column split ─────────────────────────────────── */}
-          <div className="grid min-h-0 flex-1 grid-cols-2 gap-2">
+          {/* ── Two-column split (stacked on mobile, side-by-side on md+) */}
+          <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-2 gap-2 md:grid-cols-2 md:grid-rows-1">
             {/* BEFORE column */}
             <div className="flex flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)]">
               <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2">
@@ -1503,25 +1509,27 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
           </div>
 
           {/* ── Prev / Next Room bar ─────────────────────────────── */}
-          <div className="mt-2 flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2">
+          <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2">
             <button
               type="button"
               disabled={!prevCompareRoom}
               onClick={() => prevCompareRoom && openCompare(prevCompareRoom.key)}
-              className="rounded-md border border-[var(--border)] px-3 py-1 text-xs disabled:opacity-40"
+              className="flex max-w-[38%] items-center gap-1 truncate rounded-md border border-[var(--border)] px-2 py-1 text-xs disabled:opacity-40"
             >
-              ◀ {prevCompareRoom ? prevCompareRoom.roomName : "Prev Room"}
+              <span>◀</span>
+              <span className="truncate">{prevCompareRoom ? prevCompareRoom.roomName : "Prev"}</span>
             </button>
-            <span className="font-mono text-xs text-[var(--muted-foreground)]">
+            <span className="shrink-0 font-mono text-xs text-[var(--muted-foreground)]">
               {compareRoomIdx + 1} / {visibleRows.length}
             </span>
             <button
               type="button"
               disabled={!nextCompareRoom}
               onClick={() => nextCompareRoom && openCompare(nextCompareRoom.key)}
-              className="rounded-md border border-[var(--border)] px-3 py-1 text-xs disabled:opacity-40"
+              className="flex max-w-[38%] items-center gap-1 truncate rounded-md border border-[var(--border)] px-2 py-1 text-xs disabled:opacity-40"
             >
-              {nextCompareRoom ? nextCompareRoom.roomName : "Next Room"} ▶
+              <span className="truncate">{nextCompareRoom ? nextCompareRoom.roomName : "Next"}</span>
+              <span>▶</span>
             </button>
           </div>
         </div>
