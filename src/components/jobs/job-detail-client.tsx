@@ -414,8 +414,8 @@ export function JobDetailClient({ id }: { id: string }) {
                   className="rounded-md border border-[var(--destructive)] px-3 py-1.5 text-sm text-[var(--destructive)] disabled:opacity-50"
                 >
                   {canonicalJob.status === "awaiting_approval"
-                    ? "Reject to Rework"
-                    : "Reopen for Rework"}
+                    ? "Reject"
+                    : "Rework"}
                 </button>
               ) : null}
 
