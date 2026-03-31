@@ -63,9 +63,9 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
   const [isOnline, setIsOnline] = useState(true);
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
-  const [localTheme, setLocalTheme] = useState<ThemePreference>(() =>
-    readClientThemePreference(),
-  );
+  // Initialize to "light" so server and client render the same HTML during hydration.
+  // The actual localStorage preference is applied in a useEffect after mount.
+  const [localTheme, setLocalTheme] = useState<ThemePreference>("light");
   const initializedThemeScopeRef = useRef<string | null>(null);
   const themeScopeKey = isConvexAuthenticated
     ? `auth:${userId ?? "unknown"}`
@@ -75,6 +75,11 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
       ? themePreference.theme
       : localTheme;
   const isDarkMode = resolvedTheme === "dark";
+
+  // Sync localTheme from localStorage after hydration to avoid SSR mismatch
+  useEffect(() => {
+    setLocalTheme(readClientThemePreference());
+  }, []);
 
   useEffect(() => {
     const updateOnlineState = () => setIsOnline(window.navigator.onLine);
