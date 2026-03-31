@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Wire Tailwind's dark: variant to the .dark class (not OS media query) */
+@custom-variant dark (&:is(.dark *));
+
 :root {
   --background: oklch(0.98 0.01 262);
   --foreground: oklch(0.24 0.02 255);
