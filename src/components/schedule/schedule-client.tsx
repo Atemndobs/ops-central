@@ -378,19 +378,33 @@ export function ScheduleClient() {
       const dotColor = statusDotClass[worst] ?? "bg-slate-400";
       return (
         <div key={key} className="border-l">
-          {/* Mobile: dot/number view */}
+          {/* Mobile: mini card view */}
           <button
             type="button"
-            className="flex h-full w-full items-center justify-center p-1 md:hidden"
+            className="flex h-full min-h-10 w-full flex-col gap-0.5 p-0.5 md:hidden"
             onClick={() => setSelectedCell((c) => (c?.propertyId === propertyId && c.dayKey === dateKeyFn(day) ? null : { propertyId, dayKey: dateKeyFn(day) }))}
           >
-            {cellJobs.length === 1 ? (
-              <span className={`h-2.5 w-2.5 rounded-full ${dotColor}`} />
-            ) : (
-              <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold text-white ${dotColor}`}>
-                {cellJobs.length}
-              </span>
-            )}
+            {cellJobs.slice(0, 2).map((job) => {
+              const firstCleaner = job.cleaners?.[0];
+              const initials = firstCleaner?.name
+                ? firstCleaner.name.split(" ").filter(Boolean).map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()
+                : null;
+              const time = job.scheduledStartAt
+                ? new Date(job.scheduledStartAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                : "--:--";
+              return (
+                <div
+                  key={job._id}
+                  className={`flex min-w-0 flex-col rounded-sm border px-1 py-0.5 text-[9px] leading-tight ${STATUS_CLASSNAMES[job.status]}`}
+                >
+                  <span className="truncate font-semibold">{time}</span>
+                  {initials ? <span className="truncate opacity-75">{initials}</span> : null}
+                </div>
+              );
+            })}
+            {cellJobs.length > 2 ? (
+              <span className="text-center text-[8px] font-bold text-[var(--muted-foreground)]">+{cellJobs.length - 2}</span>
+            ) : null}
           </button>
           {/* Desktop: full job cards */}
           <div className="hidden space-y-1 p-2 md:block">
@@ -970,22 +984,63 @@ export function ScheduleClient() {
                 <p className="mt-2 text-xs text-[var(--muted-foreground)]">No jobs for this day.</p>
               ) : (
                 <div className="mt-2 space-y-2">
-                  {bottomSheetData.jobs.map((job) => (
-                    <Link
-                      key={job._id}
-                      href={`/jobs/${job._id}`}
-                      className={`block rounded-lg border px-3 py-2 text-xs ${STATUS_CLASSNAMES[job.status]}`}
-                    >
-                      <p className="font-semibold">
-                        {new Date(job.scheduledStartAt ?? 0).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                        {" · "}
-                        {STATUS_LABELS[job.status]}
-                      </p>
-                      <p className="mt-0.5 text-[11px] opacity-80">
-                        {job.cleaners?.map((c) => c?.name).filter(Boolean).join(", ") || "Unassigned"}
-                      </p>
-                    </Link>
-                  ))}
+                  {bottomSheetData.jobs.map((job) => {
+                    const availableAssignment = assignableByPropertyMap.get(job.propertyId);
+                    const companyCleaners = availableAssignment?.cleaners ?? [];
+                    const isAssigning = quickAssignJobId === job._id;
+                    return (
+                      <div key={job._id} className={`rounded-lg border text-xs ${STATUS_CLASSNAMES[job.status]}`}>
+                        <Link href={`/jobs/${job._id}`} className="block px-3 py-2">
+                          <p className="font-semibold">
+                            {new Date(job.scheduledStartAt ?? 0).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            {" · "}
+                            {STATUS_LABELS[job.status]}
+                          </p>
+                          <p className="mt-0.5 text-[11px] opacity-80">
+                            {job.cleaners?.map((c) => c?.name).filter(Boolean).join(", ") || "Unassigned"}
+                          </p>
+                        </Link>
+                        {/* Quick assign row */}
+                        <div className="border-t px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() => setQuickAssignJobId((current) => (current === job._id ? null : job._id))}
+                            className="flex items-center gap-1 text-[11px] font-medium opacity-70 hover:opacity-100"
+                          >
+                            <UserPlus className="h-3 w-3" />
+                            {isAssigning ? "Close" : "Assign Cleaner"}
+                          </button>
+                          {isAssigning ? (
+                            <div className="mt-2 space-y-1">
+                              {companyCleaners.length === 0 ? (
+                                <p className="text-[11px] opacity-60">
+                                  {availableAssignment?.companyName
+                                    ? `No cleaners in ${availableAssignment.companyName}`
+                                    : "No company assigned to property"}
+                                </p>
+                              ) : (
+                                companyCleaners.map((cleaner) => {
+                                  const alreadyAssigned = Boolean(job.cleaners?.some((c) => c?._id === cleaner._id));
+                                  return (
+                                    <button
+                                      key={cleaner._id}
+                                      type="button"
+                                      disabled={assigningJobId === job._id}
+                                      onClick={() => void handleQuickAssign(job._id, cleaner._id)}
+                                      className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[11px] hover:bg-black/10 disabled:opacity-60"
+                                    >
+                                      <span className="truncate">{cleaner.name ?? cleaner.email}</span>
+                                      {alreadyAssigned ? <Check className="h-3 w-3 text-emerald-500 shrink-0" /> : null}
+                                    </button>
+                                  );
+                                })
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

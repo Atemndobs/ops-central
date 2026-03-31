@@ -57,6 +57,8 @@ export function CompaniesHub() {
   const [editName, setEditName] = useState("");
   const [editContactEmail, setEditContactEmail] = useState("");
   const [editContactPhone, setEditContactPhone] = useState("");
+  const [editLogoUrl, setEditLogoUrl] = useState("");
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [isUpdatingCompany, setIsUpdatingCompany] = useState(false);
   const [isArchivingCompany, setIsArchivingCompany] = useState(false);
   const [isArchiveConfirmOpen, setIsArchiveConfirmOpen] = useState(false);
@@ -203,6 +205,7 @@ export function CompaniesHub() {
     setEditName(selectedCompany.name);
     setEditContactEmail(selectedCompany.contactEmail ?? "");
     setEditContactPhone(selectedCompany.contactPhone ?? "");
+    setEditLogoUrl(selectedCompany.logoUrl ?? "");
     setIsEditOpen(true);
   }
 
@@ -219,6 +222,7 @@ export function CompaniesHub() {
         name: editName,
         contactEmail: editContactEmail.trim() || undefined,
         contactPhone: editContactPhone.trim() || undefined,
+        logoUrl: editLogoUrl.trim() || undefined,
       });
       setIsEditOpen(false);
       showToast("Company updated.");
@@ -471,6 +475,52 @@ export function CompaniesHub() {
                 placeholder="+1 ..."
               />
             </label>
+            <div className="space-y-1 text-sm md:col-span-4">
+              <span className="text-[var(--muted-foreground)]">Logo</span>
+              <div className="flex items-center gap-3">
+                {editLogoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={editLogoUrl} alt="Logo" className="h-10 w-10 rounded-lg border bg-white object-contain shrink-0" />
+                ) : (
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-[var(--accent)] text-xs font-bold text-[var(--muted-foreground)]">
+                    {editName.slice(0, 2).toUpperCase() || "CO"}
+                  </div>
+                )}
+                <label className="cursor-pointer">
+                  <span className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-[var(--accent)] ${isUploadingLogo ? "opacity-60 pointer-events-none" : ""}`}>
+                    {isUploadingLogo ? "Uploading..." : editLogoUrl ? "Change logo" : "Upload logo"}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    disabled={isUploadingLogo}
+                    onChange={async (event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      setIsUploadingLogo(true);
+                      try {
+                        const form = new FormData();
+                        form.append("file", file);
+                        const res = await fetch("/api/cloudinary/upload", { method: "POST", body: form });
+                        const data = await res.json() as { url?: string; error?: string };
+                        if (!res.ok || !data.url) throw new Error(data.error ?? "Upload failed");
+                        setEditLogoUrl(data.url);
+                      } catch (err) {
+                        showToast(err instanceof Error ? err.message : "Upload failed", "error");
+                      } finally {
+                        setIsUploadingLogo(false);
+                      }
+                    }}
+                  />
+                </label>
+                {editLogoUrl ? (
+                  <button type="button" onClick={() => setEditLogoUrl("")} className="text-xs text-[var(--muted-foreground)] hover:text-[var(--destructive)]">
+                    Remove
+                  </button>
+                ) : null}
+              </div>
+            </div>
             <div className="md:col-span-4 flex justify-end gap-2">
               <button
                 type="button"
@@ -597,7 +647,17 @@ export function CompaniesHub() {
                       : "hover:bg-[var(--accent)]"
                   }`}
                 >
-                  <p className="text-sm font-semibold">{company.name}</p>
+                  <div className="flex items-center gap-2">
+                    {company.logoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={company.logoUrl} alt="" className="h-6 w-6 rounded object-contain border bg-white shrink-0" />
+                    ) : (
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-[var(--accent)] text-[10px] font-bold text-[var(--muted-foreground)]">
+                        {company.name.slice(0, 2).toUpperCase()}
+                      </span>
+                    )}
+                    <p className="truncate text-sm font-semibold">{company.name}</p>
+                  </div>
                   <p className="text-xs text-[var(--muted-foreground)]">
                     {company.isActive ? "Active" : "Inactive"}
                   </p>

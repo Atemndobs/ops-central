@@ -99,7 +99,15 @@ export function JobDetailClient({ id }: { id: string }) {
     return () => window.clearInterval(intervalId);
   }, []);
 
-  const cleanerOptions = useQuery(api.users.queries.getByRole, isAuthenticated ? { role: "cleaner" } : "skip");
+  // Only show cleaners from the company assigned to this property
+  const assignableForProperty = useQuery(
+    api.cleaningJobs.queries.getAssignableCleanersByProperty,
+    isAuthenticated && detail?.job.propertyId
+      ? { propertyIds: [detail.job.propertyId] }
+      : "skip",
+  );
+  const scopedCleaners = assignableForProperty?.[0]?.cleaners ?? [];
+  const assignedCompanyName = assignableForProperty?.[0]?.companyName ?? null;
 
   const cleanerJobs = useQuery(
     api.cleaningJobs.queries.getForCleaner,
@@ -410,9 +418,17 @@ export function JobDetailClient({ id }: { id: string }) {
                 value={cleanerId}
                 onChange={(event) => setCleanerId(event.target.value)}
                 className="rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 text-sm"
+                title={assignedCompanyName ? `Cleaners from ${assignedCompanyName}` : "No company assigned to this property"}
               >
-                <option value="">Select Cleaner</option>
-                {(cleanerOptions ?? []).map((cleaner) => (
+                <option value="">
+                  {assignedCompanyName ? `Select Cleaner (${assignedCompanyName})` : "Select Cleaner"}
+                </option>
+                {scopedCleaners.length === 0 && assignableForProperty !== undefined ? (
+                  <option disabled value="">
+                    {assignedCompanyName ? "No cleaners in this company" : "No company assigned to property"}
+                  </option>
+                ) : null}
+                {scopedCleaners.map((cleaner) => (
                   <option key={cleaner._id} value={cleaner._id}>
                     {cleaner.name ?? `Cleaner ${cleaner._id.slice(-6)}`}
                   </option>

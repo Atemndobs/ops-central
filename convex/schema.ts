@@ -50,6 +50,7 @@ const cleaningCompanies = defineTable({
   ownerId: v.optional(v.id("users")),
   contactEmail: v.optional(v.string()),
   contactPhone: v.optional(v.string()),
+  logoUrl: v.optional(v.string()),
   isActive: v.boolean(),
   settings: v.optional(v.object({
     autoAssign: v.optional(v.boolean()),
