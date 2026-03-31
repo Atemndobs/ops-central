@@ -13,6 +13,7 @@ import {
   getNextStatus,
   type JobStatus,
 } from "@/components/jobs/job-status";
+import { Check, UserPlus } from "lucide-react";
 import { useToast } from "@/components/ui/toast-provider";
 import { getErrorMessage } from "@/lib/errors";
 
@@ -87,6 +88,7 @@ export function JobDetailClient({ id }: { id: string }) {
   const assignCleaner = useMutation(api.cleaningJobs.mutations.assign);
 
   const [cleanerId, setCleanerId] = useState("");
+  const [assignPanelOpen, setAssignPanelOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [clockNow, setClockNow] = useState(() => Date.now());
@@ -384,13 +386,16 @@ export function JobDetailClient({ id }: { id: string }) {
             </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <button
-                onClick={onAdvanceStatus}
-                disabled={!nextStatus || pending}
-                className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-              >
-                {nextStatus ? `Move to ${STATUS_LABELS[nextStatus]}` : "No further transition"}
-              </button>
+              {/* Only show advance button when there IS a next status */}
+              {nextStatus ? (
+                <button
+                  onClick={onAdvanceStatus}
+                  disabled={pending}
+                  className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  Move to {STATUS_LABELS[nextStatus]}
+                </button>
+              ) : null}
 
               {canForceStopAsAdmin ? (
                 <button
@@ -414,39 +419,84 @@ export function JobDetailClient({ id }: { id: string }) {
                 </button>
               ) : null}
 
-              <select
-                value={cleanerId}
-                onChange={(event) => setCleanerId(event.target.value)}
-                className="rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 text-sm"
-                title={assignedCompanyName ? `Cleaners from ${assignedCompanyName}` : "No company assigned to this property"}
-              >
-                <option value="">
-                  {assignedCompanyName ? `Select Cleaner (${assignedCompanyName})` : "Select Cleaner"}
-                </option>
-                {scopedCleaners.length === 0 && assignableForProperty !== undefined ? (
-                  <option disabled value="">
-                    {assignedCompanyName ? "No cleaners in this company" : "No company assigned to property"}
-                  </option>
+              {/* Assign cleaner: icon button → inline panel (consistent with calendar quick-assign) */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setAssignPanelOpen((v) => !v)}
+                  className="flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--accent)]"
+                  title={assignedCompanyName ? `Assign cleaner from ${assignedCompanyName}` : "Assign cleaner"}
+                >
+                  <UserPlus className="h-4 w-4" />
+                  <span>Assign</span>
+                </button>
+                {assignPanelOpen ? (
+                  <div className="absolute left-0 top-full z-30 mt-1 w-56 rounded-md border bg-[var(--card)] p-2 shadow-xl">
+                    {assignedCompanyName ? (
+                      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+                        {assignedCompanyName}
+                      </p>
+                    ) : null}
+                    {scopedCleaners.length === 0 ? (
+                      <p className="text-xs text-[var(--muted-foreground)]">
+                        {assignedCompanyName ? "No cleaners in this company" : "No company assigned to property"}
+                      </p>
+                    ) : (
+                      <div className="space-y-0.5">
+                        {scopedCleaners.map((cleaner) => {
+                          const alreadyAssigned = canonicalJob.assignedCleanerIds?.includes(cleaner._id as Id<"users">);
+                          return (
+                            <button
+                              key={cleaner._id}
+                              type="button"
+                              disabled={pending}
+                              onClick={async () => {
+                                setCleanerId(cleaner._id);
+                                setError(null);
+                                setPending(true);
+                                try {
+                                  const result = await assignCleaner({
+                                    jobId,
+                                    cleanerIds: [cleaner._id as Id<"users">],
+                                    notifyCleaners: false,
+                                    source: "job_detail_assign",
+                                    returnWarnings: true,
+                                  });
+                                  showToast("Cleaner assigned.");
+                                  const warnings = getAssignWarnings(result);
+                                  if (warnings.length > 0) showToast(`Warning: ${warnings.join(" ")}`, "error");
+                                  setAssignPanelOpen(false);
+                                } catch (e) {
+                                  const msg = getErrorMessage(e, "Unable to assign cleaner.");
+                                  setError(msg);
+                                  showToast(msg, "error");
+                                } finally {
+                                  setPending(false);
+                                  setCleanerId("");
+                                }
+                              }}
+                              className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm hover:bg-[var(--accent)] disabled:opacity-60"
+                            >
+                              <span className="truncate">{cleaner.name ?? `Cleaner ${cleaner._id.slice(-6)}`}</span>
+                              {alreadyAssigned ? <Check className="h-3.5 w-3.5 shrink-0 text-emerald-500" /> : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 ) : null}
-                {scopedCleaners.map((cleaner) => (
-                  <option key={cleaner._id} value={cleaner._id}>
-                    {cleaner.name ?? `Cleaner ${cleaner._id.slice(-6)}`}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={onAssignCleaner}
-                disabled={pending}
-                className="rounded-md border border-[var(--border)] px-3 py-1.5 text-sm"
-              >
-                Assign Cleaner
-              </button>
-              <Link
-                href={`/jobs/${canonicalJob._id}/photos-review`}
-                className="rounded-md border border-blue-700 bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
-              >
-                Review Photos
-              </Link>
+              </div>
+
+              {/* Review Photos — only when job has progressed past assignment (photos may exist) */}
+              {["in_progress", "awaiting_approval", "completed", "rework_required"].includes(canonicalJob.status) ? (
+                <Link
+                  href={`/jobs/${canonicalJob._id}/photos-review`}
+                  className="rounded-md border border-blue-700 bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
+                >
+                  Review Photos
+                </Link>
+              ) : null}
             </div>
 
             {error ? <p className="mt-3 text-sm text-[var(--destructive)]">{error}</p> : null}
