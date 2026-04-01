@@ -1,11 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { Loader2, Plus, Search } from "lucide-react";
+import {
+  Building2,
+  CalendarDays,
+  Eye,
+  EyeOff,
+  Loader2,
+  Plus,
+  Search,
+  UserPlus,
+  Users,
+} from "lucide-react";
 import {
   JOB_STATUSES,
   STATUS_CLASSNAMES,
@@ -26,11 +36,6 @@ type JobWithRelations = {
   cleaners?: Array<{ _id: string; name?: string | null }>;
 };
 
-type Option = {
-  id: string;
-  name: string;
-};
-
 const workflowStatuses: JobStatus[] = [
   "scheduled",
   "assigned",
@@ -41,6 +46,7 @@ const workflowStatuses: JobStatus[] = [
 type JobsPageClientProps = {
   initialStatus?: JobStatus | "all";
 };
+type MobileJobsFilterPanel = "search" | "property" | "cleaner" | "date" | null;
 
 export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
   const { isAuthenticated } = useConvexAuth();
@@ -49,7 +55,11 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
   const [propertyId, setPropertyId] = useState("all");
   const [cleanerId, setCleanerId] = useState("all");
   const [selectedDate, setSelectedDate] = useState("");
+  const [hidePastJobs, setHidePastJobs] = useState(true);
+  const [mobileFilterPanel, setMobileFilterPanel] = useState<MobileJobsFilterPanel>(null);
+  const [openJobMenuId, setOpenJobMenuId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [nowTs, setNowTs] = useState<number | null>(null);
 
   const jobs = useQuery(
     api.cleaningJobs.queries.getAll,
@@ -77,9 +87,32 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
     isAuthenticated ? { limit: 500 } : "skip",
   );
 
+  useEffect(() => {
+    const syncNow = () => setNowTs(Date.now());
+    syncNow();
+    const intervalId = window.setInterval(syncNow, 60_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  const scopedAllJobs = useMemo(() => {
+    const source = allJobs ?? [];
+    if (!hidePastJobs || nowTs === null) {
+      return source;
+    }
+    return source.filter((job) => !isPastJob(job, nowTs));
+  }, [allJobs, hidePastJobs, nowTs]);
+
+  const scopedJobs = useMemo(() => {
+    const source = jobs ?? [];
+    if (!hidePastJobs || nowTs === null) {
+      return source;
+    }
+    return source.filter((job) => !isPastJob(job, nowTs));
+  }, [jobs, hidePastJobs, nowTs]);
+
   const propertyOptionsFromJobs = useMemo(() => {
     const optionMap = new Map<string, string>();
-    (allJobs ?? []).forEach((job) => {
+    scopedAllJobs.forEach((job) => {
       const name = job.property?.name?.trim();
       if (!name) {
         return;
@@ -87,7 +120,7 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
       optionMap.set(job.propertyId, name);
     });
     return Array.from(optionMap.entries()).map(([id, name]) => ({ id, name }));
-  }, [allJobs]);
+  }, [scopedAllJobs]);
 
   const propertyOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -102,7 +135,7 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
 
   const cleanerOptionsFromJobs = useMemo(() => {
     const optionMap = new Map<string, string>();
-    (allJobs ?? []).forEach((job) => {
+    scopedAllJobs.forEach((job) => {
       const cleaner = job.cleaners?.[0];
       if (!cleaner?._id) {
         return;
@@ -111,7 +144,7 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
       optionMap.set(cleaner._id, name);
     });
     return Array.from(optionMap.entries()).map(([id, name]) => ({ id, name }));
-  }, [allJobs]);
+  }, [scopedAllJobs]);
 
   const cleanerOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -125,18 +158,33 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
   }, [cleanerOptionsFromJobs, cleanerOptionsFromUsers]);
 
   const counts = useMemo(() => {
-    const all = allJobs ?? [];
+    const all = scopedAllJobs;
     const values: Record<string, number> = { all: all.length };
     JOB_STATUSES.forEach((itemStatus) => {
       values[itemStatus] = all.filter((job) => job.status === itemStatus).length;
     });
     return values;
-  }, [allJobs]);
+  }, [scopedAllJobs]);
 
   const isLoading = jobs === undefined || allJobs === undefined;
 
+  useEffect(() => {
+    if (!openJobMenuId) {
+      return;
+    }
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-job-row-menu]")) {
+        return;
+      }
+      setOpenJobMenuId(null);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [openJobMenuId]);
+
   const jobRows = useMemo(() => {
-    let list = jobs ?? [];
+    let list = scopedJobs;
     const searchValue = search.trim().toLowerCase();
 
     if (searchValue) {
@@ -166,21 +214,168 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
       const when = job.scheduledStartAt ?? 0;
       return when >= start.getTime() && when < end.getTime();
     });
-  }, [jobs, selectedDate, search, cleanerId]);
+  }, [scopedJobs, selectedDate, search, cleanerId]);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4 md:space-y-8">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-display">Jobs</h1>
-          <p className="mt-2 text-[var(--muted-foreground)]">
+          <h1 className="text-4xl font-semibold tracking-tight text-[var(--foreground)] md:text-display">
+            Jobs
+          </h1>
+          <p className="mt-2 hidden text-[var(--muted-foreground)] md:block">
             Manage active and upcoming cleaning jobs.
           </p>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:justify-between">
+        <div className="w-full space-y-2 md:hidden">
+          <div className="grid grid-cols-5 gap-2">
+            <button
+              type="button"
+              className={`inline-flex items-center justify-center rounded-none border p-2 ${
+                mobileFilterPanel === "search"
+                  ? "bg-[var(--accent)] text-[var(--foreground)]"
+                  : "bg-[var(--card)] text-[var(--muted-foreground)]"
+              }`}
+              onClick={() =>
+                setMobileFilterPanel((current) =>
+                  current === "search" ? null : "search",
+                )
+              }
+              aria-label="Open search"
+            >
+              <Search className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              className={`inline-flex items-center justify-center rounded-none border p-2 ${
+                mobileFilterPanel === "property"
+                  ? "bg-[var(--accent)] text-[var(--foreground)]"
+                  : "bg-[var(--card)] text-[var(--muted-foreground)]"
+              }`}
+              onClick={() =>
+                setMobileFilterPanel((current) =>
+                  current === "property" ? null : "property",
+                )
+              }
+              aria-label="Open property filter"
+            >
+              <Building2 className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              className={`inline-flex items-center justify-center rounded-none border p-2 ${
+                mobileFilterPanel === "cleaner"
+                  ? "bg-[var(--accent)] text-[var(--foreground)]"
+                  : "bg-[var(--card)] text-[var(--muted-foreground)]"
+              }`}
+              onClick={() =>
+                setMobileFilterPanel((current) =>
+                  current === "cleaner" ? null : "cleaner",
+                )
+              }
+              aria-label="Open cleaner filter"
+            >
+              <Users className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              className={`inline-flex items-center justify-center rounded-none border p-2 ${
+                mobileFilterPanel === "date"
+                  ? "bg-[var(--accent)] text-[var(--foreground)]"
+                  : "bg-[var(--card)] text-[var(--muted-foreground)]"
+              }`}
+              onClick={() =>
+                setMobileFilterPanel((current) =>
+                  current === "date" ? null : "date",
+                )
+              }
+              aria-label="Open date filter"
+            >
+              <CalendarDays className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              className={`inline-flex items-center justify-center rounded-none border p-2 ${
+                hidePastJobs
+                  ? "bg-[var(--accent)] text-[var(--foreground)]"
+                  : "bg-[var(--card)] text-[var(--muted-foreground)]"
+              }`}
+              onClick={() => setHidePastJobs((current) => !current)}
+              aria-label={hidePastJobs ? "Show past jobs" : "Hide past jobs"}
+              title={hidePastJobs ? "Show past jobs" : "Hide past jobs"}
+            >
+              {hidePastJobs ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+
+          {mobileFilterPanel === "search" ? (
+            <div className="flex items-center gap-2 rounded-none border bg-[var(--card)] px-3 py-1.5">
+              <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
+              <input
+                type="text"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search by job, property, cleaner"
+                autoFocus
+                className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)]"
+              />
+            </div>
+          ) : null}
+
+          {mobileFilterPanel === "property" ? (
+            <select
+              value={propertyId}
+              onChange={(event) => {
+                setPropertyId(event.target.value);
+                setMobileFilterPanel(null);
+              }}
+              className="w-full rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm"
+            >
+              <option value="all">All Properties</option>
+              {propertyOptions.map((property) => (
+                <option key={property.id} value={property.id}>
+                  {property.name}
+                </option>
+              ))}
+            </select>
+          ) : null}
+
+          {mobileFilterPanel === "cleaner" ? (
+            <select
+              value={cleanerId}
+              onChange={(event) => {
+                setCleanerId(event.target.value);
+                setMobileFilterPanel(null);
+              }}
+              className="w-full rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm"
+            >
+              <option value="all">All Cleaners</option>
+              {cleanerOptions.map((cleaner) => (
+                <option key={cleaner.id} value={cleaner.id}>
+                  {cleaner.name}
+                </option>
+              ))}
+            </select>
+          ) : null}
+
+          {mobileFilterPanel === "date" ? (
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(event) => {
+                setSelectedDate(event.target.value);
+                setMobileFilterPanel(null);
+              }}
+              className="w-full rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm"
+              aria-label="Filter by date"
+            />
+          ) : null}
+        </div>
+
+        <div className="hidden flex-wrap items-center gap-2 md:flex">
           <div className="flex items-center gap-2 rounded-none border bg-[var(--card)] px-3 py-1.5">
             <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
             <input
@@ -225,11 +420,25 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
             className="rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm"
             aria-label="Filter by date"
           />
+          <button
+            type="button"
+            onClick={() => setHidePastJobs((current) => !current)}
+            className={`inline-flex items-center gap-2 rounded-none border px-3 py-1.5 text-sm ${
+              hidePastJobs
+                ? "bg-[var(--accent)] text-[var(--foreground)]"
+                : "bg-[var(--card)] text-[var(--muted-foreground)]"
+            }`}
+            aria-label={hidePastJobs ? "Show past jobs" : "Hide past jobs"}
+            title={hidePastJobs ? "Show past jobs" : "Hide past jobs"}
+          >
+            {hidePastJobs ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            {hidePastJobs ? "Hide Past" : "Show Past"}
+          </button>
         </div>
 
         <button
           onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 rounded-none bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90"
+          className="flex w-full items-center justify-center gap-2 rounded-none bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90 md:w-auto"
         >
           <Plus className="h-4 w-4" />
           New Job
@@ -257,14 +466,83 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
         })}
       </div>
 
-      <div className="no-line-card overflow-x-auto border">
+      <div className="no-line-card border">
         {isLoading ? (
           <div className="flex min-h-40 items-center justify-center p-6 text-sm text-[var(--muted-foreground)]">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             Loading jobs...
           </div>
         ) : null}
-        <table className="min-w-full text-left text-sm">
+        {!isLoading ? (
+          <div className="divide-y md:hidden">
+            {jobRows.map((job) => (
+              <article key={job._id} className="p-3">
+                <div className="flex items-start gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-[var(--foreground)]">
+                      {job.notesForCleaner?.split("\n")[0] || "Cleaning Job"}
+                    </p>
+                    <p className="mt-0.5 truncate text-xs text-[var(--muted-foreground)]">
+                      {job.property?.name ?? "Unknown property"}
+                    </p>
+                    <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
+                      {STATUS_LABELS[job.status]} · {new Date(job.scheduledStartAt ?? 0).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Link
+                      href={`/jobs/${job._id}`}
+                      className="inline-flex items-center justify-center rounded-md border p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+                      aria-label="Assign cleaner"
+                      title="Assign cleaner"
+                    >
+                      <UserPlus className="h-4 w-4" />
+                    </Link>
+                    <div className="relative" data-job-row-menu>
+                    <button
+                      type="button"
+                      className="rounded-md border px-2 py-1 text-sm leading-none"
+                      onClick={() =>
+                        setOpenJobMenuId((current) => (current === job._id ? null : job._id))
+                      }
+                      aria-haspopup="menu"
+                      aria-expanded={openJobMenuId === job._id}
+                    >
+                      ⋮
+                    </button>
+                    {openJobMenuId === job._id ? (
+                      <div className="absolute right-0 top-9 z-20 w-64 rounded-none border bg-[var(--card)] p-2 shadow-lg">
+                        <div className="space-y-1 border-b pb-2 text-xs text-[var(--muted-foreground)]">
+                          <p className="truncate">ID: {job._id}</p>
+                          <p className="truncate">Cleaner: {job.cleaners?.[0]?.name ?? "Unassigned"}</p>
+                          <p className="truncate">
+                            Scheduled: {new Date(job.scheduledStartAt ?? 0).toLocaleString()}
+                          </p>
+                        </div>
+                        <div className="mt-2">
+                          <Link
+                            href={`/jobs/${job._id}`}
+                            className="block w-full rounded-md border px-2 py-1.5 text-left text-xs text-[var(--primary)] hover:bg-[var(--accent)]"
+                          >
+                            View Job
+                          </Link>
+                        </div>
+                      </div>
+                    ) : null}
+                    </div>
+                  </div>
+                </div>
+              </article>
+            ))}
+            {!jobRows.length ? (
+              <div className="px-4 py-12 text-center text-sm text-[var(--muted-foreground)]">
+                No jobs found for current filters.
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        <div className="hidden overflow-x-auto md:block">
+          <table className="min-w-full text-left text-sm">
           <thead className="border-b border-[var(--border)] text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
             <tr>
               <th className="px-4 py-3">Job</th>
@@ -320,13 +598,14 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
 
-        {!isLoading && !jobRows.length ? (
-          <div className="px-4 py-12 text-center text-sm text-[var(--muted-foreground)]">
-            No jobs found for current filters.
-          </div>
-        ) : null}
+          {!isLoading && !jobRows.length ? (
+            <div className="px-4 py-12 text-center text-sm text-[var(--muted-foreground)]">
+              No jobs found for current filters.
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <CreateJobModal
@@ -345,4 +624,12 @@ function workflowIndex(status: JobStatus) {
     return 0;
   }
   return index;
+}
+
+function isPastJob(
+  job: { scheduledEndAt?: number; scheduledStartAt?: number },
+  now: number,
+) {
+  const end = job.scheduledEndAt ?? job.scheduledStartAt ?? 0;
+  return end < now;
 }

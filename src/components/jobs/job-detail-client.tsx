@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { useAuth, useUser } from "@clerk/nextjs";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import {
@@ -15,6 +16,7 @@ import {
 } from "@/components/jobs/job-status";
 import { Check, UserPlus } from "lucide-react";
 import { useToast } from "@/components/ui/toast-provider";
+import { getRoleFromMetadata, getRoleFromSessionClaimsOrNull } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 
 function formatDateTime(value?: number | null) {
@@ -72,7 +74,20 @@ function getAssignWarnings(result: unknown): string[] {
 
 export function JobDetailClient({ id }: { id: string }) {
   const { isAuthenticated } = useConvexAuth();
+  const { isLoaded: isClerkLoaded, isSignedIn, sessionClaims, userId } = useAuth();
+  const { user } = useUser();
   const jobId = id as Id<"cleaningJobs">;
+  const convexUser = useQuery(
+    api.users.queries.getByClerkId,
+    isAuthenticated && isClerkLoaded && isSignedIn && userId
+      ? { clerkId: userId }
+      : "skip",
+  );
+  const roleFromClaims = getRoleFromSessionClaimsOrNull(
+    (sessionClaims as Record<string, unknown> | null | undefined) ?? null,
+  );
+  const roleFromMetadata = getRoleFromMetadata(user?.publicMetadata);
+  const currentRole = roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "manager";
 
   const detail = useQuery(api.cleaningJobs.queries.getJobDetail, isAuthenticated ? { jobId } : "skip");
   const livePresence = useQuery(api.cleaningJobs.queries.getJobLivePresence, isAuthenticated ? { jobId } : "skip");
@@ -300,6 +315,7 @@ export function JobDetailClient({ id }: { id: string }) {
   const canRejectOrReopen =
     canonicalJob.status === "awaiting_approval" || canonicalJob.status === "completed";
   const canForceStopAsAdmin =
+    currentRole === "admin" &&
     canonicalJob.status === "in_progress" &&
     (livePresence?.summary.pendingCount ?? 0) > 0;
   const liveElapsedMs = computeElapsedMs({
@@ -403,7 +419,7 @@ export function JobDetailClient({ id }: { id: string }) {
                   disabled={pending}
                   className="rounded-md border border-amber-500 px-3 py-1.5 text-sm text-amber-600 hover:bg-amber-50 disabled:opacity-50"
                 >
-                  Force Stop (Admin)
+                  Force Stop
                 </button>
               ) : null}
 

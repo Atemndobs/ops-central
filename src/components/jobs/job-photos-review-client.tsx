@@ -13,6 +13,7 @@ import {
 } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { makeFunctionReference } from "convex/server";
+import { ArrowDownAZ, Filter, Search } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useToast } from "@/components/ui/toast-provider";
@@ -21,6 +22,7 @@ import { STATUS_CLASSNAMES, STATUS_LABELS } from "@/components/jobs/job-status";
 
 type ReviewVerdict = "pass" | "rework" | null;
 type ReviewFilter = "all" | "needs_review" | "missing" | "reviewed";
+type MobileReviewControlPanel = "search" | "filter" | "sort" | null;
 type RoomReviewState = {
   verdict: ReviewVerdict;
   note: string;
@@ -272,6 +274,8 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<ReviewFilter>("all");
   const [sortMode, setSortMode] = useState<SortMode>("checklist");
+  const [mobileControlPanel, setMobileControlPanel] =
+    useState<MobileReviewControlPanel>(null);
   const [reviewByRoom, setReviewByRoom] = useState<Record<string, RoomReviewState>>({});
   const [notesOpenByRoom, setNotesOpenByRoom] = useState<Record<string, boolean>>({});
   const [compareRoomKey, setCompareRoomKey] = useState<string | null>(null);
@@ -976,7 +980,103 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
       </div>
 
       <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="space-y-3 md:hidden">
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              className={`inline-flex items-center justify-center rounded-md border p-2 ${
+                mobileControlPanel === "search"
+                  ? "bg-[var(--accent)] text-[var(--foreground)]"
+                  : "bg-[var(--background)] text-[var(--muted-foreground)]"
+              }`}
+              onClick={() =>
+                setMobileControlPanel((current) =>
+                  current === "search" ? null : "search",
+                )
+              }
+              aria-label="Open room search"
+            >
+              <Search className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              className={`inline-flex items-center justify-center rounded-md border p-2 ${
+                mobileControlPanel === "filter"
+                  ? "bg-[var(--accent)] text-[var(--foreground)]"
+                  : "bg-[var(--background)] text-[var(--muted-foreground)]"
+              }`}
+              onClick={() =>
+                setMobileControlPanel((current) =>
+                  current === "filter" ? null : "filter",
+                )
+              }
+              aria-label="Open room filter"
+            >
+              <Filter className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              className={`inline-flex items-center justify-center rounded-md border p-2 ${
+                mobileControlPanel === "sort"
+                  ? "bg-[var(--accent)] text-[var(--foreground)]"
+                  : "bg-[var(--background)] text-[var(--muted-foreground)]"
+              }`}
+              onClick={() =>
+                setMobileControlPanel((current) =>
+                  current === "sort" ? null : "sort",
+                )
+              }
+              aria-label="Open sort mode"
+            >
+              <ArrowDownAZ className="h-4 w-4" />
+            </button>
+          </div>
+
+          {mobileControlPanel === "search" ? (
+            <div className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2">
+              <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search room"
+                autoFocus
+                className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)]"
+              />
+            </div>
+          ) : null}
+
+          {mobileControlPanel === "filter" ? (
+            <select
+              value={filter}
+              onChange={(event) => {
+                setFilter(event.target.value as ReviewFilter);
+                setMobileControlPanel(null);
+              }}
+              className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+            >
+              <option value="all">All</option>
+              <option value="needs_review">Needs Review</option>
+              <option value="missing">Missing</option>
+              <option value="reviewed">Reviewed</option>
+            </select>
+          ) : null}
+
+          {mobileControlPanel === "sort" ? (
+            <select
+              value={sortMode}
+              onChange={(event) => {
+                setSortMode(event.target.value as SortMode);
+                setMobileControlPanel(null);
+              }}
+              className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+            >
+              <option value="checklist">Checklist Order</option>
+              <option value="az">A-Z</option>
+            </select>
+          ) : null}
+        </div>
+        <div className="hidden gap-3 md:grid md:grid-cols-4">
           <input
             type="search"
             value={search}

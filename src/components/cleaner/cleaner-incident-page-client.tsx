@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -19,12 +19,14 @@ const INCIDENT_TYPES = [
 
 const SEVERITIES = ["low", "medium", "high", "critical"] as const;
 
-const INCIDENT_CONTEXTS = [
+  const INCIDENT_CONTEXTS = [
   { value: "routine_check", label: "Routine Check" },
   { value: "maintenance", label: "Maintenance" },
   { value: "audit", label: "Audit" },
   { value: "other", label: "Other" },
 ] as const;
+
+const FORM_STEPS = ["Details", "Photos", "Review"] as const;
 
 type IncidentContext = (typeof INCIDENT_CONTEXTS)[number]["value"];
 
@@ -91,10 +93,21 @@ export function CleanerIncidentPageClient() {
   const [useCustomItem, setUseCustomItem] = useState(false);
   const [customItemDescription, setCustomItemDescription] = useState("");
   const [quantityMissing, setQuantityMissing] = useState("1");
-  const [files, setFiles] = useState<FileList | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [activeStep, setActiveStep] = useState(0);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const photoPreviewUrls = useMemo(
+    () => files.map((file) => URL.createObjectURL(file)),
+    [files],
+  );
+
+  useEffect(() => {
+    return () => {
+      photoPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [photoPreviewUrls]);
 
   // --- derived values ---
   const selectedJob = useMemo(
@@ -161,17 +174,18 @@ export function CleanerIncidentPageClient() {
   function resetAll() {
     setTitle("");
     setDescription("");
-    setFiles(null);
+    setFiles([]);
     resetFormFields();
+    setActiveStep(0);
   }
 
   async function uploadIncidentPhotos(jobId: Id<"cleaningJobs">): Promise<Id<"photos">[]> {
-    if (!files || files.length === 0) {
+    if (files.length === 0) {
       return [];
     }
 
     const uploadedPhotoIds: Id<"photos">[] = [];
-    for (const file of Array.from(files)) {
+    for (const file of files) {
       const uploadUrl = await generateUploadUrl({});
       const uploadResponse = await fetch(uploadUrl, {
         method: "POST",
@@ -204,12 +218,12 @@ export function CleanerIncidentPageClient() {
   }
 
   async function uploadStandalonePhotos(): Promise<string[]> {
-    if (!files || files.length === 0) {
+    if (files.length === 0) {
       return [];
     }
 
     const storageIds: string[] = [];
-    for (const file of Array.from(files)) {
+    for (const file of files) {
       const uploadUrl = await generateUploadUrl({});
       const uploadResponse = await fetch(uploadUrl, {
         method: "POST",
@@ -240,86 +254,142 @@ export function CleanerIncidentPageClient() {
     );
   }
 
+  const isMissingItem = incidentType === "missing_item";
+  const isDamagedItem = incidentType === "damaged_item";
+
+  const canProceedDetails = (() => {
+    if (!resolvedPropertyId || !roomName.trim()) {
+      return false;
+    }
+    if (isMissingItem && !useCustomItem && !selectedInventoryItem) {
+      return false;
+    }
+    if (isMissingItem && useCustomItem && !customItemDescription.trim()) {
+      return false;
+    }
+    return true;
+  })();
+
+  async function submitIncident() {
+    setPending(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      if (!resolvedPropertyId) {
+        throw new Error(
+          reportMode === "job"
+            ? "Select a job before reporting an incident."
+            : "Select a property before reporting an incident.",
+        );
+      }
+      if (!roomName.trim()) {
+        throw new Error("Select a room before saving the incident.");
+      }
+
+      if (isMissingItem && !useCustomItem && !selectedInventoryItem) {
+        throw new Error("For missing item incidents, choose an inventory item or switch to custom item.");
+      }
+      if (isMissingItem && useCustomItem && !customItemDescription.trim()) {
+        throw new Error("Describe the missing item when using custom item mode.");
+      }
+      if (isDamagedItem && files.length === 0) {
+        throw new Error("Damage incidents require at least one photo.");
+      }
+
+      let photoIds: Id<"photos">[] = [];
+      let photoStorageIds: string[] = [];
+
+      if (reportMode === "job" && selectedJob) {
+        photoIds = await uploadIncidentPhotos(selectedJob._id as Id<"cleaningJobs">);
+      } else {
+        photoStorageIds = await uploadStandalonePhotos();
+      }
+
+      await createIncident({
+        propertyId: resolvedPropertyId,
+        cleaningJobId:
+          reportMode === "job" && selectedJob
+            ? (selectedJob._id as Id<"cleaningJobs">)
+            : undefined,
+        incidentType,
+        severity,
+        title: title.trim() || undefined,
+        description: description.trim() || undefined,
+        roomName: roomName.trim(),
+        inventoryItemId:
+          isMissingItem && !useCustomItem
+            ? (selectedInventoryItem?._id as Id<"inventoryItems"> | undefined)
+            : undefined,
+        quantityMissing: isMissingItem
+          ? Math.max(1, Number.parseInt(quantityMissing, 10) || 1)
+          : undefined,
+        customItemDescription:
+          isMissingItem && useCustomItem
+            ? customItemDescription.trim() || undefined
+            : undefined,
+        incidentContext: reportMode === "job" ? "in_job" : incidentContext,
+        photoIds,
+        ...(photoStorageIds.length > 0
+          ? { photoStorageIds: photoStorageIds as Id<"_storage">[] }
+          : {}),
+      });
+
+      setSuccess("Incident created.");
+      resetAll();
+    } catch (submitError) {
+      setError(getErrorMessage(submitError, "Unable to create incident."));
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
     <form
       className="space-y-4 rounded-md border border-[var(--border)] bg-[var(--card)] p-4"
       onSubmit={async (event) => {
         event.preventDefault();
-        setPending(true);
-        setError(null);
-        setSuccess(null);
-
-        try {
-          if (!resolvedPropertyId) {
-            throw new Error(
-              reportMode === "job"
-                ? "Select a job before reporting an incident."
-                : "Select a property before reporting an incident.",
-            );
-          }
-          if (!roomName.trim()) {
-            throw new Error("Select a room before saving the incident.");
-          }
-
-          const isMissingItem = incidentType === "missing_item";
-          const isDamagedItem = incidentType === "damaged_item";
-          if (isMissingItem && !useCustomItem && !selectedInventoryItem) {
-            throw new Error("For missing item incidents, choose an inventory item or switch to custom item.");
-          }
-          if (isMissingItem && useCustomItem && !customItemDescription.trim()) {
-            throw new Error("Describe the missing item when using custom item mode.");
-          }
-          if (isDamagedItem && (!files || files.length === 0)) {
-            throw new Error("Damage incidents require at least one photo.");
-          }
-
-          let photoIds: Id<"photos">[] = [];
-          let photoStorageIds: string[] = [];
-
-          if (reportMode === "job" && selectedJob) {
-            photoIds = await uploadIncidentPhotos(selectedJob._id as Id<"cleaningJobs">);
-          } else {
-            photoStorageIds = await uploadStandalonePhotos();
-          }
-
-          await createIncident({
-            propertyId: resolvedPropertyId,
-            cleaningJobId:
-              reportMode === "job" && selectedJob
-                ? (selectedJob._id as Id<"cleaningJobs">)
-                : undefined,
-            incidentType,
-            severity,
-            title: title.trim() || undefined,
-            description: description.trim() || undefined,
-            roomName: roomName.trim(),
-            inventoryItemId:
-              isMissingItem && !useCustomItem
-                ? (selectedInventoryItem?._id as Id<"inventoryItems"> | undefined)
-                : undefined,
-            quantityMissing: isMissingItem
-              ? Math.max(1, Number.parseInt(quantityMissing, 10) || 1)
-              : undefined,
-            customItemDescription:
-              isMissingItem && useCustomItem
-                ? customItemDescription.trim() || undefined
-                : undefined,
-            incidentContext: reportMode === "job" ? "in_job" : incidentContext,
-            photoIds,
-            ...(photoStorageIds.length > 0
-              ? { photoStorageIds: photoStorageIds as Id<"_storage">[] }
-              : {}),
-          });
-
-          setSuccess("Incident created.");
-          resetAll();
-        } catch (submitError) {
-          setError(getErrorMessage(submitError, "Unable to create incident."));
-        } finally {
-          setPending(false);
+        if (activeStep < FORM_STEPS.length - 1) {
+          return;
         }
+        await submitIncident();
       }}
     >
+      <div className="space-y-3">
+        <div className="flex items-center">
+          {FORM_STEPS.map((step, index) => (
+            <div key={step} className="flex flex-1 items-center">
+              <button
+                type="button"
+                onClick={() => {
+                  if (index <= activeStep) setActiveStep(index);
+                }}
+                disabled={index > activeStep}
+                className="flex items-center gap-2 disabled:cursor-default"
+              >
+                <span
+                  className={`flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold ${
+                    index === activeStep
+                      ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
+                      : index < activeStep
+                        ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]"
+                        : "border-[var(--border)] text-[var(--muted-foreground)]"
+                  }`}
+                >
+                  {index + 1}
+                </span>
+                <span className="text-sm font-medium">{step}</span>
+              </button>
+              {index < FORM_STEPS.length - 1 ? (
+                <div className="mx-2 h-px flex-1 bg-[var(--border)]" />
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {activeStep === 0 ? (
+        <>
       {/* Mode selector */}
       <div>
         <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Report Mode</label>
@@ -578,50 +648,138 @@ export function CleanerIncidentPageClient() {
           </div>
         </section>
       ) : null}
+        </>
+      ) : null}
 
-      {/* Title + description */}
-      <div>
-        <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Title (optional)</label>
-        <input
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-          placeholder="Broken lamp"
-        />
+      {activeStep === 1 ? (
+        <>
+          <div>
+            <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Title (optional)</label>
+            <input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+              placeholder="Broken lamp"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Additional notes</label>
+            <textarea
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              rows={4}
+              className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+              placeholder="Add details"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="mb-1 block text-xs text-[var(--muted-foreground)]">
+              Photos {incidentType === "damaged_item" ? "(required for damage)" : "(optional)"}
+            </label>
+            <label className="flex min-h-28 cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed border-[var(--border)] bg-[var(--background)] px-4 py-4 text-sm text-[var(--muted-foreground)] transition hover:border-[var(--primary)] hover:text-[var(--primary)]">
+              <span className="text-base font-medium">+ Add photos</span>
+              <span className="text-xs">Tap to open camera or gallery</span>
+              <input
+                type="file"
+                multiple
+                accept="image/*"
+                capture="environment"
+                onChange={(event) => {
+                  const nextFiles = Array.from(event.target.files ?? []);
+                  if (nextFiles.length === 0) return;
+                  setFiles((current) => [...current, ...nextFiles]);
+                  event.currentTarget.value = "";
+                }}
+                className="sr-only"
+              />
+            </label>
+            {files.length > 0 ? (
+              <>
+                <p className="text-xs text-[var(--muted-foreground)]">{files.length} photo(s) selected</p>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {photoPreviewUrls.map((previewUrl, index) => (
+                    <div key={previewUrl} className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border border-[var(--border)]">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={previewUrl} alt={`Incident photo ${index + 1}`} className="h-full w-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFiles((current) => current.filter((_, fileIndex) => fileIndex !== index));
+                        }}
+                        className="absolute right-1 top-1 rounded bg-black/65 px-1 text-[10px] text-white"
+                        aria-label={`Remove photo ${index + 1}`}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+
+      {activeStep === 2 ? (
+        <section className="space-y-3 rounded-md border border-[var(--border)] bg-[var(--background)] p-3">
+          <h3 className="text-sm font-semibold">Review Incident</h3>
+          <div className="space-y-1 text-sm">
+            <p><span className="text-[var(--muted-foreground)]">Mode:</span> {reportMode === "job" ? "Linked to Job" : "Standalone"}</p>
+            <p><span className="text-[var(--muted-foreground)]">Type:</span> {formatLabel(incidentType)}</p>
+            <p><span className="text-[var(--muted-foreground)]">Severity:</span> {formatLabel(severity)}</p>
+            <p><span className="text-[var(--muted-foreground)]">Room:</span> {roomName || "—"}</p>
+            <p><span className="text-[var(--muted-foreground)]">Photos:</span> {files.length}</p>
+            {title.trim() ? <p><span className="text-[var(--muted-foreground)]">Title:</span> {title.trim()}</p> : null}
+          </div>
+        </section>
+      ) : null}
+
+      <div className="flex items-center gap-2 pt-2">
+        <button
+          type="button"
+          onClick={() => {
+            if (activeStep === 0) {
+              window.history.back();
+              return;
+            }
+            setActiveStep((current) => Math.max(0, current - 1));
+          }}
+          className="rounded-md border border-[var(--border)] px-4 py-2 text-sm font-medium"
+        >
+          {activeStep === 0 ? "Cancel" : "Back"}
+        </button>
+
+        {activeStep < FORM_STEPS.length - 1 ? (
+          <button
+            type="button"
+            onClick={() => {
+              setError(null);
+              if (activeStep === 0 && !canProceedDetails) {
+                setError("Complete the required incident details before continuing.");
+                return;
+              }
+              if (activeStep === 1 && isDamagedItem && files.length === 0) {
+                setError("Damage incidents require at least one photo.");
+                return;
+              }
+              setActiveStep((current) => Math.min(FORM_STEPS.length - 1, current + 1));
+            }}
+            className="flex-1 rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)]"
+          >
+            Next
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={pending || (reportMode === "job" && jobs === undefined)}
+            className="flex-1 rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] disabled:opacity-50"
+          >
+            {pending ? "Saving..." : "Save Issue"}
+          </button>
+        )}
       </div>
-
-      <div>
-        <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Additional notes</label>
-        <textarea
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-          rows={4}
-          className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-          placeholder="Add details"
-        />
-      </div>
-
-      {/* Photos */}
-      <div>
-        <label className="mb-1 block text-xs text-[var(--muted-foreground)]">
-          Photos {incidentType === "damaged_item" ? "(required for damage)" : "(optional)"}
-        </label>
-        <input
-          type="file"
-          multiple
-          accept="image/*"
-          onChange={(event) => setFiles(event.target.files)}
-          className="w-full text-sm"
-        />
-      </div>
-
-      <button
-        type="submit"
-        disabled={pending || (reportMode === "job" && jobs === undefined)}
-        className="rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] disabled:opacity-50"
-      >
-        {pending ? "Saving..." : "Save Issue"}
-      </button>
 
       {error ? <p className="text-xs text-[var(--destructive)]">{error}</p> : null}
       {success ? <p className="text-xs text-emerald-300">{success}</p> : null}
