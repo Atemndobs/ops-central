@@ -59,7 +59,6 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
   );
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
   const setThemePreferenceRef = useRef(setThemePreference);
-  setThemePreferenceRef.current = setThemePreference;
   const [isOnline, setIsOnline] = useState(true);
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
@@ -78,8 +77,23 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
 
   // Sync localTheme from localStorage after hydration to avoid SSR mismatch
   useEffect(() => {
-    setLocalTheme(readClientThemePreference());
-  }, []);
+    const nextTheme = readClientThemePreference();
+    if (nextTheme === localTheme) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      setLocalTheme(nextTheme);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [localTheme]);
+
+  useEffect(() => {
+    setThemePreferenceRef.current = setThemePreference;
+  }, [setThemePreference]);
 
   useEffect(() => {
     const updateOnlineState = () => setIsOnline(window.navigator.onLine);
@@ -209,7 +223,7 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   return (
-    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+    <div className="flex h-[100dvh] flex-col overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
       <header className="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--card)]/95 px-4 py-3 backdrop-blur">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -278,9 +292,14 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
         ) : null}
       </header>
 
-      <main className="mx-auto w-full max-w-2xl px-4 pb-24 pt-4">{children}</main>
+      <main className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-4 pb-28 pt-4">
+        {children}
+      </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--border)] bg-[var(--card)]/95 backdrop-blur">
+      <nav
+        className="z-20 border-t border-[var(--border)] bg-[var(--card)]/95 backdrop-blur"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0px)" }}
+      >
         <ul className="mx-auto grid max-w-2xl grid-cols-4">
           {NAV_ITEMS.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
