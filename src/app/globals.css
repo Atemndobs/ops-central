@@ -50,6 +50,15 @@
   select:not([multiple]):not([size])[class]::-ms-expand {
     display: none;
   }
+
+  /* Prevent iOS Safari/PWA input-focus auto-zoom on touch devices. */
+  @media (pointer: coarse) {
+    input[class],
+    select[class],
+    textarea[class] {
+      font-size: 16px !important;
+    }
+  }
 }
 
 .dark {
