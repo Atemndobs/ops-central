@@ -13,8 +13,11 @@ export default function AuthLayout({
   const isSignIn = !isSignUp;
 
   return (
+    <>
+      {/* Force black body/html to prevent white bleed on mobile overscroll */}
+      <style>{`html, body { background: #000 !important; overflow: hidden; }`}</style>
     <div
-      className="relative min-h-[100dvh] overflow-hidden bg-black text-white"
+      className="fixed inset-0 overflow-hidden bg-black text-white"
       style={{ colorScheme: "dark" }}
     >
       {/* Background image — same as mobile app */}
@@ -29,7 +32,7 @@ export default function AuthLayout({
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/30 to-black/80" />
 
       {/* Full-viewport glass card — matches mobile's edge-to-edge BlurView */}
-      <div className="relative flex min-h-[100dvh] flex-col items-center justify-center bg-[rgba(10,10,10,0.6)] px-8 pt-20 pb-16 backdrop-blur-[80px]">
+      <div className="relative flex h-full flex-col items-center justify-center overflow-y-auto bg-[rgba(10,10,10,0.6)] px-8 pt-20 pb-16 backdrop-blur-[80px]">
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.04] via-transparent to-black/20" />
 
         {/* Pill tab toggle — matches mobile's tabContainer */}
@@ -60,5 +63,6 @@ export default function AuthLayout({
         <div className="relative w-full max-w-[480px]">{children}</div>
       </div>
     </div>
+    </>
   );
 }
