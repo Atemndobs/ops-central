@@ -63,9 +63,9 @@ export function CleanerHomeClient() {
   return (
     <div className="space-y-4">
       <section className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
-        <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">Today</p>
-        <h2 className="mt-1 text-xl font-semibold">{activeJobs.length} active job(s)</h2>
-        <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+        <p className="text-sm uppercase tracking-wide text-[var(--muted-foreground)]">Today</p>
+        <h2 className="mt-1 text-2xl font-semibold">{activeJobs.length} active job(s)</h2>
+        <p className="mt-1 text-base text-[var(--muted-foreground)]">
           {completedJobs.length} completed job(s) in your current feed.
         </p>
       </section>
@@ -80,13 +80,13 @@ export function CleanerHomeClient() {
             <li key={job._id} className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold">{job.property?.name ?? "Unknown property"}</p>
-                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                  <p className="text-base font-semibold">{job.property?.name ?? "Unknown property"}</p>
+                  <p className="mt-1 text-sm text-[var(--muted-foreground)]">
                     {job.property?.address ?? "No address"}
                   </p>
                 </div>
                 <span
-                  className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                  className={`rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${
                     STATUS_COLOR[job.status] ?? "border-[var(--border)]"
                   }`}
                 >
@@ -94,12 +94,12 @@ export function CleanerHomeClient() {
                 </span>
               </div>
 
-              <p className="mt-3 text-xs text-[var(--muted-foreground)]">
+              <p className="mt-3 text-sm text-[var(--muted-foreground)]">
                 Scheduled: <span className="text-[var(--foreground)]">{formatDate(job.scheduledStartAt)}</span>
               </p>
 
               {job.notesForCleaner ? (
-                <p className="mt-2 rounded-md bg-[var(--background)] p-2 text-xs text-[var(--muted-foreground)]">
+                <p className="mt-2 rounded-md bg-[var(--background)] p-2 text-sm text-[var(--muted-foreground)]">
                   {job.notesForCleaner}
                 </p>
               ) : null}
@@ -107,13 +107,13 @@ export function CleanerHomeClient() {
               <div className="mt-3 flex gap-2">
                 <Link
                   href={`/cleaner/jobs/${job._id}`}
-                  className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs"
+                  className="rounded-md border border-[var(--border)] px-3 py-2 text-sm"
                 >
                   Open Details
                 </Link>
                 <Link
                   href={`/cleaner/jobs/${job._id}/active`}
-                  className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-foreground)]"
+                  className="rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-[var(--primary-foreground)]"
                 >
                   {job.status === "in_progress" ? "Resume" : "Start"}
                 </Link>

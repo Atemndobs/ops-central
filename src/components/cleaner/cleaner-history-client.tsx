@@ -43,12 +43,12 @@ export function CleanerHistoryClient() {
     <ul className="space-y-3">
       {history.map((job) => (
         <li key={job._id} className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
-          <p className="text-sm font-semibold">{job.property?.name ?? "Unknown property"}</p>
-          <p className="mt-1 text-xs text-[var(--muted-foreground)]">{formatDate(job.scheduledStartAt)}</p>
+          <p className="text-base font-semibold">{job.property?.name ?? "Unknown property"}</p>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">{formatDate(job.scheduledStartAt)}</p>
           <p className="mt-1 text-xs uppercase tracking-wide text-[var(--muted-foreground)]">{job.status}</p>
           <Link
             href={`/cleaner/jobs/${job._id}`}
-            className="mt-3 inline-block rounded-md border border-[var(--border)] px-3 py-1.5 text-xs"
+            className="mt-3 inline-block rounded-md border border-[var(--border)] px-3 py-2 text-sm"
           >
             View
           </Link>

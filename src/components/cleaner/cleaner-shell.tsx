@@ -223,36 +223,36 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   return (
-    <div className="flex h-[100dvh] flex-col overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
-      <header className="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--card)]/95 px-4 py-3 backdrop-blur">
-        <div className="flex items-center justify-between">
+    <div className="relative h-[100svh] overflow-hidden bg-[var(--background)] text-[15px] text-[var(--foreground)]">
+      <header className="fixed inset-x-0 top-0 z-40 border-b border-[var(--border)] bg-[var(--card)]/95 px-4 py-3.5 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-2xl items-center justify-between">
           <div className="flex items-center gap-3">
             <Image
               src="https://chezsoistays.com/wp-content/uploads/2026/02/cropped-chezsoi_favicon@2x.png"
               alt="ChezSoiCleaning logo"
-              width={32}
-              height={32}
-              className="h-8 w-8 rounded-md border border-[var(--border)]"
+              width={36}
+              height={36}
+              className="h-9 w-9 rounded-md border border-[var(--border)]"
               priority
             />
             <div>
-              <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">ChezSoiCleaning</p>
-              <h1 className="text-base font-semibold">{title}</h1>
+              <p className="text-sm uppercase tracking-wide text-[var(--muted-foreground)]">ChezSoiCleaning</p>
+              <h1 className="text-lg font-semibold">{title}</h1>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 rounded-md border border-[var(--border)] px-2 py-1 text-xs">
-              {isOnline ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
+            <div className="flex items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1 text-sm">
+              {isOnline ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
               <span>{isOnline ? "Online" : "Offline"}</span>
             </div>
             <button
               type="button"
               onClick={toggleTheme}
-              className="rounded-md border border-[var(--border)] p-2 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+              className="rounded-md border border-[var(--border)] p-2.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
               aria-label={isDarkMode ? "Switch to light theme" : "Switch to dark theme"}
               title={isDarkMode ? "Light Mode" : "Dark Mode"}
             >
-              {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </button>
             <button
               type="button"
@@ -260,45 +260,51 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
                 await signOut();
                 window.location.href = "/sign-in";
               }}
-              className="rounded-md border border-[var(--border)] p-2 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+              className="rounded-md border border-[var(--border)] p-2.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
               aria-label="Sign out"
               title="Sign out"
             >
-              <LogOut className="h-4 w-4" />
+              <LogOut className="h-5 w-5" />
             </button>
           </div>
         </div>
-        <div className="mt-3">
-          <InstallPrompt />
-        </div>
-        {updateReady ? (
-          <div className="mt-2 rounded-md border border-blue-500/60 bg-blue-500/10 p-2 text-xs text-blue-100">
-            <p>A new app version is ready.</p>
-            <button
-              type="button"
-              className="mt-2 rounded-md bg-blue-500 px-2 py-1 font-semibold text-white"
-              onClick={() => {
-                if (!registration?.waiting) {
-                  window.location.reload();
-                  return;
-                }
-
-                registration.waiting.postMessage({ type: "SKIP_WAITING" });
-              }}
-            >
-              Update now
-            </button>
-          </div>
-        ) : null}
       </header>
 
-      <main className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-4 pb-28 pt-4">
-        {children}
+      <main
+        className="fixed inset-x-0 overflow-y-auto px-4"
+        style={{
+          top: "78px",
+          bottom: "calc(84px + max(env(safe-area-inset-bottom), 6px))",
+        }}
+      >
+        <div className="mx-auto w-full max-w-2xl pb-4 pt-4">
+          <InstallPrompt />
+          {updateReady ? (
+            <div className="mt-2 rounded-md border border-blue-500/60 bg-blue-500/10 p-2 text-xs text-blue-100">
+              <p>A new app version is ready.</p>
+              <button
+                type="button"
+                className="mt-2 rounded-md bg-blue-500 px-2 py-1 font-semibold text-white"
+                onClick={() => {
+                  if (!registration?.waiting) {
+                    window.location.reload();
+                    return;
+                  }
+
+                  registration.waiting.postMessage({ type: "SKIP_WAITING" });
+                }}
+              >
+                Update now
+              </button>
+            </div>
+          ) : null}
+          {children}
+        </div>
       </main>
 
       <nav
-        className="z-20 border-t border-[var(--border)] bg-[var(--card)]/95 backdrop-blur"
-        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0px)" }}
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--border)] bg-[var(--card)]/95 backdrop-blur"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 6px)" }}
       >
         <ul className="mx-auto grid max-w-2xl grid-cols-4">
           {NAV_ITEMS.map((item) => {
@@ -307,11 +313,11 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className={`flex flex-col items-center justify-center gap-1 px-2 py-3 text-xs ${
+                  className={`flex min-h-[74px] flex-col items-center justify-center gap-1.5 px-2 py-3.5 text-[13px] font-medium ${
                     isActive ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]"
                   }`}
                 >
-                  <item.icon className="h-4 w-4" />
+                  <item.icon className="h-5 w-5" />
                   <span>{item.label}</span>
                 </Link>
               </li>

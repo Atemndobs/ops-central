@@ -13,17 +13,23 @@ import {
 import {
   Award,
   Download,
+  Filter,
   LayoutGrid,
   List,
   Loader2,
   Plus,
   Search,
   TrendingUp,
+  Users,
 } from "lucide-react";
 
 type UserRole = "cleaner" | "manager" | "property_ops" | "admin";
 type CompanyMemberRole = "cleaner" | "manager" | "owner";
 type AvailabilityFilter = "all" | "active" | "working" | "available" | "off";
+type TeamViewMode = "card" | "list";
+type MobileFilterPanel = "search" | "role" | "status" | null;
+
+const TEAM_VIEW_MODE_STORAGE_KEY = "opscentral.team.defaultViewMode";
 
 type MemberActionTarget = {
   userId: Id<"users">;
@@ -40,7 +46,8 @@ export default function TeamPage() {
   const [roleFilter, setRoleFilter] = useState<"all" | UserRole>("all");
   const [availabilityFilter, setAvailabilityFilter] =
     useState<AvailabilityFilter>("all");
-  const [viewMode, setViewMode] = useState<"card" | "list">("card");
+  const [viewMode, setViewMode] = useState<TeamViewMode>("list");
+  const [mobileFilterPanel, setMobileFilterPanel] = useState<MobileFilterPanel>(null);
   const [openMenuForUserId, setOpenMenuForUserId] = useState<Id<"users"> | null>(
     null,
   );
@@ -132,6 +139,31 @@ export default function TeamPage() {
     document.addEventListener("mousedown", onPointerDown);
     return () => document.removeEventListener("mousedown", onPointerDown);
   }, [openMenuForUserId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const storedViewMode = window.localStorage.getItem(
+      TEAM_VIEW_MODE_STORAGE_KEY,
+    ) as TeamViewMode | null;
+    if (storedViewMode === "card" || storedViewMode === "list") {
+      setViewMode(storedViewMode);
+      return;
+    }
+    const mobileDefault: TeamViewMode = window.matchMedia("(max-width: 767px)").matches
+      ? "list"
+      : "card";
+    setViewMode(mobileDefault);
+  }, []);
+
+  function setViewPreference(nextMode: TeamViewMode) {
+    setViewMode(nextMode);
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(TEAM_VIEW_MODE_STORAGE_KEY, nextMode);
+  }
 
   const members = useMemo(() => {
     const combined = [...(teamMetrics?.members ?? [])];
@@ -517,20 +549,22 @@ export default function TeamPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-end justify-between gap-4">
+    <div className="min-w-0 space-y-4 overflow-x-hidden md:space-y-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-display">Team Management</h1>
-          <p className="mt-2 text-[var(--muted-foreground)]">
+          <h1 className="text-4xl font-semibold tracking-tight text-[var(--foreground)] md:text-display">
+            Team Management
+          </h1>
+          <p className="mt-2 hidden text-[var(--muted-foreground)] md:block">
             Monitor performance and manage cleaner assignments.
           </p>
         </div>
         {canManageTeam ? (
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
             <button
               onClick={handleHospitableImport}
               disabled={isImportingHospitable}
-              className="inline-flex items-center gap-2 rounded-none border border-[var(--border)] bg-[var(--card)] px-4 py-2 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--accent)] disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-none border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--accent)] disabled:opacity-60 sm:w-auto sm:px-4"
             >
               {isImportingHospitable ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -541,7 +575,7 @@ export default function TeamPage() {
             </button>
             <button
               onClick={() => setIsCreateOpen(true)}
-              className="inline-flex items-center gap-2 rounded-none bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-none bg-[var(--primary)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90 sm:w-auto sm:px-4"
             >
               <Plus className="h-4 w-4" />
               Add Team Member
@@ -558,21 +592,117 @@ export default function TeamPage() {
 
       <div className="grid gap-8 xl:grid-cols-12">
         <div className="xl:col-span-8 space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+            <div className="space-y-2 md:hidden">
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  className={`inline-flex items-center justify-center rounded-none border p-2 ${
+                    mobileFilterPanel === "search"
+                      ? "bg-[var(--accent)] text-[var(--foreground)]"
+                      : "bg-[var(--card)] text-[var(--muted-foreground)]"
+                  }`}
+                  onClick={() =>
+                    setMobileFilterPanel((current) =>
+                      current === "search" ? null : "search",
+                    )
+                  }
+                  aria-label="Open search"
+                >
+                  <Search className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  className={`inline-flex items-center justify-center rounded-none border p-2 ${
+                    mobileFilterPanel === "role"
+                      ? "bg-[var(--accent)] text-[var(--foreground)]"
+                      : "bg-[var(--card)] text-[var(--muted-foreground)]"
+                  }`}
+                  onClick={() =>
+                    setMobileFilterPanel((current) =>
+                      current === "role" ? null : "role",
+                    )
+                  }
+                  aria-label="Open role filter"
+                >
+                  <Users className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  className={`inline-flex items-center justify-center rounded-none border p-2 ${
+                    mobileFilterPanel === "status"
+                      ? "bg-[var(--accent)] text-[var(--foreground)]"
+                      : "bg-[var(--card)] text-[var(--muted-foreground)]"
+                  }`}
+                  onClick={() =>
+                    setMobileFilterPanel((current) =>
+                      current === "status" ? null : "status",
+                    )
+                  }
+                  aria-label="Open status filter"
+                >
+                  <Filter className="h-4 w-4" />
+                </button>
+              </div>
+              {mobileFilterPanel === "search" ? (
+                <div className="flex items-center gap-2 rounded-none border bg-[var(--card)] px-3 py-1.5">
+                  <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
+                  <input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Search team"
+                    autoFocus
+                    className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)]"
+                  />
+                </div>
+              ) : null}
+              {mobileFilterPanel === "role" ? (
+                <select
+                  value={roleFilter}
+                  onChange={(event) => {
+                    setRoleFilter(event.target.value as typeof roleFilter);
+                    setMobileFilterPanel(null);
+                  }}
+                  className="w-full min-w-0 rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm outline-none"
+                >
+                  <option value="all">All Roles</option>
+                  <option value="admin">Admin</option>
+                  <option value="cleaner">Cleaner</option>
+                  <option value="manager">Manager</option>
+                  <option value="property_ops">Property Ops</option>
+                </select>
+              ) : null}
+              {mobileFilterPanel === "status" ? (
+                <select
+                  value={availabilityFilter}
+                  onChange={(event) => {
+                    setAvailabilityFilter(event.target.value as AvailabilityFilter);
+                    setMobileFilterPanel(null);
+                  }}
+                  className="w-full min-w-0 rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm outline-none"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="active">Active Now</option>
+                  <option value="working">Working</option>
+                  <option value="available">Available</option>
+                  <option value="off">Off</option>
+                </select>
+              ) : null}
+            </div>
+            <div className="hidden min-w-0 grid-cols-1 gap-2 md:flex md:flex-wrap md:items-center">
               <div className="flex items-center gap-2 rounded-none border bg-[var(--card)] px-3 py-1.5">
                 <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
                 <input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search team"
-                  className="w-44 bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)]"
+                  className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)] md:w-44"
                 />
               </div>
               <select
                 value={roleFilter}
                 onChange={(event) => setRoleFilter(event.target.value as typeof roleFilter)}
-                className="rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm outline-none"
+                className="w-full min-w-0 rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm outline-none md:w-auto"
               >
                 <option value="all">All Roles</option>
                 <option value="admin">Admin</option>
@@ -585,7 +715,7 @@ export default function TeamPage() {
                 onChange={(event) =>
                   setAvailabilityFilter(event.target.value as AvailabilityFilter)
                 }
-                className="rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm outline-none"
+                className="w-full min-w-0 rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm outline-none md:w-auto"
               >
                 <option value="all">All Statuses</option>
                 <option value="active">Active Now</option>
@@ -594,11 +724,11 @@ export default function TeamPage() {
                 <option value="off">Off</option>
               </select>
             </div>
-            <div className="inline-flex overflow-hidden rounded-none border bg-[var(--card)]">
+            <div className="inline-flex w-full overflow-hidden rounded-none border bg-[var(--card)] sm:w-auto">
               <button
                 type="button"
-                onClick={() => setViewMode("card")}
-                className={`inline-flex items-center gap-2 px-3 py-1.5 text-sm ${
+                onClick={() => setViewPreference("card")}
+                className={`inline-flex flex-1 items-center justify-center gap-2 px-3 py-1.5 text-sm sm:flex-none ${
                   viewMode === "card"
                     ? "bg-[var(--accent)] text-[var(--foreground)]"
                     : "text-[var(--muted-foreground)]"
@@ -609,8 +739,8 @@ export default function TeamPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setViewMode("list")}
-                className={`inline-flex items-center gap-2 border-l px-3 py-1.5 text-sm ${
+                onClick={() => setViewPreference("list")}
+                className={`inline-flex flex-1 items-center justify-center gap-2 border-l px-3 py-1.5 text-sm sm:flex-none ${
                   viewMode === "list"
                     ? "bg-[var(--accent)] text-[var(--foreground)]"
                     : "text-[var(--muted-foreground)]"
@@ -622,7 +752,7 @@ export default function TeamPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid grid-cols-4 gap-2 md:gap-4">
             <StatBox
               label="Total Cleaners"
               value={summary.totalCleaners}
@@ -807,8 +937,96 @@ export default function TeamPage() {
               ))}
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-none border bg-[var(--card)]">
-              <table className="w-full min-w-[760px] text-left text-sm">
+            <div className="rounded-none border bg-[var(--card)]">
+              <div className="divide-y md:hidden">
+                {members.map((member) => (
+                  <article key={member._id} className="relative p-3">
+                    <div className="flex items-start gap-3">
+                      <ProfileImage
+                        avatarUrl={member.avatarUrl}
+                        label={member.name || member.email || "Member"}
+                        className="h-10 w-10"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-[var(--foreground)]">
+                          {member.name || member.email || "Unknown"}
+                        </p>
+                        <p className="mt-0.5 text-[11px] uppercase tracking-wide text-[var(--muted-foreground)]">
+                          {formatRoleLabel(member.role)} · {member.availability}
+                        </p>
+                      </div>
+                      <div className="relative" data-team-member-menu>
+                        <button
+                          type="button"
+                          className="rounded-md border px-2 py-1 text-sm leading-none"
+                          onClick={() =>
+                            setOpenMenuForUserId((current) =>
+                              current === member._id ? null : member._id,
+                            )
+                          }
+                          aria-haspopup="menu"
+                          aria-expanded={openMenuForUserId === member._id}
+                        >
+                          ⋮
+                        </button>
+                        {openMenuForUserId === member._id ? (
+                          <div className="absolute right-0 top-9 z-20 w-64 rounded-none border bg-[var(--card)] p-2 shadow-lg">
+                            <div className="space-y-1 border-b pb-2 text-xs text-[var(--muted-foreground)]">
+                              <p className="truncate">{member.email || "—"}</p>
+                              <p className="truncate">
+                                {member.companyName
+                                  ? `${member.companyName}${
+                                      member.companyMemberRole
+                                        ? ` · ${formatCompanyRoleLabel(member.companyMemberRole)}`
+                                        : ""
+                                    }`
+                                  : "No company assigned"}
+                              </p>
+                              <p>Quality: {formatQualityScore(member.qualityScore)}</p>
+                              <p>On-Time: {formatPercent(member.onTimePct)}</p>
+                              <p>Assignments: {member.activeAssignmentsCount}</p>
+                            </div>
+                            {canManageTeam ? (
+                              <div className="mt-2 grid gap-1">
+                                <button
+                                  type="button"
+                                  className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
+                                  onClick={() => openRoleEditor(toMemberActionTarget(member))}
+                                >
+                                  Assign Role
+                                </button>
+                                <button
+                                  type="button"
+                                  className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
+                                  onClick={() => openCompanyEditor(toMemberActionTarget(member))}
+                                >
+                                  Assign Company
+                                </button>
+                                <button
+                                  type="button"
+                                  className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
+                                  onClick={() => openJobEditor(toMemberActionTarget(member))}
+                                >
+                                  Assign Job
+                                </button>
+                                <button
+                                  type="button"
+                                  className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
+                                  onClick={() => openPropertyEditor(toMemberActionTarget(member))}
+                                >
+                                  Assign Property
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full min-w-[760px] text-left text-sm">
                 <thead className="bg-[var(--accent)] text-xs uppercase tracking-wider text-[var(--muted-foreground)]">
                   <tr>
                     <th className="px-4 py-3 font-medium">Member</th>
@@ -899,6 +1117,7 @@ export default function TeamPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
           </div>
@@ -1377,10 +1596,14 @@ function StatBox({
 }) {
   const content = (
     <>
-      <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">{label}</p>
-      <p className={`mt-2 text-3xl font-semibold ${tone ?? "text-[var(--foreground)]"}`}>{value}</p>
+      <p className="text-[9px] font-medium uppercase tracking-wide text-[var(--muted-foreground)] md:text-[11px] md:tracking-wider">
+        {label}
+      </p>
+      <p className={`mt-1 text-lg font-semibold md:mt-2 md:text-3xl ${tone ?? "text-[var(--foreground)]"}`}>
+        {value}
+      </p>
       {onClick ? (
-        <p className="mt-3 text-xs font-semibold text-[var(--primary)] opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
+        <p className="mt-2 hidden text-xs font-semibold text-[var(--primary)] opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100 md:block">
           View details
         </p>
       ) : null}
@@ -1392,7 +1615,7 @@ function StatBox({
       <button
         type="button"
         onClick={onClick}
-        className="group rounded-none border bg-[var(--card)] p-4 text-left transition hover:border-[var(--primary)]/40 hover:bg-[var(--accent)]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
+        className="group rounded-none border bg-[var(--card)] p-2 text-left transition hover:border-[var(--primary)]/40 hover:bg-[var(--accent)]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40 md:p-4"
       >
         {content}
       </button>
@@ -1400,7 +1623,7 @@ function StatBox({
   }
 
   return (
-    <div className="rounded-none border bg-[var(--card)] p-4">
+    <div className="rounded-none border bg-[var(--card)] p-2 md:p-4">
       {content}
     </div>
   );
