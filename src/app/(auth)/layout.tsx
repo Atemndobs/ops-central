@@ -1,75 +1,63 @@
-import Image from "next/image";
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 export default function AuthLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+  const isSignUp = pathname?.startsWith("/sign-up");
+  const isSignIn = !isSignUp;
+
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900" style={{ colorScheme: "light" }}>
-      <div className="flex min-h-screen flex-col lg:flex-row">
-        {/* Brand panel */}
-        <div className="relative flex flex-col items-center justify-center bg-white px-8 py-12 lg:w-[45%] lg:py-0">
-          {/* Subtle gradient overlay */}
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-blue-50 via-transparent to-indigo-50 opacity-60" />
+    <div
+      className="relative min-h-[100dvh] overflow-hidden bg-black text-white"
+      style={{ colorScheme: "dark" }}
+    >
+      {/* Background image — same as mobile app */}
+      <div
+        className="pointer-events-none absolute inset-0 bg-cover bg-center"
+        style={{
+          backgroundImage:
+            "url('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop')",
+        }}
+      />
+      {/* Gradient overlay — matches mobile: from-black/30 to-black/80 */}
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/30 to-black/80" />
 
-          {/* Dot pattern */}
-          <div
-            className="pointer-events-none absolute inset-0 opacity-[0.04]"
-            style={{
-              backgroundImage:
-                "radial-gradient(circle, oklch(0.4 0 0) 1px, transparent 1px)",
-              backgroundSize: "24px 24px",
-            }}
-          />
+      {/* Full-viewport glass card — matches mobile's edge-to-edge BlurView */}
+      <div className="relative flex min-h-[100dvh] flex-col items-center justify-center bg-[rgba(10,10,10,0.6)] px-8 pt-20 pb-16 backdrop-blur-[80px]">
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.04] via-transparent to-black/20" />
 
-          <div className="relative z-10 flex max-w-sm flex-col items-center text-center lg:items-start lg:text-left">
-            {/* Logo */}
-            <div className="mb-8 flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[oklch(0.623_0.214_259)] text-white">
-                <Image
-                  src="/chezsoi-logo.svg"
-                  alt="ChezSoi"
-                  width={32}
-                  height={32}
-                  className="invert"
-                />
-              </div>
-              <span className="text-2xl font-semibold tracking-tight text-gray-900">
-                ChezSoi
-              </span>
-            </div>
-
-            {/* Decorative stat chips — desktop only */}
-            <div className="mt-10 hidden gap-3 lg:flex">
-              <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5">
-                <p className="text-xs font-medium text-gray-500">
-                  Scheduling
-                </p>
-                <p className="text-sm font-semibold text-gray-900">Automated</p>
-              </div>
-              <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5">
-                <p className="text-xs font-medium text-gray-500">
-                  Inspections
-                </p>
-                <p className="text-sm font-semibold text-gray-900">Real-time</p>
-              </div>
-              <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5">
-                <p className="text-xs font-medium text-gray-500">
-                  Team Ops
-                </p>
-                <p className="text-sm font-semibold text-gray-900">Unified</p>
-              </div>
-            </div>
-          </div>
+        {/* Pill tab toggle — matches mobile's tabContainer */}
+        <div className="relative mb-8 inline-flex rounded-full border border-white/5 bg-black/50 p-1">
+          <Link
+            href="/sign-up"
+            className={`rounded-full px-6 py-2.5 text-sm font-semibold transition ${
+              isSignUp
+                ? "border border-white/10 bg-white/10 text-white"
+                : "text-white/50 hover:bg-white/10 hover:text-white"
+            }`}
+          >
+            Sign up
+          </Link>
+          <Link
+            href="/sign-in"
+            className={`rounded-full px-6 py-2.5 text-sm font-semibold transition ${
+              isSignIn
+                ? "border border-white/10 bg-white/10 text-white"
+                : "text-white/50 hover:bg-white/10 hover:text-white"
+            }`}
+          >
+            Sign in
+          </Link>
         </div>
 
-        {/* Auth widget panel */}
-        <div className="flex flex-1 items-start justify-center px-4 pt-8 lg:items-center lg:px-12 lg:pt-0">
-          <div className="w-full max-w-[440px]">
-            {children}
-          </div>
-        </div>
+        {/* Auth form container */}
+        <div className="relative w-full max-w-[480px]">{children}</div>
       </div>
     </div>
   );

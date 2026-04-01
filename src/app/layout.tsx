@@ -3,7 +3,6 @@ import { ClerkThemeProvider } from "@/components/providers/clerk-theme-provider"
 import { ConvexClientProvider } from "@/components/providers/convex-provider";
 import { ClerkUserSync } from "@/components/providers/clerk-user-sync";
 import { ToastProvider } from "@/components/ui/toast-provider";
-import { GlobalAuthHeader } from "@/components/layout/global-auth-header";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -27,7 +26,6 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased">
         <ClerkThemeProvider>
-          <GlobalAuthHeader />
           <ConvexClientProvider>
             <ClerkUserSync />
             <ToastProvider>{children}</ToastProvider>

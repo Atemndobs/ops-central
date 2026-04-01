@@ -1,6 +1,6 @@
 "use client";
 
-import { useAuth, useUser } from "@clerk/nextjs";
+import { UserButton, useAuth, useUser } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -251,6 +251,12 @@ export function Header() {
               </div>
             ) : null}
           </div>
+
+          {isSignedIn ? (
+            <div className="flex items-center">
+              <UserButton signInUrl="/sign-in" />
+            </div>
+          ) : null}
 
           {canViewSettings ? (
             <Link
