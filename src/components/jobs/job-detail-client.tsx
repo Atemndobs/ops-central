@@ -318,6 +318,11 @@ export function JobDetailClient({ id }: { id: string }) {
     currentRole === "admin" &&
     canonicalJob.status === "in_progress" &&
     (livePresence?.summary.pendingCount ?? 0) > 0;
+  const assignButtonLabel = detail.cleaners.length
+    ? detail.cleaners.length === 1
+      ? (detail.cleaners[0]?.name?.trim() || "1 Assigned")
+      : `${detail.cleaners.length} Assigned`
+    : "Assign";
   const liveElapsedMs = computeElapsedMs({
     startedAt: detail.timing.startedAtServer,
     endedAt: detail.timing.endedAtServer,
@@ -444,7 +449,7 @@ export function JobDetailClient({ id }: { id: string }) {
                   title={assignedCompanyName ? `Assign cleaner from ${assignedCompanyName}` : "Assign cleaner"}
                 >
                   <UserPlus className="h-4 w-4" />
-                  <span>Assign</span>
+                  <span className="max-w-36 truncate">{assignButtonLabel}</span>
                 </button>
                 {assignPanelOpen ? (
                   <div className="absolute left-0 top-full z-30 mt-1 w-56 rounded-md border bg-[var(--card)] p-2 shadow-xl">

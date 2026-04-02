@@ -61,8 +61,12 @@ export function DashboardClient() {
     return () => window.clearInterval(timer);
   }, []);
 
+  const dashboardJobs = useMemo(() => {
+    return (jobs ?? []).filter((job) => Boolean(job.property?.name?.trim()));
+  }, [jobs]);
+
   const stats = useMemo<StatItem[]>(() => {
-    const allJobs = jobs ?? [];
+    const allJobs = dashboardJobs;
     const scheduled = allJobs.filter((job) => job.status === "scheduled").length;
     const inProgress = allJobs.filter((job) => job.status === "in_progress").length;
     const completed = allJobs.filter((job) => job.status === "completed").length;
@@ -98,7 +102,7 @@ export function DashboardClient() {
         href: "/jobs?status=rework_required",
       },
     ];
-  }, [jobs]);
+  }, [dashboardJobs]);
 
   const readiness = useMemo(() => {
     const summary: Record<PropertyStatus, number> = {
@@ -126,7 +130,7 @@ export function DashboardClient() {
 
   const alerts = useMemo(() => {
     const currentNow = now ?? 0;
-    const allJobs = jobs ?? [];
+    const allJobs = dashboardJobs;
 
     return allJobs
       .filter((job) => {
@@ -172,26 +176,24 @@ export function DashboardClient() {
         return aStart - bStart;
       })
       .slice(0, 20);
-  }, [jobs, now]);
+  }, [dashboardJobs, now]);
 
   const visibleAlerts = showAllAlerts ? alerts : alerts.slice(0, 2);
 
   const todayJobs = useMemo(() => {
-    if (!jobs) return [];
-
     const dayStart = new Date();
     dayStart.setHours(0, 0, 0, 0);
     const dayEnd = new Date(dayStart);
     dayEnd.setDate(dayEnd.getDate() + 1);
 
-    return jobs
+    return dashboardJobs
       .filter((job) => {
         const when = job.scheduledStartAt ?? job.scheduledEndAt;
         return !!when && when >= dayStart.getTime() && when < dayEnd.getTime();
       })
       .sort((a, b) => (a.scheduledStartAt ?? 0) - (b.scheduledStartAt ?? 0))
       .slice(0, 8);
-  }, [jobs]);
+  }, [dashboardJobs]);
 
   const loading = jobs === undefined || properties === undefined;
   const unmappedReadinessCount = Math.max(0, readiness.totalCount - readiness.mappedCount);

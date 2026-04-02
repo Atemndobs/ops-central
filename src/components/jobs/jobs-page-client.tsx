@@ -8,12 +8,13 @@ import type { Id } from "@convex/_generated/dataModel";
 import {
   Building2,
   CalendarDays,
+  Check,
   Eye,
   EyeOff,
   Loader2,
   Plus,
   Search,
-  UserPlus,
+  UserRound,
   Users,
 } from "lucide-react";
 import {
@@ -475,7 +476,9 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
         ) : null}
         {!isLoading ? (
           <div className="divide-y md:hidden">
-            {jobRows.map((job) => (
+            {jobRows.map((job) => {
+              const hasAssignedCleaner = (job.assignedCleanerIds?.length ?? 0) > 0;
+              return (
               <article key={job._id} className="p-3">
                 <div className="flex items-start gap-3">
                   <div className="min-w-0 flex-1">
@@ -493,10 +496,17 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
                     <Link
                       href={`/jobs/${job._id}`}
                       className="inline-flex items-center justify-center rounded-md border p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
-                      aria-label="Assign cleaner"
-                      title="Assign cleaner"
+                      aria-label={hasAssignedCleaner ? "View assigned cleaner" : "Assign cleaner"}
+                      title={hasAssignedCleaner ? "Cleaner assigned" : "Assign cleaner"}
                     >
-                      <UserPlus className="h-4 w-4" />
+                      <span className="relative inline-flex">
+                        <UserRound className="h-4 w-4" />
+                        {hasAssignedCleaner ? (
+                          <span className="absolute -bottom-1 -right-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-600 text-white">
+                            <Check className="h-2.5 w-2.5" />
+                          </span>
+                        ) : null}
+                      </span>
                     </Link>
                     <div className="relative" data-job-row-menu>
                     <button
@@ -533,7 +543,8 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
                   </div>
                 </div>
               </article>
-            ))}
+              );
+            })}
             {!jobRows.length ? (
               <div className="px-4 py-12 text-center text-sm text-[var(--muted-foreground)]">
                 No jobs found for current filters.

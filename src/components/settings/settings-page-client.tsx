@@ -88,22 +88,26 @@ export function SettingsPageClient({ initialTab }: { initialTab: SettingsTab }) 
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-1 border-b border-[var(--border)]">
-        {tabs.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setActiveTab(id)}
-            className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm ${
-              activeTab === id
-                ? "border-[var(--primary)] text-[var(--foreground)]"
-                : "border-transparent text-[var(--muted-foreground)] hover:border-[var(--primary)] hover:text-[var(--foreground)]"
-            }`}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </button>
-        ))}
+      <div className="border-b border-[var(--border)]">
+        <div className="flex gap-1 overflow-x-auto">
+          {tabs.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setActiveTab(id)}
+              className={`shrink-0 whitespace-nowrap border-b-2 px-4 py-2 text-sm ${
+                activeTab === id
+                  ? "border-[var(--primary)] text-[var(--foreground)]"
+                  : "border-transparent text-[var(--muted-foreground)] hover:border-[var(--primary)] hover:text-[var(--foreground)]"
+              }`}
+            >
+              <span className="inline-flex items-center gap-2">
+                <Icon className="h-4 w-4" />
+                {label}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="max-w-2xl space-y-6">

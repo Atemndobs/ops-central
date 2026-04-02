@@ -4,7 +4,7 @@ import { UserButton, useAuth, useUser } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { api } from "@convex/_generated/api";
 import { Bell, LogOut, Menu, Moon, Settings, Sun, X } from "lucide-react";
 import {
@@ -30,11 +30,12 @@ const pageTitles: Record<string, string> = {
 };
 
 const THEME_STORAGE_KEY = "opscentral-theme";
+const THEME_CHANGE_EVENT = "opscentral:theme-change";
 type ThemePreference = "dark" | "light";
 
-function readThemeFromClient(): ThemePreference {
-  if (typeof window === "undefined" || typeof document === "undefined") {
-    return "dark";
+function readClientThemePreference(): ThemePreference {
+  if (typeof window === "undefined") {
+    return "light";
   }
 
   const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
@@ -42,10 +43,52 @@ function readThemeFromClient(): ThemePreference {
     return stored;
   }
 
-  return document.documentElement.classList.contains("dark") ? "dark" : "light";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
+
+function subscribeToThemePreference(onStoreChange: () => void): () => void {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
+  const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key === THEME_STORAGE_KEY || event.key === null) {
+      onStoreChange();
+    }
+  };
+  const handleThemeChange = () => onStoreChange();
+
+  window.addEventListener("storage", handleStorage);
+  window.addEventListener(THEME_CHANGE_EVENT, handleThemeChange);
+
+  if (typeof mediaQuery.addEventListener === "function") {
+    mediaQuery.addEventListener("change", handleThemeChange);
+  } else {
+    mediaQuery.addListener(handleThemeChange);
+  }
+
+  return () => {
+    window.removeEventListener("storage", handleStorage);
+    window.removeEventListener(THEME_CHANGE_EVENT, handleThemeChange);
+    if (typeof mediaQuery.removeEventListener === "function") {
+      mediaQuery.removeEventListener("change", handleThemeChange);
+    } else {
+      mediaQuery.removeListener(handleThemeChange);
+    }
+  };
+}
+
+function getThemeServerSnapshot(): ThemePreference {
+  return "light";
 }
 
 function applyTheme(theme: ThemePreference) {
+  if (typeof document === "undefined") {
+    return;
+  }
   document.documentElement.classList.toggle("dark", theme === "dark");
 }
 
@@ -55,11 +98,14 @@ export function Header() {
   const { user } = useUser();
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(() => readThemeFromClient() === "dark");
+  const theme = useSyncExternalStore(
+    subscribeToThemePreference,
+    readClientThemePreference,
+    getThemeServerSnapshot,
+  );
+  const isDarkMode = theme === "dark";
   const notificationPanelRef = useRef<HTMLDivElement | null>(null);
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
-  const setThemePreferenceRef = useRef(setThemePreference);
-  setThemePreferenceRef.current = setThemePreference;
 
   const convexUser = useQuery(
     api.users.queries.getByClerkId,
@@ -95,21 +141,17 @@ export function Header() {
   }, [notifications]);
 
   const toggleTheme = useCallback(() => {
-    setIsDarkMode((previous) => {
-      const nextIsDarkMode = !previous;
-      const theme: ThemePreference = nextIsDarkMode ? "dark" : "light";
-      applyTheme(theme);
-      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    const nextTheme: ThemePreference = isDarkMode ? "light" : "dark";
+    applyTheme(nextTheme);
+    window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+    window.dispatchEvent(new Event(THEME_CHANGE_EVENT));
 
-      if (isLoaded && isSignedIn) {
-        void setThemePreferenceRef.current({ theme }).catch((error) => {
-          console.warn("[ThemePreference] Failed to save theme in Convex", error);
-        });
-      }
-
-      return nextIsDarkMode;
-    });
-  }, [isLoaded, isSignedIn]);
+    if (isLoaded && isSignedIn) {
+      void setThemePreference({ theme: nextTheme }).catch((error) => {
+        console.warn("[ThemePreference] Failed to save theme in Convex", error);
+      });
+    }
+  }, [isDarkMode, isLoaded, isSignedIn, setThemePreference]);
 
   useEffect(() => {
     if (!isNotificationsOpen) {
@@ -184,7 +226,7 @@ export function Header() {
             </button>
 
             {isNotificationsOpen ? (
-              <div className="absolute right-0 top-11 z-50 w-80 rounded-md border bg-[var(--card)] shadow-xl">
+              <div className="absolute right-0 top-11 z-50 w-[320px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-md border bg-[var(--card)] shadow-xl">
                 <div className="flex items-center justify-between border-b px-3 py-2">
                   <p className="text-sm font-semibold">Notifications</p>
                   <span className="text-xs text-[var(--muted-foreground)]">
@@ -251,6 +293,16 @@ export function Header() {
               </div>
             ) : null}
           </div>
+
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="rounded-none p-2 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+            aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
+            title={isDarkMode ? "Light mode" : "Dark mode"}
+          >
+            {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
 
           {isSignedIn ? (
             <div className="flex items-center">

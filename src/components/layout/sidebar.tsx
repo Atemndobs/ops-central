@@ -5,7 +5,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { UserButton, useAuth, useUser } from "@clerk/nextjs";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api } from "@convex/_generated/api";
 import { cn } from "@/lib/utils";
 import {
@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 
 const THEME_STORAGE_KEY = "opscentral-theme";
+const THEME_CHANGE_EVENT = "opscentral:theme-change";
 
 type ThemePreference = "dark" | "light";
 
@@ -42,6 +43,43 @@ function readClientThemePreference(): ThemePreference {
     : "light";
 }
 
+function subscribeToThemePreference(onStoreChange: () => void): () => void {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
+  const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key === THEME_STORAGE_KEY || event.key === null) {
+      onStoreChange();
+    }
+  };
+  const handleThemeChange = () => onStoreChange();
+
+  window.addEventListener("storage", handleStorage);
+  window.addEventListener(THEME_CHANGE_EVENT, handleThemeChange);
+
+  if (typeof mediaQuery.addEventListener === "function") {
+    mediaQuery.addEventListener("change", handleThemeChange);
+  } else {
+    mediaQuery.addListener(handleThemeChange);
+  }
+
+  return () => {
+    window.removeEventListener("storage", handleStorage);
+    window.removeEventListener(THEME_CHANGE_EVENT, handleThemeChange);
+    if (typeof mediaQuery.removeEventListener === "function") {
+      mediaQuery.removeEventListener("change", handleThemeChange);
+    } else {
+      mediaQuery.removeListener(handleThemeChange);
+    }
+  };
+}
+
+function getThemeServerSnapshot(): ThemePreference {
+  return "light";
+}
+
 function applyTheme(theme: ThemePreference) {
   document.documentElement.classList.toggle("dark", theme === "dark");
 }
@@ -57,8 +95,6 @@ export function Sidebar() {
     isConvexAuthenticated ? {} : "skip",
   );
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
-  const setThemePreferenceRef = useRef(setThemePreference);
-  setThemePreferenceRef.current = setThemePreference;
   const convexUser = useQuery(
     api.users.queries.getByClerkId,
     isLoaded && isSignedIn && userId && isConvexAuthenticated
@@ -67,8 +103,10 @@ export function Sidebar() {
   );
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [localTheme, setLocalTheme] = useState<ThemePreference>(() =>
-    readClientThemePreference(),
+  const localTheme = useSyncExternalStore(
+    subscribeToThemePreference,
+    readClientThemePreference,
+    getThemeServerSnapshot,
   );
   const initializedThemeScopeRef = useRef<string | null>(null);
   const roleFromClaims = getRoleFromSessionClaimsOrNull(
@@ -110,13 +148,14 @@ export function Sidebar() {
     initializedThemeScopeRef.current = themeScopeKey;
 
     if (isConvexAuthenticated && !themePreference?.theme) {
-      void setThemePreferenceRef.current({ theme: resolvedTheme }).catch((error) => {
+      void setThemePreference({ theme: resolvedTheme }).catch((error) => {
         console.warn("[ThemePreference] Failed to initialize theme in Convex", error);
       });
     }
   }, [
     isConvexAuthenticated,
     isConvexAuthLoading,
+    setThemePreference,
     themePreference,
     themeScopeKey,
     resolvedTheme,
@@ -124,16 +163,16 @@ export function Sidebar() {
 
   const toggleTheme = useCallback(() => {
     const nextTheme: ThemePreference = resolvedTheme === "dark" ? "light" : "dark";
-    setLocalTheme(nextTheme);
     applyTheme(nextTheme);
     window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+    window.dispatchEvent(new Event(THEME_CHANGE_EVENT));
 
     if (isConvexAuthenticated) {
-      void setThemePreferenceRef.current({ theme: nextTheme }).catch((error) => {
+      void setThemePreference({ theme: nextTheme }).catch((error) => {
         console.warn("[ThemePreference] Failed to save theme in Convex", error);
       });
     }
-  }, [isConvexAuthenticated, resolvedTheme]);
+  }, [isConvexAuthenticated, resolvedTheme, setThemePreference]);
 
   return (
     <aside
