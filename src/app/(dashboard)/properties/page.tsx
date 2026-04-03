@@ -6,11 +6,29 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
-import { Building2, Edit3, Loader2, Plus, Search, Trash2 } from "lucide-react";
+import {
+  Building2,
+  Edit3,
+  LayoutGrid,
+  List,
+  Loader2,
+  Plus,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { PropertyFormModal } from "@/components/properties/property-form-modal";
 import { useToast } from "@/components/ui/toast-provider";
 import { getErrorMessage } from "@/lib/errors";
 import { PropertyFormValues, PropertyRecord, PropertyStatus } from "@/types/property";
+
+type PropertyListItem = PropertyRecord & {
+  imageUrl?: string;
+  picture?: string;
+};
+
+type PropertyViewMode = "card" | "list";
+
+const PROPERTY_VIEW_MODE_STORAGE_KEY = "opscentral.properties.defaultViewMode";
 
 const statusStyles: Record<PropertyStatus, string> = {
   ready: "bg-emerald-500/10 text-emerald-500",
@@ -32,6 +50,10 @@ function formatDate(value?: number) {
   }
 
   return new Date(value).toLocaleDateString();
+}
+
+function formatBedsAndBaths(property: Pick<PropertyRecord, "bedrooms" | "bathrooms">) {
+  return `${property.bedrooms ?? "—"}/${property.bathrooms ?? "—"}`;
 }
 
 function toMutationInput(values: PropertyFormValues) {
@@ -61,6 +83,7 @@ function PropertiesPageContent() {
   const searchParams = useSearchParams();
   const [search, setSearch] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<PropertyStatus | "all">("all");
+  const [viewMode, setViewMode] = useState<PropertyViewMode>("list");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingProperty, setEditingProperty] = useState<PropertyRecord | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -93,20 +116,6 @@ function PropertiesPageContent() {
     setSelectedStatus(statusFromQuery);
   }, [statusFromQuery]);
 
-  const cards = useMemo(() => {
-    const all = properties ?? [];
-    const searchValue = search.trim().toLowerCase();
-    return all.filter((property) => {
-      const matchesSearch =
-        !searchValue ||
-        property.name.toLowerCase().includes(searchValue) ||
-        property.address.toLowerCase().includes(searchValue);
-      const status = ((property as any).status ?? "vacant") as PropertyStatus;
-      const matchesStatus = selectedStatus === "all" || status === selectedStatus;
-      return matchesSearch && matchesStatus;
-    });
-  }, [properties, search, selectedStatus]);
-
   const activeCompanyByPropertyId = useMemo(() => {
     const map = new Map<string, string | null>();
     for (const row of propertyAssignments?.rows ?? []) {
@@ -114,6 +123,52 @@ function PropertiesPageContent() {
     }
     return map;
   }, [propertyAssignments]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const storedViewMode = window.localStorage.getItem(
+      PROPERTY_VIEW_MODE_STORAGE_KEY,
+    ) as PropertyViewMode | null;
+    if (storedViewMode === "card" || storedViewMode === "list") {
+      setViewMode(storedViewMode);
+      return;
+    }
+    const mobileDefault: PropertyViewMode = window.matchMedia("(max-width: 767px)")
+      .matches
+      ? "list"
+      : "card";
+    setViewMode(mobileDefault);
+  }, []);
+
+  function setViewPreference(nextMode: PropertyViewMode) {
+    setViewMode(nextMode);
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(PROPERTY_VIEW_MODE_STORAGE_KEY, nextMode);
+  }
+
+  const filteredProperties = useMemo(() => {
+    const all = (properties ?? []) as PropertyListItem[];
+    const searchValue = search.trim().toLowerCase();
+    return all
+      .map((property) => ({
+        property,
+        status: property.status ?? "vacant",
+        imageUrl: property.primaryPhotoUrl || property.imageUrl || property.picture,
+        companyName: activeCompanyByPropertyId.get(property._id) ?? "Unassigned",
+      }))
+      .filter(({ property, status }) => {
+        const matchesSearch =
+          !searchValue ||
+          property.name.toLowerCase().includes(searchValue) ||
+          property.address.toLowerCase().includes(searchValue);
+        const matchesStatus = selectedStatus === "all" || status === selectedStatus;
+        return matchesSearch && matchesStatus;
+      });
+  }, [activeCompanyByPropertyId, properties, search, selectedStatus]);
 
   const handleCreate = async (values: PropertyFormValues) => {
     setIsSaving(true);
@@ -187,7 +242,7 @@ function PropertiesPageContent() {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-1 flex-wrap items-center gap-2">
           <div className="flex items-center gap-2 rounded-none border bg-[var(--card)] px-3 py-1.5">
             <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
             <input
@@ -214,13 +269,42 @@ function PropertiesPageContent() {
           </select>
         </div>
 
-        <button
-          className="flex items-center gap-2 rounded-none bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90"
-          onClick={() => setIsCreateOpen(true)}
-        >
-          <Plus className="h-4 w-4" />
-          Add Property
-        </button>
+        <div className="flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto">
+          <div className="inline-flex w-full overflow-hidden rounded-none border bg-[var(--card)] sm:w-auto">
+            <button
+              type="button"
+              onClick={() => setViewPreference("card")}
+              className={`inline-flex flex-1 items-center justify-center gap-2 px-3 py-1.5 text-sm sm:flex-none ${
+                viewMode === "card"
+                  ? "bg-[var(--accent)] text-[var(--foreground)]"
+                  : "text-[var(--muted-foreground)]"
+              }`}
+            >
+              <LayoutGrid className="h-4 w-4" />
+              Card
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewPreference("list")}
+              className={`inline-flex flex-1 items-center justify-center gap-2 border-l px-3 py-1.5 text-sm sm:flex-none ${
+                viewMode === "list"
+                  ? "bg-[var(--accent)] text-[var(--foreground)]"
+                  : "text-[var(--muted-foreground)]"
+              }`}
+            >
+              <List className="h-4 w-4" />
+              List
+            </button>
+          </div>
+
+          <button
+            className="flex items-center gap-2 rounded-none bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90"
+            onClick={() => setIsCreateOpen(true)}
+          >
+            <Plus className="h-4 w-4" />
+            Add Property
+          </button>
+        </div>
       </div>
 
       {actionError ? (
@@ -233,107 +317,278 @@ function PropertiesPageContent() {
         <div className="flex min-h-40 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--card)]">
           <Loader2 className="h-5 w-5 animate-spin text-[var(--muted-foreground)]" />
         </div>
-      ) : (
+      ) : filteredProperties.length === 0 ? (
+        <div className="flex items-center justify-center border border-dashed py-24">
+          <div className="text-center">
+            <Building2 className="mx-auto mb-2 h-8 w-8 text-[var(--muted-foreground)] opacity-40" />
+            <p className="text-sm text-[var(--muted-foreground)]">No properties found</p>
+          </div>
+        </div>
+      ) : viewMode === "card" ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {cards.length === 0 ? (
-            <div className="col-span-full flex items-center justify-center border border-dashed py-24">
-              <div className="text-center">
-                <Building2 className="mx-auto mb-2 h-8 w-8 text-[var(--muted-foreground)] opacity-40" />
-                <p className="text-sm text-[var(--muted-foreground)]">No properties found</p>
+          {filteredProperties.map(({ property, status, imageUrl, companyName }) => (
+            <div
+              key={property._id}
+              className="overflow-hidden border bg-[var(--card)]"
+            >
+              <div className="relative h-40 w-full bg-[var(--accent)]">
+                {imageUrl ? (
+                  <Image
+                    src={imageUrl}
+                    alt={property.name}
+                    fill
+                    sizes="(max-width: 1280px) 50vw, 33vw"
+                    className="object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center">
+                    <Building2 className="h-8 w-8 text-[var(--muted-foreground)]" />
+                  </div>
+                )}
+
+                <span
+                  className={`absolute right-2 top-2 rounded-none px-2 py-1 text-xs font-medium ${statusStyles[status]}`}
+                >
+                  {statusLabels[status]}
+                </span>
+              </div>
+
+              <div className="space-y-3 p-4">
+                <div>
+                  <Link
+                    href={`/properties/${property._id}`}
+                    className="text-base font-semibold hover:text-[var(--primary)]"
+                  >
+                    {property.name}
+                  </Link>
+                  <p className="text-sm text-[var(--muted-foreground)]">{property.address}</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs text-[var(--muted-foreground)]">
+                  <p>Check-in: {formatDate(property.nextCheckInAt)}</p>
+                  <p>Check-out: {formatDate(property.nextCheckOutAt)}</p>
+                  <p>
+                    Cleaner:{" "}
+                    <span className="text-[var(--foreground)]">
+                      {property.assignedCleanerName || "—"}
+                    </span>
+                  </p>
+                  <p>
+                    Company:{" "}
+                    <span className="text-[var(--foreground)]">{companyName}</span>
+                  </p>
+                  <p>Beds/Baths: {formatBedsAndBaths(property)}</p>
+                </div>
+
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  Manage company assignment in{" "}
+                  <Link href="/companies" className="text-[var(--primary)] hover:underline">
+                    Companies Hub
+                  </Link>
+                  .
+                </p>
+
+                <div className="flex items-center justify-end gap-2 border-t pt-3">
+                  <button
+                    className="inline-flex items-center gap-1 rounded-none border px-2 py-1 text-xs hover:bg-[var(--accent)]"
+                    onClick={() => setEditingProperty(property)}
+                  >
+                    <Edit3 className="h-3.5 w-3.5" />
+                    Edit
+                  </button>
+                  <button
+                    className="inline-flex items-center gap-1 rounded-none border border-red-500/40 px-2 py-1 text-xs text-red-500 hover:bg-red-500/10"
+                    onClick={() => handleDelete(property._id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Archive
+                  </button>
+                </div>
               </div>
             </div>
-          ) : (
-            cards.map((property) => (
-              (() => {
-                const imageUrl =
-                  (property as any).primaryPhotoUrl ||
-                  (property as any).imageUrl ||
-                  (property as any).picture;
-                return (
-              <div
-                key={property._id}
-                className="overflow-hidden border bg-[var(--card)]"
-              >
-                <div className="relative h-40 w-full bg-[var(--accent)]">
-                  {imageUrl ? (
-                    <Image
-                      src={imageUrl}
-                      alt={property.name}
-                      fill
-                      sizes="(max-width: 1280px) 50vw, 33vw"
-                      className="object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center">
-                      <Building2 className="h-8 w-8 text-[var(--muted-foreground)]" />
-                    </div>
-                  )}
-
-                  <span
-                    className={`absolute right-2 top-2 rounded-none px-2 py-1 text-xs font-medium ${statusStyles[((property as any).status ?? "vacant") as PropertyStatus]}`}
-                  >
-                    {statusLabels[((property as any).status ?? "vacant") as PropertyStatus]}
-                  </span>
-                </div>
-
-                <div className="space-y-3 p-4">
-                  <div>
-                    <Link
-                      href={`/properties/${property._id}`}
-                      className="text-base font-semibold hover:text-[var(--primary)]"
-                    >
-                      {property.name}
-                    </Link>
-                    <p className="text-sm text-[var(--muted-foreground)]">{property.address}</p>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-none border bg-[var(--card)]">
+          <div className="divide-y md:hidden">
+            {filteredProperties.map(({ property, status, imageUrl, companyName }) => (
+              <article key={property._id} className="space-y-3 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="relative h-16 w-20 shrink-0 overflow-hidden border bg-[var(--accent)]">
+                    {imageUrl ? (
+                      <Image
+                        src={imageUrl}
+                        alt={property.name}
+                        fill
+                        sizes="80px"
+                        className="object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center">
+                        <Building2 className="h-5 w-5 text-[var(--muted-foreground)]" />
+                      </div>
+                    )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-xs text-[var(--muted-foreground)]">
-                    <p>Check-in: {formatDate((property as any).nextCheckInAt)}</p>
-                    <p>Check-out: {formatDate((property as any).nextCheckOutAt)}</p>
-                    <p>
-                      Cleaner: <span className="text-[var(--foreground)]">{(property as any).assignedCleanerName || "—"}</span>
-                    </p>
-                    <p>
-                      Company:{" "}
-                      <span className="text-[var(--foreground)]">
-                        {activeCompanyByPropertyId.get(property._id) ?? "Unassigned"}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <Link
+                          href={`/properties/${property._id}`}
+                          className="block truncate text-sm font-semibold hover:text-[var(--primary)]"
+                        >
+                          {property.name}
+                        </Link>
+                        <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                          {property.address}
+                        </p>
+                      </div>
+
+                      <span
+                        className={`shrink-0 rounded-none px-2 py-1 text-[11px] font-medium ${statusStyles[status]}`}
+                      >
+                        {statusLabels[status]}
                       </span>
-                    </p>
-                    <p>
-                      Beds/Baths: {property.bedrooms ?? "—"}/{property.bathrooms ?? "—"}
-                    </p>
-                  </div>
-
-                  <p className="text-xs text-[var(--muted-foreground)]">
-                    Manage company assignment in{" "}
-                    <Link href="/companies" className="text-[var(--primary)] hover:underline">
-                      Companies Hub
-                    </Link>
-                    .
-                  </p>
-
-                  <div className="flex items-center justify-end gap-2 border-t pt-3">
-                    <button
-                      className="inline-flex items-center gap-1 rounded-none border px-2 py-1 text-xs hover:bg-[var(--accent)]"
-                      onClick={() => setEditingProperty(property as unknown as PropertyRecord)}
-                    >
-                      <Edit3 className="h-3.5 w-3.5" />
-                      Edit
-                    </button>
-                    <button
-                      className="inline-flex items-center gap-1 rounded-none border border-red-500/40 px-2 py-1 text-xs text-red-500 hover:bg-red-500/10"
-                      onClick={() => handleDelete(property._id)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Archive
-                    </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-                );
-              })()
-            ))
-          )}
+
+                <div className="grid grid-cols-2 gap-2 text-xs text-[var(--muted-foreground)]">
+                  <p>Check-in: {formatDate(property.nextCheckInAt)}</p>
+                  <p>Check-out: {formatDate(property.nextCheckOutAt)}</p>
+                  <p>Cleaner: {property.assignedCleanerName || "—"}</p>
+                  <p>Company: {companyName}</p>
+                  <p>Beds/Baths: {formatBedsAndBaths(property)}</p>
+                </div>
+
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  Manage company assignment in{" "}
+                  <Link href="/companies" className="text-[var(--primary)] hover:underline">
+                    Companies Hub
+                  </Link>
+                  .
+                </p>
+
+                <div className="flex items-center justify-end gap-2 border-t pt-3">
+                  <button
+                    className="inline-flex items-center gap-1 rounded-none border px-2 py-1 text-xs hover:bg-[var(--accent)]"
+                    onClick={() => setEditingProperty(property)}
+                  >
+                    <Edit3 className="h-3.5 w-3.5" />
+                    Edit
+                  </button>
+                  <button
+                    className="inline-flex items-center gap-1 rounded-none border border-red-500/40 px-2 py-1 text-xs text-red-500 hover:bg-red-500/10"
+                    onClick={() => handleDelete(property._id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Archive
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full min-w-[980px] text-left text-sm">
+              <thead className="bg-[var(--accent)] text-xs uppercase tracking-wider text-[var(--muted-foreground)]">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Property</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Check-in</th>
+                  <th className="px-4 py-3 font-medium">Check-out</th>
+                  <th className="px-4 py-3 font-medium">Cleaner</th>
+                  <th className="px-4 py-3 font-medium">Company</th>
+                  <th className="px-4 py-3 font-medium">Beds/Baths</th>
+                  <th className="px-4 py-3 text-right font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredProperties.map(({ property, status, imageUrl, companyName }) => (
+                  <tr key={property._id} className="border-t">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="relative h-12 w-16 shrink-0 overflow-hidden border bg-[var(--accent)]">
+                          {imageUrl ? (
+                            <Image
+                              src={imageUrl}
+                              alt={property.name}
+                              fill
+                              sizes="64px"
+                              className="object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center">
+                              <Building2 className="h-4 w-4 text-[var(--muted-foreground)]" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <Link
+                            href={`/properties/${property._id}`}
+                            className="block truncate font-semibold hover:text-[var(--primary)]"
+                          >
+                            {property.name}
+                          </Link>
+                          <p className="truncate text-xs text-[var(--muted-foreground)]">
+                            {property.address}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex rounded-none px-2 py-1 text-xs font-medium ${statusStyles[status]}`}
+                      >
+                        {statusLabels[status]}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-[var(--muted-foreground)]">
+                      {formatDate(property.nextCheckInAt)}
+                    </td>
+                    <td className="px-4 py-3 text-[var(--muted-foreground)]">
+                      {formatDate(property.nextCheckOutAt)}
+                    </td>
+                    <td className="px-4 py-3 text-[var(--muted-foreground)]">
+                      {property.assignedCleanerName || "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="space-y-1">
+                        <p className="text-[var(--foreground)]">{companyName}</p>
+                        <Link
+                          href="/companies"
+                          className="text-xs text-[var(--primary)] hover:underline"
+                        >
+                          Companies Hub
+                        </Link>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-[var(--muted-foreground)]">
+                      {formatBedsAndBaths(property)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          className="inline-flex items-center gap-1 rounded-none border px-2 py-1 text-xs hover:bg-[var(--accent)]"
+                          onClick={() => setEditingProperty(property)}
+                        >
+                          <Edit3 className="h-3.5 w-3.5" />
+                          Edit
+                        </button>
+                        <button
+                          className="inline-flex items-center gap-1 rounded-none border border-red-500/40 px-2 py-1 text-xs text-red-500 hover:bg-red-500/10"
+                          onClick={() => handleDelete(property._id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Archive
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
