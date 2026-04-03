@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import Link from "next/link";
+import Image from "next/image";
 import type { Id } from "@convex/_generated/dataModel";
 import {
   Calendar,
@@ -47,16 +48,6 @@ const readinessDotClass: Record<PropertyStatus, string> = {
   dirty: "bg-rose-500",
   in_progress: "bg-amber-500",
   vacant: "bg-slate-400",
-};
-
-const statusDotClass: Record<string, string> = {
-  scheduled: "bg-blue-500",
-  assigned: "bg-blue-400",
-  in_progress: "bg-amber-500",
-  awaiting_approval: "bg-indigo-500",
-  completed: "bg-emerald-500",
-  rework_required: "bg-rose-500",
-  cancelled: "bg-rose-600",
 };
 
 const oneDayMs = 24 * 60 * 60 * 1000;
@@ -106,12 +97,13 @@ function AssignedCleanerBadge({
   return (
     <span className="relative inline-flex h-5 w-5 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50">
       {cleaner?.avatarUrl ? (
-        <img
+        <Image
           src={cleaner.avatarUrl}
           alt={cleaner.name ? `${cleaner.name} avatar` : "Cleaner avatar"}
-          className="h-full w-full rounded-full object-cover"
-          loading="lazy"
-          referrerPolicy="no-referrer"
+          fill
+          unoptimized
+          className="rounded-full object-cover"
+          sizes="20px"
         />
       ) : (
         <span className="text-[9px] font-semibold text-emerald-700">{initials}</span>
@@ -121,28 +113,6 @@ function AssignedCleanerBadge({
       </span>
     </span>
   );
-}
-
-function worstStatus(jobs: JobWithRelations[]): JobStatus {
-  const priority: Record<string, number> = {
-    cancelled: 6,
-    rework_required: 5,
-    in_progress: 4,
-    awaiting_approval: 3,
-    assigned: 2,
-    scheduled: 1,
-    completed: 0,
-  };
-  let worst: JobStatus = "completed";
-  let worstPriority = -1;
-  for (const job of jobs) {
-    const p = priority[job.status] ?? 0;
-    if (p > worstPriority) {
-      worstPriority = p;
-      worst = job.status;
-    }
-  }
-  return worst;
 }
 
 export function ScheduleClient() {
@@ -417,8 +387,6 @@ export function ScheduleClient() {
 
     // 7-day compact mode: dots on mobile only, desktop always shows full cards
     if (dayCount === 7) {
-      const worst = worstStatus(cellJobs);
-      const dotColor = statusDotClass[worst] ?? "bg-slate-400";
       return (
         <div key={key} className="border-l">
           {/* Mobile: mini card view */}
@@ -491,8 +459,15 @@ export function ScheduleClient() {
                       <p className="mb-2 text-[11px] text-[var(--muted-foreground)]">
                         {availableAssignment?.companyName ? `Company: ${availableAssignment.companyName}` : "No company assigned."}
                       </p>
+                      {availableAssignment?.blockedReason ? (
+                        <p className="mb-2 text-[11px] text-[var(--destructive)]">
+                          {availableAssignment.blockedReason}
+                        </p>
+                      ) : null}
                       {companyCleaners.length === 0 ? (
-                        <p className="text-[11px] text-[var(--muted-foreground)]">No eligible cleaners.</p>
+                        <p className="text-[11px] text-[var(--muted-foreground)]">
+                          {availableAssignment?.blockedReason ?? "No eligible cleaners."}
+                        </p>
                       ) : (
                         <div className="space-y-1">
                           {companyCleaners.map((cleaner) => {
@@ -569,8 +544,15 @@ export function ScheduleClient() {
                   <p className="mb-2 text-[11px] text-[var(--muted-foreground)]">
                     {availableAssignment?.companyName ? `Company: ${availableAssignment.companyName}` : "No company assigned."}
                   </p>
+                  {availableAssignment?.blockedReason ? (
+                    <p className="mb-2 text-[11px] text-[var(--destructive)]">
+                      {availableAssignment.blockedReason}
+                    </p>
+                  ) : null}
                   {companyCleaners.length === 0 ? (
-                    <p className="text-[11px] text-[var(--muted-foreground)]">No eligible cleaners.</p>
+                    <p className="text-[11px] text-[var(--muted-foreground)]">
+                      {availableAssignment?.blockedReason ?? "No eligible cleaners."}
+                    </p>
                   ) : (
                     <div className="space-y-1">
                       {companyCleaners.map((cleaner) => {
@@ -1080,9 +1062,10 @@ export function ScheduleClient() {
                             <div className="mt-2 space-y-1">
                               {companyCleaners.length === 0 ? (
                                 <p className="text-[11px] opacity-60">
-                                  {availableAssignment?.companyName
-                                    ? `No cleaners in ${availableAssignment.companyName}`
-                                    : "No company assigned to property"}
+                                  {availableAssignment?.blockedReason ??
+                                    (availableAssignment?.companyName
+                                      ? `No cleaners in ${availableAssignment.companyName}`
+                                      : "No company assigned to property")}
                                 </p>
                               ) : (
                                 companyCleaners.map((cleaner) => {

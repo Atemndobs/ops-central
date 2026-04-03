@@ -117,6 +117,26 @@ function isActiveCompanyPropertyAssignment(
   return assignment.isActive !== false && assignment.unassignedAt === undefined;
 }
 
+function isActiveMembership(membership: Doc<"companyMembers">): boolean {
+  return membership.isActive && membership.leftAt === undefined;
+}
+
+async function getLatestActiveCompanyMembership(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+) {
+  const memberships = await ctx.db
+    .query("companyMembers")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+
+  const active = memberships
+    .filter(isActiveMembership)
+    .sort((a, b) => b.joinedAt - a.joinedAt)[0];
+
+  return active ?? null;
+}
+
 export const getAll = query({
   args: {
     status: v.optional(JOB_STATUS_FILTER),
@@ -331,12 +351,22 @@ export const getAssignableCleanersByProperty = query({
     propertyIds: v.array(v.id("properties")),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, ["admin", "property_ops", "manager"]);
+    const actor = await requireRole(ctx, ["admin", "property_ops", "manager"]);
 
     const propertyIds = [...new Set(args.propertyIds)];
     if (propertyIds.length === 0) {
       return [];
     }
+
+    const actorCompanyMembership =
+      actor.role === "manager"
+        ? await getLatestActiveCompanyMembership(ctx, actor._id)
+        : null;
+    const managerMissingMembership =
+      actor.role === "manager" &&
+      (!actorCompanyMembership ||
+        (actorCompanyMembership.role !== "manager" &&
+          actorCompanyMembership.role !== "owner"));
 
     const assignmentsByProperty = await Promise.all(
       propertyIds.map(async (propertyId) => {
@@ -419,11 +449,30 @@ export const getAssignableCleanersByProperty = query({
 
     return assignmentsByProperty.map(({ propertyId, assignment }) => {
       const companyId = assignment?.companyId ?? null;
+      let blockedReason: string | null = null;
+
+      if (managerMissingMembership) {
+        blockedReason =
+          "Your account needs an active cleaning-company manager membership before assigning cleaners.";
+      } else if (!companyId) {
+        blockedReason =
+          "This property has no cleaning company assigned yet.";
+      } else if (
+        actor.role === "manager" &&
+        actorCompanyMembership &&
+        actorCompanyMembership.companyId !== companyId
+      ) {
+        blockedReason =
+          "Managers can only assign cleaners for properties linked to their own company.";
+      }
+
       return {
         propertyId,
         companyId,
         companyName: companyId ? companyById.get(companyId)?.name ?? null : null,
-        cleaners: companyId ? cleanersByCompany.get(companyId) ?? [] : [],
+        blockedReason,
+        cleaners:
+          !blockedReason && companyId ? cleanersByCompany.get(companyId) ?? [] : [],
       };
     });
   },

@@ -141,6 +141,7 @@ export function JobDetailClient({ id }: { id: string }) {
   );
   const scopedCleaners = assignableForProperty?.[0]?.cleaners ?? [];
   const assignedCompanyName = assignableForProperty?.[0]?.companyName ?? null;
+  const assignBlockedReason = assignableForProperty?.[0]?.blockedReason ?? null;
 
   const cleanerJobs = useQuery(
     api.cleaningJobs.queries.getForCleaner,
@@ -443,9 +444,17 @@ export function JobDetailClient({ id }: { id: string }) {
                         {assignedCompanyName}
                       </p>
                     ) : null}
+                    {assignBlockedReason ? (
+                      <p className="mb-1.5 text-xs text-[var(--destructive)]">
+                        {assignBlockedReason}
+                      </p>
+                    ) : null}
                     {scopedCleaners.length === 0 ? (
                       <p className="text-xs text-[var(--muted-foreground)]">
-                        {assignedCompanyName ? "No cleaners in this company" : "No company assigned to property"}
+                        {assignBlockedReason ??
+                          (assignedCompanyName
+                            ? "No cleaners in this company"
+                            : "No company assigned to property")}
                       </p>
                     ) : (
                       <div className="space-y-0.5">
