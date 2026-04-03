@@ -32,7 +32,7 @@ export const navigation: NavigationItem[] = [
     name: "Schedule",
     href: "/schedule",
     icon: Calendar,
-    roles: ["admin", "property_ops"],
+    roles: ["admin", "property_ops", "manager"],
   },
   {
     name: "Jobs",
