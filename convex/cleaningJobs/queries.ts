@@ -56,6 +56,7 @@ async function enrichJobs(ctx: QueryCtx, jobs: Doc<"cleaningJobs">[]) {
               _id: cleaner!._id,
               name: cleaner!.name,
               email: cleaner!.email,
+              avatarUrl: cleaner!.avatarUrl,
             },
           ] as const,
       ),

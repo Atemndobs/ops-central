@@ -564,6 +564,10 @@ const inventoryItems = defineTable({
     v.literal("reorder_pending")
   ),
   requiresRestock: v.boolean(),
+  isRefillTracked: v.optional(v.boolean()),
+  refillLowThresholdPct: v.optional(v.number()),
+  refillCriticalThresholdPct: v.optional(v.number()),
+  refillDisplayOrder: v.optional(v.number()),
 
   lastCheckedAt: v.optional(v.number()),
   lastCheckedBy: v.optional(v.id("users")),
@@ -589,6 +593,96 @@ const stockChecks = defineTable({
 })
   .index("by_job", ["jobId"])
   .index("by_item", ["itemId"]);
+
+const propertyCriticalCheckpoints = defineTable({
+  propertyId: v.id("properties"),
+  roomName: v.string(),
+  title: v.string(),
+  instruction: v.optional(v.string()),
+  referenceStorageId: v.optional(v.id("_storage")),
+  referenceImageUrl: v.optional(v.string()),
+  linkedInventoryItemId: v.optional(v.id("inventoryItems")),
+  isRequired: v.boolean(),
+  isActive: v.boolean(),
+  sortOrder: v.number(),
+  createdBy: v.optional(v.id("users")),
+  updatedBy: v.optional(v.id("users")),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_property_and_active", ["propertyId", "isActive"])
+  .index("by_property_and_room", ["propertyId", "roomName"])
+  .index("by_property_and_sort_order", ["propertyId", "sortOrder"]);
+
+const jobCheckpointChecks = defineTable({
+  jobId: v.id("cleaningJobs"),
+  propertyId: v.id("properties"),
+  revision: v.number(),
+  checkpointId: v.id("propertyCriticalCheckpoints"),
+  roomName: v.string(),
+  status: v.union(v.literal("pass"), v.literal("fail"), v.literal("skip")),
+  note: v.optional(v.string()),
+  failPhotoStorageId: v.optional(v.id("_storage")),
+  failPhotoUrl: v.optional(v.string()),
+  autoIncidentId: v.optional(v.id("incidents")),
+  checkedBy: v.id("users"),
+  checkedAt: v.number(),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_job_and_revision", ["jobId", "revision"])
+  .index("by_job_and_revision_and_checkpoint", ["jobId", "revision", "checkpointId"])
+  .index("by_checkpoint", ["checkpointId"]);
+
+const jobRefillChecks = defineTable({
+  jobId: v.id("cleaningJobs"),
+  propertyId: v.id("properties"),
+  revision: v.number(),
+  itemId: v.id("inventoryItems"),
+  roomName: v.optional(v.string()),
+  percentRemaining: v.number(),
+  level: v.union(
+    v.literal("ok"),
+    v.literal("low"),
+    v.literal("critical"),
+    v.literal("out")
+  ),
+  note: v.optional(v.string()),
+  checkedBy: v.id("users"),
+  checkedAt: v.number(),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_job_and_revision", ["jobId", "revision"])
+  .index("by_job_and_revision_and_item", ["jobId", "revision", "itemId"])
+  .index("by_item", ["itemId"]);
+
+const refillQueue = defineTable({
+  propertyId: v.id("properties"),
+  itemId: v.id("inventoryItems"),
+  lastJobId: v.optional(v.id("cleaningJobs")),
+  status: v.union(
+    v.literal("open"),
+    v.literal("acknowledged"),
+    v.literal("ordered"),
+    v.literal("resolved")
+  ),
+  level: v.union(v.literal("low"), v.literal("critical"), v.literal("out")),
+  lastPercentRemaining: v.number(),
+  note: v.optional(v.string()),
+  lastCheckedAt: v.number(),
+  lastCheckedBy: v.id("users"),
+  acknowledgedAt: v.optional(v.number()),
+  orderedAt: v.optional(v.number()),
+  resolvedAt: v.optional(v.number()),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_status", ["status"])
+  .index("by_property_and_status", ["propertyId", "status"])
+  .index("by_item", ["itemId"])
+  .index("by_item_and_status", ["itemId", "status"]);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // NOTIFICATIONS
@@ -768,6 +862,10 @@ export default defineSchema({
   inventoryCategories,
   inventoryItems,
   stockChecks,
+  propertyCriticalCheckpoints,
+  jobCheckpointChecks,
+  jobRefillChecks,
+  refillQueue,
 
   // Notifications
   notifications,

@@ -24,11 +24,14 @@ const STATUS_COLOR: Record<string, string> = {
   scheduled: "border-slate-500/60 text-slate-300",
   assigned: "border-blue-500/60 text-blue-300",
   in_progress: "border-amber-500/60 text-amber-300",
-  awaiting_approval: "border-cyan-500/60 text-cyan-300",
+  awaiting_approval: "border-cyan-400/70 bg-cyan-500/5 text-cyan-400",
   rework_required: "border-red-500/60 text-red-300",
   completed: "border-emerald-500/60 text-emerald-300",
   cancelled: "border-zinc-500/60 text-zinc-400",
 };
+
+const ACTIVE_JOB_STATUSES = new Set(["scheduled", "assigned", "in_progress", "rework_required", "awaiting_approval"]);
+const CLOSED_JOB_STATUSES = new Set(["completed"]);
 
 export function CleanerHomeClient() {
   const { isAuthenticated, isLoading } = useConvexAuth();
@@ -44,12 +47,12 @@ export function CleanerHomeClient() {
 
   const activeJobs = useMemo(() => {
     const source = jobs ?? [];
-    return source.filter((job) => job.status !== "completed" && job.status !== "cancelled");
+    return source.filter((job) => ACTIVE_JOB_STATUSES.has(job.status));
   }, [jobs]);
 
-  const completedJobs = useMemo(() => {
+  const closedJobs = useMemo(() => {
     const source = jobs ?? [];
-    return source.filter((job) => job.status === "completed");
+    return source.filter((job) => CLOSED_JOB_STATUSES.has(job.status));
   }, [jobs]);
 
   if (isLoading || !isAuthenticated) {
@@ -66,7 +69,7 @@ export function CleanerHomeClient() {
         <p className="text-sm uppercase tracking-wide text-[var(--muted-foreground)]">Today</p>
         <h2 className="mt-1 text-2xl font-semibold">{activeJobs.length} active job(s)</h2>
         <p className="mt-1 text-base text-[var(--muted-foreground)]">
-          {completedJobs.length} completed job(s) in your current feed.
+          {closedJobs.length} submitted or completed job(s) in your current feed.
         </p>
       </section>
 
@@ -86,7 +89,7 @@ export function CleanerHomeClient() {
                   </p>
                 </div>
                 <span
-                  className={`rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${
+                  className={`rounded-md border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${
                     STATUS_COLOR[job.status] ?? "border-[var(--border)]"
                   }`}
                 >
@@ -111,12 +114,14 @@ export function CleanerHomeClient() {
                 >
                   Open Details
                 </Link>
-                <Link
-                  href={`/cleaner/jobs/${job._id}/active`}
-                  className="rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-[var(--primary-foreground)]"
-                >
-                  {job.status === "in_progress" ? "Resume" : "Start"}
-                </Link>
+                {job.status === "awaiting_approval" ? null : (
+                  <Link
+                    href={`/cleaner/jobs/${job._id}/active`}
+                    className="rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-[var(--primary-foreground)]"
+                  >
+                    {job.status === "in_progress" ? "Resume" : "Start"}
+                  </Link>
+                )}
               </div>
             </li>
           ))}

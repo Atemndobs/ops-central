@@ -39,7 +39,7 @@ type JobWithRelations = {
   scheduledStartAt?: number;
   propertyId: Id<"properties">;
   property?: { _id: Id<"properties">; name?: string | null };
-  cleaners?: Array<{ _id?: Id<"users">; name?: string | null }>;
+  cleaners?: Array<{ _id?: Id<"users">; name?: string | null; avatarUrl?: string | null }>;
 };
 
 const readinessDotClass: Record<PropertyStatus, string> = {
@@ -78,6 +78,49 @@ function propertyInitials(name: string): string {
     return (words[0][0] + words[1][0]).toUpperCase();
   }
   return name.slice(0, 2).toUpperCase();
+}
+
+function cleanerInitials(name?: string | null): string {
+  if (!name) {
+    return "U";
+  }
+  const words = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length === 0) {
+    return "U";
+  }
+  if (words.length === 1) {
+    return words[0].slice(0, 1).toUpperCase();
+  }
+  return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase();
+}
+
+function AssignedCleanerBadge({
+  cleaner,
+}: {
+  cleaner?: { name?: string | null; avatarUrl?: string | null } | null;
+}) {
+  const initials = cleanerInitials(cleaner?.name);
+  return (
+    <span className="relative inline-flex h-5 w-5 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50">
+      {cleaner?.avatarUrl ? (
+        <img
+          src={cleaner.avatarUrl}
+          alt={cleaner.name ? `${cleaner.name} avatar` : "Cleaner avatar"}
+          className="h-full w-full rounded-full object-cover"
+          loading="lazy"
+          referrerPolicy="no-referrer"
+        />
+      ) : (
+        <span className="text-[9px] font-semibold text-emerald-700">{initials}</span>
+      )}
+      <span className="absolute -bottom-1 -right-1 rounded-full border border-white bg-emerald-500 p-[1px] text-white">
+        <Check className="h-2.5 w-2.5" />
+      </span>
+    </span>
+  );
 }
 
 function worstStatus(jobs: JobWithRelations[]): JobStatus {
@@ -123,7 +166,7 @@ export function ScheduleClient() {
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
 
   // --- Desktop toggles ---
-  const [isCleanerPanelVisible, setIsCleanerPanelVisible] = useState(true);
+  const [isCleanerPanelVisible, setIsCleanerPanelVisible] = useState(false);
   const [isGridFitMode, setIsGridFitMode] = useState(false);
 
   // --- Mobile-specific ---
@@ -249,8 +292,8 @@ export function ScheduleClient() {
       : propertyLabelMode === "initials"
         ? "40px"
         : dayCount <= 3
-          ? "160px"
-          : "80px";
+          ? "180px"
+          : "160px";
 
   // On desktop, always use comfortable column widths for full job cards
   // On mobile with 7-day, use compact 40px columns for dot view
@@ -411,6 +454,9 @@ export function ScheduleClient() {
             {cellJobs.slice(0, 3).map((job) => {
               const availableAssignment = assignableByPropertyMap.get(job.propertyId);
               const companyCleaners = availableAssignment?.cleaners ?? [];
+              const primaryAssignedCleaner =
+                job.cleaners?.find((cleaner) => cleaner?._id) ?? null;
+              const hasAssignedCleaner = Boolean(primaryAssignedCleaner);
               return (
                 <div key={job._id} className="relative">
                   <Link
@@ -430,10 +476,14 @@ export function ScheduleClient() {
                       event.stopPropagation();
                       setQuickAssignJobId((current) => (current === job._id ? null : job._id));
                     }}
-                    className="absolute right-1 top-1 rounded p-0.5 text-[var(--muted-foreground)] hover:bg-black/10 hover:text-[var(--foreground)]"
-                    aria-label="Quick assign cleaner"
-                  >
+                  className="absolute right-1 top-1 rounded p-0.5 text-[var(--muted-foreground)] hover:bg-black/10 hover:text-[var(--foreground)]"
+                  aria-label={hasAssignedCleaner ? "Quick reassign cleaner" : "Quick assign cleaner"}
+                >
+                  {hasAssignedCleaner ? (
+                    <AssignedCleanerBadge cleaner={primaryAssignedCleaner} />
+                  ) : (
                     <UserPlus className="h-3 w-3" />
+                  )}
                   </button>
                   {quickAssignJobId === job._id ? (
                     <div className="absolute right-0 top-full z-40 mt-1 w-56 rounded-md border bg-[var(--card)] p-2 shadow-xl">
@@ -481,6 +531,9 @@ export function ScheduleClient() {
         {cellJobs.slice(0, 3).map((job) => {
           const availableAssignment = assignableByPropertyMap.get(job.propertyId);
           const companyCleaners = availableAssignment?.cleaners ?? [];
+          const primaryAssignedCleaner =
+            job.cleaners?.find((cleaner) => cleaner?._id) ?? null;
+          const hasAssignedCleaner = Boolean(primaryAssignedCleaner);
           return (
             <div key={job._id} className="relative">
               <Link
@@ -501,10 +554,14 @@ export function ScheduleClient() {
                   setQuickAssignJobId((current) => (current === job._id ? null : job._id));
                 }}
                 className="absolute right-1 top-1 rounded p-0.5 text-[var(--muted-foreground)] hover:bg-black/10 hover:text-[var(--foreground)]"
-                aria-label="Quick assign cleaner"
-                title="Quick assign cleaner"
+                aria-label={hasAssignedCleaner ? "Quick reassign cleaner" : "Quick assign cleaner"}
+                title={hasAssignedCleaner ? "Quick reassign cleaner" : "Quick assign cleaner"}
               >
-                <UserPlus className="h-3 w-3" />
+                {hasAssignedCleaner ? (
+                  <AssignedCleanerBadge cleaner={primaryAssignedCleaner} />
+                ) : (
+                  <UserPlus className="h-3 w-3" />
+                )}
               </button>
               {quickAssignJobId === job._id ? (
                 <div className="absolute right-0 top-full z-40 mt-1 w-56 rounded-md border bg-[var(--card)] p-2 shadow-xl">
@@ -666,9 +723,11 @@ export function ScheduleClient() {
               onClick={() => setIsCleanerPanelVisible((prev) => !prev)}
               className="hidden items-center gap-1 rounded-md border px-2 py-1 text-xs hover:bg-[var(--accent)] md:inline-flex"
               aria-pressed={!isCleanerPanelVisible}
+              aria-label={isCleanerPanelVisible ? "Hide team panel" : "Show team panel"}
+              title={isCleanerPanelVisible ? "Hide team panel" : "Show team panel"}
             >
               {isCleanerPanelVisible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-              {isCleanerPanelVisible ? "Hide Team" : "Show Team"}
+              <Users className="h-3.5 w-3.5" />
             </button>
 
             {/* Day count toggle */}
@@ -988,6 +1047,9 @@ export function ScheduleClient() {
                     const availableAssignment = assignableByPropertyMap.get(job.propertyId);
                     const companyCleaners = availableAssignment?.cleaners ?? [];
                     const isAssigning = quickAssignJobId === job._id;
+                    const primaryAssignedCleaner =
+                      job.cleaners?.find((cleaner) => cleaner?._id) ?? null;
+                    const hasAssignedCleaner = Boolean(primaryAssignedCleaner);
                     return (
                       <div key={job._id} className={`rounded-lg border text-xs ${STATUS_CLASSNAMES[job.status]}`}>
                         <Link href={`/jobs/${job._id}`} className="block px-3 py-2">
@@ -1007,8 +1069,12 @@ export function ScheduleClient() {
                             onClick={() => setQuickAssignJobId((current) => (current === job._id ? null : job._id))}
                             className="flex items-center gap-1 text-[11px] font-medium opacity-70 hover:opacity-100"
                           >
-                            <UserPlus className="h-3 w-3" />
-                            {isAssigning ? "Close" : "Assign Cleaner"}
+                            {hasAssignedCleaner ? (
+                              <AssignedCleanerBadge cleaner={primaryAssignedCleaner} />
+                            ) : (
+                              <UserPlus className="h-3 w-3" />
+                            )}
+                            {isAssigning ? "Close" : hasAssignedCleaner ? "Reassign Cleaner" : "Assign Cleaner"}
                           </button>
                           {isAssigning ? (
                             <div className="mt-2 space-y-1">

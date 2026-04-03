@@ -1,10 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useConvexAuth, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
-import Link from "next/link";
 import { AlertTriangle, Loader2, Plus, Search } from "lucide-react";
+import type { Id } from "@convex/_generated/dataModel";
+import { getErrorMessage } from "@/lib/errors";
+import { useToast } from "@/components/ui/toast-provider";
 
 type InventoryStatus = "ok" | "low_stock" | "out_of_stock" | "reorder_pending";
 
@@ -19,21 +21,15 @@ type InventoryItem = {
   category?: { id: string; name: string } | null;
 };
 
-type InventoryResponse = {
-  items: InventoryItem[];
-};
-
-type GlobalStats = {
-  totalItems: number;
-  lowStockItems: number;
-  requiresRestockCount: number;
-  propertiesWithIssues: number;
-  overallHealthScore: number;
-};
-
-type Property = {
-  _id: string;
-  name: string;
+type RefillQueueRow = {
+  _id: Id<"refillQueue">;
+  status: "open" | "acknowledged" | "ordered" | "resolved";
+  level: "low" | "critical" | "out";
+  lastPercentRemaining: number;
+  updatedAt?: number;
+  createdAt: number;
+  property?: { _id: Id<"properties">; name: string } | null;
+  item?: { _id: Id<"inventoryItems">; name: string; room?: string } | null;
 };
 
 const statusLabel: Record<InventoryStatus, string> = {
@@ -55,6 +51,8 @@ export default function InventoryPage() {
   const [propertyFilter, setPropertyFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<"all" | InventoryStatus>("all");
   const { isAuthenticated } = useConvexAuth();
+  const { showToast } = useToast();
+  const [pendingQueueId, setPendingQueueId] = useState<string | null>(null);
 
   const inventory = useQuery(
     api.inventory.queries.getAll,
@@ -78,6 +76,11 @@ export default function InventoryPage() {
     api.properties.queries.getAll,
     isAuthenticated ? { limit: 500 } : "skip",
   );
+  const refillQueue = useQuery(
+    api.refills.queries.getQueue,
+    isAuthenticated ? { limit: 200 } : "skip",
+  ) as RefillQueueRow[] | undefined;
+  const updateQueueStatus = useMutation(api.refills.mutations.updateQueueStatus);
 
   const filteredItems = useMemo(() => {
     const items = (inventory ?? []) as InventoryItem[];
@@ -94,6 +97,28 @@ export default function InventoryPage() {
   }, [inventory, search]);
 
   const loading = isAuthenticated && (!inventory || !lowStock || !globalStats || !properties);
+  const activeRefillQueue = useMemo(
+    () =>
+      (refillQueue ?? [])
+        .filter((row) => row.status !== "resolved")
+        .sort((a, b) => (b.updatedAt ?? b.createdAt) - (a.updatedAt ?? a.createdAt)),
+    [refillQueue],
+  );
+
+  async function handleQueueStatusChange(
+    queueId: Id<"refillQueue">,
+    status: "open" | "acknowledged" | "ordered" | "resolved",
+  ) {
+    setPendingQueueId(queueId);
+    try {
+      await updateQueueStatus({ queueId, status });
+      showToast("Refill queue item updated.");
+    } catch (mutationError) {
+      showToast(getErrorMessage(mutationError, "Failed to update refill queue item."), "error");
+    } finally {
+      setPendingQueueId(null);
+    }
+  }
 
   if (!isAuthenticated) {
     return (
@@ -146,6 +171,97 @@ export default function InventoryPage() {
               </span>
             </div>
           ) : null}
+
+          <section className="rounded-2xl border bg-[var(--card)]">
+            <div className="flex items-center justify-between gap-2 border-b p-4">
+              <h2 className="text-lg font-bold">Refill Queue</h2>
+              <span className="rounded-full border px-2 py-1 text-xs text-[var(--muted-foreground)]">
+                {activeRefillQueue.length} active
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px]">
+                <thead className="bg-[var(--secondary)]">
+                  <tr className="text-left text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)]">
+                    <th className="px-4 py-3">Property</th>
+                    <th className="px-4 py-3">Item</th>
+                    <th className="px-4 py-3">Level</th>
+                    <th className="px-4 py-3 text-center">Remaining</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3 text-right">Update</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {refillQueue === undefined ? (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="px-4 py-8 text-center text-sm text-[var(--muted-foreground)]"
+                      >
+                        Loading refill queue...
+                      </td>
+                    </tr>
+                  ) : activeRefillQueue.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="px-4 py-8 text-center text-sm text-[var(--muted-foreground)]"
+                      >
+                        No active refill alerts.
+                      </td>
+                    </tr>
+                  ) : (
+                    activeRefillQueue.map((row) => (
+                      <tr key={row._id} className="border-t">
+                        <td className="px-4 py-3 text-sm">{row.property?.name ?? "Unknown"}</td>
+                        <td className="px-4 py-3 text-sm">
+                          {row.item?.room ? `${row.item.room}: ` : ""}
+                          {row.item?.name ?? "Unknown item"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold uppercase ${
+                              row.level === "out"
+                                ? "border-rose-200 bg-rose-50 text-rose-700"
+                                : row.level === "critical"
+                                  ? "border-orange-200 bg-orange-50 text-orange-700"
+                                  : "border-amber-200 bg-amber-50 text-amber-700"
+                            }`}
+                          >
+                            {row.level}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center text-sm font-semibold">
+                          {Math.round(row.lastPercentRemaining)}%
+                        </td>
+                        <td className="px-4 py-3 text-sm capitalize">
+                          {row.status.replace("_", " ")}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <select
+                            value={row.status}
+                            disabled={pendingQueueId === row._id}
+                            onChange={(event) =>
+                              handleQueueStatusChange(
+                                row._id,
+                                event.target.value as RefillQueueRow["status"],
+                              )
+                            }
+                            className="rounded-md border bg-[var(--card)] px-2 py-1.5 text-sm"
+                          >
+                            <option value="open">Open</option>
+                            <option value="acknowledged">Acknowledged</option>
+                            <option value="ordered">Ordered</option>
+                            <option value="resolved">Resolved</option>
+                          </select>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
 
           <section className="rounded-2xl border bg-[var(--card)]">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b p-4">

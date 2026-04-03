@@ -72,6 +72,22 @@ function getAssignWarnings(result: unknown): string[] {
   return warnings.filter((warning): warning is string => typeof warning === "string");
 }
 
+function refillLevelClass(level?: "ok" | "low" | "critical" | "out") {
+  if (level === "out") {
+    return "border-rose-200 bg-rose-50 text-rose-700";
+  }
+  if (level === "critical") {
+    return "border-orange-200 bg-orange-50 text-orange-700";
+  }
+  if (level === "low") {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+  if (level === "ok") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+  return "border-[var(--border)] bg-[var(--secondary)] text-[var(--muted-foreground)]";
+}
+
 export function JobDetailClient({ id }: { id: string }) {
   const { isAuthenticated } = useConvexAuth();
   const { isLoaded: isClerkLoaded, isSignedIn, sessionClaims, userId } = useAuth();
@@ -91,6 +107,7 @@ export function JobDetailClient({ id }: { id: string }) {
 
   const detail = useQuery(api.cleaningJobs.queries.getJobDetail, isAuthenticated ? { jobId } : "skip");
   const livePresence = useQuery(api.cleaningJobs.queries.getJobLivePresence, isAuthenticated ? { jobId } : "skip");
+  const jobChecks = useQuery(api.jobChecks.queries.getForJob, isAuthenticated ? { jobId } : "skip");
 
   const startJob = useMutation(api.cleaningJobs.mutations.start);
   const submitForApproval = useMutation(api.cleaningJobs.mutations.submitForApproval);
@@ -102,7 +119,6 @@ export function JobDetailClient({ id }: { id: string }) {
   const reopenCompleted = useMutation(api.cleaningJobs.approve.reopenCompleted);
   const assignCleaner = useMutation(api.cleaningJobs.mutations.assign);
 
-  const [cleanerId, setCleanerId] = useState("");
   const [assignPanelOpen, setAssignPanelOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -197,37 +213,6 @@ export function JobDetailClient({ id }: { id: string }) {
       showToast(`Job moved to ${STATUS_LABELS[nextStatus]}.`);
     } catch (statusError) {
       const message = getErrorMessage(statusError, "Unable to update status.");
-      setError(message);
-      showToast(message, "error");
-    } finally {
-      setPending(false);
-    }
-  }
-
-  async function onAssignCleaner() {
-    if (!cleanerId) {
-      setError("Select a cleaner before assigning.");
-      return;
-    }
-
-    setError(null);
-    setPending(true);
-    try {
-      const result = await assignCleaner({
-        jobId,
-        cleanerIds: [cleanerId as Id<"users">],
-        notifyCleaners: false,
-        source: "job_detail_assign",
-        returnWarnings: true,
-      });
-      setCleanerId("");
-      showToast("Cleaner assigned.");
-      const warnings = getAssignWarnings(result);
-      if (warnings.length > 0) {
-        showToast(`Dispatch warning: ${warnings.join(" ")}`, "error");
-      }
-    } catch (assignError) {
-      const message = getErrorMessage(assignError, "Unable to assign cleaner.");
       setError(message);
       showToast(message, "error");
     } finally {
@@ -472,7 +457,6 @@ export function JobDetailClient({ id }: { id: string }) {
                               type="button"
                               disabled={pending}
                               onClick={async () => {
-                                setCleanerId(cleaner._id);
                                 setError(null);
                                 setPending(true);
                                 try {
@@ -493,7 +477,6 @@ export function JobDetailClient({ id }: { id: string }) {
                                   showToast(msg, "error");
                                 } finally {
                                   setPending(false);
-                                  setCleanerId("");
                                 }
                               }}
                               className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm hover:bg-[var(--accent)] disabled:opacity-60"
@@ -622,6 +605,138 @@ export function JobDetailClient({ id }: { id: string }) {
                 </div>
               )}
             </div>
+          </div>
+
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+            <h3 className="mb-3 text-sm font-semibold">Critical Checks & Refills</h3>
+            {jobChecks === undefined ? (
+              <p className="text-sm text-[var(--muted-foreground)]">
+                Loading checks coverage...
+              </p>
+            ) : !jobChecks ? (
+              <p className="text-sm text-[var(--muted-foreground)]">
+                No checks data available for this job.
+              </p>
+            ) : (
+              <>
+                <div className="mb-3 grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-md border border-[var(--border)] p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-[var(--muted-foreground)]">
+                      Critical Checkpoints
+                    </p>
+                    <p className="mt-1 text-sm font-semibold">
+                      {jobChecks.coverage.checkedRequiredCheckpoints}/{jobChecks.coverage.requiredCheckpoints}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-[var(--border)] p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-[var(--muted-foreground)]">
+                      Refill Checks
+                    </p>
+                    <p className="mt-1 text-sm font-semibold">
+                      {jobChecks.coverage.checkedRequiredRefills}/{jobChecks.coverage.requiredRefills}
+                    </p>
+                  </div>
+                </div>
+
+                {jobChecks.coverage.requiredCheckpoints === 0 &&
+                jobChecks.coverage.requiredRefills === 0 ? (
+                  <p className="text-sm text-[var(--muted-foreground)]">
+                    No critical checkpoints or refill tracked items are configured for this property.
+                  </p>
+                ) : (
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <section>
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+                        Required Checkpoints
+                      </p>
+                      <div className="space-y-2">
+                        {jobChecks.checkpoints
+                          .filter(
+                            (entry) =>
+                              entry.checkpoint.isActive && entry.checkpoint.isRequired,
+                          )
+                          .map((entry) => {
+                            const status = entry.check?.status;
+                            const statusClass =
+                              status === "pass"
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : status === "fail"
+                                  ? "border-rose-200 bg-rose-50 text-rose-700"
+                                  : status === "skip"
+                                    ? "border-amber-200 bg-amber-50 text-amber-700"
+                                    : "border-[var(--border)] bg-[var(--secondary)] text-[var(--muted-foreground)]";
+                            return (
+                              <div
+                                key={entry.checkpoint._id}
+                                className="rounded border border-[var(--border)] px-2 py-1.5 text-xs"
+                              >
+                                <p className="font-medium">
+                                  {entry.checkpoint.roomName}: {entry.checkpoint.title}
+                                </p>
+                                <div className="mt-1 flex items-center justify-between gap-2">
+                                  <span
+                                    className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${statusClass}`}
+                                  >
+                                    {status ?? "missing"}
+                                  </span>
+                                  {entry.check?.checkedAt ? (
+                                    <span className="text-[var(--muted-foreground)]">
+                                      {formatDateTime(entry.check.checkedAt)}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        {jobChecks.coverage.requiredCheckpoints === 0 ? (
+                          <p className="text-xs text-[var(--muted-foreground)]">
+                            No required checkpoints.
+                          </p>
+                        ) : null}
+                      </div>
+                    </section>
+
+                    <section>
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+                        Refill Status
+                      </p>
+                      <div className="space-y-2">
+                        {jobChecks.refills.map((entry) => (
+                          <div
+                            key={entry.item._id}
+                            className="rounded border border-[var(--border)] px-2 py-1.5 text-xs"
+                          >
+                            <p className="font-medium">
+                              {entry.item.room ? `${entry.item.room}: ` : ""}
+                              {entry.item.name}
+                            </p>
+                            <div className="mt-1 flex items-center justify-between gap-2">
+                              <span
+                                className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${refillLevelClass(entry.check?.level)}`}
+                              >
+                                {entry.check
+                                  ? `${entry.check.level} (${Math.round(entry.check.percentRemaining)}%)`
+                                  : "missing"}
+                              </span>
+                              {entry.check?.checkedAt ? (
+                                <span className="text-[var(--muted-foreground)]">
+                                  {formatDateTime(entry.check.checkedAt)}
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                        {jobChecks.coverage.requiredRefills === 0 ? (
+                          <p className="text-xs text-[var(--muted-foreground)]">
+                            No refill tracked items.
+                          </p>
+                        ) : null}
+                      </div>
+                    </section>
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">

@@ -11,6 +11,8 @@ import { STATUS_LABELS } from "@/components/jobs/job-status";
 import { useToast } from "@/components/ui/toast-provider";
 import { getErrorMessage } from "@/lib/errors";
 import { PropertyFormValues, PropertyRecord } from "@/types/property";
+import { PropertyCriticalCheckpointsPanel } from "@/components/properties/property-critical-checkpoints-panel";
+import { PropertyRefillTrackingPanel } from "@/components/properties/property-refill-tracking-panel";
 
 function formatDateTime(timestamp?: number) {
   if (!timestamp) {
@@ -200,6 +202,10 @@ export function PropertyDetail({ id }: { id: string }) {
           {actionError}
         </div>
       ) : null}
+
+      <PropertyCriticalCheckpointsPanel propertyId={id} />
+
+      <PropertyRefillTrackingPanel propertyId={id} />
 
       <section className="rounded-2xl border bg-[var(--card)]">
         <div className="border-b px-4 py-3">

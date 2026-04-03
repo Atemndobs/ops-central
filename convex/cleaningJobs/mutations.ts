@@ -10,7 +10,58 @@ function getCurrentRevision(job: Doc<"cleaningJobs">): number {
 }
 
 function normalizeRoom(name: string): string {
-  return name.trim();
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function hasTrailingRoomIndex(name: string): boolean {
+  return /\s\d+$/.test(name);
+}
+
+function dropTrailingRoomIndex(name: string): string {
+  return name.replace(/\s\d+$/, "");
+}
+
+function roomRequirementMatchesObserved(
+  requiredRoomName: string,
+  observedRoomName: string,
+): boolean {
+  const required = normalizeRoom(requiredRoomName);
+  const observed = normalizeRoom(observedRoomName);
+
+  if (!required || !observed) {
+    return false;
+  }
+
+  if (required === observed) {
+    return true;
+  }
+
+  // Backward compatibility: treat "Bedroom" as matching "Bedroom 1".
+  if (!hasTrailingRoomIndex(required) && hasTrailingRoomIndex(observed)) {
+    return required === dropTrailingRoomIndex(observed);
+  }
+
+  return false;
+}
+
+function dedupeRoomNames(roomNames: string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+
+  roomNames.forEach((roomName) => {
+    const normalized = normalizeRoom(roomName);
+    if (!normalized || seen.has(normalized)) {
+      return;
+    }
+    seen.add(normalized);
+    unique.push(normalized);
+  });
+
+  return unique;
 }
 
 function fnv1aHash(input: string): string {
@@ -135,30 +186,35 @@ function buildValidationResult(args: {
   const afterCount = args.photos.filter((photo) => photo.type === "after").length;
   const incidentCount = args.photos.filter((photo) => photo.type === "incident").length;
 
-  const skipped = new Map(
-    (args.skippedRooms ?? []).map((room) => [normalizeRoom(room.roomName), room.reason.trim()]),
+  const skippedRooms = dedupeRoomNames(
+    (args.skippedRooms ?? []).map((room) => room.roomName),
   );
 
-  const observedRooms = [
-    ...new Set(
-      args.photos
-        .map((photo) => normalizeRoom(photo.roomName))
-        .filter((name) => name.length > 0 && name.toLowerCase() !== "batch"),
-    ),
-  ];
+  const observedRooms = dedupeRoomNames(
+    args.photos
+      .map((photo) => photo.roomName)
+      .filter((name) => {
+        const normalized = normalizeRoom(name);
+        return (
+          normalized.length > 0 &&
+          normalized !== "batch" &&
+          normalized !== "quick flow batch"
+        );
+      }),
+  );
   const requiredRooms = args.requiredRooms?.length
-    ? [...new Set(args.requiredRooms.map(normalizeRoom).filter((name) => name.length > 0))]
+    ? dedupeRoomNames(args.requiredRooms)
     : observedRooms;
 
-  const beforeRooms = new Set(
+  const beforeRooms = dedupeRoomNames(
     args.photos
       .filter((photo) => photo.type === "before")
-      .map((photo) => normalizeRoom(photo.roomName)),
+      .map((photo) => photo.roomName),
   );
-  const afterRooms = new Set(
+  const afterRooms = dedupeRoomNames(
     args.photos
       .filter((photo) => photo.type === "after")
-      .map((photo) => normalizeRoom(photo.roomName)),
+      .map((photo) => photo.roomName),
   );
 
   const missingBeforeRooms: string[] = [];
@@ -180,13 +236,26 @@ function buildValidationResult(args: {
     }
   } else {
     requiredRooms.forEach((roomName) => {
-      if (skipped.has(roomName)) {
+      const isSkipped = skippedRooms.some(
+        (skippedRoom) =>
+          roomRequirementMatchesObserved(roomName, skippedRoom) ||
+          roomRequirementMatchesObserved(skippedRoom, roomName),
+      );
+      if (isSkipped) {
         return;
       }
-      if (!beforeRooms.has(roomName)) {
+
+      const hasBefore = beforeRooms.some((beforeRoom) =>
+        roomRequirementMatchesObserved(roomName, beforeRoom),
+      );
+      if (!hasBefore) {
         missingBeforeRooms.push(roomName);
       }
-      if (!afterRooms.has(roomName)) {
+
+      const hasAfter = afterRooms.some((afterRoom) =>
+        roomRequirementMatchesObserved(roomName, afterRoom),
+      );
+      if (!hasAfter) {
         missingAfterRooms.push(roomName);
       }
     });
@@ -228,6 +297,64 @@ async function findSession(
       q.eq("jobId", args.jobId).eq("cleanerId", args.cleanerId).eq("revision", args.revision),
     )
     .unique();
+}
+
+async function getCriticalAndRefillCoverage(
+  ctx: MutationCtx,
+  args: {
+    job: Doc<"cleaningJobs">;
+    revision: number;
+  },
+) {
+  const [requiredCheckpoints, checkpointChecks, trackedRefillItems, refillChecks] =
+    await Promise.all([
+      ctx.db
+        .query("propertyCriticalCheckpoints")
+        .withIndex("by_property_and_active", (q) =>
+          q.eq("propertyId", args.job.propertyId).eq("isActive", true),
+        )
+        .collect(),
+      ctx.db
+        .query("jobCheckpointChecks")
+        .withIndex("by_job_and_revision", (q) =>
+          q.eq("jobId", args.job._id).eq("revision", args.revision),
+        )
+        .collect(),
+      ctx.db
+        .query("inventoryItems")
+        .withIndex("by_property", (q) => q.eq("propertyId", args.job.propertyId))
+        .collect(),
+      ctx.db
+        .query("jobRefillChecks")
+        .withIndex("by_job_and_revision", (q) =>
+          q.eq("jobId", args.job._id).eq("revision", args.revision),
+        )
+        .collect(),
+    ]);
+
+  const required = requiredCheckpoints.filter((checkpoint) => checkpoint.isRequired);
+  const trackedItems = trackedRefillItems.filter((item) => item.isRefillTracked === true);
+
+  const checkpointIds = new Set(checkpointChecks.map((check) => check.checkpointId));
+  const refillItemIds = new Set(refillChecks.map((check) => check.itemId));
+
+  const missingCheckpoints = required.filter(
+    (checkpoint) => !checkpointIds.has(checkpoint._id),
+  );
+  const missingRefills = trackedItems.filter((item) => !refillItemIds.has(item._id));
+
+  return {
+    requiredCheckpointCount: required.length,
+    completedCheckpointCount: required.length - missingCheckpoints.length,
+    requiredRefillCount: trackedItems.length,
+    completedRefillCount: trackedItems.length - missingRefills.length,
+    missingCheckpointLabels: missingCheckpoints.map(
+      (checkpoint) => `${checkpoint.roomName}: ${checkpoint.title}`,
+    ),
+    missingRefillLabels: missingRefills.map((item) =>
+      item.room ? `${item.room}: ${item.name}` : item.name,
+    ),
+  };
 }
 
 async function sealSubmission(
@@ -497,8 +624,8 @@ async function submitForApprovalInternal(
     );
   }
 
-  if (force && user.role === "cleaner") {
-    throw new ConvexError("Only privileged users can force submit.");
+  if (force && user.role !== "cleaner") {
+    requirePrivilegedRole(user);
   }
 
   if (user.role === "cleaner") {
@@ -556,7 +683,16 @@ async function submitForApprovalInternal(
     return session.status !== "submitted" && session.status !== "excused";
   });
 
-  if (unresolvedCleanerIds.length > 0 && !force) {
+  // Cleaner self-force applies to evidence validation only; unresolved multi-cleaner
+  // session gates still require privileged force submit.
+  const canBypassSessionGate = force && user.role !== "cleaner";
+  if (unresolvedCleanerIds.length > 0 && !canBypassSessionGate) {
+    if (force) {
+      throw new ConvexError(
+        `Submission gate not passed. ${unresolvedCleanerIds.length} cleaner(s) still pending.`,
+      );
+    }
+
     return {
       ok: false,
       gatePassed: false,
@@ -581,6 +717,28 @@ async function submitForApprovalInternal(
       type: photo.type,
     })),
   });
+
+  const coverage = await getCriticalAndRefillCoverage(ctx, {
+    job,
+    revision,
+  });
+  if (coverage.missingCheckpointLabels.length > 0) {
+    validationResult.errors.push(
+      `Missing critical checks for ${coverage.missingCheckpointLabels.length} checkpoint(s).`,
+    );
+    validationResult.warnings.push(
+      `Incomplete critical checks: ${coverage.missingCheckpointLabels.slice(0, 5).join(", ")}`,
+    );
+  }
+  if (coverage.missingRefillLabels.length > 0) {
+    validationResult.errors.push(
+      `Missing refill checks for ${coverage.missingRefillLabels.length} item(s).`,
+    );
+    validationResult.warnings.push(
+      `Incomplete refill checks: ${coverage.missingRefillLabels.slice(0, 5).join(", ")}`,
+    );
+  }
+  validationResult.pass = validationResult.errors.length === 0;
 
   if (!validationResult.pass && !force) {
     throw new ConvexError(
@@ -627,6 +785,10 @@ async function submitForApprovalInternal(
       ...(job.metadata && typeof job.metadata === "object" ? job.metadata : {}),
       qaMode: validationResult.mode,
       guestReady: args.guestReady,
+      requiredCheckpointCount: coverage.requiredCheckpointCount,
+      completedCheckpointCount: coverage.completedCheckpointCount,
+      requiredRefillCount: coverage.requiredRefillCount,
+      completedRefillCount: coverage.completedRefillCount,
     },
   });
 
