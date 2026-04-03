@@ -1,6 +1,10 @@
 import { mutation } from "../_generated/server";
 import { v } from "convex/values";
 import { getCurrentUser, requireAuth } from "../lib/auth";
+import {
+  readProfileOverrides,
+  setProfileOverride,
+} from "../lib/profileMetadata";
 
 const roleValidator = v.union(
   v.literal("cleaner"),
@@ -28,12 +32,29 @@ export const ensureUser = mutation({
       .first();
 
     if (existingUser) {
-      await ctx.db.patch(existingUser._id, {
-        name: args.name,
+      const profileOverrides = readProfileOverrides(existingUser.metadata);
+      const updates: {
+        email: string;
+        role: typeof existingUser.role;
+        updatedAt: number;
+        name?: string;
+        avatarUrl?: string;
+      } = {
         email: args.email,
         role: args.role ?? existingUser.role,
-        avatarUrl: args.avatarUrl ?? existingUser.avatarUrl,
         updatedAt: now,
+      };
+
+      if (!profileOverrides.name && args.name) {
+        updates.name = args.name;
+      }
+
+      if (!profileOverrides.avatarUrl && args.avatarUrl !== undefined) {
+        updates.avatarUrl = args.avatarUrl;
+      }
+
+      await ctx.db.patch(existingUser._id, {
+        ...updates,
       });
       return { userId: existingUser._id };
     }
@@ -61,11 +82,50 @@ export const updateMyProfile = mutation({
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
-
-    await ctx.db.patch(user._id, {
-      ...args,
+    let nextMetadata = user.metadata;
+    const updates: {
+      updatedAt: number;
+      metadata?: unknown;
+      name?: string;
+      phone?: string;
+      avatarUrl?: string;
+      pushToken?: string;
+    } = {
       updatedAt: Date.now(),
-    });
+    };
+
+    if (args.name !== undefined) {
+      const normalizedName = args.name.trim();
+      if (normalizedName.length === 0) {
+        throw new Error("Name cannot be empty.");
+      }
+      updates.name = normalizedName;
+      nextMetadata = setProfileOverride(nextMetadata, "name", true);
+    }
+
+    if (args.phone !== undefined) {
+      const normalizedPhone = args.phone.trim();
+      updates.phone = normalizedPhone.length > 0 ? normalizedPhone : undefined;
+    }
+
+    if (args.avatarUrl !== undefined) {
+      const normalizedAvatarUrl = args.avatarUrl.trim();
+      if (normalizedAvatarUrl.length === 0) {
+        throw new Error("Avatar URL cannot be empty.");
+      }
+      updates.avatarUrl = normalizedAvatarUrl;
+      nextMetadata = setProfileOverride(nextMetadata, "avatarUrl", true);
+    }
+
+    if (args.pushToken !== undefined) {
+      updates.pushToken = args.pushToken;
+    }
+
+    if (nextMetadata !== user.metadata) {
+      updates.metadata = nextMetadata;
+    }
+
+    await ctx.db.patch(user._id, updates);
 
     return { success: true };
   },

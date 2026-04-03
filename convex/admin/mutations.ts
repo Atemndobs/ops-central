@@ -2,6 +2,10 @@ import { ConvexError, v } from "convex/values";
 import { mutation } from "../_generated/server";
 import { type Doc, type Id } from "../_generated/dataModel";
 import { requireRole } from "../lib/auth";
+import {
+  readProfileOverrides,
+  setProfileOverride,
+} from "../lib/profileMetadata";
 
 const appRoleValidator = v.union(
   v.literal("cleaner"),
@@ -168,6 +172,7 @@ export const updateUser = mutation({
     name: v.optional(v.string()),
     email: v.optional(v.string()),
     phone: v.optional(v.string()),
+    avatarUrl: v.optional(v.string()),
     role: v.optional(appRoleValidator),
   },
   handler: async (ctx, args) => {
@@ -182,12 +187,35 @@ export const updateUser = mutation({
     const { id, ...fields } = args;
 
     const updates: Record<string, unknown> = { updatedAt: Date.now() };
+    let nextMetadata = user.metadata;
 
-    if (fields.name !== undefined) updates.name = fields.name;
+    if (fields.name !== undefined) {
+      const normalizedName = fields.name.trim();
+      if (normalizedName.length === 0) {
+        throw new ConvexError("Name cannot be empty.");
+      }
+      updates.name = normalizedName;
+      nextMetadata = setProfileOverride(nextMetadata, "name", true);
+    }
     if (fields.email !== undefined) updates.email = fields.email;
-    if (fields.phone !== undefined) updates.phone = fields.phone;
+    if (fields.phone !== undefined) {
+      const normalizedPhone = fields.phone.trim();
+      updates.phone = normalizedPhone.length > 0 ? normalizedPhone : undefined;
+    }
+    if (fields.avatarUrl !== undefined) {
+      const normalizedAvatarUrl = fields.avatarUrl.trim();
+      if (normalizedAvatarUrl.length === 0) {
+        throw new ConvexError("Avatar URL cannot be empty.");
+      }
+      updates.avatarUrl = normalizedAvatarUrl;
+      nextMetadata = setProfileOverride(nextMetadata, "avatarUrl", true);
+    }
     if (fields.role !== undefined) {
       updates.role = fields.role;
+    }
+
+    if (nextMetadata !== user.metadata) {
+      updates.metadata = nextMetadata;
     }
 
     await ctx.db.patch(id, updates);
@@ -613,16 +641,17 @@ export const upsertUserFromClerkWebhook = mutation({
     }
 
     if (existingUser) {
+      const profileOverrides = readProfileOverrides(existingUser.metadata);
       const updates: Partial<Doc<"users">> = {
         clerkId: args.clerkId,
         email: normalizedEmail,
         updatedAt: now,
       };
 
-      if (normalizedName !== undefined) {
+      if (!profileOverrides.name && normalizedName !== undefined) {
         updates.name = normalizedName;
       }
-      if (normalizedAvatarUrl !== undefined) {
+      if (!profileOverrides.avatarUrl && normalizedAvatarUrl !== undefined) {
         updates.avatarUrl = normalizedAvatarUrl;
       }
       if (args.role !== undefined) {

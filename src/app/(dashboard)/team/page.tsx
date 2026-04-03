@@ -1,11 +1,13 @@
 "use client";
 
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import Image from "next/image";
 import { useToast } from "@/components/ui/toast-provider";
+import { uploadImageFile } from "@/lib/upload-image";
 import {
   getRoleFromMetadata,
   getRoleFromSessionClaimsOrNull,
@@ -35,6 +37,8 @@ type MemberActionTarget = {
   userId: Id<"users">;
   name?: string;
   email?: string;
+  phone?: string;
+  avatarUrl?: string;
   role: UserRole;
   companyId: Id<"cleaningCompanies"> | null;
   companyMemberRole: CompanyMemberRole | null;
@@ -55,6 +59,14 @@ export default function TeamPage() {
   const [roleEditor, setRoleEditor] = useState<MemberActionTarget | null>(null);
   const [roleDraft, setRoleDraft] = useState<UserRole>("cleaner");
   const [isUpdatingRole, setIsUpdatingRole] = useState(false);
+  const [profileEditor, setProfileEditor] = useState<MemberActionTarget | null>(null);
+  const [profileDraft, setProfileDraft] = useState({
+    name: "",
+    phone: "",
+    avatarUrl: "",
+  });
+  const [isUploadingProfileAvatar, setIsUploadingProfileAvatar] = useState(false);
+  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
 
   const [companyEditor, setCompanyEditor] = useState<MemberActionTarget | null>(
     null,
@@ -122,6 +134,7 @@ export default function TeamPage() {
   const assignUserCompanyMembership = useMutation(
     api.admin.mutations.assignUserCompanyMembership,
   );
+  const updateUser = useMutation(api.admin.mutations.updateUser);
   const assignCleanerToJob = useMutation(api.cleaningJobs.mutations.assign);
   const assignPropertyToCompany = useMutation(api.admin.mutations.assignPropertyToCompany);
 
@@ -201,6 +214,8 @@ export default function TeamPage() {
       userId: member._id,
       name: member.name,
       email: member.email,
+      phone: member.phone,
+      avatarUrl: member.avatarUrl,
       role: member.role,
       companyId: member.companyId,
       companyMemberRole: member.companyMemberRole,
@@ -293,6 +308,17 @@ export default function TeamPage() {
     setOpenMenuForUserId(null);
   }
 
+  function openProfileEditor(member: MemberActionTarget) {
+    setProfileEditor(member);
+    setProfileDraft({
+      name: member.name ?? "",
+      phone: member.phone ?? "",
+      avatarUrl: member.avatarUrl ?? "",
+    });
+    setMemberActionSheet(null);
+    setOpenMenuForUserId(null);
+  }
+
   function openCompanyEditor(member: MemberActionTarget) {
     setCompanyEditor(member);
     setCompanyDraft(member.companyId ?? "");
@@ -364,6 +390,59 @@ export default function TeamPage() {
       showToast(message, "error");
     } finally {
       setIsUpdatingRole(false);
+    }
+  }
+
+  async function handleProfileAvatarSelected(
+    event: ChangeEvent<HTMLInputElement>,
+  ) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) {
+      return;
+    }
+
+    setIsUploadingProfileAvatar(true);
+    try {
+      const avatarUrl = await uploadImageFile(file);
+      setProfileDraft((current) => ({ ...current, avatarUrl }));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to upload profile photo.";
+      showToast(message, "error");
+    } finally {
+      setIsUploadingProfileAvatar(false);
+    }
+  }
+
+  async function handleProfileUpdate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!profileEditor) {
+      return;
+    }
+
+    const normalizedName = profileDraft.name.trim();
+    if (normalizedName.length < 2) {
+      showToast("Enter a valid name before saving.", "error");
+      return;
+    }
+
+    setIsUpdatingProfile(true);
+    try {
+      await updateUser({
+        id: profileEditor.userId,
+        name: normalizedName,
+        phone: profileDraft.phone,
+        avatarUrl: profileDraft.avatarUrl || undefined,
+      });
+      showToast("Profile updated successfully.");
+      setProfileEditor(null);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to update profile.";
+      showToast(message, "error");
+    } finally {
+      setIsUpdatingProfile(false);
     }
   }
 
@@ -854,6 +933,13 @@ export default function TeamPage() {
                             <button
                               type="button"
                               className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
+                              onClick={() => openProfileEditor(toMemberActionTarget(member))}
+                            >
+                              Edit Profile
+                            </button>
+                            <button
+                              type="button"
+                              className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
                               onClick={() => openRoleEditor(toMemberActionTarget(member))}
                             >
                               Assign Role
@@ -988,6 +1074,13 @@ export default function TeamPage() {
                             </div>
                             {canManageTeam ? (
                               <div className="mt-2 grid gap-1">
+                                <button
+                                  type="button"
+                                  className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
+                                  onClick={() => openProfileEditor(toMemberActionTarget(member))}
+                                >
+                                  Edit Profile
+                                </button>
                                 <button
                                   type="button"
                                   className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
@@ -1332,6 +1425,13 @@ export default function TeamPage() {
               <button
                 type="button"
                 className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
+                onClick={() => openProfileEditor(memberActionSheet)}
+              >
+                Edit Profile
+              </button>
+              <button
+                type="button"
+                className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
                 onClick={() => openRoleEditor(memberActionSheet)}
               >
                 Edit Role
@@ -1358,6 +1458,102 @@ export default function TeamPage() {
                 Assign to Property
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {profileEditor ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl border bg-[var(--card)] p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold">Edit Profile</h2>
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  {profileEditor.email || "Selected user"}
+                </p>
+              </div>
+              <button
+                className="rounded-md px-2 py-1 text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+                onClick={() => setProfileEditor(null)}
+                disabled={isUpdatingProfile || isUploadingProfileAvatar}
+              >
+                Close
+              </button>
+            </div>
+
+            <form className="space-y-4" onSubmit={handleProfileUpdate}>
+              <div className="flex items-center gap-4">
+                <ProfileImage
+                  avatarUrl={profileDraft.avatarUrl || undefined}
+                  label={profileDraft.name || profileEditor.email || "Member"}
+                  className="h-16 w-16"
+                />
+                <div className="space-y-2">
+                  <label className="inline-flex cursor-pointer rounded-md border px-3 py-2 text-sm">
+                    {isUploadingProfileAvatar ? "Uploading..." : "Change Photo"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={isUploadingProfileAvatar}
+                      onChange={(event) => {
+                        void handleProfileAvatarSelected(event);
+                      }}
+                    />
+                  </label>
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    Upload a new profile photo for this team member.
+                  </p>
+                </div>
+              </div>
+
+              <label className="block text-sm">
+                <span className="mb-1 block text-[var(--muted-foreground)]">Name</span>
+                <input
+                  value={profileDraft.name}
+                  onChange={(event) =>
+                    setProfileDraft((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-md border bg-transparent px-3 py-2"
+                />
+              </label>
+
+              <label className="block text-sm">
+                <span className="mb-1 block text-[var(--muted-foreground)]">Phone</span>
+                <input
+                  value={profileDraft.phone}
+                  onChange={(event) =>
+                    setProfileDraft((current) => ({
+                      ...current,
+                      phone: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-md border bg-transparent px-3 py-2"
+                  placeholder="Phone number"
+                />
+              </label>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="rounded-md border px-3 py-2 text-sm"
+                  onClick={() => setProfileEditor(null)}
+                  disabled={isUpdatingProfile || isUploadingProfileAvatar}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-[var(--primary-foreground)] disabled:opacity-60"
+                  disabled={isUpdatingProfile || isUploadingProfileAvatar}
+                >
+                  {isUpdatingProfile ? "Saving..." : "Save Profile"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       ) : null}
@@ -1697,11 +1893,16 @@ function ProfileImage({
 
   if (avatarUrl) {
     return (
-      <img
-        src={avatarUrl}
-        alt={label}
-        className={`${className} rounded-none border object-cover`}
-      />
+      <div className={`${className} relative overflow-hidden rounded-none border`}>
+        <Image
+          src={avatarUrl}
+          alt={label}
+          fill
+          unoptimized
+          className="object-cover"
+          sizes="64px"
+        />
+      </div>
     );
   }
 

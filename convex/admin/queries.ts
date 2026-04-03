@@ -308,6 +308,7 @@ export const getTeamMetrics = query({
           clerkId: user.clerkId,
           email: user.email,
           name: user.name,
+          phone: user.phone,
           avatarUrl: user.avatarUrl,
           role: user.role,
           availability: pickAvailability(assignedJobs, now, horizonEnd),

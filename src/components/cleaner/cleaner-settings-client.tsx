@@ -2,9 +2,11 @@
 
 import { useAuth } from "@clerk/nextjs";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
-import { useEffect, useState } from "react";
+import Image from "next/image";
+import { type ChangeEvent, useEffect, useState } from "react";
 import { api } from "@convex/_generated/api";
 import { clearPendingUploads, listPendingUploads } from "@/features/cleaner/offline/indexeddb";
+import { uploadImageFile } from "@/lib/upload-image";
 
 const THEME_STORAGE_KEY = "opscentral-theme";
 
@@ -17,11 +19,16 @@ function applyTheme(theme: ThemePreference) {
 export function CleanerSettingsClient() {
   const { signOut } = useAuth();
   const { isAuthenticated: isConvexAuthenticated, isLoading: isConvexAuthLoading } = useConvexAuth();
+  const profile = useQuery(
+    api.users.queries.getMyProfile,
+    isConvexAuthenticated ? {} : "skip",
+  );
   const themePreference = useQuery(
     api.users.queries.getThemePreference,
     isConvexAuthenticated ? {} : "skip",
   );
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
+  const updateMyProfile = useMutation(api.users.mutations.updateMyProfile);
   const notifications = useQuery(
     api.notifications.queries.getMyNotifications,
     isConvexAuthenticated
@@ -37,6 +44,15 @@ export function CleanerSettingsClient() {
   const [pendingUploads, setPendingUploads] = useState(0);
   const [clearingCache, setClearingCache] = useState(false);
   const [cacheCleared, setCacheCleared] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const [profilePhone, setProfilePhone] = useState("");
+  const [profileAvatarUrl, setProfileAvatarUrl] = useState("");
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileMessage, setProfileMessage] = useState<{
+    tone: "success" | "error";
+    text: string;
+  } | null>(null);
   const [localTheme, setLocalTheme] = useState<ThemePreference>(() => {
     if (typeof window === "undefined") {
       return "light";
@@ -67,6 +83,75 @@ export function CleanerSettingsClient() {
     applyTheme(resolvedTheme);
     window.localStorage.setItem(THEME_STORAGE_KEY, resolvedTheme);
   }, [resolvedTheme]);
+
+  useEffect(() => {
+    if (!profile) {
+      return;
+    }
+    setProfileName(profile.name ?? "");
+    setProfilePhone(profile.phone ?? "");
+    setProfileAvatarUrl(profile.avatarUrl ?? "");
+  }, [profile]);
+
+  const handleAvatarSelected = async (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) {
+      return;
+    }
+
+    setProfileMessage(null);
+    setIsUploadingAvatar(true);
+    try {
+      const nextAvatarUrl = await uploadImageFile(file);
+      setProfileAvatarUrl(nextAvatarUrl);
+    } catch (error) {
+      setProfileMessage({
+        tone: "error",
+        text: error instanceof Error ? error.message : "Failed to upload photo.",
+      });
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
+  const handleProfileSave = async () => {
+    if (!isConvexAuthenticated) {
+      return;
+    }
+
+    const normalizedName = profileName.trim();
+    if (normalizedName.length < 2) {
+      setProfileMessage({
+        tone: "error",
+        text: "Enter a valid name before saving.",
+      });
+      return;
+    }
+
+    setProfileMessage(null);
+    setIsSavingProfile(true);
+    try {
+      await updateMyProfile({
+        name: normalizedName,
+        phone: profilePhone,
+        avatarUrl: profileAvatarUrl || undefined,
+      });
+      setProfileMessage({
+        tone: "success",
+        text: "Profile updated.",
+      });
+    } catch (error) {
+      setProfileMessage({
+        tone: "error",
+        text: error instanceof Error ? error.message : "Failed to save profile.",
+      });
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
 
   const handleClearCache = async () => {
     setClearingCache(true);
@@ -99,7 +184,96 @@ export function CleanerSettingsClient() {
     <div className="space-y-4">
       <section className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
         <h2 className="text-base font-semibold">Account</h2>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-4 flex flex-col gap-4">
+          <div className="flex items-center gap-4">
+            {profileAvatarUrl ? (
+              <div className="relative h-20 w-20 overflow-hidden rounded-full border border-[var(--border)]">
+                <Image
+                  src={profileAvatarUrl}
+                  alt={profileName || profile?.email || "Cleaner profile"}
+                  fill
+                  unoptimized
+                  className="object-cover"
+                  sizes="80px"
+                />
+              </div>
+            ) : (
+              <div className="flex h-20 w-20 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--accent)] text-2xl font-semibold text-[var(--muted-foreground)]">
+                {(profileName || profile?.email || "U").trim().charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div className="space-y-2">
+              <label className="inline-flex cursor-pointer rounded-md border border-[var(--border)] px-3 py-2 text-sm">
+                {isUploadingAvatar ? "Uploading..." : "Change Photo"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={isUploadingAvatar}
+                  onChange={(event) => {
+                    void handleAvatarSelected(event);
+                  }}
+                />
+              </label>
+              <p className="text-xs text-[var(--muted-foreground)]">
+                Upload a square photo for the cleanest result.
+              </p>
+            </div>
+          </div>
+
+          <label className="block text-sm">
+            <span className="mb-1 block text-[var(--muted-foreground)]">Name</span>
+            <input
+              value={profileName}
+              onChange={(event) => setProfileName(event.target.value)}
+              className="w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2"
+              placeholder="Your name"
+            />
+          </label>
+
+          <label className="block text-sm">
+            <span className="mb-1 block text-[var(--muted-foreground)]">Phone</span>
+            <input
+              value={profilePhone}
+              onChange={(event) => setProfilePhone(event.target.value)}
+              className="w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2"
+              placeholder="Phone number"
+            />
+          </label>
+
+          <div className="text-sm text-[var(--muted-foreground)]">
+            <p>{profile?.email || "No email available"}</p>
+            <p className="mt-1 uppercase tracking-wider">
+              {profile?.role?.replace("_", " ") || "cleaner"}
+            </p>
+          </div>
+
+          {profileMessage ? (
+            <p
+              className={`rounded-md border px-3 py-2 text-sm ${
+                profileMessage.tone === "success"
+                  ? "border-emerald-600/30 bg-emerald-500/10 text-emerald-400"
+                  : "border-rose-600/30 bg-rose-500/10 text-rose-400"
+              }`}
+            >
+              {profileMessage.text}
+            </p>
+          ) : null}
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-[var(--primary-foreground)] disabled:opacity-60"
+              onClick={() => {
+                void handleProfileSave();
+              }}
+              disabled={isSavingProfile || isUploadingAvatar || !isConvexAuthenticated}
+            >
+              {isSavingProfile ? "Saving..." : "Save Profile"}
+            </button>
+          </div>
+
+          <div className="flex flex-wrap gap-2 border-t border-[var(--border)] pt-2">
           <button
             type="button"
             className="rounded-md border border-[var(--border)] px-3 py-2 text-sm"
@@ -125,6 +299,7 @@ export function CleanerSettingsClient() {
           >
             Sign Out
           </button>
+          </div>
         </div>
       </section>
 

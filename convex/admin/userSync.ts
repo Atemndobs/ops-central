@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { mutation, type MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { requireRole } from "../lib/auth";
+import { readProfileOverrides } from "../lib/profileMetadata";
 
 const userRoleValidator = v.union(
   v.literal("cleaner"),
@@ -453,17 +454,25 @@ export const reconcileWithClerk = mutation({
 
       const canonicalByClerkId = clerkUsersByClerkId.get(user.clerkId);
       if (canonicalByClerkId) {
+        const profileOverrides = readProfileOverrides(user.metadata);
         const updates: Partial<Doc<"users">> = {};
         if (normalizeEmail(user.email) !== normalizeEmail(canonicalByClerkId.email)) {
           updates.email = canonicalByClerkId.email;
         }
-        if (canonicalByClerkId.name && canonicalByClerkId.name !== user.name) {
+        if (
+          !profileOverrides.name &&
+          canonicalByClerkId.name &&
+          canonicalByClerkId.name !== user.name
+        ) {
           updates.name = canonicalByClerkId.name;
         }
         if (canonicalByClerkId.role && canonicalByClerkId.role !== user.role) {
           updates.role = canonicalByClerkId.role;
         }
-        if (canonicalByClerkId.avatarUrl !== undefined) {
+        if (
+          !profileOverrides.avatarUrl &&
+          canonicalByClerkId.avatarUrl !== undefined
+        ) {
           if (canonicalByClerkId.avatarUrl !== user.avatarUrl) {
             updates.avatarUrl = canonicalByClerkId.avatarUrl;
           }
@@ -521,13 +530,19 @@ export const reconcileWithClerk = mutation({
         email: canonicalByEmail.email,
         updatedAt: now,
       };
+      const profileOverrides = readProfileOverrides(user.metadata);
       if (canonicalByEmail.name) {
-        updates.name = canonicalByEmail.name;
+        if (!profileOverrides.name) {
+          updates.name = canonicalByEmail.name;
+        }
       }
       if (canonicalByEmail.role) {
         updates.role = canonicalByEmail.role;
       }
-      if (canonicalByEmail.avatarUrl !== undefined) {
+      if (
+        !profileOverrides.avatarUrl &&
+        canonicalByEmail.avatarUrl !== undefined
+      ) {
         updates.avatarUrl = canonicalByEmail.avatarUrl;
       }
 
