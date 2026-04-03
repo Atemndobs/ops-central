@@ -21,7 +21,6 @@ import {
   getNextPendingUploads,
   markUploadFailed,
   markUploadSyncing,
-  removeUpload,
   resetFailedUploads,
 } from "@/features/cleaner/offline/queue";
 import type { DraftIncident, DraftProgress, PendingUpload } from "@/features/cleaner/offline/types";
@@ -184,7 +183,6 @@ function StepIndicator({
 
 function RoomPhotoCard({
   roomName,
-  photoType,
   photoCount,
   photoUrls,
   skippedReason,
@@ -194,7 +192,6 @@ function RoomPhotoCard({
   onPreview,
 }: {
   roomName: string;
-  photoType: "before" | "after";
   photoCount: number;
   photoUrls: string[];
   skippedReason: string | undefined;
@@ -412,15 +409,18 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
     [isOnline, isSyncing, pendingUploads, syncError],
   );
 
+  const loadJobQueue = useCallback(async () => {
+    return (await listPendingUploads()).filter((item) => item.jobId === jobId);
+  }, [jobId]);
+
   // ── Hydrate draft ─────────────────────────────────────────────────────────
   const hydrateLocalState = useCallback(async () => {
-    const [rawQueue, draft] = await Promise.all([listPendingUploads(), loadDraftProgress(jobId)]);
+    const [rawQueue, draft] = await Promise.all([loadJobQueue(), loadDraftProgress(jobId)]);
 
     // Reset any uploads stuck in "syncing" from a previous interrupted session.
     // On a fresh page load nothing is actually in-flight, so "syncing" items are
     // orphaned and must be retried — otherwise canSubmit stays false forever.
-    const jobQueue = rawQueue.filter((u) => u.jobId === jobId);
-    const stuckSyncing = jobQueue.filter((u) => u.status === "syncing");
+    const stuckSyncing = rawQueue.filter((u) => u.status === "syncing");
     if (stuckSyncing.length > 0) {
       await Promise.all(
         stuckSyncing.map((item) =>
@@ -428,7 +428,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
         ),
       );
     }
-    const cleanedQueue = jobQueue.map((u) =>
+    const cleanedQueue = rawQueue.map((u) =>
       u.status === "syncing" ? { ...u, status: "pending" as const, lastError: undefined } : u,
     );
     setPendingUploads(cleanedQueue);
@@ -449,77 +449,114 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
       setGuestReady(draft.guestReady);
       setIncidents(draft.incidents);
     }
-  }, [jobId]);
+  }, [jobId, loadJobQueue]);
 
   // ── Upload queue drainer ──────────────────────────────────────────────────
+  const queueDrainPromiseRef = useRef<Promise<void> | null>(null);
   const drainQueue = useCallback(async () => {
-    if (!isOnline || isSyncingRef.current) return;
-    isSyncingRef.current = true;
-    setIsSyncing(true);
-    setSyncError(null);
-
-    let queue = (await listPendingUploads()).filter((item) => item.jobId === jobId);
-
-    if (isOnline && queue.some((item) => item.status === "failed")) {
-      const reset = resetFailedUploads(queue);
-      const changed = reset.filter((item) => {
-        const prev = queue.find((c) => c.id === item.id);
-        return prev?.status !== item.status || prev?.lastError !== item.lastError;
-      });
-      await Promise.all(changed.map((item) => upsertPendingUpload(item)));
-      queue = reset;
+    if (!isOnline) return;
+    if (queueDrainPromiseRef.current) {
+      await queueDrainPromiseRef.current;
+      return;
     }
-    setPendingUploads(queue);
 
-    for (const upload of getNextPendingUploads(queue, queue.length || 1)) {
+    const run = async () => {
+      isSyncingRef.current = true;
+      setIsSyncing(true);
+      setSyncError(null);
+
       try {
-        const syncingQueue = markUploadSyncing(queue, upload.id);
-        const syncing = syncingQueue.find((item) => item.id === upload.id);
-        if (!syncing) { queue = syncingQueue; continue; }
+        while (true) {
+          let queue = await loadJobQueue();
 
-        await upsertPendingUpload(syncing);
-        queue = syncingQueue;
-        setPendingUploads(queue);
+          if (queue.some((item) => item.status === "failed")) {
+            const reset = resetFailedUploads(queue);
+            const changed = reset.filter((item) => {
+              const prev = queue.find((candidate) => candidate.id === item.id);
+              return prev?.status !== item.status || prev?.lastError !== item.lastError;
+            });
+            await Promise.all(changed.map((item) => upsertPendingUpload(item)));
+            queue = await loadJobQueue();
+          }
 
-        const blob = dataUrlToBlob(syncing.fileDataUrl);
-        const uploadUrl = await generateUploadUrlRef.current({});
-        const res = await fetch(uploadUrl, {
-          method: "POST",
-          headers: { "Content-Type": syncing.mimeType || "application/octet-stream" },
-          body: blob,
-        });
-        if (!res.ok) throw new Error(`File upload failed (${res.status}).`);
+          setPendingUploads(queue);
 
-        const payload = (await res.json()) as { storageId?: Id<"_storage"> };
-        if (!payload.storageId) throw new Error("Upload response missing storageId.");
+          const pendingBatch = getNextPendingUploads(queue, queue.length || 1);
+          if (pendingBatch.length === 0) {
+            if (queue.every((item) => item.status !== "failed")) {
+              setSyncError(null);
+            }
+            break;
+          }
 
-        await uploadJobPhotoRef.current({
-          storageId: payload.storageId,
-          jobId,
-          roomName: syncing.roomName,
-          photoType: syncing.photoType,
-          source: "app",
-          notes: undefined,
-        });
+          for (const upload of pendingBatch) {
+            try {
+              const syncingQueue = markUploadSyncing(queue, upload.id);
+              const syncing = syncingQueue.find((item) => item.id === upload.id);
+              if (!syncing) {
+                queue = await loadJobQueue();
+                setPendingUploads(queue);
+                continue;
+              }
 
-        await deletePendingUpload(syncing.id);
-        queue = removeUpload(queue, syncing.id);
-        setPendingUploads(queue);
-      } catch (error) {
-        const message = getErrorMessage(error, "Queue sync failed.");
-        const failedQueue = markUploadFailed(queue, upload.id, message);
-        const failed = failedQueue.find((item) => item.id === upload.id);
-        if (failed) await upsertPendingUpload(failed);
-        queue = failedQueue;
-        setPendingUploads(queue);
-        setSyncError(message);
+              await upsertPendingUpload(syncing);
+              queue = await loadJobQueue();
+              setPendingUploads(queue);
+
+              const blob = dataUrlToBlob(syncing.fileDataUrl);
+              const uploadUrl = await generateUploadUrlRef.current({});
+              const res = await fetch(uploadUrl, {
+                method: "POST",
+                headers: { "Content-Type": syncing.mimeType || "application/octet-stream" },
+                body: blob,
+              });
+              if (!res.ok) throw new Error(`File upload failed (${res.status}).`);
+
+              const payload = (await res.json()) as { storageId?: Id<"_storage"> };
+              if (!payload.storageId) throw new Error("Upload response missing storageId.");
+
+              await uploadJobPhotoRef.current({
+                storageId: payload.storageId,
+                jobId,
+                roomName: syncing.roomName,
+                photoType: syncing.photoType,
+                source: "app",
+                notes: undefined,
+              });
+
+              await deletePendingUpload(syncing.id);
+              queue = await loadJobQueue();
+              setPendingUploads(queue);
+            } catch (error) {
+              const message = getErrorMessage(error, "Queue sync failed.");
+              const failedQueue = markUploadFailed(queue, upload.id, message);
+              const failed = failedQueue.find((item) => item.id === upload.id);
+              if (failed) {
+                await upsertPendingUpload(failed);
+              }
+              queue = await loadJobQueue();
+              setPendingUploads(queue);
+              setSyncError(message);
+            }
+          }
+        }
+      } finally {
+        const finalQueue = await loadJobQueue();
+        setPendingUploads(finalQueue);
+        if (finalQueue.every((item) => item.status !== "failed")) {
+          setSyncError(null);
+        }
+        isSyncingRef.current = false;
+        setIsSyncing(false);
       }
-    }
+    };
 
-    if (queue.every((item) => item.status !== "failed")) setSyncError(null);
-    isSyncingRef.current = false;
-    setIsSyncing(false);
-  }, [isOnline, jobId]);
+    const promise = run().finally(() => {
+      queueDrainPromiseRef.current = null;
+    });
+    queueDrainPromiseRef.current = promise;
+    await promise;
+  }, [isOnline, jobId, loadJobQueue]);
 
   // ── Effects ───────────────────────────────────────────────────────────────
   useEffect(() => { void hydrateLocalState(); }, [hydrateLocalState]);
@@ -559,7 +596,6 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
         offlineStartToken: `${jobId}-${Date.now()}`,
       }).catch((e) => { console.warn("[CleanerActiveJob] start failed", e); });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobStatus, jobId]);
 
   useEffect(() => {
@@ -649,8 +685,23 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
     setSubmitSuccess(null);
 
     try {
-      if (!syncState.canSubmit) {
+      if (!isOnline) {
         throw new Error("You must be online and all queued uploads must finish before submitting.");
+      }
+
+      await drainQueueRef.current();
+
+      const queueSnapshot = await loadJobQueue();
+      const pendingQueueCount = queueSnapshot.filter(
+        (item) => item.status === "pending" || item.status === "syncing",
+      ).length;
+      const failedQueueCount = queueSnapshot.filter((item) => item.status === "failed").length;
+
+      if (pendingQueueCount > 0 || isSyncingRef.current) {
+        throw new Error("Photo uploads are still syncing. Wait for them to finish before submitting.");
+      }
+      if (failedQueueCount > 0) {
+        throw new Error("Some photo uploads failed. Retry the failed uploads before submitting.");
       }
 
       for (const incident of incidents) {
@@ -756,7 +807,6 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                 <RoomPhotoCard
                   key={roomName}
                   roomName={roomName}
-                  photoType={photoType}
                   photoCount={count}
                   photoUrls={urls}
                   skippedReason={phase === "before_photos" ? skippedEntry?.reason : undefined}
@@ -816,7 +866,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
           <div>
             <h3 className="text-sm font-semibold text-[var(--foreground)]">Report Incidents</h3>
             <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
-              Log any damage, maintenance needs, or unexpected issues. Skip this step if there's nothing to report.
+              Log any damage, maintenance needs, or unexpected issues. Skip this step if there&apos;s nothing to report.
             </p>
           </div>
 
