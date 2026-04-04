@@ -11,7 +11,7 @@ function getPublicKey(): string {
   return process.env.NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY?.trim() ?? "";
 }
 
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
+function urlBase64ToArrayBuffer(base64String: string): ArrayBuffer {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const normalized = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
   const rawData = window.atob(normalized);
@@ -21,7 +21,24 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
     outputArray[index] = rawData.charCodeAt(index);
   }
 
-  return outputArray;
+  return outputArray.buffer.slice(0);
+}
+
+function normalizeSubscriptionJson(
+  value: PushSubscriptionJSON | null | undefined,
+): StoredWebPushSubscription | null {
+  if (!value?.endpoint || !value.keys?.auth || !value.keys?.p256dh) {
+    return null;
+  }
+
+  return {
+    endpoint: value.endpoint,
+    expirationTime: value.expirationTime ?? null,
+    keys: {
+      auth: value.keys.auth,
+      p256dh: value.keys.p256dh,
+    },
+  };
 }
 
 export function isWebPushSupported(): boolean {
@@ -44,7 +61,7 @@ export async function getExistingWebPushSubscription(): Promise<StoredWebPushSub
 
   const registration = await navigator.serviceWorker.ready;
   const subscription = await registration.pushManager.getSubscription();
-  return subscription?.toJSON() ?? null;
+  return normalizeSubscriptionJson(subscription?.toJSON());
 }
 
 export async function ensureWebPushSubscription(): Promise<StoredWebPushSubscription | null> {
@@ -67,11 +84,11 @@ export async function ensureWebPushSubscription(): Promise<StoredWebPushSubscrip
   if (!subscription) {
     subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey),
+      applicationServerKey: urlBase64ToArrayBuffer(publicKey),
     });
   }
 
-  return subscription.toJSON();
+  return normalizeSubscriptionJson(subscription.toJSON());
 }
 
 export async function requestWebPushPermission(): Promise<NotificationPermission> {

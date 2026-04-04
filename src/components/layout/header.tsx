@@ -106,6 +106,11 @@ export function Header() {
   const isDarkMode = theme === "dark";
   const notificationPanelRef = useRef<HTMLDivElement | null>(null);
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
+  const setThemePreferenceRef = useRef(setThemePreference);
+
+  useEffect(() => {
+    setThemePreferenceRef.current = setThemePreference;
+  }, [setThemePreference]);
 
   const convexUser = useQuery(
     api.users.queries.getByClerkId,
@@ -147,11 +152,11 @@ export function Header() {
     window.dispatchEvent(new Event(THEME_CHANGE_EVENT));
 
     if (isLoaded && isSignedIn) {
-      void setThemePreference({ theme: nextTheme }).catch((error) => {
+      void setThemePreferenceRef.current({ theme: nextTheme }).catch((error) => {
         console.warn("[ThemePreference] Failed to save theme in Convex", error);
       });
     }
-  }, [isDarkMode, isLoaded, isSignedIn, setThemePreference]);
+  }, [isDarkMode, isLoaded, isSignedIn]);
 
   useEffect(() => {
     if (!isNotificationsOpen) {

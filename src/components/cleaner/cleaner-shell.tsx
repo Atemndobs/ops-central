@@ -67,6 +67,8 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
   const updateWebPushSubscription = useMutation(api.users.mutations.updateWebPushSubscription);
   const clearWebPushSubscription = useMutation(api.users.mutations.clearWebPushSubscription);
   const setThemePreferenceRef = useRef(setThemePreference);
+  const updateWebPushSubscriptionRef = useRef(updateWebPushSubscription);
+  const clearWebPushSubscriptionRef = useRef(clearWebPushSubscription);
   const [isOnline, setIsOnline] = useState(true);
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
@@ -102,6 +104,14 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setThemePreferenceRef.current = setThemePreference;
   }, [setThemePreference]);
+
+  useEffect(() => {
+    updateWebPushSubscriptionRef.current = updateWebPushSubscription;
+  }, [updateWebPushSubscription]);
+
+  useEffect(() => {
+    clearWebPushSubscriptionRef.current = clearWebPushSubscription;
+  }, [clearWebPushSubscription]);
 
   useEffect(() => {
     const updateOnlineState = () => setIsOnline(window.navigator.onLine);
@@ -173,10 +183,10 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    void clearWebPushSubscription({}).catch((error) => {
+    void clearWebPushSubscriptionRef.current({}).catch((error) => {
       console.warn("[CleanerPWA] Failed to clear denied push subscription", error);
     });
-  }, [clearWebPushSubscription, isConvexAuthenticated]);
+  }, [isConvexAuthenticated]);
 
   useEffect(() => {
     if (!registration || !isConvexAuthenticated || !isWebPushSupported() || !hasWebPushPublicKey()) {
@@ -195,7 +205,7 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        return updateWebPushSubscription({ subscription });
+        return updateWebPushSubscriptionRef.current({ subscription });
       })
       .catch((error) => {
         console.warn("[CleanerPWA] Failed to sync push subscription", error);
@@ -204,7 +214,7 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [registration, isConvexAuthenticated, updateWebPushSubscription]);
+  }, [registration, isConvexAuthenticated]);
 
   useEffect(() => {
     if (initializedThemeScopeRef.current === themeScopeKey) {
@@ -275,14 +285,14 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
   const handleSignOut = useCallback(async () => {
     try {
       await disableBrowserWebPushSubscription();
-      await clearWebPushSubscription({});
+      await clearWebPushSubscriptionRef.current({});
     } catch (error) {
       console.warn("[CleanerPWA] Failed to clear push subscription during sign out", error);
     }
 
     await signOut();
     window.location.href = "/sign-in";
-  }, [clearWebPushSubscription, signOut]);
+  }, [signOut]);
 
   return (
     <div className="relative h-[100svh] overflow-hidden bg-[var(--background)] text-[15px] text-[var(--foreground)]">

@@ -868,7 +868,9 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                   photoCount={count}
                   photoUrls={urls}
                   skippedReason={phase === "before_photos" ? skippedEntry?.reason : undefined}
-                  onAddFile={(file) => addUploadFromFile({ file, roomName, photoType })}
+                  onAddFile={async (file) => {
+                    await addUploadFromFile({ file, roomName, photoType });
+                  }}
                   onSkip={(reason) => {
                     setSkippedRooms((current) => {
                       const next = current.filter((r) => r.roomName !== roomName);
