@@ -685,7 +685,6 @@ export function CleanerIncidentPageClient() {
                 type="file"
                 multiple
                 accept="image/*"
-                capture="environment"
                 onChange={(event) => {
                   const nextFiles = Array.from(event.target.files ?? []);
                   if (nextFiles.length === 0) return;
