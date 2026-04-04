@@ -81,6 +81,8 @@ export function CleanerIncidentPageClient() {
   const createIncident = useMutation(api.incidents.mutations.createIncident);
   const generateUploadUrl = useMutation(api.files.mutations.generateUploadUrl);
   const uploadJobPhoto = useMutation(api.files.mutations.uploadJobPhoto);
+  const getExternalUploadUrl = useMutation(api.files.mutations.getExternalUploadUrl);
+  const completeExternalUpload = useMutation(api.files.mutations.completeExternalUpload);
 
   // --- shared form state ---
   const [incidentType, setIncidentType] = useState<(typeof INCIDENT_TYPES)[number]>("missing_item");
@@ -186,30 +188,63 @@ export function CleanerIncidentPageClient() {
 
     const uploadedPhotoIds: Id<"photos">[] = [];
     for (const file of files) {
-      const uploadUrl = await generateUploadUrl({});
-      const uploadResponse = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": file.type || "application/octet-stream" },
-        body: file,
-      });
+      const contentType = file.type || "image/jpeg";
+      const notes = title.trim() || description.trim() || undefined;
+      let photoId: Id<"photos">;
 
-      if (!uploadResponse.ok) {
-        throw new Error(`Photo upload failed (${uploadResponse.status}).`);
+      try {
+        const ticket = await getExternalUploadUrl({
+          jobId,
+          roomName: roomName.trim() || "Incident",
+          photoType: "incident",
+          source: "app",
+          notes,
+          contentType,
+          fileName: file.name || `incident-${Date.now()}.jpg`,
+          byteSize: file.size,
+        });
+
+        const putRes = await fetch(ticket.url, {
+          method: "PUT",
+          headers: { "Content-Type": contentType },
+          body: file,
+        });
+        if (!putRes.ok) throw new Error(`B2 upload failed (${putRes.status}).`);
+
+        const completion = await completeExternalUpload({
+          jobId,
+          roomName: roomName.trim() || "Incident",
+          photoType: "incident",
+          source: "app",
+          notes,
+          provider: ticket.provider,
+          bucket: ticket.bucket,
+          objectKey: ticket.objectKey,
+          contentType,
+          byteSize: file.size,
+        });
+        photoId = completion.photoId;
+      } catch {
+        const uploadUrl = await generateUploadUrl({});
+        const uploadResponse = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": contentType },
+          body: file,
+        });
+        if (!uploadResponse.ok) throw new Error(`Photo upload failed (${uploadResponse.status}).`);
+
+        const payload = (await uploadResponse.json()) as { storageId?: Id<"_storage"> };
+        if (!payload.storageId) throw new Error("Upload response missing storageId.");
+
+        photoId = await uploadJobPhoto({
+          storageId: payload.storageId,
+          jobId,
+          roomName: roomName.trim() || "Incident",
+          photoType: "incident",
+          source: "app",
+          notes,
+        });
       }
-
-      const payload = (await uploadResponse.json()) as { storageId?: Id<"_storage"> };
-      if (!payload.storageId) {
-        throw new Error("Upload response missing storageId.");
-      }
-
-      const photoId = await uploadJobPhoto({
-        storageId: payload.storageId,
-        jobId,
-        roomName: roomName.trim() || "Incident",
-        photoType: "incident",
-        source: "app",
-        notes: title.trim() || description.trim() || undefined,
-      });
 
       uploadedPhotoIds.push(photoId);
     }

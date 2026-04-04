@@ -359,15 +359,21 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
   pingActiveSessionRef.current  = pingActiveSession;
   const submitForApproval       = useMutation(api.cleaningJobs.mutations.submitForApproval);
   const createIncident          = useMutation(api.incidents.mutations.createIncident);
-  const generateUploadUrl       = useMutation(api.files.mutations.generateUploadUrl);
-  const generateUploadUrlRef    = useRef(generateUploadUrl);
-  generateUploadUrlRef.current  = generateUploadUrl;
-  const uploadJobPhoto          = useMutation(api.files.mutations.uploadJobPhoto);
-  const uploadJobPhotoRef       = useRef(uploadJobPhoto);
-  uploadJobPhotoRef.current     = uploadJobPhoto;
-  const deleteJobPhoto          = useMutation(api.files.mutations.deleteJobPhoto);
-  const deleteJobPhotoRef       = useRef(deleteJobPhoto);
-  deleteJobPhotoRef.current     = deleteJobPhoto;
+  const generateUploadUrl          = useMutation(api.files.mutations.generateUploadUrl);
+  const generateUploadUrlRef       = useRef(generateUploadUrl);
+  generateUploadUrlRef.current     = generateUploadUrl;
+  const uploadJobPhoto             = useMutation(api.files.mutations.uploadJobPhoto);
+  const uploadJobPhotoRef          = useRef(uploadJobPhoto);
+  uploadJobPhotoRef.current        = uploadJobPhoto;
+  const getExternalUploadUrl       = useMutation(api.files.mutations.getExternalUploadUrl);
+  const getExternalUploadUrlRef    = useRef(getExternalUploadUrl);
+  getExternalUploadUrlRef.current  = getExternalUploadUrl;
+  const completeExternalUpload     = useMutation(api.files.mutations.completeExternalUpload);
+  const completeExternalUploadRef  = useRef(completeExternalUpload);
+  completeExternalUploadRef.current = completeExternalUpload;
+  const deleteJobPhoto             = useMutation(api.files.mutations.deleteJobPhoto);
+  const deleteJobPhotoRef          = useRef(deleteJobPhoto);
+  deleteJobPhotoRef.current        = deleteJobPhoto;
 
   // Stepper
   const [phase, setPhase]                   = useState<ActivePhase>("before_photos");
@@ -517,25 +523,62 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
               setPendingUploads(queue);
 
               const blob = dataUrlToBlob(syncing.fileDataUrl);
-              const uploadUrl = await generateUploadUrlRef.current({});
-              const res = await fetch(uploadUrl, {
-                method: "POST",
-                headers: { "Content-Type": syncing.mimeType || "application/octet-stream" },
-                body: blob,
-              });
-              if (!res.ok) throw new Error(`File upload failed (${res.status}).`);
+              const contentType = syncing.mimeType || "image/jpeg";
 
-              const payload = (await res.json()) as { storageId?: Id<"_storage"> };
-              if (!payload.storageId) throw new Error("Upload response missing storageId.");
+              let photoId: Id<"photos">;
+              try {
+                // Try B2 external storage first
+                const ticket = await getExternalUploadUrlRef.current({
+                  jobId,
+                  roomName: syncing.roomName,
+                  photoType: syncing.photoType,
+                  source: "app",
+                  contentType,
+                  fileName: `${syncing.photoType}-${Date.now()}.jpg`,
+                  byteSize: blob.size,
+                });
 
-              const photoId = await uploadJobPhotoRef.current({
-                storageId: payload.storageId,
-                jobId,
-                roomName: syncing.roomName,
-                photoType: syncing.photoType,
-                source: "app",
-                notes: undefined,
-              });
+                const putRes = await fetch(ticket.url, {
+                  method: "PUT",
+                  headers: { "Content-Type": contentType },
+                  body: blob,
+                });
+                if (!putRes.ok) throw new Error(`B2 upload failed (${putRes.status}).`);
+
+                const completion = await completeExternalUploadRef.current({
+                  jobId,
+                  roomName: syncing.roomName,
+                  photoType: syncing.photoType,
+                  source: "app",
+                  provider: ticket.provider,
+                  bucket: ticket.bucket,
+                  objectKey: ticket.objectKey,
+                  contentType,
+                  byteSize: blob.size,
+                });
+                photoId = completion.photoId;
+              } catch {
+                // Fallback to legacy Convex storage
+                const uploadUrl = await generateUploadUrlRef.current({});
+                const res = await fetch(uploadUrl, {
+                  method: "POST",
+                  headers: { "Content-Type": contentType },
+                  body: blob,
+                });
+                if (!res.ok) throw new Error(`File upload failed (${res.status}).`);
+
+                const payload = (await res.json()) as { storageId?: Id<"_storage"> };
+                if (!payload.storageId) throw new Error("Upload response missing storageId.");
+
+                photoId = await uploadJobPhotoRef.current({
+                  storageId: payload.storageId,
+                  jobId,
+                  roomName: syncing.roomName,
+                  photoType: syncing.photoType,
+                  source: "app",
+                  notes: undefined,
+                });
+              }
 
               setIncidents((current) =>
                 current.map((incident) => ({
