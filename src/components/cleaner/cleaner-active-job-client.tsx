@@ -95,6 +95,15 @@ function getPhotoUrlsByRoom(args: {
   return [...serverUrls, ...localUrls];
 }
 
+function getPendingUploadPreviews(photoRefs: string[], pendingUploads: PendingUpload[]): Array<{ photoRef: string; url: string }> {
+  return photoRefs
+    .map((photoRef) => {
+      const url = pendingUploads.find((upload) => upload.id === photoRef)?.fileDataUrl;
+      return typeof url === "string" && url.length > 0 ? { photoRef, url } : null;
+    })
+    .filter((preview): preview is { photoRef: string; url: string } => preview !== null);
+}
+
 type JobDetailLike = {
   job: {
     _id: Id<"cleaningJobs">;
@@ -356,6 +365,9 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
   const uploadJobPhoto          = useMutation(api.files.mutations.uploadJobPhoto);
   const uploadJobPhotoRef       = useRef(uploadJobPhoto);
   uploadJobPhotoRef.current     = uploadJobPhoto;
+  const deleteJobPhoto          = useMutation(api.files.mutations.deleteJobPhoto);
+  const deleteJobPhotoRef       = useRef(deleteJobPhoto);
+  deleteJobPhotoRef.current     = deleteJobPhoto;
 
   // Stepper
   const [phase, setPhase]                   = useState<ActivePhase>("before_photos");
@@ -383,6 +395,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
   const [newIncidentDescription, setNewIncidentDescription] = useState("");
   const [newIncidentRoomName, setNewIncidentRoomName]       = useState("");
   const [newIncidentSeverity, setNewIncidentSeverity]       = useState<"low" | "medium" | "high" | "critical">("medium");
+  const [newIncidentPhotoIds, setNewIncidentPhotoIds]       = useState<string[]>([]);
 
   // Offline / sync
   const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
@@ -515,7 +528,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
               const payload = (await res.json()) as { storageId?: Id<"_storage"> };
               if (!payload.storageId) throw new Error("Upload response missing storageId.");
 
-              await uploadJobPhotoRef.current({
+              const photoId = await uploadJobPhotoRef.current({
                 storageId: payload.storageId,
                 jobId,
                 roomName: syncing.roomName,
@@ -523,6 +536,18 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                 source: "app",
                 notes: undefined,
               });
+
+              setIncidents((current) =>
+                current.map((incident) => ({
+                  ...incident,
+                  localPhotoIds: incident.localPhotoIds.map((photoRef) =>
+                    photoRef === syncing.id ? String(photoId) : photoRef,
+                  ),
+                })),
+              );
+              setNewIncidentPhotoIds((current) =>
+                current.map((photoRef) => (photoRef === syncing.id ? String(photoId) : photoRef)),
+              );
 
               await deletePendingUpload(syncing.id);
               queue = await loadJobQueue();
@@ -653,8 +678,40 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
       await upsertPendingUpload(upload);
       setPendingUploads((current) => enqueueUpload(current, upload));
       if (isOnline) void drainQueue();
+      return upload.id;
     },
     [drainQueue, isOnline, jobId],
+  );
+
+  const removeIncidentPhotoRef = useCallback(
+    async (photoRef: string) => {
+      const pendingUpload = pendingUploads.find((upload) => upload.id === photoRef);
+      if (pendingUpload) {
+        await deletePendingUpload(photoRef);
+        setPendingUploads((current) => current.filter((upload) => upload.id !== photoRef));
+        return;
+      }
+
+      try {
+        await deleteJobPhotoRef.current({ photoId: photoRef as Id<"photos"> });
+      } catch (error) {
+        console.warn("[CleanerActiveJob] failed to delete incident photo", error);
+      }
+    },
+    [pendingUploads],
+  );
+
+  const removeIncident = useCallback(
+    async (incidentId: string) => {
+      const incident = incidents.find((item) => item.id === incidentId);
+      if (!incident) {
+        return;
+      }
+
+      await Promise.all(incident.localPhotoIds.map((photoRef) => removeIncidentPhotoRef(photoRef)));
+      setIncidents((current) => current.filter((item) => item.id !== incidentId));
+    },
+    [incidents, removeIncidentPhotoRef],
   );
 
   // ── Guards ────────────────────────────────────────────────────────────────
@@ -713,6 +770,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
           title: incident.title,
           description: incident.description,
           roomName: incident.roomName,
+          photoIds: incident.localPhotoIds as Id<"photos">[],
         });
       }
 
@@ -902,6 +960,67 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
               className="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
               placeholder="Description (optional)"
             />
+            <div className="space-y-2 rounded-md border border-dashed border-[var(--border)] bg-[var(--card)]/40 p-3">
+              <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed border-[var(--border)] px-3 py-4 text-center text-xs text-[var(--muted-foreground)] transition-colors hover:border-[var(--primary)] hover:text-[var(--primary)]">
+                <span className="text-sm font-medium text-[var(--foreground)]">+ Add photos</span>
+                <span>Open camera or gallery for this incident</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  multiple
+                  className="sr-only"
+                  onChange={async (event) => {
+                    const files = event.target.files;
+                    if (!files || files.length === 0) return;
+
+                    const roomName = newIncidentRoomName.trim() || "Incident";
+                    const addedPhotoIds: string[] = [];
+
+                    for (const file of Array.from(files)) {
+                      const uploadId = await addUploadFromFile({ file, roomName, photoType: "incident" });
+                      addedPhotoIds.push(uploadId);
+                    }
+
+                    setNewIncidentPhotoIds((current) => [...current, ...addedPhotoIds]);
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </label>
+              {newIncidentPhotoIds.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    {newIncidentPhotoIds.length} photo{newIncidentPhotoIds.length === 1 ? "" : "s"} selected
+                  </p>
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {getPendingUploadPreviews(newIncidentPhotoIds, pendingUploads).map(({ photoRef, url }, index) => {
+                      return (
+                        <div key={`${photoRef}-${index}`} className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border border-[var(--border)]">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={url} alt={`Incident preview ${index + 1}`} className="h-full w-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void removeIncidentPhotoRef(photoRef);
+                              setNewIncidentPhotoIds((current) => current.filter((id) => id !== photoRef));
+                            }}
+                            className="absolute right-1 top-1 rounded bg-black/65 px-1 text-[10px] text-white"
+                            aria-label={`Remove incident photo ${index + 1}`}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {getPendingUploadPreviews(newIncidentPhotoIds, pendingUploads).length < newIncidentPhotoIds.length && (
+                    <p className="text-[11px] text-[var(--muted-foreground)]">
+                      Some photos are already uploaded and attached.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
             <button
               type="button"
               className="w-full rounded-md border border-[var(--border)] py-1.5 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--muted)] active:opacity-70"
@@ -916,12 +1035,13 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                     description: newIncidentDescription.trim() || undefined,
                     roomName: newIncidentRoomName.trim() || undefined,
                     severity: newIncidentSeverity,
-                    localPhotoIds: [],
+                    localPhotoIds: newIncidentPhotoIds,
                   },
                 ]);
                 setNewIncidentTitle("");
                 setNewIncidentDescription("");
                 setNewIncidentRoomName("");
+                setNewIncidentPhotoIds([]);
               }}
             >
               + Add Incident
@@ -940,11 +1060,16 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                     {incident.description && (
                       <p className="mt-1 text-[var(--muted-foreground)]">{incident.description}</p>
                     )}
+                    {incident.localPhotoIds.length > 0 && (
+                      <p className="mt-1 text-[var(--muted-foreground)]">
+                        {incident.localPhotoIds.length} photo{incident.localPhotoIds.length === 1 ? "" : "s"} attached
+                      </p>
+                    )}
                   </div>
                   <button
                     type="button"
                     className="shrink-0 text-[var(--destructive)] hover:opacity-80"
-                    onClick={() => setIncidents((current) => current.filter((item) => item.id !== incident.id))}
+                    onClick={() => { void removeIncident(incident.id); }}
                   >
                     ✕
                   </button>
