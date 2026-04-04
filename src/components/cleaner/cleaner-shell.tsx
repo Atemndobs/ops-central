@@ -19,6 +19,12 @@ import {
 } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { InstallPrompt } from "@/components/cleaner/install-prompt";
+import {
+  disableWebPushSubscription as disableBrowserWebPushSubscription,
+  ensureWebPushSubscription,
+  hasWebPushPublicKey,
+  isWebPushSupported,
+} from "@/lib/web-push";
 
 const NAV_ITEMS = [
   { href: "/cleaner", label: "Jobs", icon: ClipboardList },
@@ -58,6 +64,8 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     isConvexAuthenticated ? {} : "skip",
   );
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
+  const updateWebPushSubscription = useMutation(api.users.mutations.updateWebPushSubscription);
+  const clearWebPushSubscription = useMutation(api.users.mutations.clearWebPushSubscription);
   const setThemePreferenceRef = useRef(setThemePreference);
   const [isOnline, setIsOnline] = useState(true);
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
@@ -157,6 +165,48 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!isConvexAuthenticated || !isWebPushSupported()) {
+      return;
+    }
+
+    if (Notification.permission !== "denied") {
+      return;
+    }
+
+    void clearWebPushSubscription({}).catch((error) => {
+      console.warn("[CleanerPWA] Failed to clear denied push subscription", error);
+    });
+  }, [clearWebPushSubscription, isConvexAuthenticated]);
+
+  useEffect(() => {
+    if (!registration || !isConvexAuthenticated || !isWebPushSupported() || !hasWebPushPublicKey()) {
+      return;
+    }
+
+    if (Notification.permission !== "granted") {
+      return;
+    }
+
+    let cancelled = false;
+
+    void ensureWebPushSubscription()
+      .then((subscription) => {
+        if (!subscription || cancelled) {
+          return;
+        }
+
+        return updateWebPushSubscription({ subscription });
+      })
+      .catch((error) => {
+        console.warn("[CleanerPWA] Failed to sync push subscription", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [registration, isConvexAuthenticated, updateWebPushSubscription]);
+
+  useEffect(() => {
     if (initializedThemeScopeRef.current === themeScopeKey) {
       return;
     }
@@ -222,6 +272,18 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     return "My Jobs";
   }, [pathname]);
 
+  const handleSignOut = useCallback(async () => {
+    try {
+      await disableBrowserWebPushSubscription();
+      await clearWebPushSubscription({});
+    } catch (error) {
+      console.warn("[CleanerPWA] Failed to clear push subscription during sign out", error);
+    }
+
+    await signOut();
+    window.location.href = "/sign-in";
+  }, [clearWebPushSubscription, signOut]);
+
   return (
     <div className="relative h-[100svh] overflow-hidden bg-[var(--background)] text-[15px] text-[var(--foreground)]">
       <header className="fixed inset-x-0 top-0 z-40 border-b border-[var(--border)] bg-[var(--card)]/95 px-4 py-3.5 backdrop-blur">
@@ -256,9 +318,8 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
             </button>
             <button
               type="button"
-              onClick={async () => {
-                await signOut();
-                window.location.href = "/sign-in";
+              onClick={() => {
+                void handleSignOut();
               }}
               className="rounded-md border border-[var(--border)] p-2.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
               aria-label="Sign out"

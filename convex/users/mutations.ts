@@ -14,6 +14,22 @@ const roleValidator = v.union(
 );
 
 const themeValidator = v.union(v.literal("dark"), v.literal("light"));
+const webPushSubscriptionValidator = v.object({
+  endpoint: v.string(),
+  expirationTime: v.union(v.number(), v.null()),
+  keys: v.object({
+    auth: v.string(),
+    p256dh: v.string(),
+  }),
+});
+
+function normalizeMetadata(metadata: unknown): Record<string, unknown> {
+  if (metadata && typeof metadata === "object" && !Array.isArray(metadata)) {
+    return metadata as Record<string, unknown>;
+  }
+
+  return {};
+}
 
 export const ensureUser = mutation({
   args: {
@@ -215,5 +231,47 @@ export const setThemePreference = mutation({
     });
 
     return { success: true, theme: args.theme };
+  },
+});
+
+export const updateWebPushSubscription = mutation({
+  args: {
+    subscription: webPushSubscriptionValidator,
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    const metadata = normalizeMetadata(user.metadata);
+
+    await ctx.db.patch(user._id, {
+      metadata: {
+        ...metadata,
+        webPushSubscription: args.subscription,
+      },
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});
+
+export const clearWebPushSubscription = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
+    const metadata = normalizeMetadata(user.metadata);
+
+    if (!("webPushSubscription" in metadata)) {
+      return { success: true, cleared: false };
+    }
+
+    const rest = { ...metadata };
+    delete rest.webPushSubscription;
+
+    await ctx.db.patch(user._id, {
+      metadata: rest,
+      updatedAt: Date.now(),
+    });
+
+    return { success: true, cleared: true };
   },
 });

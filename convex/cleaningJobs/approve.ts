@@ -2,6 +2,10 @@ import { ConvexError, v } from "convex/values";
 import { mutation } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
 import { getCurrentUser } from "../lib/auth";
+import {
+  createNotificationsForUsers,
+  createOpsNotifications,
+} from "../lib/opsNotifications";
 
 function requireApproverRole(user: Doc<"users">) {
   if (
@@ -31,9 +35,20 @@ export const submitForApproval = mutation({
     }
 
     if (job.status === "in_progress") {
+      const property = await ctx.db.get(job.propertyId);
       await ctx.db.patch(args.jobId, {
         status: "awaiting_approval",
         updatedAt: Date.now(),
+      });
+
+      await createOpsNotifications(ctx, {
+        type: "awaiting_approval",
+        title: "Job Awaiting Approval",
+        message: `${property?.name ?? "Property"} is ready for review.`,
+        data: {
+          jobId: job._id,
+          propertyId: job.propertyId,
+        },
       });
     }
 
@@ -62,12 +77,25 @@ export const approveCompletion = mutation({
       );
     }
 
+    const property = await ctx.db.get(job.propertyId);
+
     await ctx.db.patch(args.jobId, {
       status: "completed",
       approvedAt: Date.now(),
       approvedBy: user._id,
       managerNotes: args.approvalNotes,
       updatedAt: Date.now(),
+    });
+
+    await createNotificationsForUsers(ctx, {
+      userIds: job.assignedCleanerIds,
+      type: "job_completed",
+      title: "Job Approved",
+      message: `${property?.name ?? "Property"} was approved.`,
+      data: {
+        jobId: job._id,
+        propertyId: job.propertyId,
+      },
     });
 
     return args.jobId;
@@ -102,6 +130,8 @@ export const rejectCompletion = mutation({
       });
     }
 
+    const property = await ctx.db.get(job.propertyId);
+
     await ctx.db.patch(args.jobId, {
       status: "rework_required",
       currentRevision: nextRevision,
@@ -112,6 +142,17 @@ export const rejectCompletion = mutation({
       rejectedBy: user._id,
       rejectionReason: args.rejectionReason?.trim(),
       updatedAt: now,
+    });
+
+    await createNotificationsForUsers(ctx, {
+      userIds: job.assignedCleanerIds,
+      type: "rework_required",
+      title: "Rework Required",
+      message: `${property?.name ?? "Property"} needs another pass.`,
+      data: {
+        jobId: job._id,
+        propertyId: job.propertyId,
+      },
     });
 
     return args.jobId;
@@ -146,6 +187,8 @@ export const reopenCompleted = mutation({
       });
     }
 
+    const property = await ctx.db.get(job.propertyId);
+
     await ctx.db.patch(args.jobId, {
       status: "rework_required",
       currentRevision: nextRevision,
@@ -156,6 +199,17 @@ export const reopenCompleted = mutation({
       rejectedBy: user._id,
       rejectionReason: args.reason?.trim(),
       updatedAt: now,
+    });
+
+    await createNotificationsForUsers(ctx, {
+      userIds: job.assignedCleanerIds,
+      type: "rework_required",
+      title: "Job Reopened",
+      message: `${property?.name ?? "Property"} was reopened for rework.`,
+      data: {
+        jobId: job._id,
+        propertyId: job.propertyId,
+      },
     });
 
     return args.jobId;

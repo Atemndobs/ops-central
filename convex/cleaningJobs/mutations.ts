@@ -2,6 +2,10 @@ import { ConvexError, v } from "convex/values";
 import { mutation, type MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { getCurrentUser } from "../lib/auth";
+import {
+  createNotificationsForUsers,
+  createOpsNotifications,
+} from "../lib/opsNotifications";
 
 const qaModeValidator = v.union(v.literal("standard"), v.literal("quick"));
 
@@ -792,6 +796,18 @@ async function submitForApprovalInternal(
     },
   });
 
+  const property = await ctx.db.get(job.propertyId);
+  await createOpsNotifications(ctx, {
+    type: "awaiting_approval",
+    title: "Job Awaiting Approval",
+    message: `${property?.name ?? "Property"} is ready for review.`,
+    data: {
+      jobId: job._id,
+      propertyId: job.propertyId,
+      submissionId,
+    },
+  });
+
   return {
     ok: true,
     gatePassed: true,
@@ -1082,6 +1098,20 @@ export const assign = mutation({
       overrideReason: args.overrideReason?.trim(),
       createdAt: now,
     });
+
+    if (args.notifyCleaners !== false && args.cleanerIds.length > 0) {
+      const property = await ctx.db.get(job.propertyId);
+      await createNotificationsForUsers(ctx, {
+        userIds: args.cleanerIds,
+        type: "job_assigned",
+        title: "New Job Assigned",
+        message: `${property?.name ?? "Property"} has been assigned to you.`,
+        data: {
+          jobId: job._id,
+          propertyId: job.propertyId,
+        },
+      });
+    }
 
     if (args.returnWarnings) {
       return {

@@ -7,6 +7,14 @@ import { type ChangeEvent, useEffect, useState } from "react";
 import { api } from "@convex/_generated/api";
 import { clearPendingUploads, listPendingUploads } from "@/features/cleaner/offline/indexeddb";
 import { uploadImageFile } from "@/lib/upload-image";
+import {
+  disableWebPushSubscription,
+  ensureWebPushSubscription,
+  getExistingWebPushSubscription,
+  hasWebPushPublicKey,
+  isWebPushSupported,
+  requestWebPushPermission,
+} from "@/lib/web-push";
 
 const THEME_STORAGE_KEY = "opscentral-theme";
 
@@ -29,6 +37,8 @@ export function CleanerSettingsClient() {
   );
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
   const updateMyProfile = useMutation(api.users.mutations.updateMyProfile);
+  const updateWebPushSubscription = useMutation(api.users.mutations.updateWebPushSubscription);
+  const clearWebPushSubscription = useMutation(api.users.mutations.clearWebPushSubscription);
   const notifications = useQuery(
     api.notifications.queries.getMyNotifications,
     isConvexAuthenticated
@@ -49,6 +59,21 @@ export function CleanerSettingsClient() {
   const [profileAvatarUrl, setProfileAvatarUrl] = useState("");
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [pushPermission, setPushPermission] = useState<NotificationPermission | "unsupported">(
+    () => {
+      if (typeof window === "undefined" || !isWebPushSupported()) {
+        return "unsupported";
+      }
+
+      return Notification.permission;
+    },
+  );
+  const [hasPushSubscription, setHasPushSubscription] = useState(false);
+  const [pushMessage, setPushMessage] = useState<{
+    tone: "success" | "error";
+    text: string;
+  } | null>(null);
+  const [isUpdatingPush, setIsUpdatingPush] = useState(false);
   const [profileMessage, setProfileMessage] = useState<{
     tone: "success" | "error";
     text: string;
@@ -83,6 +108,29 @@ export function CleanerSettingsClient() {
     applyTheme(resolvedTheme);
     window.localStorage.setItem(THEME_STORAGE_KEY, resolvedTheme);
   }, [resolvedTheme]);
+
+  useEffect(() => {
+    if (!isWebPushSupported()) {
+      setPushPermission("unsupported");
+      setHasPushSubscription(false);
+      return;
+    }
+
+    let active = true;
+    setPushPermission(Notification.permission);
+
+    void getExistingWebPushSubscription().then((subscription) => {
+      if (!active) {
+        return;
+      }
+
+      setHasPushSubscription(Boolean(subscription));
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [isConvexAuthenticated]);
 
   useEffect(() => {
     if (!profile) {
@@ -177,6 +225,83 @@ export function CleanerSettingsClient() {
       window.location.reload();
     } catch {
       setClearingCache(false);
+    }
+  };
+
+  const refreshPushStatus = async () => {
+    if (!isWebPushSupported()) {
+      setPushPermission("unsupported");
+      setHasPushSubscription(false);
+      return;
+    }
+
+    setPushPermission(Notification.permission);
+    const subscription = await getExistingWebPushSubscription();
+    setHasPushSubscription(Boolean(subscription));
+  };
+
+  const handleEnablePush = async () => {
+    if (!isConvexAuthenticated) {
+      return;
+    }
+
+    setPushMessage(null);
+    setIsUpdatingPush(true);
+
+    try {
+      const permission = await requestWebPushPermission();
+      setPushPermission(permission);
+
+      if (permission !== "granted") {
+        setPushMessage({
+          tone: "error",
+          text: "Browser permission was not granted.",
+        });
+        return;
+      }
+
+      const subscription = await ensureWebPushSubscription();
+      if (!subscription) {
+        throw new Error("Browser subscription could not be created.");
+      }
+
+      await updateWebPushSubscription({ subscription });
+      setHasPushSubscription(true);
+      setPushMessage({
+        tone: "success",
+        text: "Push notifications are enabled on this device.",
+      });
+    } catch (error) {
+      setPushMessage({
+        tone: "error",
+        text: error instanceof Error ? error.message : "Failed to enable push notifications.",
+      });
+    } finally {
+      setIsUpdatingPush(false);
+      await refreshPushStatus();
+    }
+  };
+
+  const handleDisablePush = async () => {
+    setPushMessage(null);
+    setIsUpdatingPush(true);
+
+    try {
+      await disableWebPushSubscription();
+      await clearWebPushSubscription({});
+      setHasPushSubscription(false);
+      setPushMessage({
+        tone: "success",
+        text: "Push notifications were disabled for this device.",
+      });
+    } catch (error) {
+      setPushMessage({
+        tone: "error",
+        text: error instanceof Error ? error.message : "Failed to disable push notifications.",
+      });
+    } finally {
+      setIsUpdatingPush(false);
+      await refreshPushStatus();
     }
   };
 
@@ -293,6 +418,8 @@ export function CleanerSettingsClient() {
             type="button"
             className="rounded-md border border-[var(--border)] px-3 py-2 text-sm"
             onClick={async () => {
+              await disableWebPushSubscription().catch(() => false);
+              await clearWebPushSubscription({}).catch(() => ({ success: false }));
               await signOut();
               window.location.href = "/sign-in";
             }}
@@ -333,6 +460,77 @@ export function CleanerSettingsClient() {
         >
           {cacheCleared ? "✓ Cache cleared — reloading…" : clearingCache ? "Clearing…" : "Clear Cache & Refresh"}
         </button>
+      </section>
+
+      <section className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
+        <h2 className="text-base font-semibold">Push Notifications</h2>
+        <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+          Receive job assignments, approvals, and rework alerts on this device.
+        </p>
+        <div className="mt-3 space-y-2 text-sm">
+          <p>
+            Support:{" "}
+            <span className="font-semibold text-[var(--foreground)]">
+              {isWebPushSupported() ? "Available" : "Unavailable"}
+            </span>
+          </p>
+          <p>
+            VAPID Key:{" "}
+            <span className="font-semibold text-[var(--foreground)]">
+              {hasWebPushPublicKey() ? "Configured" : "Missing"}
+            </span>
+          </p>
+          <p>
+            Permission:{" "}
+            <span className="font-semibold text-[var(--foreground)]">
+              {pushPermission === "unsupported" ? "Unsupported" : pushPermission}
+            </span>
+          </p>
+          <p>
+            Device Subscription:{" "}
+            <span className="font-semibold text-[var(--foreground)]">
+              {hasPushSubscription ? "Active" : "Inactive"}
+            </span>
+          </p>
+        </div>
+        {pushMessage ? (
+          <p
+            className={`mt-3 rounded-md border px-3 py-2 text-sm ${
+              pushMessage.tone === "success"
+                ? "border-emerald-600/30 bg-emerald-500/10 text-emerald-400"
+                : "border-rose-600/30 bg-rose-500/10 text-rose-400"
+            }`}
+          >
+            {pushMessage.text}
+          </p>
+        ) : null}
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-[var(--primary-foreground)] disabled:opacity-60"
+            onClick={() => {
+              void handleEnablePush();
+            }}
+            disabled={
+              isUpdatingPush ||
+              !isConvexAuthenticated ||
+              !isWebPushSupported() ||
+              !hasWebPushPublicKey()
+            }
+          >
+            {isUpdatingPush ? "Updating..." : hasPushSubscription ? "Refresh Push Setup" : "Enable Push"}
+          </button>
+          <button
+            type="button"
+            className="rounded-md border border-[var(--border)] px-3 py-2 text-sm disabled:opacity-60"
+            onClick={() => {
+              void handleDisablePush();
+            }}
+            disabled={isUpdatingPush || !hasPushSubscription}
+          >
+            Disable Push
+          </button>
+        </div>
       </section>
 
       <section className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4">

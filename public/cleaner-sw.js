@@ -21,6 +21,9 @@ const QUERY_FUNCTIONS_TO_CACHE = [
   "cleaningJobs.queries.getMyJobDetail"
 ];
 
+const DEFAULT_NOTIFICATION_ICON = "/icons/cleaner-icon-192.png";
+const DEFAULT_NOTIFICATION_BADGE = "/icons/cleaner-icon-192.png";
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
@@ -204,4 +207,83 @@ self.addEventListener("fetch", (event) => {
   if (request.method === "POST" && url.pathname.includes("/api/query")) {
     event.respondWith(networkWithQueryCache(request));
   }
+});
+
+self.addEventListener("push", (event) => {
+  if (!event.data) {
+    return;
+  }
+
+  let payload = {};
+  try {
+    payload = event.data.json();
+  } catch {
+    payload = { body: event.data.text() };
+  }
+
+  const title =
+    typeof payload.title === "string" && payload.title.length > 0
+      ? payload.title
+      : "ChezSoiCleaning";
+
+  const body =
+    typeof payload.body === "string" && payload.body.length > 0
+      ? payload.body
+      : "You have a new notification.";
+
+  const url =
+    typeof payload.url === "string" && payload.url.length > 0
+      ? payload.url
+      : "/cleaner";
+
+  const notificationData =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? payload
+      : {};
+
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: DEFAULT_NOTIFICATION_ICON,
+      badge: DEFAULT_NOTIFICATION_BADGE,
+      tag:
+        typeof notificationData.tag === "string" && notificationData.tag.length > 0
+          ? notificationData.tag
+          : undefined,
+      data: {
+        ...notificationData,
+        url,
+      },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  const targetUrl = new URL(
+    typeof event.notification.data?.url === "string" && event.notification.data.url.length > 0
+      ? event.notification.data.url
+      : "/cleaner",
+    self.location.origin,
+  ).href;
+
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if ("focus" in client && client.url.startsWith(self.location.origin)) {
+          if ("navigate" in client) {
+            void client.navigate(targetUrl);
+          }
+          return client.focus();
+        }
+      }
+
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+
+      return undefined;
+    }),
+  );
 });
