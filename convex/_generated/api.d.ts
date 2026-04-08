@@ -17,6 +17,9 @@ import type * as cleaningJobs_devResetJobs from "../cleaningJobs/devResetJobs.js
 import type * as cleaningJobs_mutations from "../cleaningJobs/mutations.js";
 import type * as cleaningJobs_queries from "../cleaningJobs/queries.js";
 import type * as cleaningJobs_reviewAccess from "../cleaningJobs/reviewAccess.js";
+import type * as conversations_lib from "../conversations/lib.js";
+import type * as conversations_mutations from "../conversations/mutations.js";
+import type * as conversations_queries from "../conversations/queries.js";
 import type * as crons from "../crons.js";
 import type * as dashboard_queries from "../dashboard/queries.js";
 import type * as files_archiveActions from "../files/archiveActions.js";
@@ -70,6 +73,9 @@ declare const fullApi: ApiFromModules<{
   "cleaningJobs/mutations": typeof cleaningJobs_mutations;
   "cleaningJobs/queries": typeof cleaningJobs_queries;
   "cleaningJobs/reviewAccess": typeof cleaningJobs_reviewAccess;
+  "conversations/lib": typeof conversations_lib;
+  "conversations/mutations": typeof conversations_mutations;
+  "conversations/queries": typeof conversations_queries;
   crons: typeof crons;
   "dashboard/queries": typeof dashboard_queries;
   "files/archiveActions": typeof files_archiveActions;

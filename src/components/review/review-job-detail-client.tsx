@@ -17,6 +17,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { STATUS_CLASSNAMES, STATUS_LABELS, type JobStatus } from "@/components/jobs/job-status";
+import { JobConversationPanel } from "@/components/conversations/job-conversation-panel";
 import { getErrorMessage } from "@/lib/errors";
 
 function formatDateTime(value?: number | null): string {
@@ -208,6 +209,13 @@ export function ReviewJobDetailClient({ id }: { id: string }) {
             {detail.job.notesForCleaner}
           </div>
         ) : null}
+
+        <div className="mt-5">
+          <JobConversationPanel
+            jobId={jobId}
+            fullHrefBase="/messages"
+          />
+        </div>
       </section>
 
       {/* Photo evidence — clickable cards */}

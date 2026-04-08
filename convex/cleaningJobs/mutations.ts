@@ -10,6 +10,11 @@ import {
   dismissNotificationsForJob,
   listOpsUserIds,
 } from "../lib/notificationLifecycle";
+import {
+  getJobConversationByJobId,
+  seedJobConversationParticipants,
+  syncConversationStatusForJob,
+} from "../conversations/lib";
 
 const qaModeValidator = v.union(v.literal("standard"), v.literal("quick"));
 
@@ -556,6 +561,10 @@ export const start = mutation({
         currentRevision: revision,
         updatedAt: now,
       });
+      await syncConversationStatusForJob(ctx, {
+        jobId: args.jobId,
+        nextStatus: "in_progress",
+      });
     }
 
     await dismissNotificationsForJob(ctx, {
@@ -805,6 +814,10 @@ async function submitForApprovalInternal(
       completedRefillCount: coverage.completedRefillCount,
     },
   });
+  await syncConversationStatusForJob(ctx, {
+    jobId: args.jobId,
+    nextStatus: "awaiting_approval",
+  });
 
   await dismissNotificationsForJob(ctx, {
     jobId: String(job._id),
@@ -988,6 +1001,10 @@ export const reopenForRework = mutation({
       rejectionReason: args.reason?.trim(),
       updatedAt: now,
     });
+    await syncConversationStatusForJob(ctx, {
+      jobId: args.jobId,
+      nextStatus: "rework_required",
+    });
 
     await dismissNotificationsForJob(ctx, {
       jobId: String(job._id),
@@ -1118,6 +1135,21 @@ export const assign = mutation({
       status: updatedStatus,
       updatedAt: now,
     });
+    await syncConversationStatusForJob(ctx, {
+      jobId: args.jobId,
+      nextStatus: updatedStatus,
+    });
+
+    const conversation = await getJobConversationByJobId(ctx, args.jobId);
+    if (conversation) {
+      const refreshedJob = await ctx.db.get(args.jobId);
+      if (refreshedJob) {
+        await seedJobConversationParticipants(ctx, {
+          conversationId: conversation._id,
+          job: refreshedJob,
+        });
+      }
+    }
 
     await ctx.db.insert("jobAssignmentAuditEvents", {
       jobId: job._id,

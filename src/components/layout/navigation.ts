@@ -4,6 +4,7 @@ import {
   Calendar,
   ClipboardList,
   ClipboardCheck,
+  MessageSquare,
   Building2,
   Building,
   Users,
@@ -39,6 +40,12 @@ export const navigation: NavigationItem[] = [
     href: "/jobs",
     icon: ClipboardList,
     roles: ["admin", "property_ops", "manager", "cleaner"],
+  },
+  {
+    name: "Messages",
+    href: "/messages",
+    icon: MessageSquare,
+    roles: ["admin", "property_ops", "manager"],
   },
   {
     name: "Review",

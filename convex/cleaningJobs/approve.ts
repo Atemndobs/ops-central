@@ -10,6 +10,7 @@ import {
   dismissNotificationsForJob,
   listOpsUserIds,
 } from "../lib/notificationLifecycle";
+import { syncConversationStatusForJob } from "../conversations/lib";
 
 const roomReviewSnapshotValidator = v.array(
   v.object({
@@ -116,6 +117,10 @@ export const approveCompletion = mutation({
       managerNotes: args.approvalNotes,
       updatedAt: Date.now(),
     });
+    await syncConversationStatusForJob(ctx, {
+      jobId: args.jobId,
+      nextStatus: "completed",
+    });
 
     await dismissNotificationsForJob(ctx, {
       jobId: String(job._id),
@@ -197,6 +202,10 @@ export const rejectCompletion = mutation({
       rejectionReason: args.rejectionReason?.trim(),
       updatedAt: now,
     });
+    await syncConversationStatusForJob(ctx, {
+      jobId: args.jobId,
+      nextStatus: "rework_required",
+    });
 
     await dismissNotificationsForJob(ctx, {
       jobId: String(job._id),
@@ -265,6 +274,10 @@ export const reopenCompleted = mutation({
       rejectedBy: user._id,
       rejectionReason: args.reason?.trim(),
       updatedAt: now,
+    });
+    await syncConversationStatusForJob(ctx, {
+      jobId: args.jobId,
+      nextStatus: "rework_required",
     });
 
     await dismissNotificationsForJob(ctx, {

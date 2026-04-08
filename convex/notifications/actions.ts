@@ -113,7 +113,15 @@ function buildNotificationUrl(
   notification: Doc<"notifications">,
 ): string {
   const data = isRecord(notification.data) ? notification.data : {};
+  const conversationId =
+    typeof data.conversationId === "string" ? data.conversationId : null;
   const jobId = typeof data.jobId === "string" ? data.jobId : null;
+
+  if (notification.type === "message_received" && conversationId) {
+    return user.role === "cleaner"
+      ? `/cleaner/messages?conversationId=${conversationId}`
+      : `/messages?conversationId=${conversationId}`;
+  }
 
   if (jobId) {
     if (user.role === "cleaner") {

@@ -405,6 +405,65 @@ const jobAssignmentAuditEvents = defineTable({
   .index("by_assigned_by", ["assignedBy"])
   .index("by_created_at", ["createdAt"]);
 
+const conversations = defineTable({
+  linkedJobId: v.optional(v.id("cleaningJobs")),
+  propertyId: v.optional(v.id("properties")),
+  channel: v.union(
+    v.literal("internal"),
+    v.literal("sms"),
+    v.literal("whatsapp"),
+    v.literal("email"),
+  ),
+  kind: v.union(
+    v.literal("job"),
+    v.literal("direct"),
+    v.literal("group"),
+  ),
+  status: v.union(v.literal("open"), v.literal("closed")),
+  lastMessageAt: v.optional(v.number()),
+  lastMessagePreview: v.optional(v.string()),
+  createdBy: v.optional(v.id("users")),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_linked_job", ["linkedJobId"])
+  .index("by_status_last_message", ["status", "lastMessageAt"]);
+
+const conversationParticipants = defineTable({
+  conversationId: v.id("conversations"),
+  userId: v.optional(v.id("users")),
+  participantKind: v.union(
+    v.literal("user"),
+    v.literal("external_contact"),
+  ),
+  lastReadMessageAt: v.optional(v.number()),
+  joinedAt: v.number(),
+  mutedAt: v.optional(v.number()),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_conversation", ["conversationId"])
+  .index("by_user", ["userId"])
+  .index("by_conversation_and_user", ["conversationId", "userId"]);
+
+const conversationMessages = defineTable({
+  conversationId: v.id("conversations"),
+  authorKind: v.union(v.literal("user"), v.literal("system")),
+  authorUserId: v.optional(v.id("users")),
+  messageKind: v.union(v.literal("user"), v.literal("system")),
+  channel: v.union(
+    v.literal("internal"),
+    v.literal("sms"),
+    v.literal("whatsapp"),
+    v.literal("email"),
+  ),
+  body: v.string(),
+  metadata: v.optional(v.any()),
+  createdAt: v.number(),
+})
+  .index("by_conversation", ["conversationId"])
+  .index("by_conversation_and_created", ["conversationId", "createdAt"]);
+
 const jobTemplates = defineTable({
   propertyId: v.optional(v.id("properties")),
   name: v.string(),
@@ -707,6 +766,7 @@ const notifications = defineTable({
     v.literal("rework_required"),
     v.literal("incident_created"),
     v.literal("low_stock"),
+    v.literal("message_received"),
     v.literal("system")
   ),
   title: v.string(),
@@ -859,6 +919,9 @@ export default defineSchema({
   jobExecutionSessions,
   jobSubmissions,
   jobAssignmentAuditEvents,
+  conversations,
+  conversationParticipants,
+  conversationMessages,
 
   // Photos
   photos,

@@ -21,6 +21,7 @@ const pageTitles: Record<string, string> = {
   "/": "Dashboard",
   "/schedule": "Schedule",
   "/jobs": "Jobs",
+  "/messages": "Messages",
   "/properties": "Properties",
   "/companies": "Companies",
   "/team": "Team",
@@ -436,6 +437,10 @@ function getPageTitle(pathname: string) {
 
 function getNotificationHref(type: string, data: unknown): string {
   if (data && typeof data === "object" && !Array.isArray(data)) {
+    const conversationId = (data as { conversationId?: unknown }).conversationId;
+    if (type === "message_received" && typeof conversationId === "string" && conversationId.length > 0) {
+      return `/messages?conversationId=${conversationId}`;
+    }
     const jobId = (data as { jobId?: unknown }).jobId;
     if (typeof jobId === "string" && jobId.length > 0) {
       return `/jobs/${jobId}`;

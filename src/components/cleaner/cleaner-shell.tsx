@@ -10,6 +10,7 @@ import {
   Bell,
   ClipboardList,
   History,
+  MessageSquare,
   AlertTriangle,
   Settings,
   Wifi,
@@ -31,6 +32,7 @@ import {
 
 const NAV_ITEMS = [
   { href: "/cleaner", label: "Jobs", icon: ClipboardList },
+  { href: "/cleaner/messages", label: "Messages", icon: MessageSquare },
   { href: "/cleaner/history", label: "History", icon: History },
   { href: "/cleaner/incidents/new", label: "Incident", icon: AlertTriangle },
   { href: "/cleaner/settings", label: "Settings", icon: Settings },
@@ -59,6 +61,14 @@ function applyTheme(theme: ThemePreference) {
 
 function getCleanerNotificationHref(type: string, data: unknown): string {
   if (data && typeof data === "object" && !Array.isArray(data)) {
+    const conversationId = (data as { conversationId?: unknown }).conversationId;
+    if (
+      type === "message_received" &&
+      typeof conversationId === "string" &&
+      conversationId.length > 0
+    ) {
+      return `/cleaner/messages?conversationId=${conversationId}`;
+    }
     const jobId = (data as { jobId?: unknown }).jobId;
     if (typeof jobId === "string" && jobId.length > 0) {
       return `/cleaner/jobs/${jobId}`;

@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import { JobConversationPanel } from "@/components/conversations/job-conversation-panel";
 import { getErrorMessage } from "@/lib/errors";
 
 function formatDate(value?: number | null) {
@@ -126,6 +127,12 @@ export function CleanerJobDetailClient({ id }: { id: string }) {
 
         {error ? <p className="mt-2 text-xs text-[var(--destructive)]">{error}</p> : null}
       </section>
+
+      <JobConversationPanel
+        jobId={jobId}
+        fullHrefBase="/cleaner/messages"
+        compact
+      />
     </div>
   );
 }

@@ -24,6 +24,7 @@ import {
   resetFailedUploads,
 } from "@/features/cleaner/offline/queue";
 import type { DraftIncident, DraftProgress, PendingUpload } from "@/features/cleaner/offline/types";
+import { JobConversationPanel } from "@/components/conversations/job-conversation-panel";
 import { getErrorMessage } from "@/lib/errors";
 
 // Steps: cleaning step removed — skip is merged into before_photos
@@ -867,6 +868,12 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
           </p>
         ) : null}
       </section>
+
+      <JobConversationPanel
+        jobId={jobId}
+        fullHrefBase="/cleaner/messages"
+        compact
+      />
 
       <SyncBanner syncState={syncState} />
 

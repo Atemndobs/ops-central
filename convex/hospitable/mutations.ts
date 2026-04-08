@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation } from "../_generated/server";
+import { syncConversationStatusForJob } from "../conversations/lib";
 
 const SIX_HOURS_IN_MS = 6 * 60 * 60 * 1000;
 
@@ -193,6 +194,10 @@ export const upsertReservations = internalMutation({
               source: "hospitable",
               reservationStatus: reservation.status,
             },
+          });
+          await syncConversationStatusForJob(ctx, {
+            jobId: existingJob._id,
+            nextStatus: "cancelled",
           });
           summary.jobsCancelled += 1;
           continue;
