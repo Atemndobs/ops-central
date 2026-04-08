@@ -13,6 +13,7 @@ import {
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
+  "/sso-callback(.*)",
   "/api/webhooks/hospitable(.*)",
   "/api/webhooks/clerk(.*)",
 ]);

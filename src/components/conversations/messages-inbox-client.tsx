@@ -3,7 +3,7 @@
 import { useEffect, useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import type { Id } from "@convex/_generated/dataModel";
 import { api } from "@convex/_generated/api";
 import { ConversationThread } from "./conversation-thread";
@@ -29,7 +29,11 @@ export function MessagesInboxClient({
   basePath,
   title,
 }: MessagesInboxClientProps) {
-  const conversations = useQuery(api.conversations.queries.listMyConversations, {});
+  const { isAuthenticated } = useConvexAuth();
+  const conversations = useQuery(
+    api.conversations.queries.listMyConversations,
+    isAuthenticated ? {} : "skip",
+  );
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();

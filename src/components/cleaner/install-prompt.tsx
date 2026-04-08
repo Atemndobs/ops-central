@@ -24,24 +24,25 @@ const DISMISSED_KEY = "chezsoi-install-dismissed";
 
 export function InstallPrompt() {
   const [promptEvent, setPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
-  const [showIosHint, setShowIosHint] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [showIosHint, setShowIosHint] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
+  // Defer all browser detection to after hydration
   useEffect(() => {
-    // Don't show if already installed or previously dismissed
-    if (isInStandaloneMode()) return;
-    if (sessionStorage.getItem(DISMISSED_KEY)) {
-      setDismissed(true);
-      return;
-    }
+    setMounted(true);
+    const wasDismissed = sessionStorage.getItem(DISMISSED_KEY) !== null;
+    setDismissed(wasDismissed);
 
-    // iOS: show manual hint
-    if (isIos()) {
+    if (!wasDismissed && !isInStandaloneMode() && isIos()) {
       setShowIosHint(true);
       return;
     }
 
-    // Android / desktop Chrome: listen for native prompt
+    if (wasDismissed || isInStandaloneMode()) {
+      return;
+    }
+
     const handleBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
       setPromptEvent(event as BeforeInstallPromptEvent);
@@ -59,8 +60,8 @@ export function InstallPrompt() {
     setPromptEvent(null);
   };
 
-  // Already installed or dismissed
-  if (dismissed) return null;
+  // Render nothing until mounted (prevents hydration mismatch)
+  if (!mounted || dismissed) return null;
 
   // iOS banner — share sheet instructions
   if (showIosHint) {

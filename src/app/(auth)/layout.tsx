@@ -32,7 +32,7 @@ export default function AuthLayout({
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/30 to-black/80" />
 
       {/* Full-viewport glass card — matches mobile's edge-to-edge BlurView */}
-      <div className="relative flex h-full flex-col items-center justify-center overflow-y-auto bg-[rgba(10,10,10,0.6)] px-8 pt-20 pb-16 backdrop-blur-[80px]">
+      <div className="relative flex h-full flex-col items-center overflow-y-auto bg-[rgba(10,10,10,0.6)] px-5 py-12 backdrop-blur-[80px] sm:justify-center sm:px-8 sm:pt-20 sm:pb-16">
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.04] via-transparent to-black/20" />
 
         {/* Pill tab toggle — matches mobile's tabContainer */}

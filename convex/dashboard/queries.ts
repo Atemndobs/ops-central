@@ -130,11 +130,6 @@ export const getQuickStats = query({
       (job) => job.scheduledStartAt >= start && job.scheduledStartAt < end,
     );
 
-    const activeProperties = await ctx.db
-      .query("properties")
-      .withIndex("by_active", (q) => q.eq("isActive", true))
-      .collect();
-
     // Use stays for upcoming check-ins
     const upcomingStays = await ctx.db
       .query("stays")

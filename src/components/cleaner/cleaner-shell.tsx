@@ -9,10 +9,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
   ClipboardList,
-  History,
   MessageSquare,
   AlertTriangle,
-  Settings,
+  MoreHorizontal,
   Wifi,
   WifiOff,
   LogOut,
@@ -33,9 +32,8 @@ import {
 const NAV_ITEMS = [
   { href: "/cleaner", label: "Jobs", icon: ClipboardList },
   { href: "/cleaner/messages", label: "Messages", icon: MessageSquare },
-  { href: "/cleaner/history", label: "History", icon: History },
   { href: "/cleaner/incidents/new", label: "Incident", icon: AlertTriangle },
-  { href: "/cleaner/settings", label: "Settings", icon: Settings },
+  { href: "/cleaner/more", label: "More", icon: MoreHorizontal },
 ];
 
 const THEME_STORAGE_KEY = "opscentral-theme";
@@ -375,6 +373,12 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     if (pathname.startsWith("/cleaner/settings")) {
       return "Settings";
     }
+    if (pathname.startsWith("/cleaner/more")) {
+      return "More";
+    }
+    if (pathname.startsWith("/cleaner/messages")) {
+      return "Messages";
+    }
     return "My Jobs";
   }, [pathname]);
 
@@ -409,9 +413,12 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1 text-sm">
+            <div
+              className="flex items-center justify-center rounded-md border border-[var(--border)] px-2.5 py-2 text-[var(--muted-foreground)]"
+              aria-label={isOnline ? "Online" : "Offline"}
+              title={isOnline ? "Online" : "Offline"}
+            >
               {isOnline ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
-              <span>{isOnline ? "Online" : "Offline"}</span>
             </div>
             <div className="relative" ref={notificationPanelRef}>
               <button

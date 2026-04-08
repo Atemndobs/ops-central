@@ -12,7 +12,7 @@
  */
 
 import { v } from "convex/values";
-import { query } from "../_generated/server";
+import { query, type QueryCtx } from "../_generated/server";
 import { type Doc, type Id } from "../_generated/dataModel";
 import { requireRole, requireAuth } from "../lib/auth";
 
@@ -945,10 +945,10 @@ export const getAllToolsMetrics = query({
     ] = await Promise.all([
       getCleanersMetricsInternal(ctx),
       getPropertyMetricsInternal(ctx),
-      getReviewsMetricsInternal(ctx),
-      getSTRCostsMetricsInternal(ctx),
-      getDealVettingMetricsInternal(ctx),
-      getDesignStoriesMetricsInternal(ctx),
+      getReviewsMetricsInternal(),
+      getSTRCostsMetricsInternal(),
+      getDealVettingMetricsInternal(),
+      getDesignStoriesMetricsInternal(),
     ]);
 
     return {
@@ -973,7 +973,7 @@ export const getCleanersMetrics = query({
 });
 
 // Internal helper for cleaners metrics
-async function getCleanersMetricsInternal(ctx: any) {
+async function getCleanersMetricsInternal(ctx: QueryCtx) {
   const now = Date.now();
   const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
 
@@ -986,36 +986,34 @@ async function getCleanersMetricsInternal(ctx: any) {
   todayEnd.setHours(23, 59, 59, 999);
 
   const todayJobs = allJobs.filter(
-    (j: any) =>
-      j.scheduledStartAt >= todayStart.getTime() &&
-      j.scheduledStartAt <= todayEnd.getTime()
+    (job) =>
+      job.scheduledStartAt >= todayStart.getTime() &&
+      job.scheduledStartAt <= todayEnd.getTime()
   );
 
   // Pending reviews
-  const pendingReviews = allJobs.filter(
-    (j: any) => j.status === "awaiting_approval"
-  );
+  const pendingReviews = allJobs.filter((job) => job.status === "awaiting_approval");
 
   // Upcoming jobs (next 7 days)
   const nextWeek = now + 7 * 24 * 60 * 60 * 1000;
   const upcomingJobs = allJobs.filter(
-    (j: any) =>
-      j.scheduledStartAt >= now &&
-      j.scheduledStartAt <= nextWeek &&
-      (j.status === "scheduled" || j.status === "assigned")
+    (job) =>
+      job.scheduledStartAt >= now &&
+      job.scheduledStartAt <= nextWeek &&
+      (job.status === "scheduled" || job.status === "assigned")
   );
 
   // Active cleaners (with jobs in last 30 days)
-  const recentJobs = allJobs.filter((j: any) => j.scheduledStartAt >= thirtyDaysAgo);
+  const recentJobs = allJobs.filter((job) => job.scheduledStartAt >= thirtyDaysAgo);
   const uniqueCleaners = new Set<string>();
-  recentJobs.forEach((job: any) => {
+  recentJobs.forEach((job) => {
     if (job.assignedCleanerIds && Array.isArray(job.assignedCleanerIds)) {
       job.assignedCleanerIds.forEach((id: string) => uniqueCleaners.add(id));
     }
   });
 
   // Completion rate
-  const completedCount = recentJobs.filter((j: any) => j.status === "completed").length;
+  const completedCount = recentJobs.filter((job) => job.status === "completed").length;
   const completionRate =
     recentJobs.length > 0
       ? Math.round((completedCount / recentJobs.length) * 100 * 10) / 10
@@ -1043,17 +1041,17 @@ async function getCleanersMetricsInternal(ctx: any) {
 }
 
 // Internal helper for property metrics
-async function getPropertyMetricsInternal(ctx: any) {
+async function getPropertyMetricsInternal(ctx: QueryCtx) {
   const properties = await ctx.db.query("properties").collect();
 
   const totalProperties = properties.length;
-  const listedProperties = properties.filter((p: any) => p.isActive).length;
+  const listedProperties = properties.filter((property) => property.isActive).length;
 
   // Calculate total guest capacity
   let totalGuestCapacity = 0;
-  properties.forEach((p: any) => {
-    if (p.bedrooms) {
-      totalGuestCapacity += p.bedrooms * 2; // Estimate 2 guests per bedroom
+  properties.forEach((property) => {
+    if (property.bedrooms) {
+      totalGuestCapacity += property.bedrooms * 2; // Estimate 2 guests per bedroom
     }
   });
 
@@ -1070,172 +1068,52 @@ async function getPropertyMetricsInternal(ctx: any) {
 }
 
 // Internal helper for reviews metrics
-async function getReviewsMetricsInternal(ctx: any) {
-  const reviews = await ctx.db.query("airbnbReviews").collect();
-  const propertyReviews = await ctx.db.query("propertyReviews").collect();
-  const allReviews = [...reviews, ...propertyReviews];
-
-  const totalImported = allReviews.length;
-
-  // Calculate average rating
-  const reviewsWithRating = allReviews.filter((r: any) => r.rating && r.rating > 0);
-  const averageRating =
-    reviewsWithRating.length > 0
-      ? Number(
-          (
-            reviewsWithRating.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) /
-            reviewsWithRating.length
-          ).toFixed(1)
-        )
-      : 0;
-
-  // Last sync date
-  const sortedReviews = [...allReviews].sort(
-    (a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0)
-  );
-  const lastSyncAt = sortedReviews.length > 0 ? sortedReviews[0].createdAt : null;
-
+async function getReviewsMetricsInternal() {
   return {
-    totalImported,
-    totalReviews: totalImported,
-    averageRating,
-    lastSyncAt: lastSyncAt ? new Date(lastSyncAt).toISOString() : null,
-    status: totalImported > 0 ? "synced" : "needs_sync",
+    totalImported: 0,
+    totalReviews: 0,
+    averageRating: 0,
+    lastSyncAt: null,
+    status: "needs_sync",
   };
 }
 
 // Internal helper for STR costs metrics
-async function getSTRCostsMetricsInternal(ctx: any) {
-  const importRecords = await ctx.db.query("importRecords").collect();
-  const monthlyCalcs = await ctx.db.query("monthlyCalculations").collect();
-  const costItems = await ctx.db.query("costItems").collect();
-  const apiConnections = await ctx.db.query("apiConnections").collect();
-
-  const totalImports = importRecords.length;
-  const totalCalculations = monthlyCalcs.length;
-  const totalCostItems = costItems.length;
-  const apiConnectionsCount = apiConnections.length;
-
-  // Last import date
-  const sortedImports = [...importRecords].sort(
-    (a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0)
-  );
-  const lastImportDate =
-    sortedImports.length > 0
-      ? new Date(sortedImports[0].createdAt).toISOString()
-      : null;
-
-  // Determine status
-  let status = "setup_needed";
-  if (totalImports > 0) {
-    status = "has_data";
-  } else if (apiConnectionsCount > 0) {
-    status = "needs_sync";
-  }
-
+async function getSTRCostsMetricsInternal() {
   return {
-    totalImports,
-    totalCalculations,
-    totalCostItems,
-    apiConnectionsCount,
-    lastImportDate,
-    status,
+    totalImports: 0,
+    totalCalculations: 0,
+    totalCostItems: 0,
+    apiConnectionsCount: 0,
+    lastImportDate: null,
+    status: "setup_needed",
   };
 }
 
 // Internal helper for deal vetting metrics
-async function getDealVettingMetricsInternal(ctx: any) {
-  const evaluations = await ctx.db.query("dealVettingEvaluations").collect();
-
-  const totalEvaluations = evaluations.length;
-  const passedDeals = evaluations.filter(
-    (e: any) => e.finalDecision === "pass"
-  ).length;
-  const watchDeals = evaluations.filter(
-    (e: any) => e.finalDecision === "watch"
-  ).length;
-  const failedDeals = evaluations.filter(
-    (e: any) => e.finalDecision === "fail"
-  ).length;
-
-  const averageScore =
-    totalEvaluations > 0
-      ? Math.round(
-          evaluations.reduce((sum: number, e: any) => sum + (e.score || 0), 0) /
-            totalEvaluations
-        )
-      : 0;
-
-  const averageMonthlyNet =
-    totalEvaluations > 0
-      ? Math.round(
-          evaluations.reduce((sum: number, e: any) => sum + (e.monthlyNet || 0), 0) /
-            totalEvaluations
-        )
-      : 0;
-
-  // Last evaluation date
-  const sortedEvals = [...evaluations].sort(
-    (a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0)
-  );
-  const lastEvaluationAt =
-    sortedEvals.length > 0
-      ? new Date(sortedEvals[0].createdAt).toISOString()
-      : null;
-
+async function getDealVettingMetricsInternal() {
   return {
-    totalEvaluations,
-    passedDeals,
-    watchDeals,
-    failedDeals,
-    averageScore,
-    averageMonthlyNet,
-    lastEvaluationAt,
-    status: totalEvaluations > 0 ? "active" : "setup_needed",
+    totalEvaluations: 0,
+    passedDeals: 0,
+    watchDeals: 0,
+    failedDeals: 0,
+    averageScore: 0,
+    averageMonthlyNet: 0,
+    lastEvaluationAt: null,
+    status: "setup_needed",
   };
 }
 
 // Internal helper for design stories metrics
-async function getDesignStoriesMetricsInternal(ctx: any) {
-  const stories = await ctx.db.query("designStories").collect();
-
-  const totalStories = stories.length;
-  const publishedStories = stories.filter(
-    (s: any) => s.status === "published"
-  ).length;
-  const draftStories = stories.filter((s: any) => s.status === "draft").length;
-  const archivedStories = stories.filter(
-    (s: any) => s.status === "archived"
-  ).length;
-
-  // Last published date
-  const publishedWithDates = stories.filter(
-    (s: any) => s.status === "published" && s.publishedAt
-  );
-  const lastPublishedAt =
-    publishedWithDates.length > 0
-      ? new Date(
-          Math.max(...publishedWithDates.map((s: any) => s.publishedAt))
-        ).toISOString()
-      : null;
-
-  // Last updated date
-  const storiesWithUpdates = stories.filter((s: any) => s.updatedAt);
-  const lastUpdatedAt =
-    storiesWithUpdates.length > 0
-      ? new Date(
-          Math.max(...storiesWithUpdates.map((s: any) => s.updatedAt))
-        ).toISOString()
-      : null;
-
+async function getDesignStoriesMetricsInternal() {
   return {
-    totalStories,
-    publishedStories,
-    draftStories,
-    archivedStories,
-    lastPublishedAt,
-    lastUpdatedAt,
-    status: totalStories > 0 ? "ok" : "empty",
+    totalStories: 0,
+    publishedStories: 0,
+    draftStories: 0,
+    archivedStories: 0,
+    lastPublishedAt: null,
+    lastUpdatedAt: null,
+    status: "empty",
   };
 }
 
@@ -1287,9 +1165,6 @@ export const getUserManagementMetrics = query({
 export const getAnalytics = query({
   handler: async (ctx) => {
     await requireAuth(ctx);
-
-    const now = Date.now();
-    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
 
     // Get all jobs
     const allJobs = await ctx.db.query("cleaningJobs").collect();

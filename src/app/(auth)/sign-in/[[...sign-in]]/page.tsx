@@ -1,12 +1,11 @@
-import { SignIn } from "@clerk/nextjs";
-import { mobileAuthAppearance } from "@/lib/clerk-auth-appearance";
+import { TestableSignIn } from "@/components/auth/testable-sign-in";
+import {
+  getTestAuthPresets,
+  shouldShowTestAuthPresets,
+} from "@/lib/test-auth-presets";
 
 export default function SignInPage() {
-  return (
-    <SignIn
-      signUpUrl="/sign-up"
-      fallbackRedirectUrl="/"
-      appearance={mobileAuthAppearance}
-    />
-  );
+  const presets = getTestAuthPresets();
+
+  return <TestableSignIn presets={presets} showTestPresets={shouldShowTestAuthPresets(presets)} />;
 }

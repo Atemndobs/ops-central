@@ -1060,7 +1060,7 @@ export const assign = mutation({
           actorCompanyMembership.role !== "owner")
       ) {
         throw new ConvexError(
-          "Manager dispatch requires an active cleaning-company manager membership.",
+          "As a manager, you need an active cleaning company manager membership before you can assign cleaners.",
         );
       }
 

@@ -2255,37 +2255,3 @@ function ReviewPhotoTile({
     </button>
   );
 }
-
-function ComparePhotoTile({
-  url,
-  label,
-  onOpen,
-}: {
-  url: string | null;
-  label: string;
-  onOpen?: () => void;
-}) {
-  if (!url) {
-    return (
-      <div className="flex h-36 items-center justify-center rounded-md border border-dashed border-[var(--border)] text-sm text-[var(--muted-foreground)]">
-        Missing file URL
-      </div>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="group overflow-hidden rounded-md border border-[var(--border)]"
-    >
-      <Image
-        src={url}
-        alt={label}
-        width={600}
-        height={340}
-        className="h-40 w-full object-cover transition-transform group-hover:scale-105"
-      />
-    </button>
-  );
-}

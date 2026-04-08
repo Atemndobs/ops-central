@@ -453,7 +453,7 @@ export const getAssignableCleanersByProperty = query({
 
       if (managerMissingMembership) {
         blockedReason =
-          "Your account needs an active cleaning-company manager membership before assigning cleaners.";
+          "As a manager, you need an active cleaning company manager membership before you can assign cleaners.";
       } else if (!companyId) {
         blockedReason =
           "This property has no cleaning company assigned yet.";

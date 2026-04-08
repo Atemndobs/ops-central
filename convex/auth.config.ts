@@ -4,7 +4,7 @@ const clerkIssuer =
   process.env.CLERK_ISSUER_URL ??
   "https://good-bluejay-68.clerk.accounts.dev";
 
-export default {
+const authConfig = {
   providers: [
     {
       domain: clerkIssuer,
@@ -12,3 +12,5 @@ export default {
     },
   ],
 };
+
+export default authConfig;

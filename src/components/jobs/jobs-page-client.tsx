@@ -25,18 +25,6 @@ import {
 } from "@/components/jobs/job-status";
 import { CreateJobModal } from "@/components/jobs/create-job-modal";
 
-type JobWithRelations = {
-  _id: string;
-  notesForCleaner?: string;
-  status: JobStatus;
-  scheduledStartAt?: number;
-  scheduledEndAt?: number;
-  propertyId: string;
-  assignedCleanerIds?: string[];
-  property?: { _id: string; name?: string | null } | null;
-  cleaners?: Array<{ _id: string; name?: string | null }>;
-};
-
 const workflowStatuses: JobStatus[] = [
   "scheduled",
   "assigned",
