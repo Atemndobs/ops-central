@@ -665,6 +665,7 @@ async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
             submittedAtDevice: latestSubmission.submittedAtDevice,
             validationResult: latestSubmission.validationResult,
             sealedHash: latestSubmission.sealedHash,
+            roomReviewSnapshot: latestSubmission.roomReviewSnapshot ?? [],
             photos: latestSubmissionEvidence,
             checklistSnapshot: latestSubmission.checklistSnapshot,
             incidentSnapshot: latestSubmission.incidentSnapshot,

@@ -2,7 +2,9 @@
 
 import { useAuth } from "@clerk/nextjs";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import type { Id } from "@convex/_generated/dataModel";
 import Image from "next/image";
+import Link from "next/link";
 import { type ChangeEvent, useEffect, useState } from "react";
 import { api } from "@convex/_generated/api";
 import { clearPendingUploads, listPendingUploads } from "@/features/cleaner/offline/indexeddb";
@@ -24,6 +26,21 @@ function applyTheme(theme: ThemePreference) {
   document.documentElement.classList.toggle("dark", theme === "dark");
 }
 
+function getCleanerNotificationHref(type: string, data: unknown): string {
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    const jobId = (data as { jobId?: unknown }).jobId;
+    if (typeof jobId === "string" && jobId.length > 0) {
+      return `/cleaner/jobs/${jobId}`;
+    }
+  }
+
+  if (type === "incident_created") {
+    return "/cleaner/incidents/new";
+  }
+
+  return "/cleaner";
+}
+
 export function CleanerSettingsClient() {
   const { signOut } = useAuth();
   const { isAuthenticated: isConvexAuthenticated, isLoading: isConvexAuthLoading } = useConvexAuth();
@@ -37,6 +54,8 @@ export function CleanerSettingsClient() {
   );
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
   const updateMyProfile = useMutation(api.users.mutations.updateMyProfile);
+  const markNotificationRead = useMutation(api.users.mutations.markNotificationRead);
+  const dismissNotification = useMutation(api.users.mutations.dismissNotification);
   const updateWebPushSubscription = useMutation(api.users.mutations.updateWebPushSubscription);
   const clearWebPushSubscription = useMutation(api.users.mutations.clearWebPushSubscription);
   const notifications = useQuery(
@@ -48,7 +67,15 @@ export function CleanerSettingsClient() {
         }
       : "skip",
   ) as
-    | Array<{ _id: string; title: string; message: string; createdAt: number; readAt?: number }>
+    | Array<{
+        _id: Id<"notifications">;
+        type: string;
+        title: string;
+        message: string;
+        data?: unknown;
+        createdAt: number;
+        readAt?: number;
+      }>
     | undefined;
 
   const [pendingUploads, setPendingUploads] = useState(0);
@@ -548,6 +575,39 @@ export function CleanerSettingsClient() {
                 <p className="mt-1 text-xs text-[var(--muted-foreground)]">
                   {new Date(notification.createdAt).toLocaleString()} · {notification.readAt ? "Read" : "Unread"}
                 </p>
+                <div className="mt-2 flex gap-2">
+                  <Link
+                    href={getCleanerNotificationHref(notification.type, notification.data)}
+                    onClick={() => {
+                      if (!notification.readAt) {
+                        void markNotificationRead({ id: notification._id }).catch(() => undefined);
+                      }
+                    }}
+                    className="rounded-md border border-[var(--border)] px-2 py-1 text-xs"
+                  >
+                    Open
+                  </Link>
+                  {!notification.readAt ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void markNotificationRead({ id: notification._id }).catch(() => undefined);
+                      }}
+                      className="rounded-md border border-[var(--border)] px-2 py-1 text-xs"
+                    >
+                      Mark Read
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void dismissNotification({ id: notification._id }).catch(() => undefined);
+                    }}
+                    className="rounded-md border border-[var(--border)] px-2 py-1 text-xs"
+                  >
+                    Dismiss
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

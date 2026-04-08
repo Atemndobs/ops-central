@@ -6,6 +6,18 @@ import {
   createNotificationsForUsers,
   createOpsNotifications,
 } from "../lib/opsNotifications";
+import {
+  dismissNotificationsForJob,
+  listOpsUserIds,
+} from "../lib/notificationLifecycle";
+
+const roomReviewSnapshotValidator = v.array(
+  v.object({
+    roomName: v.string(),
+    verdict: v.union(v.literal("pass"), v.literal("rework")),
+    note: v.optional(v.string()),
+  }),
+);
 
 function requireApproverRole(user: Doc<"users">) {
   if (
@@ -41,6 +53,12 @@ export const submitForApproval = mutation({
         updatedAt: Date.now(),
       });
 
+      await dismissNotificationsForJob(ctx, {
+        jobId: String(job._id),
+        userIds: job.assignedCleanerIds,
+        types: ["job_assigned", "rework_required"],
+      });
+
       await createOpsNotifications(ctx, {
         type: "awaiting_approval",
         title: "Job Awaiting Approval",
@@ -60,6 +78,7 @@ export const approveCompletion = mutation({
   args: {
     jobId: v.id("cleaningJobs"),
     approvalNotes: v.optional(v.string()),
+    roomReviewSnapshot: v.optional(roomReviewSnapshotValidator),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
@@ -78,6 +97,17 @@ export const approveCompletion = mutation({
     }
 
     const property = await ctx.db.get(job.propertyId);
+    const opsUserIds = await listOpsUserIds(ctx);
+
+    if (job.latestSubmissionId && args.roomReviewSnapshot !== undefined) {
+      await ctx.db.patch(job.latestSubmissionId, {
+        roomReviewSnapshot: args.roomReviewSnapshot.map((item) => ({
+          roomName: item.roomName.trim(),
+          verdict: item.verdict,
+          note: item.note?.trim() || undefined,
+        })),
+      });
+    }
 
     await ctx.db.patch(args.jobId, {
       status: "completed",
@@ -85,6 +115,18 @@ export const approveCompletion = mutation({
       approvedBy: user._id,
       managerNotes: args.approvalNotes,
       updatedAt: Date.now(),
+    });
+
+    await dismissNotificationsForJob(ctx, {
+      jobId: String(job._id),
+      userIds: opsUserIds,
+      types: ["awaiting_approval"],
+    });
+
+    await dismissNotificationsForJob(ctx, {
+      jobId: String(job._id),
+      userIds: job.assignedCleanerIds,
+      types: ["job_assigned", "rework_required"],
     });
 
     await createNotificationsForUsers(ctx, {
@@ -106,6 +148,7 @@ export const rejectCompletion = mutation({
   args: {
     jobId: v.id("cleaningJobs"),
     rejectionReason: v.optional(v.string()),
+    roomReviewSnapshot: v.optional(roomReviewSnapshotValidator),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
@@ -131,6 +174,17 @@ export const rejectCompletion = mutation({
     }
 
     const property = await ctx.db.get(job.propertyId);
+    const opsUserIds = await listOpsUserIds(ctx);
+
+    if (job.latestSubmissionId && args.roomReviewSnapshot !== undefined) {
+      await ctx.db.patch(job.latestSubmissionId, {
+        roomReviewSnapshot: args.roomReviewSnapshot.map((item) => ({
+          roomName: item.roomName.trim(),
+          verdict: item.verdict,
+          note: item.note?.trim() || undefined,
+        })),
+      });
+    }
 
     await ctx.db.patch(args.jobId, {
       status: "rework_required",
@@ -142,6 +196,18 @@ export const rejectCompletion = mutation({
       rejectedBy: user._id,
       rejectionReason: args.rejectionReason?.trim(),
       updatedAt: now,
+    });
+
+    await dismissNotificationsForJob(ctx, {
+      jobId: String(job._id),
+      userIds: opsUserIds,
+      types: ["awaiting_approval"],
+    });
+
+    await dismissNotificationsForJob(ctx, {
+      jobId: String(job._id),
+      userIds: job.assignedCleanerIds,
+      types: ["job_assigned", "rework_required"],
     });
 
     await createNotificationsForUsers(ctx, {
@@ -199,6 +265,12 @@ export const reopenCompleted = mutation({
       rejectedBy: user._id,
       rejectionReason: args.reason?.trim(),
       updatedAt: now,
+    });
+
+    await dismissNotificationsForJob(ctx, {
+      jobId: String(job._id),
+      userIds: job.assignedCleanerIds,
+      types: ["job_assigned", "job_completed", "rework_required"],
     });
 
     await createNotificationsForUsers(ctx, {

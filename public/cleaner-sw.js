@@ -1,4 +1,4 @@
-const SW_VERSION = "cleaner-v4";
+const SW_VERSION = "cleaner-v5";
 const STATIC_CACHE = `${SW_VERSION}-static`;
 const DATA_CACHE = `${SW_VERSION}-data`;
 
@@ -266,21 +266,33 @@ self.addEventListener("notificationclick", (event) => {
       ? event.notification.data.url
       : "/cleaner",
     self.location.origin,
-  ).href;
+  );
+  const notificationId =
+    typeof event.notification.data?.notificationId === "string" &&
+    event.notification.data.notificationId.length > 0
+      ? event.notification.data.notificationId
+      : typeof event.notification.data?.data?.notificationId === "string" &&
+          event.notification.data.data.notificationId.length > 0
+        ? event.notification.data.data.notificationId
+        : null;
+
+  if (notificationId) {
+    targetUrl.searchParams.set("notificationId", notificationId);
+  }
 
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
         if ("focus" in client && client.url.startsWith(self.location.origin)) {
           if ("navigate" in client) {
-            void client.navigate(targetUrl);
+            void client.navigate(targetUrl.href);
           }
           return client.focus();
         }
       }
 
       if (self.clients.openWindow) {
-        return self.clients.openWindow(targetUrl);
+        return self.clients.openWindow(targetUrl.href);
       }
 
       return undefined;

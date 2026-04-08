@@ -6,6 +6,10 @@ import {
   createNotificationsForUsers,
   createOpsNotifications,
 } from "../lib/opsNotifications";
+import {
+  dismissNotificationsForJob,
+  listOpsUserIds,
+} from "../lib/notificationLifecycle";
 
 const qaModeValidator = v.union(v.literal("standard"), v.literal("quick"));
 
@@ -554,6 +558,12 @@ export const start = mutation({
       });
     }
 
+    await dismissNotificationsForJob(ctx, {
+      jobId: String(job._id),
+      userIds: [user._id],
+      types: ["job_assigned", "rework_required"],
+    });
+
     return {
       jobId: args.jobId,
       revision,
@@ -796,6 +806,12 @@ async function submitForApprovalInternal(
     },
   });
 
+  await dismissNotificationsForJob(ctx, {
+    jobId: String(job._id),
+    userIds: job.assignedCleanerIds,
+    types: ["job_assigned", "rework_required"],
+  });
+
   const property = await ctx.db.get(job.propertyId);
   await createOpsNotifications(ctx, {
     type: "awaiting_approval",
@@ -973,6 +989,18 @@ export const reopenForRework = mutation({
       updatedAt: now,
     });
 
+    await dismissNotificationsForJob(ctx, {
+      jobId: String(job._id),
+      userIds: await listOpsUserIds(ctx),
+      types: ["awaiting_approval"],
+    });
+
+    await dismissNotificationsForJob(ctx, {
+      jobId: String(job._id),
+      userIds: job.assignedCleanerIds,
+      types: ["job_assigned", "job_completed", "rework_required"],
+    });
+
     return {
       ok: true,
       jobId: args.jobId,
@@ -1079,6 +1107,10 @@ export const assign = mutation({
 
     const updatedStatus =
       job.status === "scheduled" ? "assigned" : job.status;
+    const previousCleanerIds = job.assignedCleanerIds;
+    const removedCleanerIds = previousCleanerIds.filter(
+      (cleanerId) => !args.cleanerIds.includes(cleanerId),
+    );
 
     const now = Date.now();
     await ctx.db.patch(args.jobId, {
@@ -1099,8 +1131,20 @@ export const assign = mutation({
       createdAt: now,
     });
 
+    await dismissNotificationsForJob(ctx, {
+      jobId: String(job._id),
+      userIds: removedCleanerIds,
+      types: ["job_assigned", "rework_required"],
+    });
+
     if (args.notifyCleaners !== false && args.cleanerIds.length > 0) {
       const property = await ctx.db.get(job.propertyId);
+      await dismissNotificationsForJob(ctx, {
+        jobId: String(job._id),
+        userIds: args.cleanerIds,
+        types: ["job_assigned"],
+      });
+
       await createNotificationsForUsers(ctx, {
         userIds: args.cleanerIds,
         type: "job_assigned",

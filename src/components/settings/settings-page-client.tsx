@@ -652,6 +652,18 @@ function NotificationsSettingsPanel() {
                       <div className="flex shrink-0 gap-2">
                         <Link
                           href={getNotificationHref(notification.type, notification.data)}
+                          onClick={() => {
+                            if (unread) {
+                              void markNotificationRead({ id: notification._id }).catch((error) =>
+                                showToast(
+                                  error instanceof Error
+                                    ? error.message
+                                    : "Failed to mark notification as read.",
+                                  "error",
+                                ),
+                              );
+                            }
+                          }}
                           className="rounded-md border px-3 py-2 text-xs font-medium hover:bg-[var(--accent)]"
                         >
                           Open

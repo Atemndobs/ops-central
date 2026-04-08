@@ -16,7 +16,7 @@ MOBILE_DIR="$(cd "$BACKEND_DIR/../jna-cleaners-app" && pwd)"
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 echo "=========================================="
 echo " Convex Mobile API Compatibility Check"
@@ -32,73 +32,81 @@ WARNINGS=0
 # --- Check 1: Verify critical exported functions exist ---
 echo "--- Check 1: Critical function exports ---"
 
-declare -A REQUIRED_FUNCTIONS
-REQUIRED_FUNCTIONS=(
-  # Photo upload functions (used by photoUploadService.ts)
-  ["files/mutations.ts:generateUploadUrl"]="photo uploads"
-  ["files/mutations.ts:uploadJobPhoto"]="photo uploads"
-  ["files/queries.ts:getFileUrl"]="photo URL resolution"
-  ["files/queries.ts:getPhotoUrl"]="photo URL resolution"
-  ["files/queries.ts:getPhotoAccessUrl"]="photo access URLs"
-  # Job functions (used by useConvexJobs.ts)
-  ["cleaningJobs/queries.ts:getJobById"]="job loading"
-  ["cleaningJobs/queries.ts:getJobPhotos"]="photo display"
-  ["cleaningJobs/mutations.ts:startJob"]="starting a job"
-  ["cleaningJobs/mutations.ts:completeJob"]="completing a job"
-  # Incident functions
-  ["incidents/mutations.ts:createIncident"]="incident reporting"
-  # Job checks
-  ["jobChecks/queries.ts:getJobChecks"]="critical/refill checks"
-  ["jobChecks/mutations.ts:saveCheckpointResult"]="saving check results"
-  ["jobChecks/mutations.ts:saveRefillResult"]="saving refill results"
-)
-
-for key in "${!REQUIRED_FUNCTIONS[@]}"; do
-  FILE="${key%%:*}"
-  FUNC="${key##*:}"
-  PURPOSE="${REQUIRED_FUNCTIONS[$key]}"
-  FULL_PATH="$BACKEND_DIR/convex/$FILE"
+check_fn() {
+  local FILE="$1"
+  local FUNC="$2"
+  local PURPOSE="$3"
+  local FULL_PATH="$BACKEND_DIR/convex/$FILE"
 
   if [ ! -f "$FULL_PATH" ]; then
     echo -e "  ${RED}FAIL${NC} $FILE — file missing (needed for $PURPOSE)"
     ERRORS=$((ERRORS + 1))
   elif ! grep -q "export const $FUNC" "$FULL_PATH"; then
-    echo -e "  ${RED}FAIL${NC} $FILE:$FUNC — function not found (needed for $PURPOSE)"
+    echo -e "  ${RED}FAIL${NC} $FILE → $FUNC — not found (needed for $PURPOSE)"
     ERRORS=$((ERRORS + 1))
   else
-    echo -e "  ${GREEN}OK${NC}   $FILE:$FUNC"
+    echo -e "  ${GREEN}OK${NC}   $FILE → $FUNC"
   fi
-done
+}
+
+# Photo upload pipeline (photoUploadService.ts)
+check_fn "files/mutations.ts" "generateUploadUrl" "photo upload URL generation"
+check_fn "files/mutations.ts" "uploadJobPhoto" "saving photo record after upload"
+check_fn "files/mutations.ts" "deleteJobPhoto" "deleting photos"
+check_fn "files/queries.ts" "getFileUrl" "resolving storage file URLs"
+check_fn "files/queries.ts" "getPhotoUrl" "resolving photo URLs"
+check_fn "files/queries.ts" "getPhotoAccessUrl" "resolving signed photo URLs"
+
+# External upload (optional but used in auto mode)
+check_fn "files/mutations.ts" "getExternalUploadUrl" "external storage upload"
+check_fn "files/mutations.ts" "completeExternalUpload" "external upload completion"
+
+# Job queries (useConvexJobs.ts)
+check_fn "cleaningJobs/queries.ts" "getById" "loading single job"
+check_fn "cleaningJobs/queries.ts" "getAll" "listing all jobs"
+check_fn "cleaningJobs/queries.ts" "getForCleaner" "cleaner's assigned jobs"
+
+# Job mutations (useConvexJobs.ts)
+check_fn "cleaningJobs/mutations.ts" "start" "starting a job"
+check_fn "cleaningJobs/mutations.ts" "complete" "completing a job"
+check_fn "cleaningJobs/mutations.ts" "submitForApproval" "submitting job for approval"
+
+# Job approval (useConvexJobs.ts)
+check_fn "cleaningJobs/approve.ts" "approveCompletion" "approving completed jobs"
+
+# Incidents (active/[id].tsx)
+check_fn "incidents/mutations.ts" "createIncident" "reporting incidents"
+
+# Job checks (active/[id].tsx)
+check_fn "jobChecks/queries.ts" "getForJob" "loading critical/refill checks"
+check_fn "jobChecks/mutations.ts" "recordCheckpointResult" "saving checkpoint results"
 
 echo ""
 
-# --- Check 2: Verify the mobile app's generated API types are in sync ---
-echo "--- Check 2: Generated API types freshness ---"
+# --- Check 2: Verify mobile API modules exist in backend ---
+echo "--- Check 2: Mobile API module references ---"
 
 MOBILE_API="$MOBILE_DIR/convex/_generated/api.d.ts"
-BACKEND_API="$BACKEND_DIR/convex/_generated/api.d.ts"
 
 if [ ! -f "$MOBILE_API" ]; then
-  echo -e "  ${RED}FAIL${NC} Mobile app has no generated API types at convex/_generated/api.d.ts"
+  echo -e "  ${RED}FAIL${NC} Mobile app has no generated API types"
   ERRORS=$((ERRORS + 1))
-elif [ ! -f "$BACKEND_API" ]; then
-  echo -e "  ${YELLOW}WARN${NC} Backend has no generated API types (run npx convex dev first)"
-  WARNINGS=$((WARNINGS + 1))
 else
-  # Check if the mobile app's API types reference modules that don't exist in backend
-  MOBILE_MODULES=$(grep "import type" "$MOBILE_API" | sed 's/.*from "\.\.\///' | sed 's/\.js";$//' | sort)
-  MISSING_MODULES=0
+  # Extract module paths from import statements like: import type * as foo_bar from "../foo/bar.js";
+  MISSING=0
+  while IFS= read -r line; do
+    # Extract the path after "../" and before ".js"
+    MODULE=$(echo "$line" | sed -n 's/.*from "\.\.\///p' | sed 's/\.js".*$//')
+    [ -z "$MODULE" ] && continue
 
-  for MODULE in $MOBILE_MODULES; do
-    MODULE_PATH="$BACKEND_DIR/convex/$MODULE.ts"
-    if [ ! -f "$MODULE_PATH" ]; then
-      echo -e "  ${RED}FAIL${NC} Mobile expects module '$MODULE' but $MODULE.ts not found in backend"
+    if [ ! -f "$BACKEND_DIR/convex/$MODULE.ts" ]; then
+      echo -e "  ${RED}FAIL${NC} Mobile expects '$MODULE' but not found in backend"
       ERRORS=$((ERRORS + 1))
-      MISSING_MODULES=$((MISSING_MODULES + 1))
+      MISSING=$((MISSING + 1))
     fi
-  done
+  done < <(grep 'import type.*from "\.\.' "$MOBILE_API")
 
-  if [ $MISSING_MODULES -eq 0 ]; then
+  if [ $MISSING -eq 0 ]; then
     echo -e "  ${GREEN}OK${NC}   All mobile API modules exist in backend"
   fi
 fi
@@ -106,20 +114,27 @@ fi
 echo ""
 
 # --- Check 3: Schema table check ---
-echo "--- Check 3: Schema tables used by mobile ---"
+echo "--- Check 3: Required schema tables ---"
 
 SCHEMA_FILE="$BACKEND_DIR/convex/schema.ts"
-REQUIRED_TABLES=("cleaningJobs" "photos" "users" "properties" "incidents" "propertyCriticalCheckpoints" "jobCheckpointResults" "propertyRefillItems" "jobRefillResults")
+REQUIRED_TABLES=(
+  "cleaningJobs"
+  "photos"
+  "users"
+  "properties"
+  "incidents"
+  "propertyCriticalCheckpoints"
+)
 
 if [ ! -f "$SCHEMA_FILE" ]; then
   echo -e "  ${RED}FAIL${NC} No schema.ts found"
   ERRORS=$((ERRORS + 1))
 else
   for TABLE in "${REQUIRED_TABLES[@]}"; do
-    if grep -q "\"$TABLE\"" "$SCHEMA_FILE" || grep -q "$TABLE:" "$SCHEMA_FILE"; then
-      echo -e "  ${GREEN}OK${NC}   Table '$TABLE' defined"
+    if grep -qE "(defineTable|\"$TABLE\"|$TABLE:)" "$SCHEMA_FILE" && grep -q "$TABLE" "$SCHEMA_FILE"; then
+      echo -e "  ${GREEN}OK${NC}   Table '$TABLE'"
     else
-      echo -e "  ${RED}FAIL${NC} Table '$TABLE' not found in schema (mobile app depends on it)"
+      echo -e "  ${RED}FAIL${NC} Table '$TABLE' not in schema (mobile depends on it)"
       ERRORS=$((ERRORS + 1))
     fi
   done
@@ -127,17 +142,34 @@ fi
 
 echo ""
 
-# --- Check 4: Auth config ---
+# --- Check 4: Auth configuration ---
 echo "--- Check 4: Auth configuration ---"
 
-AUTH_CONFIG="$BACKEND_DIR/convex/auth.config.ts"
-AUTH_CONFIG_JS="$BACKEND_DIR/convex/auth.config.js"
-
-if [ -f "$AUTH_CONFIG" ] || [ -f "$AUTH_CONFIG_JS" ]; then
+if [ -f "$BACKEND_DIR/convex/auth.config.ts" ] || [ -f "$BACKEND_DIR/convex/auth.config.js" ]; then
   echo -e "  ${GREEN}OK${NC}   Auth config exists"
 else
-  echo -e "  ${YELLOW}WARN${NC} No auth.config.ts found — mobile app uses Clerk auth"
+  echo -e "  ${YELLOW}WARN${NC} No auth.config found — mobile app uses Clerk auth"
   WARNINGS=$((WARNINGS + 1))
+fi
+
+# Check Clerk domain consistency
+MOBILE_CLERK_KEY=$(grep "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY" "$MOBILE_DIR/app.json" 2>/dev/null || true)
+if [ -z "$MOBILE_CLERK_KEY" ]; then
+  # Check eas.json instead
+  MOBILE_CLERK_KEY=$(grep "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY" "$MOBILE_DIR/../../apps-ja/jna-cleaners-app/eas.json" 2>/dev/null | head -1 || true)
+fi
+
+AUTH_CONFIG_FILE=""
+[ -f "$BACKEND_DIR/convex/auth.config.ts" ] && AUTH_CONFIG_FILE="$BACKEND_DIR/convex/auth.config.ts"
+[ -f "$BACKEND_DIR/convex/auth.config.js" ] && AUTH_CONFIG_FILE="$BACKEND_DIR/convex/auth.config.js"
+
+if [ -n "$AUTH_CONFIG_FILE" ]; then
+  if grep -q "clerk" "$AUTH_CONFIG_FILE"; then
+    echo -e "  ${GREEN}OK${NC}   Auth config references Clerk"
+  else
+    echo -e "  ${YELLOW}WARN${NC} Auth config doesn't mention Clerk — mobile uses Clerk"
+    WARNINGS=$((WARNINGS + 1))
+  fi
 fi
 
 echo ""

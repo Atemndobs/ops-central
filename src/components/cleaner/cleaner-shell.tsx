@@ -7,6 +7,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Bell,
   ClipboardList,
   History,
   AlertTriangle,
@@ -18,7 +19,9 @@ import {
   Sun,
 } from "lucide-react";
 import { api } from "@convex/_generated/api";
+import type { Id } from "@convex/_generated/dataModel";
 import { InstallPrompt } from "@/components/cleaner/install-prompt";
+import { useConsumeNotificationIdFromSearchParam } from "@/lib/notifications-client";
 import {
   disableWebPushSubscription as disableBrowserWebPushSubscription,
   ensureWebPushSubscription,
@@ -54,6 +57,30 @@ function applyTheme(theme: ThemePreference) {
   document.documentElement.classList.toggle("dark", theme === "dark");
 }
 
+function getCleanerNotificationHref(type: string, data: unknown): string {
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    const jobId = (data as { jobId?: unknown }).jobId;
+    if (typeof jobId === "string" && jobId.length > 0) {
+      return `/cleaner/jobs/${jobId}`;
+    }
+  }
+
+  if (type === "incident_created") {
+    return "/cleaner/incidents/new";
+  }
+
+  return "/cleaner";
+}
+
+function formatNotificationTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export function CleanerShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { signOut, userId } = useAuth();
@@ -63,13 +90,35 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     api.users.queries.getThemePreference,
     isConvexAuthenticated ? {} : "skip",
   );
+  const notifications = useQuery(
+    api.notifications.queries.getMyNotifications,
+    isConvexAuthenticated
+      ? {
+          includeRead: true,
+          limit: 10,
+        }
+      : "skip",
+  ) as
+    | Array<{
+        _id: Id<"notifications">;
+        type: string;
+        title: string;
+        message: string;
+        data?: unknown;
+        createdAt: number;
+        readAt?: number;
+        dismissedAt?: number;
+      }>
+    | undefined;
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
+  const markNotificationRead = useMutation(api.users.mutations.markNotificationRead);
   const updateWebPushSubscription = useMutation(api.users.mutations.updateWebPushSubscription);
   const clearWebPushSubscription = useMutation(api.users.mutations.clearWebPushSubscription);
   const setThemePreferenceRef = useRef(setThemePreference);
   const updateWebPushSubscriptionRef = useRef(updateWebPushSubscription);
   const clearWebPushSubscriptionRef = useRef(clearWebPushSubscription);
   const [isOnline, setIsOnline] = useState(true);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
   // Initialize to "light" so server and client render the same HTML during hydration.
@@ -84,6 +133,15 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
       ? themePreference.theme
       : localTheme;
   const isDarkMode = resolvedTheme === "dark";
+  const notificationPanelRef = useRef<HTMLDivElement | null>(null);
+  const unreadNotifications = useMemo(
+    () => (notifications ?? []).filter((item) => !item.readAt && !item.dismissedAt),
+    [notifications],
+  );
+  const visibleNotifications = unreadNotifications;
+  const unreadCount = unreadNotifications.length;
+
+  useConsumeNotificationIdFromSearchParam(isConvexAuthenticated);
 
   // Sync localTheme from localStorage after hydration to avoid SSR mismatch
   useEffect(() => {
@@ -124,6 +182,34 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
       window.removeEventListener("offline", updateOnlineState);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isNotificationsOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (
+        notificationPanelRef.current &&
+        !notificationPanelRef.current.contains(event.target as Node)
+      ) {
+        setIsNotificationsOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsNotificationsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isNotificationsOpen]);
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) {
@@ -316,6 +402,91 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1 text-sm">
               {isOnline ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
               <span>{isOnline ? "Online" : "Offline"}</span>
+            </div>
+            <div className="relative" ref={notificationPanelRef}>
+              <button
+                type="button"
+                onClick={() => setIsNotificationsOpen((prev) => !prev)}
+                className="relative rounded-md border border-[var(--border)] p-2.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+                aria-label="Notifications"
+                aria-expanded={isNotificationsOpen}
+                aria-haspopup="dialog"
+              >
+                <Bell className="h-5 w-5" />
+                {unreadCount > 0 ? (
+                  <span className="absolute -right-1 -top-1 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-[var(--destructive)] px-1 text-[10px] font-bold text-white">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                ) : null}
+              </button>
+
+              {isNotificationsOpen ? (
+                <div className="fixed left-2 right-2 top-[calc(env(safe-area-inset-top)+5.5rem)] z-50 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--card)] shadow-xl sm:absolute sm:left-auto sm:right-0 sm:top-12 sm:w-[320px] sm:max-w-[calc(100vw-1rem)]">
+                  <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-2">
+                    <p className="text-sm font-semibold">Notifications</p>
+                    <span className="text-xs text-[var(--muted-foreground)]">
+                      {unreadCount} unread
+                    </span>
+                  </div>
+
+                  <div className="max-h-80 overflow-y-auto">
+                    {!isConvexAuthenticated ? (
+                      <p className="px-3 py-4 text-sm text-[var(--muted-foreground)]">
+                        Sign in to view notifications.
+                      </p>
+                    ) : notifications === undefined ? (
+                      <p className="px-3 py-4 text-sm text-[var(--muted-foreground)]">
+                        Loading notifications...
+                      </p>
+                    ) : visibleNotifications.length === 0 ? (
+                      <p className="px-3 py-4 text-sm text-[var(--muted-foreground)]">
+                        No unread notifications.
+                      </p>
+                    ) : (
+                      <div className="divide-y divide-[var(--border)]">
+                        {visibleNotifications.map((notification) => (
+                          <Link
+                            key={notification._id}
+                            href={getCleanerNotificationHref(notification.type, notification.data)}
+                            onClick={() => {
+                              setIsNotificationsOpen(false);
+                              if (!notification.readAt && !notification.dismissedAt) {
+                                void markNotificationRead({ id: notification._id }).catch((error) => {
+                                  console.warn("[CleanerNotifications] Failed to mark item as read", error);
+                                });
+                              }
+                            }}
+                            className="block px-3 py-2 hover:bg-[var(--accent)]"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="min-w-0 text-sm font-semibold">{notification.title}</p>
+                              {!notification.readAt && !notification.dismissedAt ? (
+                                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[var(--primary)]" />
+                              ) : null}
+                            </div>
+                            <p className="mt-0.5 break-words text-xs text-[var(--muted-foreground)]">
+                              {notification.message}
+                            </p>
+                            <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
+                              {formatNotificationTime(notification.createdAt)}
+                            </p>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="border-t border-[var(--border)] px-3 py-2">
+                    <Link
+                      href="/cleaner/settings"
+                      onClick={() => setIsNotificationsOpen(false)}
+                      className="text-xs font-medium text-[var(--primary)] hover:opacity-80"
+                    >
+                      View all in Settings
+                    </Link>
+                  </div>
+                </div>
+              ) : null}
             </div>
             <button
               type="button"

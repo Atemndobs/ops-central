@@ -13,6 +13,7 @@ import {
   getRoleFromSessionClaimsOrNull,
   type UserRole,
 } from "@/lib/auth";
+import { useConsumeNotificationIdFromSearchParam } from "@/lib/notifications-client";
 import { cn } from "@/lib/utils";
 import { navigation } from "@/components/layout/navigation";
 
@@ -106,6 +107,7 @@ export function Header() {
   const isDarkMode = theme === "dark";
   const notificationPanelRef = useRef<HTMLDivElement | null>(null);
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
+  const markNotificationRead = useMutation(api.users.mutations.markNotificationRead);
   const setThemePreferenceRef = useRef(setThemePreference);
 
   useEffect(() => {
@@ -123,6 +125,8 @@ export function Header() {
   const role: UserRole = roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "manager";
   const canViewSettings = isLoaded && canAccessPath(role, "/settings");
   const mobileNavigation = navigation.filter((item) => item.roles.includes(role));
+
+  useConsumeNotificationIdFromSearchParam(Boolean(convexUser?._id));
 
   const notifications = useQuery(
     api.notifications.queries.getUserNotifications,
@@ -143,6 +147,11 @@ export function Header() {
     return (notifications ?? []).filter(
       (item) => !item.readAt && !item.dismissedAt,
     ).length;
+  }, [notifications]);
+  const visibleNotifications = useMemo(() => {
+    return (notifications ?? []).filter(
+      (item) => !item.readAt && !item.dismissedAt,
+    );
   }, [notifications]);
 
   const toggleTheme = useCallback(() => {
@@ -248,13 +257,13 @@ export function Header() {
                     <p className="px-3 py-4 text-sm text-[var(--muted-foreground)]">
                       Loading notifications...
                     </p>
-                  ) : !notifications?.length ? (
+                  ) : !visibleNotifications.length ? (
                     <p className="px-3 py-4 text-sm text-[var(--muted-foreground)]">
-                      No notifications yet.
+                      No unread notifications.
                     </p>
                   ) : (
                     <div className="divide-y">
-                      {notifications.map((notification) => {
+                      {visibleNotifications.map((notification) => {
                         const href = getNotificationHref(
                           notification.type,
                           notification.data,
@@ -264,7 +273,14 @@ export function Header() {
                           <Link
                             key={notification._id}
                             href={href}
-                            onClick={() => setIsNotificationsOpen(false)}
+                            onClick={() => {
+                              setIsNotificationsOpen(false);
+                              if (!notification.readAt && !notification.dismissedAt) {
+                                void markNotificationRead({ id: notification._id }).catch((error) => {
+                                  console.warn("[Notifications] Failed to mark header item as read", error);
+                                });
+                              }
+                            }}
                             className="block px-3 py-2 hover:bg-[var(--accent)]"
                           >
                             <div className="flex items-start justify-between gap-2">

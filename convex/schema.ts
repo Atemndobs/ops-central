@@ -308,6 +308,15 @@ const jobSubmissions = defineTable({
   submittedAtServer: v.number(),
   submittedAtDevice: v.optional(v.number()),
   status: v.union(v.literal("sealed"), v.literal("superseded")),
+  roomReviewSnapshot: v.optional(
+    v.array(
+      v.object({
+        roomName: v.string(),
+        verdict: v.union(v.literal("pass"), v.literal("rework")),
+        note: v.optional(v.string()),
+      }),
+    ),
+  ),
   photoSnapshot: v.array(
     v.object({
       photoId: v.id("photos"),

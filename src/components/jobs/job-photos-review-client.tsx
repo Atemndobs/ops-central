@@ -215,6 +215,25 @@ function buildRejectionReason({
   return reasonParts.join(". ");
 }
 
+function buildRoomReviewSnapshot(
+  rows: RoomRow[],
+  reviewByRoom: Record<string, RoomReviewState>,
+) {
+  return rows.flatMap((row) => {
+    const review = reviewByRoom[row.key];
+    if (!review?.verdict) {
+      return [];
+    }
+    return [
+      {
+        roomName: row.roomName,
+        verdict: review.verdict,
+        note: review.note.trim() || undefined,
+      },
+    ];
+  });
+}
+
 function buildViewerSlides(photos: EvidencePhoto[]): ViewerSlide[] {
   return photos.flatMap((photo, index) => {
     if (!photo.url) {
@@ -396,6 +415,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const reviewPercent = totalRooms === 0 ? 0 : Math.round((reviewedCount / totalRooms) * 100);
   const allReviewed = totalRooms > 0 && reviewedCount === totalRooms;
   const canDecision = detail?.job.status === "awaiting_approval";
+  const isReadOnlyReview = !canDecision;
 
   const currentSlide = viewer ? viewer.slides[viewer.index] : null;
   const currentAnnotations = currentSlide ? (annotationsByPhoto[currentSlide.photoKey] ?? []) : [];
@@ -443,6 +463,25 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
       return changed ? next : previous;
     });
   }, [dirtyByPhoto, persistedAnnotations]);
+
+  useEffect(() => {
+    const persistedRoomReview = detail?.evidence.latestSubmission?.roomReviewSnapshot;
+    if (!persistedRoomReview || persistedRoomReview.length === 0) {
+      return;
+    }
+
+    setReviewByRoom(
+      Object.fromEntries(
+        persistedRoomReview.map((item) => [
+          normalizeRoomKey(item.roomName),
+          {
+            verdict: item.verdict,
+            note: item.note ?? "",
+          },
+        ]),
+      ),
+    );
+  }, [detail?.evidence.latestSubmission?._id, detail?.evidence.latestSubmission?.roomReviewSnapshot]);
 
   useEffect(() => {
     if (!viewer) {
@@ -815,7 +854,10 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
 
     setPendingDecision("approve");
     try {
-      await approveCompletion({ jobId });
+      await approveCompletion({
+        jobId,
+        roomReviewSnapshot: buildRoomReviewSnapshot(roomRows, reviewByRoom),
+      });
       showToast("Job approved from photo review.");
     } catch (error) {
       showToast(getErrorMessage(error, "Unable to approve job."), "error");
@@ -832,7 +874,11 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
     setPendingDecision("reject");
     try {
       const rejectionReason = buildRejectionReason({ rows: roomRows, reviewByRoom });
-      await rejectCompletion({ jobId, rejectionReason });
+      await rejectCompletion({
+        jobId,
+        rejectionReason,
+        roomReviewSnapshot: buildRoomReviewSnapshot(roomRows, reviewByRoom),
+      });
       showToast("Job rejected to rework from photo review.");
     } catch (error) {
       showToast(getErrorMessage(error, "Unable to reject job."), "error");
@@ -842,6 +888,9 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   }
 
   function setVerdict(roomKey: string, verdict: Exclude<ReviewVerdict, null>) {
+    if (isReadOnlyReview) {
+      return;
+    }
     setReviewByRoom((previous) => ({
       ...previous,
       [roomKey]: {
@@ -852,6 +901,9 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   }
 
   function setNote(roomKey: string, note: string) {
+    if (isReadOnlyReview) {
+      return;
+    }
     setReviewByRoom((previous) => ({
       ...previous,
       [roomKey]: {
@@ -894,6 +946,9 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   }
 
   function onRoomKeyDown(event: KeyboardEvent<HTMLDivElement>, row: RoomRow) {
+    if (isReadOnlyReview) {
+      return;
+    }
     if (event.key === "1") {
       event.preventDefault();
       setVerdict(row.key, "pass");
@@ -1157,22 +1212,24 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                       <button
                         type="button"
                         onClick={() => setVerdict(row.key, "pass")}
+                        disabled={isReadOnlyReview}
                         className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
                           review.verdict === "pass"
                             ? "border-emerald-600 bg-emerald-500 text-white"
                             : "border-[var(--border)] hover:border-emerald-500 hover:text-emerald-600"
-                        }`}
+                        } disabled:cursor-not-allowed disabled:opacity-60`}
                       >
                         <span>✓</span> Pass
                       </button>
                       <button
                         type="button"
                         onClick={() => setVerdict(row.key, "rework")}
+                        disabled={isReadOnlyReview}
                         className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
                           review.verdict === "rework"
                             ? "border-rose-600 bg-rose-500 text-white"
                             : "border-[var(--border)] hover:border-rose-500 hover:text-rose-600"
-                        }`}
+                        } disabled:cursor-not-allowed disabled:opacity-60`}
                       >
                         <span>✗</span> Rework
                       </button>
@@ -1196,9 +1253,10 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                       <textarea
                         value={review.note}
                         onChange={(event) => setNote(row.key, event.target.value)}
+                        disabled={isReadOnlyReview}
                         rows={2}
                         placeholder="Add room-specific feedback for this review..."
-                        className="mt-2 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs"
+                        className="mt-2 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-70"
                       />
                     ) : null}
                   </div>
@@ -1304,11 +1362,12 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                     <button
                       type="button"
                       onClick={() => setVerdict(row.key, "pass")}
+                      disabled={isReadOnlyReview}
                       className={`flex flex-col items-center justify-center gap-1 rounded-lg border py-3 font-semibold transition-colors ${
                         review.verdict === "pass"
                           ? "border-emerald-600 bg-emerald-500 text-white"
                           : "border-[var(--border)] text-[var(--muted-foreground)]"
-                      }`}
+                      } disabled:cursor-not-allowed disabled:opacity-60`}
                     >
                       <span className="text-xl leading-none">✓</span>
                       <span className="text-sm">Pass</span>
@@ -1316,11 +1375,12 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                     <button
                       type="button"
                       onClick={() => setVerdict(row.key, "rework")}
+                      disabled={isReadOnlyReview}
                       className={`flex flex-col items-center justify-center gap-1 rounded-lg border py-3 font-semibold transition-colors ${
                         review.verdict === "rework"
                           ? "border-rose-600 bg-rose-500 text-white"
                           : "border-[var(--border)] text-[var(--muted-foreground)]"
-                      }`}
+                      } disabled:cursor-not-allowed disabled:opacity-60`}
                     >
                       <span className="text-xl leading-none">✗</span>
                       <span className="text-sm">Rework</span>
@@ -1455,22 +1515,24 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                     <button
                       type="button"
                       onClick={() => setVerdict(compareRow.key, "pass")}
+                      disabled={isReadOnlyReview}
                       className={`rounded-md border px-2.5 py-1 text-[11px] ${
                         review.verdict === "pass"
                           ? "border-emerald-600 bg-emerald-100 text-emerald-700"
                           : "border-[var(--border)]"
-                      }`}
+                      } disabled:cursor-not-allowed disabled:opacity-60`}
                     >
                       Pass
                     </button>
                     <button
                       type="button"
                       onClick={() => setVerdict(compareRow.key, "rework")}
+                      disabled={isReadOnlyReview}
                       className={`rounded-md border px-2.5 py-1 text-[11px] ${
                         review.verdict === "rework"
                           ? "border-rose-600 bg-rose-100 text-rose-700"
                           : "border-[var(--border)]"
-                      }`}
+                      } disabled:cursor-not-allowed disabled:opacity-60`}
                     >
                       Rework
                     </button>

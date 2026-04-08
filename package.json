@@ -9,7 +9,9 @@
     "start": "next start",
     "lint": "eslint .",
     "test": "node --test",
-    "check:convex-owner": "node ./scripts/check-convex-owner.mjs"
+    "check:convex-owner": "node ./scripts/check-convex-owner.mjs",
+    "check:mobile-compat": "bash ./scripts/verify-mobile-api-compat.sh",
+    "predeploy": "bash ./scripts/verify-mobile-api-compat.sh"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1019.0",
