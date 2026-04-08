@@ -13,6 +13,7 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "a0.muscache.com" },
       { protocol: "https", hostname: "*.muscache.com" },
       { protocol: "https", hostname: "chezsoistays.com" },
+      { protocol: "https", hostname: "*.backblazeb2.com" },
     ],
   },
 };
