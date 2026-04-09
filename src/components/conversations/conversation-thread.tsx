@@ -1,15 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/components/ui/toast-provider";
+import { Send } from "lucide-react";
 
 function formatMessageTime(timestamp: number) {
-  return new Date(timestamp).toLocaleString([], {
+  const now = new Date();
+  const date = new Date(timestamp);
+  const isToday =
+    now.getFullYear() === date.getFullYear() &&
+    now.getMonth() === date.getMonth() &&
+    now.getDate() === date.getDate();
+
+  if (isToday) {
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  return date.toLocaleString([], {
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -37,6 +49,7 @@ export function ConversationThread({
   const { showToast } = useToast();
   const [body, setBody] = useState("");
   const [pending, setPending] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!conversationId || !detail?.unread) {
@@ -49,6 +62,11 @@ export function ConversationThread({
   }, [conversationId, detail?.unread, markRead]);
 
   const messages = useMemo(() => detail?.messages ?? [], [detail?.messages]);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length]);
 
   if (!conversationId) {
     return (
@@ -75,14 +93,18 @@ export function ConversationThread({
   }
 
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--card)]">
+    <div className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--card)]">
+      {/* Header */}
       <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
         <div>
           <p className="text-sm font-semibold text-[var(--foreground)]">
             {detail.property?.name ?? "Job conversation"}
           </p>
           <p className="text-xs text-[var(--muted-foreground)]">
-            {detail.linkedJob ? `Job ${String(detail.linkedJob._id).slice(-8)}` : "Internal thread"}
+            {detail.linkedJob ? `Job ${String(detail.linkedJob._id).slice(-6)}` : "Internal thread"}
+            {detail.participants && detail.participants.length > 0 ? (
+              <> · {detail.participants.slice(0, 3).map((p) => p.user?.name?.split(" ")[0] ?? "").filter(Boolean).join(", ")}</>
+            ) : null}
           </p>
         </div>
         {fullHref ? (
@@ -95,44 +117,53 @@ export function ConversationThread({
         ) : null}
       </div>
 
-      <div className={compact ? "max-h-56 overflow-y-auto p-4" : "max-h-[28rem] overflow-y-auto p-4"}>
+      {/* Messages area */}
+      <div className={compact ? "max-h-56 overflow-y-auto px-4 py-3" : "min-h-[20rem] max-h-[calc(100vh-20rem)] flex-1 overflow-y-auto px-4 py-3"}>
         {messages.length === 0 ? (
-          <p className="text-sm text-[var(--muted-foreground)]">
-            No messages yet. Start the thread.
+          <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">
+            No messages yet. Start the conversation.
           </p>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {messages.map((message) => {
               const isSelf = detail.selfParticipant?.userId === message.authorUserId;
+              const authorName = message.author?.name?.split(" ")[0] ?? message.author?.email ?? "System";
+
               return (
                 <div
                   key={message._id}
-                  className={`rounded-lg border px-3 py-2 ${
-                    isSelf
-                      ? "border-[var(--primary)]/30 bg-[var(--primary)]/10"
-                      : "border-[var(--border)] bg-[var(--background)]"
-                  }`}
+                  className={`flex ${isSelf ? "justify-end" : "justify-start"}`}
                 >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs font-semibold text-[var(--foreground)]">
-                      {message.author?.name ?? message.author?.email ?? "System"}
+                  <div
+                    className={`max-w-[80%] rounded-2xl px-3 py-2 ${
+                      isSelf
+                        ? "rounded-br-sm bg-[var(--primary)] text-[var(--primary-foreground)]"
+                        : "rounded-bl-sm border border-[var(--border)] bg-[var(--accent)]"
+                    }`}
+                  >
+                    {!isSelf ? (
+                      <p className={`text-[11px] font-semibold ${isSelf ? "text-[var(--primary-foreground)]/80" : "text-[var(--primary)]"}`}>
+                        {authorName}
+                      </p>
+                    ) : null}
+                    <p className="whitespace-pre-wrap text-sm">
+                      {message.body}
                     </p>
-                    <p className="text-[11px] text-[var(--muted-foreground)]">
+                    <p className={`mt-0.5 text-[10px] ${isSelf ? "text-[var(--primary-foreground)]/60 text-right" : "text-[var(--muted-foreground)]"}`}>
                       {formatMessageTime(message.createdAt)}
                     </p>
                   </div>
-                  <p className="mt-1 whitespace-pre-wrap text-sm text-[var(--foreground)]">
-                    {message.body}
-                  </p>
                 </div>
               );
             })}
+            <div ref={messagesEndRef} />
           </div>
         )}
       </div>
 
+      {/* Input area */}
       <form
-        className="border-t border-[var(--border)] p-4"
+        className="border-t border-[var(--border)] p-3"
         onSubmit={async (event) => {
           event.preventDefault();
           if (!body.trim()) {
@@ -153,23 +184,28 @@ export function ConversationThread({
           }
         }}
       >
-        <label className="mb-2 block text-xs font-medium text-[var(--muted-foreground)]">
-          Message
-        </label>
-        <textarea
-          value={body}
-          onChange={(event) => setBody(event.target.value)}
-          rows={compact ? 2 : 3}
-          placeholder="Write a message for this job..."
-          className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--primary)]"
-        />
-        <div className="mt-3 flex items-center justify-end">
+        <div className="flex items-end gap-2">
+          <textarea
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                if (body.trim()) {
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }
+            }}
+            rows={compact ? 1 : 2}
+            placeholder="Type a message..."
+            className="flex-1 resize-none rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--primary)]"
+          />
           <button
             type="submit"
             disabled={pending || !body.trim()}
-            className="rounded-md bg-[var(--primary)] px-3 py-2 text-xs font-semibold text-[var(--primary-foreground)] disabled:opacity-50"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] text-[var(--primary-foreground)] disabled:opacity-40"
           >
-            {pending ? "Sending..." : "Send"}
+            <Send className="h-4 w-4" />
           </button>
         </div>
       </form>

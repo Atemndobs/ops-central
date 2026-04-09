@@ -14,7 +14,7 @@ import {
   getNextStatus,
   type JobStatus,
 } from "@/components/jobs/job-status";
-import { Check, UserPlus } from "lucide-react";
+import { AlertTriangle, Check, UserPlus } from "lucide-react";
 import { useToast } from "@/components/ui/toast-provider";
 import { JobConversationPanel } from "@/components/conversations/job-conversation-panel";
 import { getRoleFromMetadata, getRoleFromSessionClaimsOrNull } from "@/lib/auth";
@@ -814,17 +814,76 @@ export function JobDetailClient({ id }: { id: string }) {
               </section>
               <section>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
-                  Incident ({currentIncidents.length})
+                  Incidents ({currentIncidents.length} photo{currentIncidents.length !== 1 ? "s" : ""})
                 </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {currentIncidents.map((photo, index) => (
-                    <PhotoTile
-                      key={`${photo.photoId}-${index}`}
-                      url={photo.url}
-                      label={photo.roomName}
-                    />
-                  ))}
-                </div>
+                {detail.evidence.latestSubmission?.incidentSnapshot &&
+                detail.evidence.latestSubmission.incidentSnapshot.length > 0 ? (
+                  <div className="space-y-3">
+                    {detail.evidence.latestSubmission.incidentSnapshot.map((incident) => (
+                      <div
+                        key={incident.incidentId}
+                        className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3"
+                      >
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--destructive)]" />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-semibold text-[var(--foreground)]">
+                              {incident.title}
+                            </p>
+                            {incident.description ? (
+                              <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                                {incident.description}
+                              </p>
+                            ) : null}
+                            <div className="mt-1 flex items-center gap-2 text-[11px] text-[var(--muted-foreground)]">
+                              {incident.roomName ? <span>{incident.roomName}</span> : null}
+                              {incident.severity ? (
+                                <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
+                                  incident.severity === "critical" || incident.severity === "high"
+                                    ? "bg-[var(--destructive)]/10 text-[var(--destructive)]"
+                                    : "bg-[var(--accent)] text-[var(--muted-foreground)]"
+                                }`}>
+                                  {incident.severity}
+                                </span>
+                              ) : null}
+                              <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
+                                incident.status === "resolved"
+                                  ? "bg-green-500/10 text-green-600"
+                                  : "bg-[var(--accent)] text-[var(--muted-foreground)]"
+                              }`}>
+                                {incident.status}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {/* Still show incident photos below */}
+                    {currentIncidents.length > 0 ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        {currentIncidents.map((photo, index) => (
+                          <PhotoTile
+                            key={`${photo.photoId}-${index}`}
+                            url={photo.url}
+                            label={photo.roomName}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : currentIncidents.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    {currentIncidents.map((photo, index) => (
+                      <PhotoTile
+                        key={`${photo.photoId}-${index}`}
+                        url={photo.url}
+                        label={photo.roomName}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-[var(--muted-foreground)]">No incidents reported.</p>
+                )}
               </section>
             </div>
             {!beforePhotos.length && !afterPhotos.length && !currentIncidents.length ? (

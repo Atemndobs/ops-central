@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { assertReviewerRole, isReviewerRole } from "../../../convex/cleaningJobs/reviewAccess.ts";
+import { assertReviewerRole, isReviewerRole } from "../../../convex/cleaningJobs/reviewAccess";
 
 test("isReviewerRole accepts property_ops and manager", () => {
   assert.equal(isReviewerRole("property_ops"), true);

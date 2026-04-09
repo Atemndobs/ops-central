@@ -77,9 +77,6 @@ function findMutationLoopViolations(filePath) {
 
   // Step 3: Find useEffect/useCallback dependency arrays and check for raw mutation vars
   //   We look for ], [ ... mutationVar ... ]) patterns after useEffect/useCallback
-  const hookDepPattern = /\b(useEffect|useCallback)\s*\(\s*(?:async\s*)?\([^)]*\)\s*=>\s*\{/g;
-  const lines = source.split("\n");
-
   for (const varName of mutationVars) {
     if (stabilizedVars.has(varName)) continue;
 
@@ -93,7 +90,6 @@ function findMutationLoopViolations(filePath) {
     let depMatch;
     while ((depMatch = depArrayPattern.exec(source)) !== null) {
       const hookType = depMatch[1];
-      const depList = depMatch[2];
 
       // Find approximate line number
       const matchIndex = depMatch.index;

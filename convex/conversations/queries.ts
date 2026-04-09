@@ -8,6 +8,7 @@ import {
   canAccessJobConversation,
   getConversationParticipant,
   getJobConversationByJobId,
+  isPrivilegedRole,
 } from "./lib";
 
 async function getUsersByIds(
@@ -26,19 +27,45 @@ export const listMyConversations = query({
   args: {},
   handler: async (ctx) => {
     const user = await getCurrentUser(ctx);
+    const privileged = isPrivilegedRole(user.role);
+
+    // Fetch conversations the user is explicitly a participant of
     const participants = await ctx.db
       .query("conversationParticipants")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect();
 
-    const conversationIds = [...new Set(participants.map((row) => row.conversationId))];
-    const conversations = await Promise.all(
-      conversationIds.map((conversationId) => ctx.db.get(conversationId)),
-    );
+    const participantConvIds = new Set(participants.map((row) => row.conversationId));
 
-    const activeConversations = conversations.filter(
-      (conversation): conversation is Doc<"conversations"> => Boolean(conversation),
-    );
+    let activeConversations: Doc<"conversations">[];
+
+    if (privileged) {
+      // Privileged users (admin, manager, property_ops) can see ALL open conversations,
+      // not just ones they're explicitly a participant of.
+      const allConversations = await ctx.db
+        .query("conversations")
+        .withIndex("by_status_last_message", (q) => q.eq("status", "open"))
+        .order("desc")
+        .collect();
+      // Also include closed conversations they were a participant of
+      const closedParticipantConvs = await Promise.all(
+        [...participantConvIds].map((id) => ctx.db.get(id)),
+      );
+      const closedOnes = closedParticipantConvs
+        .filter((c): c is Doc<"conversations"> => c !== null)
+        .filter(
+          (c) => c.status === "closed" && !allConversations.some((ac) => ac._id === c._id),
+        );
+      activeConversations = [...allConversations, ...closedOnes];
+    } else {
+      // Non-privileged users (cleaners) only see conversations they're a participant of
+      const conversations = await Promise.all(
+        [...participantConvIds].map((conversationId) => ctx.db.get(conversationId)),
+      );
+      activeConversations = conversations.filter(
+        (conversation): conversation is Doc<"conversations"> => Boolean(conversation),
+      );
+    }
 
     const linkedJobIds = [
       ...new Set(
@@ -217,6 +244,55 @@ export const getConversationById = query({
         typeof conversation.lastMessageAt === "number" &&
         (selfParticipant?.lastReadMessageAt ?? 0) < conversation.lastMessageAt,
     };
+  },
+});
+
+export const getUnreadConversationCount = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
+    const privileged = isPrivilegedRole(user.role);
+
+    // Build a map of the user's read timestamps per conversation
+    const participants = await ctx.db
+      .query("conversationParticipants")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .collect();
+    const readAtByConvId = new Map(
+      participants.map((p) => [p.conversationId, p.lastReadMessageAt ?? 0] as const),
+    );
+
+    let count = 0;
+
+    if (privileged) {
+      // Privileged users see all open conversations
+      const allOpen = await ctx.db
+        .query("conversations")
+        .withIndex("by_status_last_message", (q) => q.eq("status", "open"))
+        .collect();
+      for (const conv of allOpen) {
+        if (
+          typeof conv.lastMessageAt === "number" &&
+          (readAtByConvId.get(conv._id) ?? 0) < conv.lastMessageAt
+        ) {
+          count++;
+        }
+      }
+    } else {
+      // Cleaners: only count conversations they're a participant of
+      for (const participant of participants) {
+        const conversation = await ctx.db.get(participant.conversationId);
+        if (
+          conversation &&
+          typeof conversation.lastMessageAt === "number" &&
+          (participant.lastReadMessageAt ?? 0) < conversation.lastMessageAt
+        ) {
+          count++;
+        }
+      }
+    }
+
+    return count;
   },
 });
 

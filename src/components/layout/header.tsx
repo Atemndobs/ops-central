@@ -126,6 +126,10 @@ export function Header() {
   const role: UserRole = roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "manager";
   const canViewSettings = isLoaded && canAccessPath(role, "/settings");
   const mobileNavigation = navigation.filter((item) => item.roles.includes(role));
+  const unreadMessageCount = useQuery(
+    api.conversations.queries.getUnreadConversationCount,
+    convexUser?._id ? {} : "skip",
+  );
 
   useConsumeNotificationIdFromSearchParam(Boolean(convexUser?._id));
 
@@ -372,6 +376,7 @@ export function Header() {
                 const isActive =
                   pathname === item.href ||
                   (item.href !== "/" && pathname.startsWith(item.href));
+                const showMsgBadge = item.href === "/messages" && typeof unreadMessageCount === "number" && unreadMessageCount > 0;
                 return (
                   <Link
                     key={item.name}
@@ -385,7 +390,12 @@ export function Header() {
                     )}
                   >
                     <item.icon className="h-4 w-4" />
-                    {item.name}
+                    <span className="flex-1">{item.name}</span>
+                    {showMsgBadge ? (
+                      <span className="inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-[var(--destructive)] px-1 text-[10px] font-bold text-white">
+                        {unreadMessageCount > 9 ? "9+" : unreadMessageCount}
+                      </span>
+                    ) : null}
                   </Link>
                 );
               })}

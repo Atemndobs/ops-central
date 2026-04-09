@@ -6,7 +6,7 @@ import {
   getDefaultRouteForRole,
   getRoleFromSessionClaims,
   getRoleFromSessionClaimsOrNull,
-} from "./auth.ts";
+} from "./auth";
 
 test("getRoleFromSessionClaims prefers direct role claims", () => {
   process.env.NEXT_PUBLIC_DEFAULT_ROLE = "cleaner";

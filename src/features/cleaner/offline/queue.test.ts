@@ -9,8 +9,8 @@ import {
   markUploadSyncing,
   removeUpload,
   resetFailedUploads,
-} from "./queue.ts";
-import type { PendingUpload } from "./types.ts";
+} from "./queue";
+import type { PendingUpload } from "./types";
 
 function makeUpload(overrides: Partial<PendingUpload> = {}): PendingUpload {
   return {

@@ -102,6 +102,10 @@ export function Sidebar() {
       ? { clerkId: userId }
       : "skip",
   );
+  const unreadMessageCount = useQuery(
+    api.conversations.queries.getUnreadConversationCount,
+    isConvexAuthenticated ? {} : "skip",
+  );
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const localTheme = useSyncExternalStore(
@@ -214,12 +218,13 @@ export function Sidebar() {
           const isActive =
             pathname === item.href ||
             (item.href !== "/" && pathname.startsWith(item.href));
+          const showBadge = item.href === "/messages" && typeof unreadMessageCount === "number" && unreadMessageCount > 0;
           return (
             <Link
               key={item.name}
               href={item.href}
               className={cn(
-                "flex rounded-none transition-colors",
+                "relative flex rounded-none transition-colors",
                 isCollapsed
                   ? "mx-auto h-11 w-11 items-center justify-center"
                   : "items-center gap-3 px-3 py-2.5 text-sm font-medium",
@@ -229,8 +234,24 @@ export function Sidebar() {
               )}
               title={isCollapsed ? item.name : undefined}
             >
-              <item.icon className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
-              {!isCollapsed ? item.name : null}
+              <span className="relative">
+                <item.icon className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
+                {showBadge && isCollapsed ? (
+                  <span className="absolute -right-1.5 -top-1.5 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-[var(--destructive)] px-0.5 text-[9px] font-bold text-white">
+                    {unreadMessageCount > 9 ? "9+" : unreadMessageCount}
+                  </span>
+                ) : null}
+              </span>
+              {!isCollapsed ? (
+                <>
+                  <span className="flex-1">{item.name}</span>
+                  {showBadge ? (
+                    <span className="inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-[var(--destructive)] px-1 text-[10px] font-bold text-white">
+                      {unreadMessageCount > 9 ? "9+" : unreadMessageCount}
+                    </span>
+                  ) : null}
+                </>
+              ) : null}
             </Link>
           );
         })}

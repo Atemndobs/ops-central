@@ -7,7 +7,7 @@ import {
   STATUS_LABELS,
   WORKFLOW_STEPS,
   getNextStatus,
-} from "./job-status.ts";
+} from "./job-status";
 
 test("workflow steps expose the new approval stage without terminal statuses", () => {
   assert.deepEqual(WORKFLOW_STEPS, [
