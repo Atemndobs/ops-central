@@ -274,10 +274,14 @@ function buildValidationResult(args: {
     });
 
     if (missingBeforeRooms.length > 0) {
-      errors.push(`Missing before photos for ${missingBeforeRooms.length} room(s).`);
+      errors.push(
+        `Missing before photos for: ${missingBeforeRooms.slice(0, 5).join(", ")}${missingBeforeRooms.length > 5 ? ` (+${missingBeforeRooms.length - 5} more)` : ""}.`,
+      );
     }
     if (missingAfterRooms.length > 0) {
-      errors.push(`Missing after photos for ${missingAfterRooms.length} room(s).`);
+      errors.push(
+        `Missing after photos for: ${missingAfterRooms.slice(0, 5).join(", ")}${missingAfterRooms.length > 5 ? ` (+${missingAfterRooms.length - 5} more)` : ""}.`,
+      );
     }
   }
 
