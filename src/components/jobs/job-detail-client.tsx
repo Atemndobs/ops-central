@@ -16,7 +16,7 @@ import {
 } from "@/components/jobs/job-status";
 import { AlertTriangle, Check, UserPlus } from "lucide-react";
 import { useToast } from "@/components/ui/toast-provider";
-import { JobConversationPanel } from "@/components/conversations/job-conversation-panel";
+import { JobConversationLanesPanel } from "@/components/conversations/job-conversation-lanes-panel";
 import { getRoleFromMetadata, getRoleFromSessionClaimsOrNull } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 
@@ -516,7 +516,7 @@ export function JobDetailClient({ id }: { id: string }) {
             {error ? <p className="mt-3 text-sm text-[var(--destructive)]">{error}</p> : null}
 
             <div className="mt-6">
-              <JobConversationPanel
+              <JobConversationLanesPanel
                 jobId={jobId}
                 fullHrefBase="/messages"
               />

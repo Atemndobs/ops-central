@@ -204,7 +204,7 @@ export function Header() {
 
   return (
     <>
-      <header className="flex h-16 items-center justify-between border-b bg-[var(--card)]/90 px-6 backdrop-blur-md">
+      <header className="relative z-50 flex h-16 items-center justify-between border-b bg-[var(--card)]/90 px-6 backdrop-blur-md">
         <div className="flex items-center gap-4 md:gap-8">
           <button
             type="button"
@@ -245,7 +245,7 @@ export function Header() {
             </button>
 
             {isNotificationsOpen ? (
-              <div className="absolute right-0 top-11 z-50 w-[320px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-md border bg-[var(--card)] shadow-xl">
+              <div className="absolute right-0 top-11 z-50 w-[320px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border bg-[var(--card)] shadow-xl max-sm:-right-2 max-sm:w-[calc(100vw-1rem)]">
                 <div className="flex items-center justify-between border-b px-3 py-2">
                   <p className="text-sm font-semibold">Notifications</p>
                   <span className="text-xs text-[var(--muted-foreground)]">

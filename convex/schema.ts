@@ -408,6 +408,11 @@ const jobAssignmentAuditEvents = defineTable({
 const conversations = defineTable({
   linkedJobId: v.optional(v.id("cleaningJobs")),
   propertyId: v.optional(v.id("properties")),
+  laneKind: v.optional(
+    v.union(v.literal("internal_shared"), v.literal("whatsapp_cleaner")),
+  ),
+  linkedCleanerId: v.optional(v.id("users")),
+  messagingEndpointId: v.optional(v.id("messagingEndpoints")),
   channel: v.union(
     v.literal("internal"),
     v.literal("sms"),
@@ -427,15 +432,24 @@ const conversations = defineTable({
   updatedAt: v.optional(v.number()),
 })
   .index("by_linked_job", ["linkedJobId"])
+  .index("by_linked_job_and_lane_kind", ["linkedJobId", "laneKind"])
+  .index("by_linked_job_and_lane_kind_and_linked_cleaner", [
+    "linkedJobId",
+    "laneKind",
+    "linkedCleanerId",
+  ])
+  .index("by_messaging_endpoint", ["messagingEndpointId"])
   .index("by_status_last_message", ["status", "lastMessageAt"]);
 
 const conversationParticipants = defineTable({
   conversationId: v.id("conversations"),
   userId: v.optional(v.id("users")),
+  messagingEndpointId: v.optional(v.id("messagingEndpoints")),
   participantKind: v.union(
     v.literal("user"),
     v.literal("external_contact"),
   ),
+  externalDisplayName: v.optional(v.string()),
   lastReadMessageAt: v.optional(v.number()),
   joinedAt: v.number(),
   mutedAt: v.optional(v.number()),
@@ -444,12 +458,21 @@ const conversationParticipants = defineTable({
 })
   .index("by_conversation", ["conversationId"])
   .index("by_user", ["userId"])
-  .index("by_conversation_and_user", ["conversationId", "userId"]);
+  .index("by_conversation_and_user", ["conversationId", "userId"])
+  .index("by_conversation_and_messaging_endpoint", [
+    "conversationId",
+    "messagingEndpointId",
+  ]);
 
 const conversationMessages = defineTable({
   conversationId: v.id("conversations"),
-  authorKind: v.union(v.literal("user"), v.literal("system")),
+  authorKind: v.union(
+    v.literal("user"),
+    v.literal("system"),
+    v.literal("external_contact"),
+  ),
   authorUserId: v.optional(v.id("users")),
+  authorEndpointId: v.optional(v.id("messagingEndpoints")),
   messageKind: v.union(v.literal("user"), v.literal("system")),
   channel: v.union(
     v.literal("internal"),
@@ -462,6 +485,98 @@ const conversationMessages = defineTable({
   createdAt: v.number(),
 })
   .index("by_conversation", ["conversationId"])
+  .index("by_conversation_and_created", ["conversationId", "createdAt"]);
+
+const messagingEndpoints = defineTable({
+  userId: v.id("users"),
+  channel: v.literal("whatsapp"),
+  waId: v.string(),
+  phoneNumber: v.string(),
+  displayName: v.optional(v.string()),
+  activeConversationId: v.optional(v.id("conversations")),
+  optedInAt: v.number(),
+  lastInboundAt: v.optional(v.number()),
+  serviceWindowClosesAt: v.optional(v.number()),
+  status: v.union(v.literal("active"), v.literal("blocked")),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_user_and_channel", ["userId", "channel"])
+  .index("by_channel_and_wa_id", ["channel", "waId"])
+  .index("by_channel_and_phone_number", ["channel", "phoneNumber"])
+  .index("by_active_conversation", ["activeConversationId"]);
+
+const whatsappLaneInvites = defineTable({
+  token: v.string(),
+  jobId: v.id("cleaningJobs"),
+  cleanerUserId: v.id("users"),
+  conversationId: v.optional(v.id("conversations")),
+  createdBy: v.id("users"),
+  expiresAt: v.number(),
+  redeemedAt: v.optional(v.number()),
+  redeemedEndpointId: v.optional(v.id("messagingEndpoints")),
+  redeemedWaId: v.optional(v.string()),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_token", ["token"])
+  .index("by_job_and_cleaner_and_redeemed_at", [
+    "jobId",
+    "cleanerUserId",
+    "redeemedAt",
+  ])
+  .index("by_conversation", ["conversationId"]);
+
+const conversationMessageAttachments = defineTable({
+  conversationId: v.id("conversations"),
+  messageId: v.id("conversationMessages"),
+  storageId: v.optional(v.id("_storage")),
+  attachmentKind: v.union(v.literal("image"), v.literal("document")),
+  channel: v.union(
+    v.literal("internal"),
+    v.literal("sms"),
+    v.literal("whatsapp"),
+    v.literal("email"),
+  ),
+  mimeType: v.string(),
+  fileName: v.string(),
+  byteSize: v.number(),
+  sourceUrl: v.optional(v.string()),
+  providerMediaId: v.optional(v.string()),
+  caption: v.optional(v.string()),
+  createdAt: v.number(),
+})
+  .index("by_message", ["messageId"])
+  .index("by_conversation_and_created", ["conversationId", "createdAt"])
+  .index("by_provider_media_id", ["providerMediaId"]);
+
+const messageTransportEvents = defineTable({
+  conversationId: v.optional(v.id("conversations")),
+  messageId: v.optional(v.id("conversationMessages")),
+  endpointId: v.optional(v.id("messagingEndpoints")),
+  provider: v.literal("meta_whatsapp"),
+  providerMessageId: v.optional(v.string()),
+  direction: v.union(v.literal("inbound"), v.literal("outbound")),
+  currentStatus: v.union(
+    v.literal("queued"),
+    v.literal("received"),
+    v.literal("sent"),
+    v.literal("delivered"),
+    v.literal("read"),
+    v.literal("failed"),
+  ),
+  idempotencyKey: v.string(),
+  errorCode: v.optional(v.string()),
+  errorMessage: v.optional(v.string()),
+  payload: v.optional(v.any()),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+  lastEventAt: v.optional(v.number()),
+})
+  .index("by_provider_and_provider_message_id", ["provider", "providerMessageId"])
+  .index("by_idempotency_key", ["idempotencyKey"])
+  .index("by_message", ["messageId"])
+  .index("by_endpoint_and_created", ["endpointId", "createdAt"])
   .index("by_conversation_and_created", ["conversationId", "createdAt"]);
 
 const jobTemplates = defineTable({
@@ -922,6 +1037,10 @@ export default defineSchema({
   conversations,
   conversationParticipants,
   conversationMessages,
+  messagingEndpoints,
+  whatsappLaneInvites,
+  conversationMessageAttachments,
+  messageTransportEvents,
 
   // Photos
   photos,

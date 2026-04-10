@@ -30,26 +30,34 @@ export function InstallPrompt() {
 
   // Defer all browser detection to after hydration
   useEffect(() => {
-    setMounted(true);
-    const wasDismissed = sessionStorage.getItem(DISMISSED_KEY) !== null;
-    setDismissed(wasDismissed);
+    let cleanup: (() => void) | undefined;
+    const frameId = window.requestAnimationFrame(() => {
+      setMounted(true);
+      const wasDismissed = sessionStorage.getItem(DISMISSED_KEY) !== null;
+      setDismissed(wasDismissed);
 
-    if (!wasDismissed && !isInStandaloneMode() && isIos()) {
-      setShowIosHint(true);
-      return;
-    }
+      if (!wasDismissed && !isInStandaloneMode() && isIos()) {
+        setShowIosHint(true);
+        return;
+      }
 
-    if (wasDismissed || isInStandaloneMode()) {
-      return;
-    }
+      if (wasDismissed || isInStandaloneMode()) {
+        return;
+      }
 
-    const handleBeforeInstallPrompt = (event: Event) => {
-      event.preventDefault();
-      setPromptEvent(event as BeforeInstallPromptEvent);
-    };
-    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      const handleBeforeInstallPrompt = (event: Event) => {
+        event.preventDefault();
+        setPromptEvent(event as BeforeInstallPromptEvent);
+      };
+      window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      cleanup = () => {
+        window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      };
+    });
+
     return () => {
-      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.cancelAnimationFrame(frameId);
+      cleanup?.();
     };
   }, []);
 

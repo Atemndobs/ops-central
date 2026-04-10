@@ -29,7 +29,9 @@ import type * as files_queries from "../files/queries.js";
 import type * as hospitable_actions from "../hospitable/actions.js";
 import type * as hospitable_mutations from "../hospitable/mutations.js";
 import type * as hospitable_queries from "../hospitable/queries.js";
+import type * as http from "../http.js";
 import type * as incidents_mutations from "../incidents/mutations.js";
+import type * as incidents_queries from "../incidents/queries.js";
 import type * as inventory_queries from "../inventory/queries.js";
 import type * as jobChecks_mutations from "../jobChecks/mutations.js";
 import type * as jobChecks_queries from "../jobChecks/queries.js";
@@ -56,6 +58,11 @@ import type * as reviewAnnotations_mutations from "../reviewAnnotations/mutation
 import type * as reviewAnnotations_queries from "../reviewAnnotations/queries.js";
 import type * as users_mutations from "../users/mutations.js";
 import type * as users_queries from "../users/queries.js";
+import type * as whatsapp_actions from "../whatsapp/actions.js";
+import type * as whatsapp_lib from "../whatsapp/lib.js";
+import type * as whatsapp_mutations from "../whatsapp/mutations.js";
+import type * as whatsapp_provider from "../whatsapp/provider.js";
+import type * as whatsapp_queries from "../whatsapp/queries.js";
 
 import type {
   ApiFromModules,
@@ -85,7 +92,9 @@ declare const fullApi: ApiFromModules<{
   "hospitable/actions": typeof hospitable_actions;
   "hospitable/mutations": typeof hospitable_mutations;
   "hospitable/queries": typeof hospitable_queries;
+  http: typeof http;
   "incidents/mutations": typeof incidents_mutations;
+  "incidents/queries": typeof incidents_queries;
   "inventory/queries": typeof inventory_queries;
   "jobChecks/mutations": typeof jobChecks_mutations;
   "jobChecks/queries": typeof jobChecks_queries;
@@ -112,6 +121,11 @@ declare const fullApi: ApiFromModules<{
   "reviewAnnotations/queries": typeof reviewAnnotations_queries;
   "users/mutations": typeof users_mutations;
   "users/queries": typeof users_queries;
+  "whatsapp/actions": typeof whatsapp_actions;
+  "whatsapp/lib": typeof whatsapp_lib;
+  "whatsapp/mutations": typeof whatsapp_mutations;
+  "whatsapp/provider": typeof whatsapp_provider;
+  "whatsapp/queries": typeof whatsapp_queries;
 }>;
 
 /**

@@ -4,10 +4,7 @@ import { MessagesInboxClient } from "@/components/conversations/messages-inbox-c
 export default function CleanerMessagesPage() {
   return (
     <Suspense fallback={<div className="text-sm text-[var(--muted-foreground)]">Loading messages...</div>}>
-      <MessagesInboxClient
-        basePath="/cleaner/messages"
-        title="Messages"
-      />
+      <MessagesInboxClient title="Messages" />
     </Suspense>
   );
 }

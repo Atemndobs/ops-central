@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { useEffect, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useConvexAuth, useQuery } from "convex/react";
 import type { Id } from "@convex/_generated/dataModel";
@@ -10,7 +9,6 @@ import { ArrowLeft } from "lucide-react";
 import { ConversationThread } from "./conversation-thread";
 
 type MessagesInboxClientProps = {
-  basePath: "/messages" | "/cleaner/messages";
   title: string;
 };
 
@@ -31,11 +29,26 @@ function formatListTime(timestamp?: number) {
 
 type ConversationItem = {
   _id: Id<"conversations">;
+  laneKind: "internal_shared" | "whatsapp_cleaner";
+  channel: "internal" | "sms" | "whatsapp" | "email";
   unread: boolean;
   lastMessageAt?: number;
   lastMessagePreview?: string;
   linkedJob: { _id: Id<"cleaningJobs">; status: string; scheduledStartAt?: number } | null;
   property: { _id: Id<"properties">; name: string; address?: string } | null;
+  linkedCleaner: {
+    _id: Id<"users">;
+    name?: string | null;
+    email: string;
+    phone?: string | null;
+  } | null;
+  messagingEndpoint: {
+    _id: Id<"messagingEndpoints">;
+    phoneNumber: string;
+    displayName?: string | null;
+    serviceWindowClosesAt?: number;
+    isServiceWindowOpen: boolean;
+  } | null;
 };
 
 type PropertyGroup = {
@@ -79,7 +92,6 @@ function groupByProperty(conversations: ConversationItem[]): PropertyGroup[] {
 }
 
 export function MessagesInboxClient({
-  basePath,
   title,
 }: MessagesInboxClientProps) {
   const { isAuthenticated } = useConvexAuth();
@@ -90,7 +102,6 @@ export function MessagesInboxClient({
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
-  const [mobileShowThread, setMobileShowThread] = useState(false);
 
   const selectedConversationId = useMemo(() => {
     const raw = searchParams.get("conversationId");
@@ -108,13 +119,6 @@ export function MessagesInboxClient({
     router.replace(`${pathname}?${nextParams.toString()}`);
   }, [conversations, pathname, router, searchParams, selectedConversationId]);
 
-  // If a conversationId is in the URL on mobile, show the thread
-  useEffect(() => {
-    if (selectedConversationId) {
-      setMobileShowThread(true);
-    }
-  }, [selectedConversationId]);
-
   if (conversations === undefined) {
     return <div className="text-sm text-[var(--muted-foreground)]">Loading messages...</div>;
   }
@@ -131,7 +135,10 @@ export function MessagesInboxClient({
   }
 
   const selectedId =
-    selectedConversationId && conversations.some((item) => item._id === selectedConversationId)
+    selectedConversationId &&
+    conversations.some(
+      (item: ConversationItem) => item._id === selectedConversationId,
+    )
       ? selectedConversationId
       : conversations[0]._id;
 
@@ -141,11 +148,12 @@ export function MessagesInboxClient({
     const nextParams = new URLSearchParams(searchParams.toString());
     nextParams.set("conversationId", conversationId);
     router.replace(`${pathname}?${nextParams.toString()}`);
-    setMobileShowThread(true);
   }
 
   function handleBack() {
-    setMobileShowThread(false);
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete("conversationId");
+    router.replace(nextParams.size > 0 ? `${pathname}?${nextParams.toString()}` : pathname);
   }
 
   return (
@@ -155,7 +163,6 @@ export function MessagesInboxClient({
         <InboxList
           groups={groups}
           selectedId={selectedId}
-          basePath={basePath}
           onSelect={selectConversation}
           title={title}
         />
@@ -169,7 +176,7 @@ export function MessagesInboxClient({
 
       {/* ─── MOBILE: full-screen list OR full-screen thread ─── */}
       <div className="lg:hidden">
-        {mobileShowThread && selectedId ? (
+        {selectedConversationId && selectedId ? (
           <div className="flex flex-col">
             <button
               type="button"
@@ -188,7 +195,6 @@ export function MessagesInboxClient({
           <InboxList
             groups={groups}
             selectedId={selectedId}
-            basePath={basePath}
             onSelect={selectConversation}
             title={title}
           />
@@ -201,13 +207,11 @@ export function MessagesInboxClient({
 function InboxList({
   groups,
   selectedId,
-  basePath,
   onSelect,
   title,
 }: {
   groups: PropertyGroup[];
   selectedId: Id<"conversations">;
-  basePath: string;
   onSelect: (id: Id<"conversations">) => void;
   title: string;
 }) {
@@ -266,9 +270,24 @@ function InboxList({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <p className={`truncate text-sm ${conversation.unread ? "font-bold text-[var(--foreground)]" : "font-medium text-[var(--foreground)]"}`}>
-                          {jobSuffix ? `Job #${jobSuffix}` : "Thread"}
+                          {conversation.laneKind === "whatsapp_cleaner"
+                            ? conversation.linkedCleaner?.name ??
+                              conversation.messagingEndpoint?.displayName ??
+                              "WhatsApp lane"
+                            : jobSuffix
+                            ? `Job #${jobSuffix}`
+                            : "Thread"}
                           {conversation.linkedJob?.status ? ` · ${conversation.linkedJob.status.replace(/_/g, " ")}` : ""}
                         </p>
+                        <span
+                          className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                            conversation.laneKind === "whatsapp_cleaner"
+                              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+                              : "border-[var(--border)] bg-[var(--background)] text-[var(--muted-foreground)]"
+                          }`}
+                        >
+                          {conversation.laneKind === "whatsapp_cleaner" ? "WhatsApp" : "Internal"}
+                        </span>
                         {conversation.unread ? (
                           <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--primary)]" />
                         ) : null}
@@ -276,6 +295,13 @@ function InboxList({
                       <p className={`mt-0.5 truncate text-xs ${conversation.unread ? "font-medium text-[var(--muted-foreground)]" : "text-[var(--muted-foreground)]"}`}>
                         {conversation.lastMessagePreview ?? "No messages yet"}
                       </p>
+                      {conversation.laneKind === "whatsapp_cleaner" ? (
+                        <p className="mt-1 truncate text-[11px] text-[var(--muted-foreground)]">
+                          {conversation.messagingEndpoint?.phoneNumber ??
+                            conversation.linkedCleaner?.phone ??
+                            "Awaiting lane bootstrap"}
+                        </p>
+                      ) : null}
                     </div>
                     <span className="shrink-0 text-[11px] text-[var(--muted-foreground)]">
                       {formatListTime(conversation.lastMessageAt)}

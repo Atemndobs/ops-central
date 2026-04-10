@@ -6,15 +6,15 @@ import { getCurrentUser } from "../lib/auth";
 import {
   assertConversationAccess,
   canAccessJobConversation,
+  getConversationLaneKind,
   getConversationParticipant,
   getJobConversationByJobId,
+  getJobConversationsByJobId,
   isPrivilegedRole,
 } from "./lib";
+import { isWhatsAppServiceWindowOpen } from "../whatsapp/lib";
 
-async function getUsersByIds(
-  ctx: QueryCtx,
-  userIds: Id<"users">[],
-) {
+async function getUsersByIds(ctx: QueryCtx, userIds: Id<"users">[]) {
   const docs = await Promise.all(userIds.map((userId) => ctx.db.get(userId)));
   return new Map(
     docs
@@ -23,58 +23,237 @@ async function getUsersByIds(
   );
 }
 
+async function getEndpointsByIds(
+  ctx: QueryCtx,
+  endpointIds: Id<"messagingEndpoints">[],
+) {
+  const docs = await Promise.all(
+    endpointIds.map((endpointId) => ctx.db.get(endpointId)),
+  );
+  return new Map(
+    docs
+      .filter(
+        (endpoint): endpoint is Doc<"messagingEndpoints"> => Boolean(endpoint),
+      )
+      .map((endpoint) => [endpoint._id, endpoint] as const),
+  );
+}
+
+async function getMessageAttachmentMap(
+  ctx: QueryCtx,
+  args: {
+    conversationId: Id<"conversations">;
+    messageIds: Id<"conversationMessages">[];
+  },
+) {
+  if (args.messageIds.length === 0) {
+    return new Map<Id<"conversationMessages">, unknown[]>();
+  }
+
+  const recentAttachments = await ctx.db
+    .query("conversationMessageAttachments")
+    .withIndex("by_conversation_and_created", (q) =>
+      q.eq("conversationId", args.conversationId),
+    )
+    .order("desc")
+    .take(Math.max(20, args.messageIds.length * 4));
+
+  const attachmentMap = new Map<Id<"conversationMessages">, unknown[]>();
+  for (const attachment of recentAttachments) {
+    if (!args.messageIds.includes(attachment.messageId)) {
+      continue;
+    }
+
+    const url =
+      attachment.storageId !== undefined
+        ? await ctx.storage.getUrl(attachment.storageId)
+        : null;
+    const nextEntry = attachmentMap.get(attachment.messageId) ?? [];
+    nextEntry.push({
+      _id: attachment._id,
+      attachmentKind: attachment.attachmentKind,
+      mimeType: attachment.mimeType,
+      fileName: attachment.fileName,
+      byteSize: attachment.byteSize,
+      caption: attachment.caption,
+      url,
+    });
+    attachmentMap.set(attachment.messageId, nextEntry);
+  }
+
+  return attachmentMap;
+}
+
+async function getTransportStatusMap(
+  ctx: QueryCtx,
+  args: {
+    conversationId: Id<"conversations">;
+    messageIds: Id<"conversationMessages">[];
+  },
+) {
+  if (args.messageIds.length === 0) {
+    return new Map<
+      Id<"conversationMessages">,
+      { currentStatus: string; errorMessage?: string }
+    >();
+  }
+
+  const events = await ctx.db
+    .query("messageTransportEvents")
+    .withIndex("by_conversation_and_created", (q) =>
+      q.eq("conversationId", args.conversationId),
+    )
+    .order("desc")
+    .take(Math.max(20, args.messageIds.length * 4));
+
+  const statusMap = new Map<
+    Id<"conversationMessages">,
+    { currentStatus: string; errorMessage?: string }
+  >();
+
+  for (const event of events) {
+    if (!event.messageId || statusMap.has(event.messageId)) {
+      continue;
+    }
+    statusMap.set(event.messageId, {
+      currentStatus: event.currentStatus,
+      errorMessage: event.errorMessage,
+    });
+  }
+
+  return statusMap;
+}
+
+async function buildConversationSummary(
+  ctx: QueryCtx,
+  args: {
+    conversation: Doc<"conversations">;
+    participant: Doc<"conversationParticipants"> | null;
+    jobById: Map<Id<"cleaningJobs">, Doc<"cleaningJobs">>;
+    propertyById: Map<Id<"properties">, Doc<"properties">>;
+    userById: Map<Id<"users">, Doc<"users">>;
+    endpointById: Map<Id<"messagingEndpoints">, Doc<"messagingEndpoints">>;
+  },
+) {
+  const laneKind = getConversationLaneKind(args.conversation);
+  const endpoint =
+    args.conversation.messagingEndpointId !== undefined
+      ? args.endpointById.get(args.conversation.messagingEndpointId) ?? null
+      : null;
+  const linkedCleaner =
+    args.conversation.linkedCleanerId !== undefined
+      ? args.userById.get(args.conversation.linkedCleanerId) ?? null
+      : endpoint
+      ? args.userById.get(endpoint.userId) ?? null
+      : null;
+  const job = args.conversation.linkedJobId
+    ? args.jobById.get(args.conversation.linkedJobId) ?? null
+    : null;
+  const property = args.conversation.propertyId
+    ? args.propertyById.get(args.conversation.propertyId) ?? null
+    : null;
+
+  return {
+    ...args.conversation,
+    laneKind,
+    unread:
+      typeof args.conversation.lastMessageAt === "number" &&
+      (args.participant?.lastReadMessageAt ?? 0) < args.conversation.lastMessageAt,
+    linkedJob: job
+      ? {
+          _id: job._id,
+          status: job.status,
+          scheduledStartAt: job.scheduledStartAt,
+        }
+      : null,
+    property: property
+      ? {
+          _id: property._id,
+          name: property.name,
+          address: property.address,
+        }
+      : null,
+    linkedCleaner: linkedCleaner
+      ? {
+          _id: linkedCleaner._id,
+          name: linkedCleaner.name,
+          email: linkedCleaner.email,
+          phone: linkedCleaner.phone,
+        }
+      : null,
+    messagingEndpoint: endpoint
+      ? {
+          _id: endpoint._id,
+          waId: endpoint.waId,
+          phoneNumber: endpoint.phoneNumber,
+          displayName: endpoint.displayName,
+          serviceWindowClosesAt: endpoint.serviceWindowClosesAt,
+          isServiceWindowOpen: isWhatsAppServiceWindowOpen(
+            endpoint.serviceWindowClosesAt,
+          ),
+        }
+      : null,
+  };
+}
+
 export const listMyConversations = query({
   args: {},
   handler: async (ctx) => {
     const user = await getCurrentUser(ctx);
     const privileged = isPrivilegedRole(user.role);
 
-    // Fetch conversations the user is explicitly a participant of
     const participants = await ctx.db
       .query("conversationParticipants")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect();
 
-    const participantConvIds = new Set(participants.map((row) => row.conversationId));
+    const participantConversationIds = new Set(
+      participants.map((participant) => participant.conversationId),
+    );
 
     let activeConversations: Doc<"conversations">[];
-
     if (privileged) {
-      // Privileged users (admin, manager, property_ops) can see ALL open conversations,
-      // not just ones they're explicitly a participant of.
-      const allConversations = await ctx.db
+      const allOpenConversations = await ctx.db
         .query("conversations")
         .withIndex("by_status_last_message", (q) => q.eq("status", "open"))
         .order("desc")
         .collect();
-      // Also include closed conversations they were a participant of
-      const closedParticipantConvs = await Promise.all(
-        [...participantConvIds].map((id) => ctx.db.get(id)),
+      const closedParticipantConversations = await Promise.all(
+        [...participantConversationIds].map((conversationId) =>
+          ctx.db.get(conversationId),
+        ),
       );
-      const closedOnes = closedParticipantConvs
-        .filter((c): c is Doc<"conversations"> => c !== null)
-        .filter(
-          (c) => c.status === "closed" && !allConversations.some((ac) => ac._id === c._id),
-        );
-      activeConversations = [...allConversations, ...closedOnes];
+
+      activeConversations = [
+        ...allOpenConversations,
+        ...closedParticipantConversations.filter(
+          (conversation): conversation is Doc<"conversations"> =>
+            conversation !== null &&
+            conversation.status === "closed" &&
+            !allOpenConversations.some(
+              (openConversation) => openConversation._id === conversation._id,
+            ),
+        ),
+      ];
     } else {
-      // Non-privileged users (cleaners) only see conversations they're a participant of
       const conversations = await Promise.all(
-        [...participantConvIds].map((conversationId) => ctx.db.get(conversationId)),
+        [...participantConversationIds].map((conversationId) =>
+          ctx.db.get(conversationId),
+        ),
       );
       activeConversations = conversations.filter(
         (conversation): conversation is Doc<"conversations"> => Boolean(conversation),
       );
     }
 
-    const linkedJobIds = [
+    const jobIds = [
       ...new Set(
         activeConversations
           .map((conversation) => conversation.linkedJobId)
           .filter((jobId): jobId is Id<"cleaningJobs"> => Boolean(jobId)),
       ),
     ];
-    const jobs = await Promise.all(linkedJobIds.map((jobId) => ctx.db.get(jobId)));
+    const jobs = await Promise.all(jobIds.map((jobId) => ctx.db.get(jobId)));
     const jobById = new Map(
       jobs
         .filter((job): job is Doc<"cleaningJobs"> => Boolean(job))
@@ -85,7 +264,9 @@ export const listMyConversations = query({
       ...new Set(
         activeConversations
           .map((conversation) => conversation.propertyId)
-          .filter((propertyId): propertyId is Id<"properties"> => Boolean(propertyId)),
+          .filter(
+            (propertyId): propertyId is Id<"properties"> => Boolean(propertyId),
+          ),
       ),
     ];
     const properties = await Promise.all(
@@ -97,43 +278,45 @@ export const listMyConversations = query({
         .map((property) => [property._id, property] as const),
     );
 
+    const userIds = [
+      ...new Set(
+        activeConversations
+          .map((conversation) => conversation.linkedCleanerId)
+          .filter((userId): userId is Id<"users"> => Boolean(userId)),
+      ),
+    ];
+    const userById = await getUsersByIds(ctx, userIds);
+
+    const endpointIds = [
+      ...new Set(
+        activeConversations
+          .map((conversation) => conversation.messagingEndpointId)
+          .filter(
+            (endpointId): endpointId is Id<"messagingEndpoints"> =>
+              Boolean(endpointId),
+          ),
+      ),
+    ];
+    const endpointById = await getEndpointsByIds(ctx, endpointIds);
+
     const participantByConversationId = new Map(
       participants.map((participant) => [participant.conversationId, participant] as const),
     );
 
-    return activeConversations
-      .map((conversation) => {
-        const job = conversation.linkedJobId
-          ? jobById.get(conversation.linkedJobId) ?? null
-          : null;
-        const property = conversation.propertyId
-          ? propertyById.get(conversation.propertyId) ?? null
-          : null;
-        const participant = participantByConversationId.get(conversation._id) ?? null;
-        const unread =
-          typeof conversation.lastMessageAt === "number" &&
-          (participant?.lastReadMessageAt ?? 0) < conversation.lastMessageAt;
-
-        return {
-          ...conversation,
-          unread,
-          linkedJob: job
-            ? {
-                _id: job._id,
-                status: job.status,
-                scheduledStartAt: job.scheduledStartAt,
-              }
-            : null,
-          property: property
-            ? {
-                _id: property._id,
-                name: property.name,
-                address: property.address,
-              }
-            : null,
-        };
-      })
-      .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0));
+    return await Promise.all(
+      activeConversations
+        .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0))
+        .map((conversation) =>
+          buildConversationSummary(ctx, {
+            conversation,
+            participant: participantByConversationId.get(conversation._id) ?? null,
+            jobById,
+            propertyById,
+            userById,
+            endpointById,
+          }),
+        ),
+    );
   },
 });
 
@@ -156,7 +339,7 @@ export const getConversationById = query({
         ? Math.max(1, Math.min(200, Math.floor(args.limit)))
         : 100;
 
-    const [participants, messages, job] = await Promise.all([
+    const [participants, messages, job, property] = await Promise.all([
       ctx.db
         .query("conversationParticipants")
         .withIndex("by_conversation", (q) => q.eq("conversationId", args.conversationId))
@@ -168,26 +351,61 @@ export const getConversationById = query({
         )
         .order("desc")
         .take(limit),
-      conversation.linkedJobId ? ctx.db.get(conversation.linkedJobId) : Promise.resolve(null),
+      conversation.linkedJobId ? ctx.db.get(conversation.linkedJobId) : null,
+      conversation.propertyId ? ctx.db.get(conversation.propertyId) : null,
     ]);
 
-    const property = conversation.propertyId
-      ? await ctx.db.get(conversation.propertyId)
-      : null;
     const userIds = [
       ...new Set(
         [
           ...participants.map((participant) => participant.userId),
           ...messages.map((message) => message.authorUserId),
+          conversation.linkedCleanerId,
         ].filter((userId): userId is Id<"users"> => Boolean(userId)),
       ),
     ];
     const usersById = await getUsersByIds(ctx, userIds);
+
+    const endpointIds = [
+      ...new Set(
+        [
+          conversation.messagingEndpointId,
+          ...participants.map((participant) => participant.messagingEndpointId),
+          ...messages.map((message) => message.authorEndpointId),
+        ].filter(
+          (endpointId): endpointId is Id<"messagingEndpoints"> => Boolean(endpointId),
+        ),
+      ),
+    ];
+    const endpointById = await getEndpointsByIds(ctx, endpointIds);
+
+    const messageIds = messages.map((message) => message._id);
+    const attachmentMap = await getMessageAttachmentMap(ctx, {
+      conversationId: conversation._id,
+      messageIds,
+    });
+    const statusMap = await getTransportStatusMap(ctx, {
+      conversationId: conversation._id,
+      messageIds,
+    });
+
     const selfParticipant =
       (await getConversationParticipant(ctx, args.conversationId, user._id)) ?? null;
+    const laneKind = getConversationLaneKind(conversation);
+    const endpoint =
+      conversation.messagingEndpointId !== undefined
+        ? endpointById.get(conversation.messagingEndpointId) ?? null
+        : null;
+    const linkedCleaner =
+      conversation.linkedCleanerId !== undefined
+        ? usersById.get(conversation.linkedCleanerId) ?? null
+        : endpoint
+        ? usersById.get(endpoint.userId) ?? null
+        : null;
 
     return {
       ...conversation,
+      laneKind,
       linkedJob: job
         ? {
             _id: job._id,
@@ -203,10 +421,34 @@ export const getConversationById = query({
             address: property.address,
           }
         : null,
+      linkedCleaner: linkedCleaner
+        ? {
+            _id: linkedCleaner._id,
+            name: linkedCleaner.name,
+            email: linkedCleaner.email,
+            phone: linkedCleaner.phone,
+          }
+        : null,
+      messagingEndpoint: endpoint
+        ? {
+            _id: endpoint._id,
+            waId: endpoint.waId,
+            phoneNumber: endpoint.phoneNumber,
+            displayName: endpoint.displayName,
+            serviceWindowClosesAt: endpoint.serviceWindowClosesAt,
+            isServiceWindowOpen: isWhatsAppServiceWindowOpen(
+              endpoint.serviceWindowClosesAt,
+            ),
+          }
+        : null,
       participants: participants.map((participant) => {
         const participantUser = participant.userId
           ? usersById.get(participant.userId) ?? null
           : null;
+        const participantEndpoint =
+          participant.messagingEndpointId !== undefined
+            ? endpointById.get(participant.messagingEndpointId) ?? null
+            : null;
 
         return {
           ...participant,
@@ -218,6 +460,14 @@ export const getConversationById = query({
                 role: participantUser.role,
               }
             : null,
+          endpoint: participantEndpoint
+            ? {
+                _id: participantEndpoint._id,
+                waId: participantEndpoint.waId,
+                phoneNumber: participantEndpoint.phoneNumber,
+                displayName: participantEndpoint.displayName,
+              }
+            : null,
         };
       }),
       messages: messages
@@ -227,8 +477,15 @@ export const getConversationById = query({
           const author = message.authorUserId
             ? usersById.get(message.authorUserId) ?? null
             : null;
+          const authorEndpoint =
+            message.authorEndpointId !== undefined
+              ? endpointById.get(message.authorEndpointId) ?? null
+              : null;
+
           return {
             ...message,
+            transportStatus: statusMap.get(message._id) ?? null,
+            attachments: attachmentMap.get(message._id) ?? [],
             author: author
               ? {
                   _id: author._id,
@@ -237,12 +494,24 @@ export const getConversationById = query({
                   role: author.role,
                 }
               : null,
+            authorEndpoint: authorEndpoint
+              ? {
+                  _id: authorEndpoint._id,
+                  waId: authorEndpoint.waId,
+                  phoneNumber: authorEndpoint.phoneNumber,
+                  displayName: authorEndpoint.displayName,
+                }
+              : null,
           };
         }),
       selfParticipant,
       unread:
         typeof conversation.lastMessageAt === "number" &&
         (selfParticipant?.lastReadMessageAt ?? 0) < conversation.lastMessageAt,
+      canReplyInApp:
+        laneKind === "internal_shared"
+          ? true
+          : isWhatsAppServiceWindowOpen(endpoint?.serviceWindowClosesAt),
     };
   },
 });
@@ -253,42 +522,44 @@ export const getUnreadConversationCount = query({
     const user = await getCurrentUser(ctx);
     const privileged = isPrivilegedRole(user.role);
 
-    // Build a map of the user's read timestamps per conversation
     const participants = await ctx.db
       .query("conversationParticipants")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect();
-    const readAtByConvId = new Map(
-      participants.map((p) => [p.conversationId, p.lastReadMessageAt ?? 0] as const),
+    const readAtByConversationId = new Map(
+      participants.map((participant) => [
+        participant.conversationId,
+        participant.lastReadMessageAt ?? 0,
+      ]),
     );
 
     let count = 0;
-
     if (privileged) {
-      // Privileged users see all open conversations
-      const allOpen = await ctx.db
+      const allOpenConversations = await ctx.db
         .query("conversations")
         .withIndex("by_status_last_message", (q) => q.eq("status", "open"))
         .collect();
-      for (const conv of allOpen) {
+
+      for (const conversation of allOpenConversations) {
         if (
-          typeof conv.lastMessageAt === "number" &&
-          (readAtByConvId.get(conv._id) ?? 0) < conv.lastMessageAt
+          typeof conversation.lastMessageAt === "number" &&
+          (readAtByConversationId.get(conversation._id) ?? 0) <
+            conversation.lastMessageAt
         ) {
-          count++;
+          count += 1;
         }
       }
-    } else {
-      // Cleaners: only count conversations they're a participant of
-      for (const participant of participants) {
-        const conversation = await ctx.db.get(participant.conversationId);
-        if (
-          conversation &&
-          typeof conversation.lastMessageAt === "number" &&
-          (participant.lastReadMessageAt ?? 0) < conversation.lastMessageAt
-        ) {
-          count++;
-        }
+      return count;
+    }
+
+    for (const participant of participants) {
+      const conversation = await ctx.db.get(participant.conversationId);
+      if (
+        conversation &&
+        typeof conversation.lastMessageAt === "number" &&
+        (participant.lastReadMessageAt ?? 0) < conversation.lastMessageAt
+      ) {
+        count += 1;
       }
     }
 
@@ -328,6 +599,7 @@ export const getConversationForJob = query({
 
     return {
       ...conversation,
+      laneKind: getConversationLaneKind(conversation),
       participant,
       unread:
         typeof conversation.lastMessageAt === "number" &&
@@ -344,6 +616,138 @@ export const getConversationForJob = query({
             address: property.address,
           }
         : null,
+    };
+  },
+});
+
+export const getConversationLanesForJob = query({
+  args: {
+    jobId: v.id("cleaningJobs"),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    if (!isPrivilegedRole(user.role)) {
+      throw new ConvexError("Only privileged users can view WhatsApp job lanes.");
+    }
+
+    const job = await ctx.db.get(args.jobId);
+    if (!job) {
+      throw new ConvexError("Job not found.");
+    }
+
+    const property = await ctx.db.get(job.propertyId);
+    const conversations = await getJobConversationsByJobId(ctx, args.jobId);
+    const internalConversation =
+      conversations.find(
+        (conversation) =>
+          getConversationLaneKind(conversation) === "internal_shared" &&
+          conversation.channel === "internal",
+      ) ?? null;
+
+    const whatsappConversations = conversations.filter(
+      (conversation) => getConversationLaneKind(conversation) === "whatsapp_cleaner",
+    );
+    const whatsappConversationByCleanerId = new Map(
+      whatsappConversations
+        .filter(
+          (conversation): conversation is Doc<"conversations"> & {
+            linkedCleanerId: Id<"users">;
+          } => conversation.linkedCleanerId !== undefined,
+        )
+        .map((conversation) => [conversation.linkedCleanerId, conversation] as const),
+    );
+
+    const cleaners = await Promise.all(
+      job.assignedCleanerIds.map((cleanerId) => ctx.db.get(cleanerId)),
+    );
+    const cleanerDocs = cleaners.filter(
+      (cleaner): cleaner is Doc<"users"> => cleaner !== null,
+    );
+
+    const endpointIds = [
+      ...new Set(
+        whatsappConversations
+          .map((conversation) => conversation.messagingEndpointId)
+          .filter(
+            (endpointId): endpointId is Id<"messagingEndpoints"> =>
+              Boolean(endpointId),
+          ),
+      ),
+    ];
+    const endpointById = await getEndpointsByIds(ctx, endpointIds);
+
+    const internalParticipant =
+      internalConversation !== null
+        ? await getConversationParticipant(ctx, internalConversation._id, user._id)
+        : null;
+
+    const lanes = await Promise.all(
+      cleanerDocs.map(async (cleaner) => {
+        const conversation = whatsappConversationByCleanerId.get(cleaner._id) ?? null;
+        const endpoint =
+          conversation?.messagingEndpointId !== undefined
+            ? endpointById.get(conversation.messagingEndpointId) ?? null
+            : null;
+        const participant =
+          conversation !== null
+            ? await getConversationParticipant(ctx, conversation._id, user._id)
+            : null;
+
+        return {
+          cleaner: {
+            _id: cleaner._id,
+            name: cleaner.name,
+            email: cleaner.email,
+            phone: cleaner.phone,
+          },
+          conversationId: conversation?._id ?? null,
+          status: conversation?.status ?? "open",
+          lastMessageAt: conversation?.lastMessageAt ?? null,
+          lastMessagePreview: conversation?.lastMessagePreview ?? null,
+          unread:
+            conversation !== null &&
+            typeof conversation.lastMessageAt === "number" &&
+            (participant?.lastReadMessageAt ?? 0) < conversation.lastMessageAt,
+          messagingEndpoint: endpoint
+            ? {
+                _id: endpoint._id,
+                waId: endpoint.waId,
+                phoneNumber: endpoint.phoneNumber,
+                displayName: endpoint.displayName,
+                serviceWindowClosesAt: endpoint.serviceWindowClosesAt,
+                isServiceWindowOpen: isWhatsAppServiceWindowOpen(
+                  endpoint.serviceWindowClosesAt,
+                ),
+              }
+            : null,
+        };
+      }),
+    );
+
+    return {
+      property: property
+        ? {
+            _id: property._id,
+            name: property.name,
+            address: property.address,
+          }
+        : null,
+      internalConversation: internalConversation
+        ? {
+            _id: internalConversation._id,
+            lastMessageAt: internalConversation.lastMessageAt,
+            lastMessagePreview: internalConversation.lastMessagePreview,
+            unread:
+              typeof internalConversation.lastMessageAt === "number" &&
+              (internalParticipant?.lastReadMessageAt ?? 0) <
+                internalConversation.lastMessageAt,
+          }
+        : null,
+      whatsappLanes: lanes.sort((a, b) => {
+        const nameA = a.cleaner.name ?? a.cleaner.email ?? "";
+        const nameB = b.cleaner.name ?? b.cleaner.email ?? "";
+        return nameA.localeCompare(nameB);
+      }),
     };
   },
 });

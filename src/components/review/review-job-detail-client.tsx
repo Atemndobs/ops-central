@@ -17,7 +17,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { STATUS_CLASSNAMES, STATUS_LABELS, type JobStatus } from "@/components/jobs/job-status";
-import { JobConversationPanel } from "@/components/conversations/job-conversation-panel";
+import { JobConversationLanesPanel } from "@/components/conversations/job-conversation-lanes-panel";
 import { getErrorMessage } from "@/lib/errors";
 
 function formatDateTime(value?: number | null): string {
@@ -211,7 +211,7 @@ export function ReviewJobDetailClient({ id }: { id: string }) {
         ) : null}
 
         <div className="mt-5">
-          <JobConversationPanel
+          <JobConversationLanesPanel
             jobId={jobId}
             fullHrefBase="/messages"
           />

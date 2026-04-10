@@ -7,6 +7,7 @@ import {
   buildConversationPreview,
   canAccessJobConversation,
   ensureConversationParticipant,
+  getConversationLaneKind,
   getJobConversationByJobId,
   isPrivilegedRole,
   seedJobConversationParticipants,
@@ -37,6 +38,7 @@ export const ensureJobConversation = mutation({
       const conversationId = await ctx.db.insert("conversations", {
         linkedJobId: job._id,
         propertyId: job.propertyId,
+        laneKind: "internal_shared",
         channel: "internal",
         kind: "job",
         status:
@@ -56,6 +58,7 @@ export const ensureJobConversation = mutation({
     await seedJobConversationParticipants(ctx, {
       conversationId: conversation._id,
       job,
+      laneKind: "internal_shared",
     });
 
     if (isPrivilegedRole(user.role)) {
@@ -87,6 +90,14 @@ export const sendMessage = mutation({
     const conversation = await ctx.db.get(args.conversationId);
     if (!conversation) {
       throw new ConvexError("Conversation not found.");
+    }
+    if (
+      conversation.channel !== "internal" ||
+      getConversationLaneKind(conversation) !== "internal_shared"
+    ) {
+      throw new ConvexError(
+        "Use the WhatsApp reply flow for non-internal conversations.",
+      );
     }
 
     const body = args.body.trim();
