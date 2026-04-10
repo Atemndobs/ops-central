@@ -6,8 +6,8 @@ type ClaimsLike = Record<string, unknown> | null | undefined;
 
 const ROUTE_ACCESS: Record<UserRole, string[]> = {
   admin: ["/"],
-  property_ops: ["/", "/schedule", "/jobs", "/review", "/properties", "/companies", "/team", "/reports"],
-  manager: ["/", "/schedule", "/jobs", "/review", "/properties", "/companies", "/team", "/reports"],
+  property_ops: ["/", "/schedule", "/jobs", "/messages", "/review", "/properties", "/companies", "/team", "/reports"],
+  manager: ["/", "/schedule", "/jobs", "/messages", "/review", "/properties", "/companies", "/team", "/reports"],
   cleaner: ["/cleaner"],
 };
 
