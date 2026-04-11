@@ -6,10 +6,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import {
   Bell,
   ClipboardList,
-  Globe,
   MessageSquare,
   AlertTriangle,
   MoreHorizontal,
@@ -32,10 +32,10 @@ import {
 } from "@/lib/web-push";
 
 const NAV_ITEMS = [
-  { href: "/cleaner", label: "Jobs", icon: ClipboardList },
-  { href: "/cleaner/messages", label: "Messages", icon: MessageSquare },
-  { href: "/cleaner/incidents/new", label: "Incident", icon: AlertTriangle },
-  { href: "/cleaner/more", label: "More", icon: MoreHorizontal },
+  { href: "/cleaner", labelKey: "common.jobs", icon: ClipboardList },
+  { href: "/cleaner/messages", labelKey: "common.messages", icon: MessageSquare },
+  { href: "/cleaner/incidents/new", labelKey: "cleaner.incident", icon: AlertTriangle },
+  { href: "/cleaner/more", labelKey: "cleaner.more", icon: MoreHorizontal },
 ];
 
 const THEME_STORAGE_KEY = "opscentral-theme";
@@ -93,6 +93,7 @@ function formatNotificationTime(timestamp: number): string {
 
 export function CleanerShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const t = useTranslations();
   const { signOut, userId } = useAuth();
   const { isAuthenticated: isConvexAuthenticated, isLoading: isConvexAuthLoading } =
     useConvexAuth();
@@ -390,28 +391,28 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
 
   const title = useMemo(() => {
     if (!pathname) {
-      return "Cleaner";
+      return t("common.jobs");
     }
     if (pathname.startsWith("/cleaner/jobs/")) {
-      return pathname.endsWith("/active") ? "Active Job" : "Job Detail";
+      return pathname.endsWith("/active") ? t("cleaner.activeJob") : t("cleaner.jobDetail");
     }
     if (pathname.startsWith("/cleaner/history")) {
-      return "History";
+      return t("cleaner.history");
     }
     if (pathname.startsWith("/cleaner/incidents")) {
-      return "Incident Report";
+      return t("cleaner.incidentReport");
     }
     if (pathname.startsWith("/cleaner/settings")) {
-      return "Settings";
+      return t("common.settings");
     }
     if (pathname.startsWith("/cleaner/more")) {
-      return "More";
+      return t("cleaner.more");
     }
     if (pathname.startsWith("/cleaner/messages")) {
-      return "Messages";
+      return t("common.messages");
     }
-    return "My Jobs";
-  }, [pathname]);
+    return t("cleaner.myJobs");
+  }, [pathname, t]);
 
   const handleSignOut = useCallback(async () => {
     try {
@@ -539,14 +540,11 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={toggleLocale}
-              className="relative rounded-md border border-[var(--border)] p-2.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+              className="rounded-md border border-[var(--border)] px-2.5 py-2 text-xs font-bold uppercase text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
               aria-label={`Switch to ${localeNames[currentLocale === "en" ? "es" : "en"]}`}
               title={`Switch to ${localeNames[currentLocale === "en" ? "es" : "en"]}`}
             >
-              <Globe className="h-5 w-5" />
-              <span className="absolute -bottom-1 -right-1 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-[var(--primary)] px-1 text-[9px] font-bold uppercase text-white">
-                {currentLocale}
-              </span>
+              {currentLocale}
             </button>
             <button
               type="button"
@@ -631,7 +629,7 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
                       </span>
                     ) : null}
                   </span>
-                  <span>{item.label}</span>
+                  <span>{t(item.labelKey)}</span>
                 </Link>
               </li>
             );

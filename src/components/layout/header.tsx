@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslations } from "next-intl";
 import { api } from "@convex/_generated/api";
-import { Bell, Globe, LogOut, Menu, Moon, Settings, Sun, X } from "lucide-react";
+import { Bell, LogOut, Menu, Moon, Settings, Sun, X } from "lucide-react";
 import {
   canAccessPath,
   getRoleFromMetadata,
@@ -352,14 +352,11 @@ export function Header() {
           <button
             type="button"
             onClick={toggleLocale}
-            className="relative rounded-none p-2 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+            className="rounded-none px-2 py-1 text-xs font-bold uppercase text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
             aria-label={`Switch to ${localeNames[currentLocale === "en" ? "es" : "en"]}`}
             title={`Switch to ${localeNames[currentLocale === "en" ? "es" : "en"]}`}
           >
-            <Globe className="h-4 w-4" />
-            <span className="absolute -bottom-0.5 -right-0.5 inline-flex min-h-3.5 min-w-3.5 items-center justify-center rounded-full bg-[var(--primary)] px-0.5 text-[8px] font-bold uppercase text-white">
-              {currentLocale}
-            </span>
+            {currentLocale}
           </button>
 
           <button
@@ -449,7 +446,7 @@ export function Header() {
                 onClick={toggleLocale}
                 className="flex w-full items-center gap-3 rounded-none px-3 py-3 text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
               >
-                <Globe className="h-4 w-4" />
+                <span className="inline-flex h-4 w-4 items-center justify-center text-[10px] font-bold uppercase">{currentLocale}</span>
                 {currentLocale === "en" ? "Cambiar a Español" : "Switch to English"}
               </button>
 

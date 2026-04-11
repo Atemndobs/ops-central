@@ -129,6 +129,13 @@
     "messageReceived": "New message"
   },
   "cleaner": {
+    "myJobs": "My Jobs",
+    "activeJob": "Active Job",
+    "jobDetail": "Job Detail",
+    "history": "History",
+    "incidentReport": "Incident Report",
+    "incident": "Incident",
+    "more": "More",
     "today": "Today",
     "activeJobs": "active job(s)",
     "submittedJobs": "submitted or completed job(s)",
