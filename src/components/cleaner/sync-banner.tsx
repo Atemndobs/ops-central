@@ -1,8 +1,11 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import type { SyncState } from "@/features/cleaner/offline/types";
 
 export function SyncBanner({ syncState }: { syncState: SyncState }) {
+  const t = useTranslations();
+
   if (syncState.pendingCount === 0 && syncState.failedCount === 0 && syncState.isOnline) {
     return null;
   }
@@ -14,24 +17,20 @@ export function SyncBanner({ syncState }: { syncState: SyncState }) {
   return (
     <div className={`rounded-md border p-2 text-xs ${tone}`}>
       {!syncState.isOnline ? (
-        <p>You are offline. Photos and progress are being saved locally.</p>
+        <p>{t("cleaner.sync.offline")}</p>
       ) : null}
 
-      {syncState.isSyncing ? <p>Sync in progress...</p> : null}
+      {syncState.isSyncing ? <p>{t("cleaner.sync.syncing")}</p> : null}
 
       {syncState.pendingCount > 0 ? (
-        <p>
-          {syncState.pendingCount} pending upload{syncState.pendingCount > 1 ? "s" : ""}.
-        </p>
+        <p>{t("cleaner.sync.pendingUpload", { count: syncState.pendingCount })}</p>
       ) : null}
 
       {syncState.failedCount > 0 ? (
-        <p>
-          {syncState.failedCount} failed upload{syncState.failedCount > 1 ? "s" : ""}. Retry by going online.
-        </p>
+        <p>{t("cleaner.sync.failedUpload", { count: syncState.failedCount })}</p>
       ) : null}
 
-      {syncState.lastError ? <p>Last sync error: {syncState.lastError}</p> : null}
+      {syncState.lastError ? <p>{t("cleaner.sync.lastError", { error: syncState.lastError })}</p> : null}
     </div>
   );
 }

@@ -10,12 +10,9 @@ import { useTranslations } from "next-intl";
 import {
   Bell,
   ClipboardList,
-  MessageSquare,
+  MessageCircle,
   AlertTriangle,
-  MoreHorizontal,
-  Wifi,
-  WifiOff,
-  LogOut,
+  User,
   Moon,
   Sun,
 } from "lucide-react";
@@ -23,9 +20,9 @@ import { api } from "@convex/_generated/api";
 import { localeNames, type Locale } from "@/lib/locales";
 import type { Id } from "@convex/_generated/dataModel";
 import { InstallPrompt } from "@/components/cleaner/install-prompt";
+import { CleanerIconButton } from "@/components/cleaner/cleaner-ui";
 import { useConsumeNotificationIdFromSearchParam } from "@/lib/notifications-client";
 import {
-  disableWebPushSubscription as disableBrowserWebPushSubscription,
   ensureWebPushSubscription,
   hasWebPushPublicKey,
   isWebPushSupported,
@@ -33,9 +30,9 @@ import {
 
 const NAV_ITEMS = [
   { href: "/cleaner", labelKey: "common.jobs", icon: ClipboardList },
-  { href: "/cleaner/messages", labelKey: "common.messages", icon: MessageSquare },
-  { href: "/cleaner/incidents/new", labelKey: "cleaner.incident", icon: AlertTriangle },
-  { href: "/cleaner/more", labelKey: "cleaner.more", icon: MoreHorizontal },
+  { href: "/cleaner/messages", labelKey: "common.messages", icon: MessageCircle },
+  { href: "/cleaner/incidents/new", labelKey: "cleaner.incidentNav", icon: AlertTriangle },
+  { href: "/cleaner/more", labelKey: "cleaner.more", icon: User },
 ];
 
 const THEME_STORAGE_KEY = "opscentral-theme";
@@ -94,7 +91,7 @@ function formatNotificationTime(timestamp: number): string {
 export function CleanerShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const t = useTranslations();
-  const { signOut, userId } = useAuth();
+  const { userId } = useAuth();
   const { isAuthenticated: isConvexAuthenticated, isLoading: isConvexAuthLoading } =
     useConvexAuth();
   const themePreference = useQuery(
@@ -125,15 +122,19 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     api.conversations.queries.getUnreadConversationCount,
     isConvexAuthenticated ? {} : "skip",
   );
+  const assignedJobs = useQuery(
+    api.cleaningJobs.queries.getMyAssigned,
+    isConvexAuthenticated ? { limit: 200 } : "skip",
+  ) as Array<{ status: string }> | undefined;
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
   const setLocalePreference = useMutation(api.users.mutations.setLocalePreference);
   const markNotificationRead = useMutation(api.users.mutations.markNotificationRead);
   const updateWebPushSubscription = useMutation(api.users.mutations.updateWebPushSubscription);
   const clearWebPushSubscription = useMutation(api.users.mutations.clearWebPushSubscription);
   const setThemePreferenceRef = useRef(setThemePreference);
+  const setLocalePreferenceRef = useRef(setLocalePreference);
   const updateWebPushSubscriptionRef = useRef(updateWebPushSubscription);
   const clearWebPushSubscriptionRef = useRef(clearWebPushSubscription);
-  const [isOnline, setIsOnline] = useState(true);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
@@ -156,6 +157,18 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
   );
   const visibleNotifications = unreadNotifications;
   const unreadCount = unreadNotifications.length;
+  const homeSummaryCount = useMemo(() => {
+    const source = assignedJobs ?? [];
+    const inReviewCount = source.filter((job) => job.status === "awaiting_approval").length;
+    const nextJobsCount = source.filter(
+      (job) =>
+        job.status === "scheduled" ||
+        job.status === "assigned" ||
+        job.status === "in_progress" ||
+        job.status === "rework_required",
+    ).length;
+    return nextJobsCount + inReviewCount;
+  }, [assignedJobs]);
 
   useConsumeNotificationIdFromSearchParam(isConvexAuthenticated);
 
@@ -180,24 +193,16 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
   }, [setThemePreference]);
 
   useEffect(() => {
+    setLocalePreferenceRef.current = setLocalePreference;
+  }, [setLocalePreference]);
+
+  useEffect(() => {
     updateWebPushSubscriptionRef.current = updateWebPushSubscription;
   }, [updateWebPushSubscription]);
 
   useEffect(() => {
     clearWebPushSubscriptionRef.current = clearWebPushSubscription;
   }, [clearWebPushSubscription]);
-
-  useEffect(() => {
-    const updateOnlineState = () => setIsOnline(window.navigator.onLine);
-    updateOnlineState();
-
-    window.addEventListener("online", updateOnlineState);
-    window.addEventListener("offline", updateOnlineState);
-    return () => {
-      window.removeEventListener("online", updateOnlineState);
-      window.removeEventListener("offline", updateOnlineState);
-    };
-  }, []);
 
   useEffect(() => {
     if (!isNotificationsOpen) {
@@ -365,15 +370,14 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     }
   }, [isConvexAuthenticated, resolvedTheme]);
 
-  const [currentLocale, setCurrentLocale] = useState<Locale>("en");
-
-  useEffect(() => {
+  const [currentLocale, setCurrentLocale] = useState<Locale>(() => {
+    if (typeof document === "undefined") {
+      return "en";
+    }
     const cookie = document.cookie.split("; ").find((c) => c.startsWith("NEXT_LOCALE="));
     const cookieLocale = cookie?.split("=")[1] as Locale | undefined;
-    if (cookieLocale && cookieLocale !== currentLocale) {
-      setCurrentLocale(cookieLocale);
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    return cookieLocale ?? "en";
+  });
 
   const toggleLocale = useCallback(() => {
     const nextLocale: Locale = currentLocale === "en" ? "es" : "en";
@@ -381,13 +385,13 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     document.cookie = `NEXT_LOCALE=${nextLocale}; path=/; max-age=31536000`;
 
     if (isConvexAuthenticated) {
-      void setLocalePreference({ locale: nextLocale }).catch((error) => {
+      void setLocalePreferenceRef.current({ locale: nextLocale }).catch((error) => {
         console.warn("[CleanerLocale] Failed to save locale in Convex", error);
       });
     }
 
     setTimeout(() => window.location.reload(), 300);
-  }, [currentLocale, isConvexAuthenticated, setLocalePreference]);
+  }, [currentLocale, isConvexAuthenticated]);
 
   const title = useMemo(() => {
     if (!pathname) {
@@ -414,82 +418,76 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     return t("cleaner.myJobs");
   }, [pathname, t]);
 
-  const handleSignOut = useCallback(async () => {
-    try {
-      await disableBrowserWebPushSubscription();
-      await clearWebPushSubscriptionRef.current({});
-    } catch (error) {
-      console.warn("[CleanerPWA] Failed to clear push subscription during sign out", error);
-    }
-
-    await signOut();
-    window.location.href = "/sign-in";
-  }, [signOut]);
-
   return (
-    <div className="relative h-[100svh] overflow-hidden bg-[var(--background)] text-[15px] text-[var(--foreground)]">
-      <header className="fixed inset-x-0 top-0 z-40 border-b border-[var(--border)] bg-[var(--card)]/95 px-4 py-3.5 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-2xl items-center justify-between">
-          <div className="flex items-center gap-3">
+    <div className="cleaner-theme cleaner-app-shell relative h-[100svh] overflow-hidden text-[15px] text-[var(--foreground)]">
+      <header className="fixed inset-x-0 top-0 z-40 border-b border-[var(--border)] bg-white/92 px-3 py-3 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-[402px] items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <Image
               src="https://chezsoistays.com/wp-content/uploads/2026/02/cropped-chezsoi_favicon@2x.png"
               alt="ChezSoiCleaning logo"
-              width={36}
-              height={36}
-              className="h-9 w-9 rounded-md border border-[var(--border)]"
+              width={32}
+              height={32}
+              className="h-8 w-8 object-contain"
               priority
             />
             <div>
-              <p className="text-sm uppercase tracking-wide text-[var(--muted-foreground)]">ChezSoiCleaning</p>
-              <h1 className="text-lg font-semibold">{title}</h1>
+              <p className="cleaner-meta text-[10px] text-[var(--cleaner-ink)]">{t("cleaner.myJobs")}</p>
+              <h1 className="truncate font-[var(--font-cleaner-body)] text-[13px] font-semibold text-[var(--cleaner-muted)]">
+                {title}
+              </h1>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div
-              className="flex items-center justify-center rounded-md border border-[var(--border)] px-2.5 py-2 text-[var(--muted-foreground)]"
-              aria-label={isOnline ? "Online" : "Offline"}
-              title={isOnline ? "Online" : "Offline"}
-            >
-              {isOnline ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
-            </div>
             <div className="relative" ref={notificationPanelRef}>
               <button
                 type="button"
-                onClick={() => setIsNotificationsOpen((prev) => !prev)}
-                className="relative rounded-md border border-[var(--border)] p-2.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+                onClick={() => {
+                  if (pathname === "/cleaner") {
+                    setIsNotificationsOpen(false);
+                    window.dispatchEvent(new Event("cleaner:toggle-summary"));
+                    return;
+                  }
+                  setIsNotificationsOpen((prev) => !prev);
+                }}
+                className="cleaner-tool-button relative h-8 w-8 bg-[var(--cleaner-primary)] text-white"
                 aria-label="Notifications"
                 aria-expanded={isNotificationsOpen}
                 aria-haspopup="dialog"
               >
-                <Bell className="h-5 w-5" />
-                {unreadCount > 0 ? (
+                <Bell className="h-4.5 w-4.5" />
+                {(pathname === "/cleaner" ? homeSummaryCount : unreadCount) > 0 ? (
                   <span className="absolute -right-1 -top-1 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-[var(--destructive)] px-1 text-[10px] font-bold text-white">
-                    {unreadCount > 9 ? "9+" : unreadCount}
+                    {(pathname === "/cleaner" ? homeSummaryCount : unreadCount) > 9
+                      ? "9+"
+                      : pathname === "/cleaner"
+                        ? homeSummaryCount
+                        : unreadCount}
                   </span>
                 ) : null}
               </button>
 
               {isNotificationsOpen ? (
-                <div className="fixed left-2 right-2 top-[calc(env(safe-area-inset-top)+5.5rem)] z-50 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--card)] shadow-xl sm:absolute sm:left-auto sm:right-0 sm:top-12 sm:w-[320px] sm:max-w-[calc(100vw-1rem)]">
+                <div className="fixed left-3 right-3 top-[calc(env(safe-area-inset-top)+6.5rem)] z-50 overflow-hidden rounded-[24px] border border-[var(--border)] bg-[var(--card)] shadow-[var(--cleaner-shadow)] sm:absolute sm:left-auto sm:right-0 sm:top-12 sm:w-[320px] sm:max-w-[calc(100vw-1rem)]">
                   <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-2">
-                    <p className="text-sm font-semibold">Notifications</p>
-                    <span className="text-xs text-[var(--muted-foreground)]">
-                      {unreadCount} unread
+                    <p className="cleaner-card-title text-[18px]">{t("cleaner.shell.notifications")}</p>
+                    <span className="cleaner-meta text-[10px] text-[var(--cleaner-muted)]">
+                      {t("cleaner.shell.unreadCount", { count: unreadCount })}
                     </span>
                   </div>
 
                   <div className="max-h-80 overflow-y-auto">
                     {!isConvexAuthenticated ? (
                       <p className="px-3 py-4 text-sm text-[var(--muted-foreground)]">
-                        Sign in to view notifications.
+                        {t("cleaner.shell.signInToView")}
                       </p>
                     ) : notifications === undefined ? (
                       <p className="px-3 py-4 text-sm text-[var(--muted-foreground)]">
-                        Loading notifications...
+                        {t("cleaner.shell.loadingNotifications")}
                       </p>
                     ) : visibleNotifications.length === 0 ? (
                       <p className="px-3 py-4 text-sm text-[var(--muted-foreground)]">
-                        No unread notifications.
+                        {t("cleaner.shell.noUnreadNotifications")}
                       </p>
                     ) : (
                       <div className="divide-y divide-[var(--border)]">
@@ -531,7 +529,7 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
                       onClick={() => setIsNotificationsOpen(false)}
                       className="text-xs font-medium text-[var(--primary)] hover:opacity-80"
                     >
-                      View all in Settings
+                      {t("cleaner.shell.viewAllInSettings")}
                     </Link>
                   </div>
                 </div>
@@ -540,51 +538,42 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={toggleLocale}
-              className="rounded-md border border-[var(--border)] px-2.5 py-2 text-xs font-bold uppercase text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+              className="cleaner-tool-button h-8 w-8 bg-white text-[var(--cleaner-ink)]"
               aria-label={`Switch to ${localeNames[currentLocale === "en" ? "es" : "en"]}`}
               title={`Switch to ${localeNames[currentLocale === "en" ? "es" : "en"]}`}
             >
-              {currentLocale}
+              <span className="font-[var(--font-cleaner-body)] text-[10px] font-bold uppercase">
+                {currentLocale}
+              </span>
             </button>
             <button
               type="button"
               onClick={toggleTheme}
-              className="rounded-md border border-[var(--border)] p-2.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
-              aria-label={isDarkMode ? "Switch to light theme" : "Switch to dark theme"}
-              title={isDarkMode ? "Light Mode" : "Dark Mode"}
+              className="cleaner-tool-button h-8 w-8 bg-white text-[var(--cleaner-ink)]"
+              aria-label={isDarkMode ? t("cleaner.shell.switchToLight") : t("cleaner.shell.switchToDark")}
+              title={isDarkMode ? t("nav.lightMode") : t("nav.darkMode")}
             >
-              {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                void handleSignOut();
-              }}
-              className="rounded-md border border-[var(--border)] p-2.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
-              aria-label="Sign out"
-              title="Sign out"
-            >
-              <LogOut className="h-5 w-5" />
+              {isDarkMode ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
             </button>
           </div>
         </div>
       </header>
 
       <main
-        className="fixed inset-x-0 overflow-y-auto px-4"
+        className="fixed inset-x-0 overflow-y-auto px-3"
         style={{
-          top: "78px",
-          bottom: "calc(84px + max(env(safe-area-inset-bottom), 6px))",
+          top: "calc(env(safe-area-inset-top) + 72px)",
+          bottom: "max(env(safe-area-inset-bottom), 8px)",
         }}
       >
-        <div className="mx-auto w-full max-w-2xl pb-4 pt-4">
+        <div className="mx-auto w-full max-w-[402px] pb-24 pt-4">
           <InstallPrompt />
           {updateReady ? (
-            <div className="mt-2 rounded-md border border-blue-500/60 bg-blue-500/10 p-2 text-xs text-blue-100">
-              <p>A new app version is ready.</p>
+            <div className="cleaner-card mt-2 border-blue-500/60 bg-blue-500/10 p-3 text-xs text-blue-100">
+              <p>{t("cleaner.shell.newVersionReady")}</p>
               <button
                 type="button"
-                className="mt-2 rounded-md bg-blue-500 px-2 py-1 font-semibold text-white"
+                className="mt-2 rounded-[10px] bg-blue-500 px-3 py-1.5 font-semibold text-white"
                 onClick={() => {
                   if (!registration?.waiting) {
                     window.location.reload();
@@ -594,7 +583,7 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
                   registration.waiting.postMessage({ type: "SKIP_WAITING" });
                 }}
               >
-                Update now
+                {t("cleaner.shell.updateNow")}
               </button>
             </div>
           ) : null}
@@ -603,10 +592,10 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
       </main>
 
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--border)] bg-[var(--card)]/95 backdrop-blur"
+        className="pointer-events-none fixed inset-x-0 bottom-0 z-40 bg-transparent"
         style={{ paddingBottom: "max(env(safe-area-inset-bottom), 6px)" }}
       >
-        <ul className="mx-auto grid max-w-2xl grid-cols-4">
+        <ul className="pointer-events-auto mx-auto grid max-w-[402px] grid-cols-4 items-center justify-items-center gap-x-3 px-9 pb-2">
           {NAV_ITEMS.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
             const showMessageBadge =
@@ -614,22 +603,21 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
               typeof unreadMessageCount === "number" &&
               unreadMessageCount > 0;
             return (
-              <li key={item.href}>
+              <li key={item.href} className="list-none">
                 <Link
                   href={item.href}
-                  className={`flex min-h-[74px] flex-col items-center justify-center gap-1.5 px-2 py-3.5 text-[13px] font-medium ${
-                    isActive ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]"
-                  }`}
+                  aria-label={t(item.labelKey)}
+                  title={t(item.labelKey)}
+                  className="block"
                 >
-                  <span className="relative inline-flex">
-                    <item.icon className="h-5 w-5" />
-                    {showMessageBadge ? (
-                      <span className="absolute -right-2 -top-2 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-[var(--destructive)] px-1 text-[10px] font-bold text-white">
-                        {unreadMessageCount > 9 ? "9+" : unreadMessageCount}
-                      </span>
-                    ) : null}
-                  </span>
-                  <span>{t(item.labelKey)}</span>
+                  <CleanerIconButton
+                    icon={item.icon}
+                    label={t(item.labelKey)}
+                    active={isActive}
+                    size="nav"
+                    badge={showMessageBadge ? unreadMessageCount : undefined}
+                    className="shadow-[0px_2px_8.2px_rgba(0,0,0,0.18)]"
+                  />
                 </Link>
               </li>
             );

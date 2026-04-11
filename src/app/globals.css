@@ -10,7 +10,7 @@
   --card-foreground: oklch(0.24 0.02 255);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.24 0.02 255);
-  --primary: oklch(0.72 0.16 55);
+  --primary: oklch(0.59 0.22 308);
   --primary-foreground: oklch(0.99 0 0);
   --secondary: oklch(0.94 0.02 258);
   --secondary-foreground: oklch(0.34 0.03 255);
@@ -26,10 +26,17 @@
   --warning-foreground: oklch(0.25 0.03 255);
   --border: oklch(0.89 0.01 255);
   --input: oklch(0.89 0.01 255);
-  --ring: oklch(0.72 0.16 55);
+  --ring: oklch(0.59 0.22 308);
   --radius: 0.75rem;
   --sidebar-width: 16rem;
   --sidebar-width-collapsed: 4rem;
+  --cleaner-bg: #f2f2f2;
+  --cleaner-surface: #ffffff;
+  --cleaner-ink: #333333;
+  --cleaner-muted: #828282;
+  --cleaner-primary: #9b51e0;
+  --cleaner-primary-soft: #bd77ff;
+  --cleaner-shadow: 0 12px 30px -8px rgba(0, 0, 0, 0.1);
 }
 
 @layer base {
@@ -68,7 +75,7 @@
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.178 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.623 0.214 259);
+  --primary: oklch(0.68 0.19 307);
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
@@ -84,7 +91,14 @@
   --warning-foreground: oklch(0.145 0 0);
   --border: oklch(0.269 0 0);
   --input: oklch(0.269 0 0);
-  --ring: oklch(0.623 0.214 259);
+  --ring: oklch(0.68 0.19 307);
+  --cleaner-bg: #181426;
+  --cleaner-surface: #241f37;
+  --cleaner-ink: #f7f3ff;
+  --cleaner-muted: #c3b5df;
+  --cleaner-primary: #bd77ff;
+  --cleaner-primary-soft: #9b51e0;
+  --cleaner-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.45);
 }
 
 * {
@@ -114,5 +128,77 @@ body {
 
   .text-display {
     @apply text-4xl font-bold leading-none tracking-tighter;
+  }
+
+  .cleaner-theme {
+    --background: var(--cleaner-bg);
+    --foreground: var(--cleaner-ink);
+    --card: var(--cleaner-surface);
+    --card-foreground: var(--cleaner-ink);
+    --popover: var(--cleaner-surface);
+    --popover-foreground: var(--cleaner-ink);
+    --primary: var(--cleaner-primary);
+    --primary-foreground: #ffffff;
+    --accent: color-mix(in srgb, var(--cleaner-primary) 10%, white);
+    --accent-foreground: var(--cleaner-ink);
+    --muted: color-mix(in srgb, var(--cleaner-bg) 86%, white);
+    --muted-foreground: var(--cleaner-muted);
+    --border: color-mix(in srgb, var(--cleaner-primary) 18%, #d7d7d7);
+    --input: color-mix(in srgb, var(--cleaner-primary) 14%, #e5e5e5);
+    --ring: var(--cleaner-primary);
+    background:
+      radial-gradient(circle at top, color-mix(in srgb, var(--cleaner-primary) 14%, transparent), transparent 35%),
+      var(--cleaner-bg);
+    font-family: var(--font-cleaner-body), var(--font-geist-sans, system-ui, sans-serif);
+  }
+
+  .cleaner-display {
+    font-family: var(--font-cleaner-display), serif;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+
+  .cleaner-meta {
+    font-family: var(--font-cleaner-mono), monospace;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  .cleaner-card {
+    @apply rounded-[24px] border bg-[var(--card)] shadow-[var(--cleaner-shadow)];
+  }
+
+  .cleaner-card-title {
+    font-family: var(--font-cleaner-display), serif;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    color: var(--cleaner-ink);
+    font-size: 1.6rem;
+  }
+
+  .cleaner-eyebrow {
+    font-family: var(--font-cleaner-mono), monospace;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-size: 10px;
+    color: var(--cleaner-muted);
+  }
+
+  .cleaner-app-shell {
+    scrollbar-gutter: stable;
+  }
+
+  .cleaner-tool-button {
+    @apply flex items-center justify-center rounded-full shadow-[var(--cleaner-shadow)] transition-transform active:scale-95;
+  }
+
+  .cleaner-outline-button {
+    @apply inline-flex items-center justify-center rounded-[10px] border border-[var(--cleaner-primary)] bg-transparent px-3 py-2 text-[13px] font-medium text-[var(--cleaner-primary)];
+  }
+
+  .cleaner-primary-button {
+    @apply inline-flex items-center justify-center rounded-[10px] bg-[var(--cleaner-primary)] px-3 py-2 text-[13px] font-semibold text-white;
   }
 }

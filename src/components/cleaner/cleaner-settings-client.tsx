@@ -6,6 +6,7 @@ import type { Id } from "@convex/_generated/dataModel";
 import Image from "next/image";
 import Link from "next/link";
 import { type ChangeEvent, useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { api } from "@convex/_generated/api";
 import { clearPendingUploads, listPendingUploads } from "@/features/cleaner/offline/indexeddb";
 import { uploadImageFile } from "@/lib/upload-image";
@@ -42,6 +43,7 @@ function getCleanerNotificationHref(type: string, data: unknown): string {
 }
 
 export function CleanerSettingsClient() {
+  const t = useTranslations();
   const { signOut } = useAuth();
   const { isAuthenticated: isConvexAuthenticated, isLoading: isConvexAuthLoading } = useConvexAuth();
   const profile = useQuery(
@@ -185,7 +187,7 @@ export function CleanerSettingsClient() {
     } catch (error) {
       setProfileMessage({
         tone: "error",
-        text: error instanceof Error ? error.message : "Failed to upload photo.",
+        text: error instanceof Error ? error.message : t("cleaner.settings.failedUploadPhoto"),
       });
     } finally {
       setIsUploadingAvatar(false);
@@ -201,7 +203,7 @@ export function CleanerSettingsClient() {
     if (normalizedName.length < 2) {
       setProfileMessage({
         tone: "error",
-        text: "Enter a valid name before saving.",
+        text: t("cleaner.settings.enterValidNameSave"),
       });
       return;
     }
@@ -216,12 +218,12 @@ export function CleanerSettingsClient() {
       });
       setProfileMessage({
         tone: "success",
-        text: "Profile updated.",
+        text: t("cleaner.settings.profileUpdated"),
       });
     } catch (error) {
       setProfileMessage({
         tone: "error",
-        text: error instanceof Error ? error.message : "Failed to save profile.",
+        text: error instanceof Error ? error.message : t("cleaner.settings.failedSaveProfile"),
       });
     } finally {
       setIsSavingProfile(false);
@@ -282,7 +284,7 @@ export function CleanerSettingsClient() {
       if (permission !== "granted") {
         setPushMessage({
           tone: "error",
-          text: "Browser permission was not granted.",
+          text: t("cleaner.settings.permissionNotGranted"),
         });
         return;
       }
@@ -296,12 +298,12 @@ export function CleanerSettingsClient() {
       setHasPushSubscription(true);
       setPushMessage({
         tone: "success",
-        text: "Push notifications are enabled on this device.",
+        text: t("cleaner.settings.pushEnabled"),
       });
     } catch (error) {
       setPushMessage({
         tone: "error",
-        text: error instanceof Error ? error.message : "Failed to enable push notifications.",
+        text: error instanceof Error ? error.message : t("cleaner.settings.failedEnablePush"),
       });
     } finally {
       setIsUpdatingPush(false);
@@ -319,12 +321,12 @@ export function CleanerSettingsClient() {
       setHasPushSubscription(false);
       setPushMessage({
         tone: "success",
-        text: "Push notifications were disabled for this device.",
+        text: t("cleaner.settings.pushDisabled"),
       });
     } catch (error) {
       setPushMessage({
         tone: "error",
-        text: error instanceof Error ? error.message : "Failed to disable push notifications.",
+        text: error instanceof Error ? error.message : t("cleaner.settings.failedDisablePush"),
       });
     } finally {
       setIsUpdatingPush(false);
@@ -334,8 +336,8 @@ export function CleanerSettingsClient() {
 
   return (
     <div className="space-y-4">
-      <section className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
-        <h2 className="text-base font-semibold">Account</h2>
+      <section className="cleaner-card p-4">
+        <h2 className="text-base font-semibold">{t("cleaner.settings.account")}</h2>
         <div className="mt-4 flex flex-col gap-4">
           <div className="flex items-center gap-4">
             {profileAvatarUrl ? (
@@ -355,8 +357,8 @@ export function CleanerSettingsClient() {
               </div>
             )}
             <div className="space-y-2">
-              <label className="inline-flex cursor-pointer rounded-md border border-[var(--border)] px-3 py-2 text-sm">
-                {isUploadingAvatar ? "Uploading..." : "Change Photo"}
+              <label className="cleaner-outline-button inline-flex cursor-pointer text-sm">
+                {isUploadingAvatar ? t("cleaner.settings.uploading") : t("cleaner.settings.changePhoto")}
                 <input
                   type="file"
                   accept="image/*"
@@ -368,35 +370,35 @@ export function CleanerSettingsClient() {
                 />
               </label>
               <p className="text-xs text-[var(--muted-foreground)]">
-                Upload a square photo for the cleanest result.
+                {t("cleaner.settings.photoHint")}
               </p>
             </div>
           </div>
 
           <label className="block text-sm">
-            <span className="mb-1 block text-[var(--muted-foreground)]">Name</span>
+            <span className="mb-1 block text-[var(--muted-foreground)]">{t("cleaner.settings.name")}</span>
             <input
               value={profileName}
               onChange={(event) => setProfileName(event.target.value)}
               className="w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2"
-              placeholder="Your name"
+              placeholder={t("cleaner.settings.namePlaceholder")}
             />
           </label>
 
           <label className="block text-sm">
-            <span className="mb-1 block text-[var(--muted-foreground)]">Phone</span>
+            <span className="mb-1 block text-[var(--muted-foreground)]">{t("cleaner.settings.phone")}</span>
             <input
               value={profilePhone}
               onChange={(event) => setProfilePhone(event.target.value)}
               className="w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2"
-              placeholder="Phone number"
+              placeholder={t("cleaner.settings.phonePlaceholder")}
             />
           </label>
 
           <div className="text-sm text-[var(--muted-foreground)]">
-            <p>{profile?.email || "No email available"}</p>
+            <p>{profile?.email || t("cleaner.settings.noEmail")}</p>
             <p className="mt-1 uppercase tracking-wider">
-              {profile?.role?.replace("_", " ") || "cleaner"}
+              {(() => { try { return t(`roles.${profile?.role ?? "cleaner"}`); } catch { return profile?.role?.replace("_", " ") ?? t("roles.cleaner"); } })()}
             </p>
           </div>
 
@@ -415,20 +417,20 @@ export function CleanerSettingsClient() {
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              className="rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-[var(--primary-foreground)] disabled:opacity-60"
+              className="cleaner-primary-button text-sm disabled:opacity-60"
               onClick={() => {
                 void handleProfileSave();
               }}
               disabled={isSavingProfile || isUploadingAvatar || !isConvexAuthenticated}
             >
-              {isSavingProfile ? "Saving..." : "Save Profile"}
+              {isSavingProfile ? t("cleaner.settings.saving") : t("cleaner.settings.saveProfile")}
             </button>
           </div>
 
           <div className="flex flex-wrap gap-2 border-t border-[var(--border)] pt-2">
           <button
             type="button"
-            className="rounded-md border border-[var(--border)] px-3 py-2 text-sm"
+            className="cleaner-outline-button text-sm"
             onClick={async () => {
               const nextTheme: ThemePreference = isDarkMode ? "light" : "dark";
               setLocalTheme(nextTheme);
@@ -439,11 +441,11 @@ export function CleanerSettingsClient() {
               }
             }}
           >
-            Switch to {isDarkMode ? "Light" : "Dark"} Theme
+            {t("cleaner.settings.switchToTheme", { theme: isDarkMode ? t("cleaner.settings.light") : t("cleaner.settings.dark") })}
           </button>
           <button
             type="button"
-            className="rounded-md border border-[var(--border)] px-3 py-2 text-sm"
+            className="cleaner-outline-button text-sm"
             onClick={async () => {
               await disableWebPushSubscription().catch(() => false);
               await clearWebPushSubscription({}).catch(() => ({ success: false }));
@@ -451,33 +453,33 @@ export function CleanerSettingsClient() {
               window.location.href = "/sign-in";
             }}
           >
-            Sign Out
+            {t("cleaner.settings.signOut")}
           </button>
           </div>
         </div>
       </section>
 
-      <section className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
-        <h2 className="text-base font-semibold">Offline Sync</h2>
+      <section className="cleaner-card p-4">
+        <h2 className="text-base font-semibold">{t("cleaner.settings.offlineSync")}</h2>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-          Pending uploads in queue: <span className="font-semibold text-[var(--foreground)]">{pendingUploads}</span>
+          {t("cleaner.settings.pendingUploads")} <span className="font-semibold text-[var(--foreground)]">{pendingUploads}</span>
         </p>
         <button
           type="button"
-          className="mt-3 rounded-md border border-[var(--border)] px-3 py-2 text-sm"
+          className="mt-3 cleaner-outline-button text-sm"
           onClick={async () => {
             await clearPendingUploads();
             setPendingUploads(0);
           }}
         >
-          Clear Offline Queue
+          {t("cleaner.settings.clearOfflineQueue")}
         </button>
       </section>
 
-      <section className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
-        <h2 className="text-base font-semibold">App Cache</h2>
+      <section className="cleaner-card p-4">
+        <h2 className="text-base font-semibold">{t("cleaner.settings.appCache")}</h2>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-          If the app is showing outdated information or behaving strangely, clear the cache and reload.
+          {t("cleaner.settings.appCacheHint")}
         </p>
         <button
           type="button"
@@ -485,38 +487,38 @@ export function CleanerSettingsClient() {
           className="mt-3 rounded-md border border-[var(--destructive)]/50 bg-[var(--destructive)]/10 px-3 py-2 text-sm font-semibold text-[var(--destructive)] hover:bg-[var(--destructive)]/20 active:opacity-70 disabled:opacity-50"
           onClick={() => { void handleClearCache(); }}
         >
-          {cacheCleared ? "✓ Cache cleared — reloading…" : clearingCache ? "Clearing…" : "Clear Cache & Refresh"}
+          {cacheCleared ? `✓ ${t("cleaner.settings.cacheCleared")}` : clearingCache ? t("cleaner.settings.clearing") : t("cleaner.settings.clearCacheRefresh")}
         </button>
       </section>
 
-      <section className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
-        <h2 className="text-base font-semibold">Push Notifications</h2>
+      <section className="cleaner-card p-4">
+        <h2 className="text-base font-semibold">{t("cleaner.settings.pushNotifications")}</h2>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-          Receive job assignments, approvals, and rework alerts on this device.
+          {t("cleaner.settings.pushHint")}
         </p>
         <div className="mt-3 space-y-2 text-sm">
           <p>
-            Support:{" "}
+            {t("cleaner.settings.support")}{" "}
             <span className="font-semibold text-[var(--foreground)]">
-              {isWebPushSupported() ? "Available" : "Unavailable"}
+              {isWebPushSupported() ? t("cleaner.settings.available") : t("cleaner.settings.unavailable")}
             </span>
           </p>
           <p>
-            VAPID Key:{" "}
+            {t("cleaner.settings.vapidKey")}{" "}
             <span className="font-semibold text-[var(--foreground)]">
-              {hasWebPushPublicKey() ? "Configured" : "Missing"}
+              {hasWebPushPublicKey() ? t("cleaner.settings.configured") : t("cleaner.settings.missing")}
             </span>
           </p>
           <p>
-            Permission:{" "}
+            {t("cleaner.settings.permission")}{" "}
             <span className="font-semibold text-[var(--foreground)]">
-              {pushPermission === "unsupported" ? "Unsupported" : pushPermission}
+              {pushPermission === "unsupported" ? t("cleaner.settings.unsupported") : pushPermission}
             </span>
           </p>
           <p>
-            Device Subscription:{" "}
+            {t("cleaner.settings.deviceSubscription")}{" "}
             <span className="font-semibold text-[var(--foreground)]">
-              {hasPushSubscription ? "Active" : "Inactive"}
+              {hasPushSubscription ? t("cleaner.settings.activeSub") : t("cleaner.settings.inactiveSub")}
             </span>
           </p>
         </div>
@@ -545,7 +547,7 @@ export function CleanerSettingsClient() {
               !hasWebPushPublicKey()
             }
           >
-            {isUpdatingPush ? "Updating..." : hasPushSubscription ? "Refresh Push Setup" : "Enable Push"}
+            {isUpdatingPush ? t("cleaner.settings.updating") : hasPushSubscription ? t("cleaner.settings.refreshPush") : t("cleaner.settings.enablePush")}
           </button>
           <button
             type="button"
@@ -555,17 +557,17 @@ export function CleanerSettingsClient() {
             }}
             disabled={isUpdatingPush || !hasPushSubscription}
           >
-            Disable Push
+            {t("cleaner.settings.disablePush")}
           </button>
         </div>
       </section>
 
       <section className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
-        <h2 className="text-base font-semibold">Recent Notifications</h2>
+        <h2 className="text-base font-semibold">{t("cleaner.settings.recentNotifications")}</h2>
         {isConvexAuthLoading || !isConvexAuthenticated || notifications === undefined ? (
-          <p className="mt-2 text-sm text-[var(--muted-foreground)]">Loading notifications...</p>
+          <p className="mt-2 text-sm text-[var(--muted-foreground)]">{t("cleaner.settings.loadingNotifications")}</p>
         ) : notifications.length === 0 ? (
-          <p className="mt-2 text-sm text-[var(--muted-foreground)]">No notifications yet.</p>
+          <p className="mt-2 text-sm text-[var(--muted-foreground)]">{t("cleaner.settings.noNotifications")}</p>
         ) : (
           <ul className="mt-3 space-y-2">
             {notifications.map((notification) => (
@@ -573,7 +575,7 @@ export function CleanerSettingsClient() {
                 <p className="text-sm font-semibold">{notification.title}</p>
                 <p className="mt-1 text-sm text-[var(--muted-foreground)]">{notification.message}</p>
                 <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-                  {new Date(notification.createdAt).toLocaleString()} · {notification.readAt ? "Read" : "Unread"}
+                  {new Date(notification.createdAt).toLocaleString()} · {notification.readAt ? t("cleaner.settings.read") : t("cleaner.settings.unread")}
                 </p>
                 <div className="mt-2 flex gap-2">
                   <Link
@@ -585,7 +587,7 @@ export function CleanerSettingsClient() {
                     }}
                     className="rounded-md border border-[var(--border)] px-2 py-1 text-xs"
                   >
-                    Open
+                    {t("common.open")}
                   </Link>
                   {!notification.readAt ? (
                     <button
@@ -595,7 +597,7 @@ export function CleanerSettingsClient() {
                       }}
                       className="rounded-md border border-[var(--border)] px-2 py-1 text-xs"
                     >
-                      Mark Read
+                      {t("cleaner.settings.markRead")}
                     </button>
                   ) : null}
                   <button
@@ -605,7 +607,7 @@ export function CleanerSettingsClient() {
                     }}
                     className="rounded-md border border-[var(--border)] px-2 py-1 text-xs"
                   >
-                    Dismiss
+                    {t("common.dismiss")}
                   </button>
                 </div>
               </li>

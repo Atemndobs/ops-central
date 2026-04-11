@@ -39,7 +39,7 @@ export function LanguageSwitcher() {
       setCurrentLocale(newLocale);
       setMessage({
         tone: "success",
-        text: `Language changed to ${localeNames[newLocale]}`,
+        text: t("cleaner.langSwitcher.changed", { language: localeNames[newLocale] }),
       });
 
       // Update the cookie and reload to apply new locale
@@ -52,7 +52,7 @@ export function LanguageSwitcher() {
     } catch (error) {
       setMessage({
         tone: "error",
-        text: error instanceof Error ? error.message : "Failed to change language",
+        text: error instanceof Error ? error.message : t("cleaner.langSwitcher.failed"),
       });
       setIsChanging(false);
     }
@@ -71,7 +71,7 @@ export function LanguageSwitcher() {
         }}
         disabled={isChanging}
       >
-        {isChanging ? "Changing..." : `Switch to ${nextLocaleName}`}
+        {isChanging ? t("cleaner.langSwitcher.changing") : t("cleaner.langSwitcher.switchTo", { language: nextLocaleName })}
       </button>
       {message && (
         <p

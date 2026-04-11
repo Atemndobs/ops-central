@@ -1,17 +1,14 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
+import { useTranslations } from "next-intl";
 import { api } from "@convex/_generated/api";
-
-function formatDate(value?: number) {
-  if (!value) return "—";
-  return new Date(value).toLocaleString();
-}
+import { CleanerJobCard, CleanerSection, mapJobAppearance } from "@/components/cleaner/cleaner-ui";
 
 export function CleanerHistoryClient() {
   const { isAuthenticated, isLoading } = useConvexAuth();
+  const t = useTranslations();
   const jobs = useQuery(api.cleaningJobs.queries.getMyAssigned, isAuthenticated ? { limit: 500 } : "skip") as
     | Array<{ _id: string; status: string; scheduledStartAt: number; property?: { name?: string | null } | null }>
     | undefined;
@@ -23,37 +20,47 @@ export function CleanerHistoryClient() {
       .sort((a, b) => b.scheduledStartAt - a.scheduledStartAt);
   }, [jobs]);
 
+  const getStatusLabel = (status: string) => {
+    try {
+      return t(`jobStatus.${status}`);
+    } catch {
+      return status.replace(/_/g, " ");
+    }
+  };
+
   if (isLoading || !isAuthenticated) {
-    return <p className="text-sm text-[var(--muted-foreground)]">Loading history...</p>;
+    return <p className="text-sm text-[var(--muted-foreground)]">{t("cleaner.loadingHistory")}</p>;
   }
 
   if (jobs === undefined) {
-    return <p className="text-sm text-[var(--muted-foreground)]">Loading history...</p>;
+    return <p className="text-sm text-[var(--muted-foreground)]">{t("cleaner.loadingHistory")}</p>;
   }
 
   if (history.length === 0) {
     return (
-      <div className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4 text-sm text-[var(--muted-foreground)]">
-        No history yet.
-      </div>
+      <CleanerSection eyebrow={t("cleaner.history")} title={t("cleaner.noHistory")}>
+        <p className="text-sm text-[var(--cleaner-muted)]">{t("cleaner.historyEmpty")}</p>
+      </CleanerSection>
     );
   }
 
   return (
-    <ul className="space-y-3">
+    <div className="space-y-3">
+      <CleanerSection eyebrow={t("cleaner.history")} title={t("cleaner.recentJobs")}>
+        <p className="text-sm text-[var(--cleaner-muted)]">
+          {t("cleaner.historyCount", { count: history.length })}
+        </p>
+      </CleanerSection>
       {history.map((job) => (
-        <li key={job._id} className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
-          <p className="text-base font-semibold">{job.property?.name ?? "Unknown property"}</p>
-          <p className="mt-1 text-sm text-[var(--muted-foreground)]">{formatDate(job.scheduledStartAt)}</p>
-          <p className="mt-1 text-xs uppercase tracking-wide text-[var(--muted-foreground)]">{job.status}</p>
-          <Link
-            href={`/cleaner/jobs/${job._id}`}
-            className="mt-3 inline-block rounded-md border border-[var(--border)] px-3 py-2 text-sm"
-          >
-            View
-          </Link>
-        </li>
+        <CleanerJobCard
+          key={job._id}
+          propertyName={job.property?.name ?? t("cleaner.unknownProperty")}
+          scheduledAt={job.scheduledStartAt}
+          appearance={mapJobAppearance(job.status)}
+          statusLabel={getStatusLabel(job.status)}
+          detailHref={`/cleaner/jobs/${job._id}`}
+        />
       ))}
-    </ul>
+    </div>
   );
 }

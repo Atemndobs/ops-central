@@ -1,0 +1,263 @@
+"use client";
+
+import Link from "next/link";
+import { CalendarDays, ClipboardList, Info, MessageCircle, Minimize2, RefreshCw, type LucideIcon } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { cn } from "@/lib/utils";
+
+export type CleanerJobAppearance = "open" | "in_review" | "completed" | "rework";
+
+export function mapJobAppearance(status: string): CleanerJobAppearance {
+  if (status === "completed") {
+    return "completed";
+  }
+  if (status === "awaiting_approval") {
+    return "in_review";
+  }
+  if (status === "rework_required") {
+    return "rework";
+  }
+  return "open";
+}
+
+export function formatCleanerDate(value?: number | null) {
+  if (!value) return "—";
+  return new Date(value).toLocaleString([], {
+    month: "numeric",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function CleanerSection({
+  title,
+  eyebrow,
+  children,
+}: {
+  title?: string;
+  eyebrow?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="cleaner-card p-4">
+      {eyebrow ? <p className="cleaner-eyebrow">{eyebrow}</p> : null}
+      {title ? <h2 className="cleaner-card-title mt-1">{title}</h2> : null}
+      <div className={title || eyebrow ? "mt-4" : ""}>{children}</div>
+    </section>
+  );
+}
+
+export function CleanerStatusPill({
+  appearance,
+  label,
+}: {
+  appearance: CleanerJobAppearance;
+  label: string;
+}) {
+  const className =
+    appearance === "open"
+      ? "bg-[var(--cleaner-primary)] text-white"
+      : appearance === "in_review"
+        ? "bg-[var(--cleaner-ink)] text-white"
+        : appearance === "completed"
+          ? "bg-[#111111] text-white"
+          : "bg-[var(--destructive)] text-white";
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2.5 py-1 cleaner-meta text-[9px]",
+        className,
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+export function CleanerIconButton({
+  icon: Icon,
+  label,
+  active = false,
+  badge,
+  onClick,
+  size = "tool",
+  className,
+}: {
+  icon: LucideIcon;
+  label: string;
+  active?: boolean;
+  badge?: number;
+  onClick?: () => void;
+  size?: "tool" | "nav";
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={cn(
+        "cleaner-tool-button relative",
+        size === "nav" ? "h-12 w-12" : "h-8 w-8",
+        active
+          ? "bg-[var(--cleaner-primary)] text-white"
+          : size === "nav"
+            ? "bg-[var(--cleaner-muted)] text-white"
+            : "bg-white text-[var(--cleaner-ink)]",
+        className,
+      )}
+    >
+      <Icon className={cn(size === "nav" ? "h-6 w-6" : "h-4.5 w-4.5")} />
+      {badge && badge > 0 ? (
+        <span className="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-[var(--destructive)] px-1 text-[9px] font-bold text-white">
+          {badge > 9 ? "9+" : badge}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+export function CleanerSummaryCard({
+  nextJobs,
+  inReview,
+  unreadMessages,
+  updates,
+  onToggle,
+  userName,
+}: {
+  nextJobs: number;
+  inReview: number;
+  unreadMessages: number;
+  updates: number;
+  onToggle?: () => void;
+  userName?: string;
+}) {
+  const t = useTranslations();
+  const items = [
+    { label: t("cleaner.summary.nextJobs"), value: nextJobs, icon: ClipboardList },
+    { label: t("cleaner.summary.inReview"), value: inReview, icon: Info },
+    { label: t("cleaner.summary.messages"), value: unreadMessages, icon: MessageCircle },
+    { label: t("cleaner.summary.update"), value: updates, icon: RefreshCw },
+  ];
+
+  return (
+    <section className="rounded-[18px] bg-[linear-gradient(135deg,var(--cleaner-primary),var(--cleaner-primary-soft))] px-4 py-4 text-white shadow-[var(--cleaner-shadow)]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="cleaner-display text-white">{t("cleaner.summary.greeting", { name: userName ?? "" })}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onToggle}
+          className="rounded-full p-1 text-white/90 transition hover:bg-white/10"
+          aria-label={t("cleaner.summary.collapseSummary")}
+          title={t("cleaner.summary.collapseSummary")}
+        >
+          <Minimize2 className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="mt-4 flex items-start justify-between gap-3">
+        <div className="rounded-[10px] bg-[var(--destructive)] px-4 py-2 shadow-sm">
+          <p className="font-[var(--font-cleaner-body)] text-[31px] font-bold leading-none tracking-[-0.03em]">
+            60 mins
+          </p>
+          <p className="mt-1 text-[10px] text-white/90">{t("cleaner.summary.timeToNextJob")}</p>
+        </div>
+        <div className="grid flex-1 grid-cols-4 gap-2">
+          {items.map(({ label, value, icon: Icon }) => (
+            <div key={label} className="flex flex-col items-center gap-1.5 text-center">
+              <div className="relative flex h-7 w-7 items-center justify-center rounded-full bg-white/15">
+                <Icon className="h-3.5 w-3.5" />
+                {value > 0 ? (
+                  <span className="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-[var(--destructive)] px-1 text-[8px] font-bold text-white">
+                    {value > 9 ? "9+" : value}
+                  </span>
+                ) : null}
+              </div>
+              <span className="text-[8px] leading-tight text-white/90">{label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function CleanerJobCard({
+  propertyName,
+  address,
+  scheduledAt,
+  notes,
+  appearance,
+  statusLabel,
+  detailHref,
+  actionHref,
+  actionLabel,
+}: {
+  propertyName: string;
+  address?: string | null;
+  scheduledAt?: number | null;
+  notes?: string | null;
+  appearance: CleanerJobAppearance;
+  statusLabel: string;
+  detailHref: string;
+  actionHref?: string;
+  actionLabel?: string;
+}) {
+  const t = useTranslations();
+  const titleClass =
+    appearance === "open" ? "text-[var(--cleaner-primary)]" : "text-[var(--cleaner-ink)]";
+
+  return (
+    <article
+      className={cn(
+        "cleaner-card p-4",
+        appearance === "open" ? "border-[3px] border-[var(--cleaner-primary)]" : "",
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <h3 className={cn("cleaner-display text-[18px]", titleClass)}>{propertyName}</h3>
+        <CleanerStatusPill appearance={appearance} label={statusLabel} />
+      </div>
+
+      <div className="mt-3 space-y-2.5">
+        <CleanerMetaRow icon={ClipboardList} text={address || t("cleaner.noAddress")} />
+        <CleanerMetaRow
+          icon={CalendarDays}
+          text={`${t("cleaner.scheduledLabel")} ${formatCleanerDate(scheduledAt)}`}
+        />
+        <CleanerMetaRow icon={Info} text={notes || t("cleaner.noCleanerNotes")} />
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Link href={detailHref} className="cleaner-outline-button">
+          {t("cleaner.openDetails")}
+        </Link>
+        {actionHref && actionLabel ? (
+          <Link href={actionHref} className="cleaner-primary-button">
+            {actionLabel}
+          </Link>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+function CleanerMetaRow({
+  icon: Icon,
+  text,
+}: {
+  icon: LucideIcon;
+  text: string;
+}) {
+  return (
+    <div className="flex items-start gap-2 text-[var(--cleaner-muted)]">
+      <Icon className="mt-0.5 h-4 w-4 shrink-0" />
+      <p className="min-w-0 whitespace-pre-line text-[13px] leading-[1.35]">{text}</p>
+    </div>
+  );
+}

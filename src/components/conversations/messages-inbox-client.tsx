@@ -166,9 +166,9 @@ export function MessagesInboxClient({
 
   if (conversationList.length === 0 || selectedId === null) {
     return (
-      <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--card)] p-8 text-center">
-        <h1 className="text-xl font-bold text-[var(--foreground)]">{title}</h1>
-        <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+      <div className="cleaner-card border-dashed p-8 text-center">
+        <h1 className="cleaner-card-title">{title}</h1>
+        <p className="mt-2 text-sm text-[var(--cleaner-muted)]">
           Conversations appear here after someone opens chat from a job.
         </p>
       </div>
@@ -289,18 +289,24 @@ function InboxList({
 }) {
   const totalUnread = groups.reduce((sum, g) => sum + g.unreadCount, 0);
 
+  function isPropertyExpanded(propertyId: string) {
+    return propertyId === activePropertyId
+      ? !collapsedPropertyIds.has(propertyId)
+      : expandedPropertyIds.has(propertyId);
+  }
+
   return (
-    <aside className="rounded-xl border border-[var(--border)] bg-[var(--card)]">
+    <aside className="cleaner-card overflow-hidden">
       <div className="border-b border-[var(--border)] px-4 py-3">
         <div className="flex items-center justify-between">
-          <h1 className="text-lg font-bold text-[var(--foreground)]">{title}</h1>
+          <h1 className="cleaner-card-title text-[1.35rem]">{title}</h1>
           {totalUnread > 0 ? (
             <span className="inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-[var(--destructive)] px-1.5 text-[11px] font-bold text-white">
               {totalUnread > 99 ? "99+" : totalUnread}
             </span>
           ) : null}
         </div>
-        <p className="text-xs text-[var(--muted-foreground)]">
+        <p className="text-xs text-[var(--cleaner-muted)]">
           Job conversations grouped by property
         </p>
       </div>
@@ -308,26 +314,18 @@ function InboxList({
       <div className="max-h-[75vh] overflow-y-auto">
         {groups.map((group) => (
           <section key={group.propertyId} className="border-b border-[var(--border)] last:border-b-0">
-            {(() => {
-              const isExpanded =
-                group.propertyId === activePropertyId
-                  ? !collapsedPropertyIds.has(group.propertyId)
-                  : expandedPropertyIds.has(group.propertyId);
-
-              return (
-                <>
             <button
               type="button"
               onClick={() => onToggleProperty(group.propertyId)}
-              className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--accent)]/70"
-              aria-expanded={isExpanded}
+              className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--muted)]/45"
+              aria-expanded={isPropertyExpanded(group.propertyId)}
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <p className="truncate text-sm font-semibold text-[var(--foreground)]">
                     {group.propertyName}
                   </p>
-                  <span className="rounded-full border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+                  <span className="rounded-full border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--cleaner-muted)]">
                     {group.conversations.length} job{group.conversations.length === 1 ? "" : "s"}
                   </span>
                   {group.unreadCount > 0 ? (
@@ -336,13 +334,13 @@ function InboxList({
                     </span>
                   ) : null}
                 </div>
-                <p className="mt-0.5 truncate text-xs text-[var(--muted-foreground)]">
+                <p className="mt-0.5 truncate text-xs text-[var(--cleaner-muted)]">
                   {group.latestMessagePreview ?? "No messages yet"}
                 </p>
               </div>
-              <div className="flex items-center gap-2 text-[11px] text-[var(--muted-foreground)]">
+              <div className="flex items-center gap-2 text-[11px] text-[var(--cleaner-muted)]">
                 <span>{formatListTime(group.latestMessageAt)}</span>
-                {isExpanded ? (
+                {isPropertyExpanded(group.propertyId) ? (
                   <ChevronDown className="h-4 w-4" />
                 ) : (
                   <ChevronRight className="h-4 w-4" />
@@ -350,8 +348,8 @@ function InboxList({
               </div>
             </button>
 
-            {isExpanded ? (
-              <div className="border-t border-[var(--border)] bg-[var(--accent)]/20">
+            {isPropertyExpanded(group.propertyId) ? (
+              <div className="border-t border-[var(--border)] bg-[var(--muted)]/18">
                 {group.conversations.map((conversation) => {
                   const selected = conversation._id === selectedId;
                   const jobSuffix = conversation.linkedJob
@@ -366,7 +364,7 @@ function InboxList({
                       className={`block w-full border-b border-[var(--border)]/80 px-4 py-3 text-left transition-colors last:border-b-0 ${
                         selected
                           ? "bg-[var(--primary)]/10"
-                          : "hover:bg-[var(--accent)]"
+                          : "hover:bg-[var(--muted)]/25"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -376,7 +374,7 @@ function InboxList({
                               className={`truncate text-sm ${
                                 conversation.unread
                                   ? "font-bold text-[var(--foreground)]"
-                                  : "font-medium text-[var(--foreground)]"
+                                  : "font-medium text-[var(--cleaner-ink)]"
                               }`}
                             >
                               {conversation.laneKind === "whatsapp_cleaner"
@@ -394,7 +392,7 @@ function InboxList({
                               className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
                                 conversation.laneKind === "whatsapp_cleaner"
                                   ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
-                                  : "border-[var(--border)] bg-[var(--background)] text-[var(--muted-foreground)]"
+                                  : "border-[var(--border)] bg-[var(--background)] text-[var(--cleaner-muted)]"
                               }`}
                             >
                               {conversation.laneKind === "whatsapp_cleaner"
@@ -408,21 +406,21 @@ function InboxList({
                           <p
                             className={`mt-0.5 truncate text-xs ${
                               conversation.unread
-                                ? "font-medium text-[var(--muted-foreground)]"
-                                : "text-[var(--muted-foreground)]"
+                                ? "font-medium text-[var(--cleaner-muted)]"
+                                : "text-[var(--cleaner-muted)]"
                             }`}
                           >
                             {conversation.lastMessagePreview ?? "No messages yet"}
                           </p>
                           {conversation.laneKind === "whatsapp_cleaner" ? (
-                            <p className="mt-1 truncate text-[11px] text-[var(--muted-foreground)]">
+                            <p className="mt-1 truncate text-[11px] text-[var(--cleaner-muted)]">
                               {conversation.messagingEndpoint?.phoneNumber ??
                                 conversation.linkedCleaner?.phone ??
                                 "Awaiting lane bootstrap"}
                             </p>
                           ) : null}
                         </div>
-                        <span className="shrink-0 text-[11px] text-[var(--muted-foreground)]">
+                        <span className="shrink-0 text-[11px] text-[var(--cleaner-muted)]">
                           {formatListTime(conversation.lastMessageAt)}
                         </span>
                       </div>
@@ -431,9 +429,6 @@ function InboxList({
                 })}
               </div>
             ) : null}
-                </>
-              );
-            })()}
           </section>
         ))}
       </div>

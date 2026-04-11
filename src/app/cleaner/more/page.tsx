@@ -3,45 +3,43 @@
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { Clock, Bell, Settings, LogOut, ChevronRight } from "lucide-react";
-
-const MENU_SECTIONS = [
-  {
-    title: "Activity",
-    items: [
-      {
-        id: "history",
-        label: "Job History",
-        description: "View your completed jobs",
-        href: "/cleaner/history",
-        icon: Clock,
-      },
-      {
-        id: "notifications",
-        label: "Notifications",
-        description: "Alerts and updates",
-        href: "#",
-        icon: Bell,
-      },
-    ],
-  },
-  {
-    title: "System",
-    items: [
-      {
-        id: "settings",
-        label: "Settings",
-        description: "Theme, notifications, preferences",
-        href: "/cleaner/settings",
-        icon: Settings,
-      },
-    ],
-  },
-];
+import { useTranslations } from "next-intl";
+import { Bell, ChevronRight, Clock3, LogOut, Settings } from "lucide-react";
+import { CleanerSection } from "@/components/cleaner/cleaner-ui";
 
 export default function CleanerMorePage() {
   const { signOut } = useAuth();
   const router = useRouter();
+  const t = useTranslations();
+
+  const menuSections = [
+    {
+      titleKey: "cleaner.moreMenu.activity",
+      items: [
+        {
+          id: "history",
+          labelKey: "cleaner.moreMenu.jobHistory",
+          descKey: "cleaner.moreMenu.jobHistoryDesc",
+          href: "/cleaner/history",
+          icon: Clock3,
+        },
+        {
+          id: "settings",
+          labelKey: "cleaner.moreMenu.settingsLabel",
+          descKey: "cleaner.moreMenu.settingsDesc",
+          href: "/cleaner/settings",
+          icon: Settings,
+        },
+        {
+          id: "notifications",
+          labelKey: "cleaner.moreMenu.notificationsLabel",
+          descKey: "cleaner.moreMenu.notificationsDesc",
+          href: "/cleaner/settings",
+          icon: Bell,
+        },
+      ],
+    },
+  ];
 
   const handleSignOut = async () => {
     await signOut();
@@ -49,57 +47,52 @@ export default function CleanerMorePage() {
   };
 
   return (
-    <div className="space-y-6">
-      {MENU_SECTIONS.map((section) => (
-        <div key={section.title}>
-          <h2 className="mb-3 ml-1 text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-            {section.title}
-          </h2>
-          <div className="space-y-2">
+    <div className="space-y-4">
+      {menuSections.map((section) => (
+        <CleanerSection key={section.titleKey} eyebrow={t(section.titleKey)} title={t("cleaner.more")}>
+          <div className="space-y-3">
             {section.items.map((item) => (
               <Link
                 key={item.id}
                 href={item.href}
-                className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-3.5 transition-colors hover:bg-[var(--accent)]"
+                className="flex items-center gap-3 rounded-[18px] border border-[var(--border)] bg-[var(--muted)]/35 px-4 py-3 transition-colors hover:bg-[var(--muted)]/60"
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--muted)]">
-                  <item.icon className="h-5 w-5 text-[var(--foreground)]" />
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-[var(--cleaner-primary)] shadow-[var(--cleaner-shadow)]">
+                  <item.icon className="h-5 w-5" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-[var(--foreground)]">{item.label}</p>
-                  <p className="text-xs text-[var(--muted-foreground)]">{item.description}</p>
+                  <p className="font-[var(--font-cleaner-body)] text-sm font-semibold text-[var(--cleaner-ink)]">
+                    {t(item.labelKey)}
+                  </p>
+                  <p className="text-xs text-[var(--cleaner-muted)]">{t(item.descKey)}</p>
                 </div>
-                <ChevronRight className="h-4 w-4 shrink-0 text-[var(--muted-foreground)]" />
+                <ChevronRight className="h-4 w-4 shrink-0 text-[var(--cleaner-muted)]" />
               </Link>
             ))}
           </div>
-        </div>
+        </CleanerSection>
       ))}
 
-      {/* Sign Out */}
-      <div>
-        <h2 className="mb-3 ml-1 text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-          Account
-        </h2>
+      <CleanerSection eyebrow={t("cleaner.moreMenu.account")} title={t("cleaner.moreMenu.session")}>
         <button
           type="button"
-          onClick={handleSignOut}
-          className="flex w-full items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3.5 text-left transition-colors hover:bg-red-100 dark:border-red-900/30 dark:bg-red-950/20 dark:hover:bg-red-950/40"
+          onClick={() => {
+            void handleSignOut();
+          }}
+          className="flex w-full items-center gap-3 rounded-[18px] border border-[var(--destructive)]/25 bg-[var(--destructive)]/8 px-4 py-3 text-left"
         >
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/30">
-            <LogOut className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-[var(--destructive)] shadow-[var(--cleaner-shadow)]">
+            <LogOut className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-red-700 dark:text-red-400">Sign Out</p>
-            <p className="text-xs text-red-500/70 dark:text-red-400/60">Sign out of your account</p>
+            <p className="font-[var(--font-cleaner-body)] text-sm font-semibold text-[var(--destructive)]">
+              {t("cleaner.moreMenu.signOut")}
+            </p>
+            <p className="text-xs text-[var(--cleaner-muted)]">{t("cleaner.moreMenu.signOutDesc")}</p>
           </div>
-          <ChevronRight className="h-4 w-4 shrink-0 text-red-400" />
+          <ChevronRight className="h-4 w-4 shrink-0 text-[var(--cleaner-muted)]" />
         </button>
-      </div>
-
-      <p className="text-center text-[11px] text-[var(--muted-foreground)]">
-        ChezSoiCleaning v1.0.0
-      </p>
+      </CleanerSection>
     </div>
   );
 }

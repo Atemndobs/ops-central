@@ -1,5 +1,24 @@
 import type { Metadata, Viewport } from "next";
+import { Atkinson_Hyperlegible, Montserrat, Spectral } from "next/font/google";
 import { CleanerShell } from "@/components/cleaner/cleaner-shell";
+
+const cleanerDisplay = Spectral({
+  subsets: ["latin"],
+  weight: ["700"],
+  variable: "--font-cleaner-display",
+});
+
+const cleanerBody = Montserrat({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  variable: "--font-cleaner-body",
+});
+
+const cleanerMono = Atkinson_Hyperlegible({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  variable: "--font-cleaner-mono",
+});
 
 export const metadata: Metadata = {
   title: "ChezSoiCleaning",
@@ -36,5 +55,9 @@ export default function CleanerLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <CleanerShell>{children}</CleanerShell>;
+  return (
+    <div className={`${cleanerDisplay.variable} ${cleanerBody.variable} ${cleanerMono.variable}`}>
+      <CleanerShell>{children}</CleanerShell>
+    </div>
+  );
 }

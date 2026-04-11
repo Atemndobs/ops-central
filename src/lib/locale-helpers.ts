@@ -99,6 +99,18 @@ export const statusLabels: Record<string, Record<Locale, string>> = {
     en: "Rework",
     es: "Rehacer",
   },
+  awaiting_approval: {
+    en: "Awaiting Approval",
+    es: "Esperando Aprobacion",
+  },
+  rework_required: {
+    en: "Rework Required",
+    es: "Requiere Rehacer",
+  },
+  cancelled: {
+    en: "Cancelled",
+    es: "Cancelado",
+  },
 };
 
 /**

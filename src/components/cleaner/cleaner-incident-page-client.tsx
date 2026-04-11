@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -19,16 +20,20 @@ const INCIDENT_TYPES = [
 
 const SEVERITIES = ["low", "medium", "high", "critical"] as const;
 
-  const INCIDENT_CONTEXTS = [
-  { value: "routine_check", label: "Routine Check" },
-  { value: "maintenance", label: "Maintenance" },
-  { value: "audit", label: "Audit" },
-  { value: "other", label: "Other" },
+const INCIDENT_CONTEXT_VALUES = [
+  { value: "routine_check", labelKey: "cleaner.routineCheck" },
+  { value: "maintenance", labelKey: "cleaner.maintenance" },
+  { value: "audit", labelKey: "cleaner.audit" },
+  { value: "other", labelKey: "cleaner.other" },
 ] as const;
 
-const FORM_STEPS = ["Details", "Photos", "Review"] as const;
+const FORM_STEP_KEYS = [
+  "cleaner.incident.formStepDetails",
+  "cleaner.incident.formStepPhotos",
+  "cleaner.incident.formStepReview",
+] as const;
 
-type IncidentContext = (typeof INCIDENT_CONTEXTS)[number]["value"];
+type IncidentContext = (typeof INCIDENT_CONTEXT_VALUES)[number]["value"];
 
 type AssignedJob = {
   _id: Id<"cleaningJobs">;
@@ -57,6 +62,7 @@ type InventoryItem = {
 type ReportMode = "job" | "standalone";
 
 export function CleanerIncidentPageClient() {
+  const t = useTranslations();
   const { isAuthenticated, isLoading } = useConvexAuth();
 
   // --- mode selection ---
@@ -284,7 +290,7 @@ export function CleanerIncidentPageClient() {
   if (isLoading || !isAuthenticated) {
     return (
       <div className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4 text-sm text-[var(--muted-foreground)]">
-        Loading incident form...
+        {t("cleaner.incident.loadingForm")}
       </div>
     );
   }
@@ -314,22 +320,22 @@ export function CleanerIncidentPageClient() {
       if (!resolvedPropertyId) {
         throw new Error(
           reportMode === "job"
-            ? "Select a job before reporting an incident."
-            : "Select a property before reporting an incident.",
+            ? t("cleaner.incident.selectJobFirst")
+            : t("cleaner.incident.selectPropertyFirst"),
         );
       }
       if (!roomName.trim()) {
-        throw new Error("Select a room before saving the incident.");
+        throw new Error(t("cleaner.incident.selectRoomFirst"));
       }
 
       if (isMissingItem && !useCustomItem && !selectedInventoryItem) {
-        throw new Error("For missing item incidents, choose an inventory item or switch to custom item.");
+        throw new Error(t("cleaner.incident.chooseInventoryItem"));
       }
       if (isMissingItem && useCustomItem && !customItemDescription.trim()) {
-        throw new Error("Describe the missing item when using custom item mode.");
+        throw new Error(t("cleaner.incident.describeCustomRequired"));
       }
       if (isDamagedItem && files.length === 0) {
-        throw new Error("Damage incidents require at least one photo.");
+        throw new Error(t("cleaner.incident.damagePhotoRequired"));
       }
 
       let photoIds: Id<"photos">[] = [];
@@ -370,10 +376,10 @@ export function CleanerIncidentPageClient() {
           : {}),
       });
 
-      setSuccess("Incident created.");
+      setSuccess(t("cleaner.incident.incidentCreated"));
       resetAll();
     } catch (submitError) {
-      setError(getErrorMessage(submitError, "Unable to create incident."));
+      setError(getErrorMessage(submitError, t("cleaner.incident.unableToCreate")));
     } finally {
       setPending(false);
     }
@@ -384,7 +390,7 @@ export function CleanerIncidentPageClient() {
       className="space-y-4 rounded-md border border-[var(--border)] bg-[var(--card)] p-4"
       onSubmit={async (event) => {
         event.preventDefault();
-        if (activeStep < FORM_STEPS.length - 1) {
+        if (activeStep < FORM_STEP_KEYS.length - 1) {
           return;
         }
         await submitIncident();
@@ -392,8 +398,8 @@ export function CleanerIncidentPageClient() {
     >
       <div className="space-y-3">
         <div className="flex items-center">
-          {FORM_STEPS.map((step, index) => (
-            <div key={step} className="flex flex-1 items-center">
+          {FORM_STEP_KEYS.map((stepKey, index) => (
+            <div key={stepKey} className="flex flex-1 items-center">
               <button
                 type="button"
                 onClick={() => {
@@ -413,9 +419,9 @@ export function CleanerIncidentPageClient() {
                 >
                   {index + 1}
                 </span>
-                <span className="text-sm font-medium">{step}</span>
+                <span className="text-sm font-medium">{t(stepKey)}</span>
               </button>
-              {index < FORM_STEPS.length - 1 ? (
+              {index < FORM_STEP_KEYS.length - 1 ? (
                 <div className="mx-2 h-px flex-1 bg-[var(--border)]" />
               ) : null}
             </div>
@@ -427,7 +433,7 @@ export function CleanerIncidentPageClient() {
         <>
       {/* Mode selector */}
       <div>
-        <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Report Mode</label>
+        <label className="mb-1 block text-xs text-[var(--muted-foreground)]">{t("cleaner.incident.reportMode")}</label>
         <div className="grid grid-cols-2 gap-2">
           {(["job", "standalone"] as const).map((mode) => {
             const active = reportMode === mode;
@@ -447,7 +453,7 @@ export function CleanerIncidentPageClient() {
                     : "border-[var(--border)] bg-[var(--background)] text-[var(--muted-foreground)]"
                 }`}
               >
-                {mode === "job" ? "Linked to Job" : "Standalone Report"}
+                {mode === "job" ? t("cleaner.incident.linkedToJob") : t("cleaner.incident.standaloneReport")}
               </button>
             );
           })}
@@ -457,7 +463,7 @@ export function CleanerIncidentPageClient() {
       {/* Job selector (job mode) */}
       {reportMode === "job" ? (
         <div>
-          <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Job</label>
+          <label className="mb-1 block text-xs text-[var(--muted-foreground)]">{t("cleaner.incident.jobLabel")}</label>
           <select
             value={selectedJobId}
             onChange={(event) => {
@@ -466,10 +472,10 @@ export function CleanerIncidentPageClient() {
             }}
             className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
           >
-            <option value="">Select a job</option>
+            <option value="">{t("cleaner.incident.selectJob")}</option>
             {(jobs ?? []).map((job) => (
               <option key={job._id} value={job._id}>
-                {job.property?.name ?? "Unknown property"} ({job._id.slice(-6)})
+                {job.property?.name ?? t("cleaner.unknownProperty")} ({job._id.slice(-6)})
               </option>
             ))}
           </select>
@@ -477,7 +483,7 @@ export function CleanerIncidentPageClient() {
       ) : (
         /* Property selector (standalone mode) */
         <div>
-          <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Property</label>
+          <label className="mb-1 block text-xs text-[var(--muted-foreground)]">{t("cleaner.incident.propertyLabel")}</label>
           <select
             value={selectedPropertyId}
             onChange={(event) => {
@@ -486,7 +492,7 @@ export function CleanerIncidentPageClient() {
             }}
             className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
           >
-            <option value="">Select a property</option>
+            <option value="">{t("cleaner.incident.selectProperty")}</option>
             {(allProperties ?? []).map((prop) => (
               <option key={prop._id} value={prop._id}>
                 {prop.name}{prop.address ? ` — ${prop.address}` : ""}
@@ -498,7 +504,7 @@ export function CleanerIncidentPageClient() {
 
       {/* Incident type */}
       <div>
-        <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Type</label>
+        <label className="mb-1 block text-xs text-[var(--muted-foreground)]">{t("cleaner.incident.typeLabel")}</label>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
           {INCIDENT_TYPES.map((type) => {
             const active = incidentType === type;
@@ -529,7 +535,7 @@ export function CleanerIncidentPageClient() {
       {/* Severity + Context row */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <div>
-          <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Severity</label>
+          <label className="mb-1 block text-xs text-[var(--muted-foreground)]">{t("cleaner.incident.severityLabel")}</label>
           <select
             value={severity}
             onChange={(event) => setSeverity(event.target.value as (typeof SEVERITIES)[number])}
@@ -546,15 +552,15 @@ export function CleanerIncidentPageClient() {
         {/* Context selector (standalone only) */}
         {reportMode === "standalone" ? (
           <div>
-            <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Context</label>
+            <label className="mb-1 block text-xs text-[var(--muted-foreground)]">{t("cleaner.incident.contextLabel")}</label>
             <select
               value={incidentContext}
               onChange={(event) => setIncidentContext(event.target.value as IncidentContext)}
               className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
             >
-              {INCIDENT_CONTEXTS.map((ctx) => (
+              {INCIDENT_CONTEXT_VALUES.map((ctx) => (
                 <option key={ctx.value} value={ctx.value}>
-                  {ctx.label}
+                  {t(ctx.labelKey)}
                 </option>
               ))}
             </select>
@@ -564,7 +570,7 @@ export function CleanerIncidentPageClient() {
 
       {/* Room */}
       <div>
-        <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Room</label>
+        <label className="mb-1 block text-xs text-[var(--muted-foreground)]">{t("cleaner.incident.roomLabel")}</label>
         <select
           value={roomName}
           onChange={(event) => {
@@ -573,7 +579,7 @@ export function CleanerIncidentPageClient() {
           }}
           className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
         >
-          <option value="">Select room</option>
+          <option value="">{t("cleaner.incident.selectRoom")}</option>
           {roomOptions.map((room) => (
             <option key={room} value={room}>
               {room}
@@ -585,7 +591,7 @@ export function CleanerIncidentPageClient() {
       {/* Missing item details */}
       {incidentType === "missing_item" ? (
         <section className="space-y-3 rounded-md border border-[var(--border)] bg-[var(--background)] p-3">
-          <p className="text-xs font-semibold text-[var(--muted-foreground)]">Missing Item Details</p>
+          <p className="text-xs font-semibold text-[var(--muted-foreground)]">{t("cleaner.incident.missingItemDetails")}</p>
 
           {!useCustomItem ? (
             <>
@@ -593,21 +599,21 @@ export function CleanerIncidentPageClient() {
                 value={inventorySearch}
                 onChange={(event) => setInventorySearch(event.target.value)}
                 className="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm"
-                placeholder="Search inventory item"
+                placeholder={t("cleaner.incident.searchInventory")}
                 disabled={!resolvedPropertyId}
               />
               {selectedInventoryItem ? (
                 <div className="rounded-md border border-[var(--border)] bg-[var(--card)] p-3 text-sm">
                   <p className="font-semibold">{selectedInventoryItem.name}</p>
                   <p className="text-xs text-[var(--muted-foreground)]">
-                    {selectedInventoryItem.room ?? "No room"} · Stock {selectedInventoryItem.quantityCurrent}
+                    {selectedInventoryItem.room ?? t("cleaner.incident.noRoom")} · {t("cleaner.incident.stock")} {selectedInventoryItem.quantityCurrent}
                   </p>
                   <button
                     type="button"
                     className="mt-2 text-xs text-[var(--destructive)]"
                     onClick={() => setSelectedInventoryItemId("")}
                   >
-                    Remove selected item
+                    {t("cleaner.incident.removeSelectedItem")}
                   </button>
                 </div>
               ) : (
@@ -627,13 +633,13 @@ export function CleanerIncidentPageClient() {
                       >
                         <p className="font-medium">{item.name}</p>
                         <p className="text-xs text-[var(--muted-foreground)]">
-                          {item.room ?? "No room"} · Stock {item.quantityCurrent}
+                          {item.room ?? t("cleaner.incident.noRoom")} · {t("cleaner.incident.stock")} {item.quantityCurrent}
                         </p>
                       </button>
                     ))
                   ) : (
                     <p className="px-2 py-3 text-xs text-[var(--muted-foreground)]">
-                      No matching inventory items.
+                      {t("cleaner.incident.noMatchingItems")}
                     </p>
                   )}
                 </div>
@@ -646,7 +652,7 @@ export function CleanerIncidentPageClient() {
                   setSelectedInventoryItemId("");
                 }}
               >
-                Item not in list? Enter custom item
+                {t("cleaner.incident.customItemLink")}
               </button>
             </>
           ) : (
@@ -656,7 +662,7 @@ export function CleanerIncidentPageClient() {
                 onChange={(event) => setCustomItemDescription(event.target.value)}
                 rows={2}
                 className="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm"
-                placeholder="Describe missing item"
+                placeholder={t("cleaner.incident.describeCustomItem")}
               />
               <button
                 type="button"
@@ -666,13 +672,13 @@ export function CleanerIncidentPageClient() {
                   setCustomItemDescription("");
                 }}
               >
-                Back to inventory search
+                {t("cleaner.incident.backToInventory")}
               </button>
             </>
           )}
 
           <div>
-            <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Quantity missing</label>
+            <label className="mb-1 block text-xs text-[var(--muted-foreground)]">{t("cleaner.incident.quantityMissing")}</label>
             <input
               type="number"
               min={1}
@@ -689,33 +695,33 @@ export function CleanerIncidentPageClient() {
       {activeStep === 1 ? (
         <>
           <div>
-            <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Title (optional)</label>
+            <label className="mb-1 block text-xs text-[var(--muted-foreground)]">{t("cleaner.incident.titleOptional")}</label>
             <input
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-              placeholder="Broken lamp"
+              placeholder={t("cleaner.incident.titlePlaceholder")}
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Additional notes</label>
+            <label className="mb-1 block text-xs text-[var(--muted-foreground)]">{t("cleaner.incident.additionalNotes")}</label>
             <textarea
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               rows={4}
               className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-              placeholder="Add details"
+              placeholder={t("cleaner.incident.notesPlaceholder")}
             />
           </div>
 
           <div className="space-y-2">
             <label className="mb-1 block text-xs text-[var(--muted-foreground)]">
-              Photos {incidentType === "damaged_item" ? "(required for damage)" : "(optional)"}
+              {incidentType === "damaged_item" ? t("cleaner.incident.photosRequired") : t("cleaner.incident.photosOptional")}
             </label>
             <label className="flex min-h-28 cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed border-[var(--border)] bg-[var(--background)] px-4 py-4 text-sm text-[var(--muted-foreground)] transition hover:border-[var(--primary)] hover:text-[var(--primary)]">
-              <span className="text-base font-medium">+ Add photos</span>
-              <span className="text-xs">Tap to open camera or gallery</span>
+              <span className="text-base font-medium">{t("cleaner.incident.addPhotos")}</span>
+              <span className="text-xs">{t("cleaner.incident.tapToOpen")}</span>
               <input
                 type="file"
                 multiple
@@ -731,7 +737,7 @@ export function CleanerIncidentPageClient() {
             </label>
             {files.length > 0 ? (
               <>
-                <p className="text-xs text-[var(--muted-foreground)]">{files.length} photo(s) selected</p>
+                <p className="text-xs text-[var(--muted-foreground)]">{t("cleaner.incident.photosSelected", { count: files.length })}</p>
                 <div className="flex gap-2 overflow-x-auto pb-1">
                   {photoPreviewUrls.map((previewUrl, index) => (
                     <div key={previewUrl} className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border border-[var(--border)]">
@@ -743,7 +749,7 @@ export function CleanerIncidentPageClient() {
                           setFiles((current) => current.filter((_, fileIndex) => fileIndex !== index));
                         }}
                         className="absolute right-1 top-1 rounded bg-black/65 px-1 text-[10px] text-white"
-                        aria-label={`Remove photo ${index + 1}`}
+                        aria-label={t("cleaner.incident.removePhoto", { index: index + 1 })}
                       >
                         ✕
                       </button>
@@ -758,14 +764,14 @@ export function CleanerIncidentPageClient() {
 
       {activeStep === 2 ? (
         <section className="space-y-3 rounded-md border border-[var(--border)] bg-[var(--background)] p-3">
-          <h3 className="text-sm font-semibold">Review Incident</h3>
+          <h3 className="text-sm font-semibold">{t("cleaner.incident.reviewIncident")}</h3>
           <div className="space-y-1 text-sm">
-            <p><span className="text-[var(--muted-foreground)]">Mode:</span> {reportMode === "job" ? "Linked to Job" : "Standalone"}</p>
-            <p><span className="text-[var(--muted-foreground)]">Type:</span> {formatLabel(incidentType)}</p>
-            <p><span className="text-[var(--muted-foreground)]">Severity:</span> {formatLabel(severity)}</p>
-            <p><span className="text-[var(--muted-foreground)]">Room:</span> {roomName || "—"}</p>
-            <p><span className="text-[var(--muted-foreground)]">Photos:</span> {files.length}</p>
-            {title.trim() ? <p><span className="text-[var(--muted-foreground)]">Title:</span> {title.trim()}</p> : null}
+            <p><span className="text-[var(--muted-foreground)]">{t("cleaner.incident.reviewMode")}</span> {reportMode === "job" ? t("cleaner.incident.linkedToJob") : t("cleaner.incident.standalone")}</p>
+            <p><span className="text-[var(--muted-foreground)]">{t("cleaner.incident.reviewType")}</span> {formatLabel(incidentType)}</p>
+            <p><span className="text-[var(--muted-foreground)]">{t("cleaner.incident.reviewSeverity")}</span> {formatLabel(severity)}</p>
+            <p><span className="text-[var(--muted-foreground)]">{t("cleaner.incident.reviewRoom")}</span> {roomName || "—"}</p>
+            <p><span className="text-[var(--muted-foreground)]">{t("cleaner.incident.reviewPhotos")}</span> {files.length}</p>
+            {title.trim() ? <p><span className="text-[var(--muted-foreground)]">{t("cleaner.incident.reviewTitle")}</span> {title.trim()}</p> : null}
           </div>
         </section>
       ) : null}
@@ -782,27 +788,27 @@ export function CleanerIncidentPageClient() {
           }}
           className="rounded-md border border-[var(--border)] px-4 py-2 text-sm font-medium"
         >
-          {activeStep === 0 ? "Cancel" : "Back"}
+          {activeStep === 0 ? t("common.cancel") : t("common.back")}
         </button>
 
-        {activeStep < FORM_STEPS.length - 1 ? (
+        {activeStep < FORM_STEP_KEYS.length - 1 ? (
           <button
             type="button"
             onClick={() => {
               setError(null);
               if (activeStep === 0 && !canProceedDetails) {
-                setError("Complete the required incident details before continuing.");
+                setError(t("cleaner.incident.completeDetails"));
                 return;
               }
               if (activeStep === 1 && isDamagedItem && files.length === 0) {
-                setError("Damage incidents require at least one photo.");
+                setError(t("cleaner.incident.damagePhotoRequired"));
                 return;
               }
-              setActiveStep((current) => Math.min(FORM_STEPS.length - 1, current + 1));
+              setActiveStep((current) => Math.min(FORM_STEP_KEYS.length - 1, current + 1));
             }}
             className="flex-1 rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)]"
           >
-            Next
+            {t("common.next")}
           </button>
         ) : (
           <button
@@ -810,7 +816,7 @@ export function CleanerIncidentPageClient() {
             disabled={pending || (reportMode === "job" && jobs === undefined)}
             className="flex-1 rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] disabled:opacity-50"
           >
-            {pending ? "Saving..." : "Save Issue"}
+            {pending ? t("cleaner.incident.savingIssue") : t("cleaner.incident.saveIssue")}
           </button>
         )}
       </div>
