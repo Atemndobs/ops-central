@@ -5,7 +5,7 @@ import { api } from "@convex/_generated/api";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { localeNames, type Locale, locales } from "@/i18n";
+import { localeNames, type Locale, locales } from "@/lib/locales";
 
 export function LanguageSwitcher() {
   const t = useTranslations();

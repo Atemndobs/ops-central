@@ -3,23 +3,10 @@ import { cookies } from "next/headers";
 import { auth } from "@clerk/nextjs/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@convex/_generated/api";
+import { locales, defaultLocale, roleDefaultLocale, type Locale } from "@/lib/locales";
 
-export type Locale = "en" | "es";
-
-export const locales: Locale[] = ["en", "es"];
-export const defaultLocale: Locale = "en";
-
-export const localeNames: Record<Locale, string> = {
-  en: "English",
-  es: "Español",
-};
-
-export const roleDefaultLocale: Record<string, Locale> = {
-  admin: "en",
-  property_ops: "en",
-  manager: "en",
-  cleaner: "es",
-};
+// Re-export for backwards compatibility
+export { locales, defaultLocale, roleDefaultLocale, type Locale } from "@/lib/locales";
 
 // Import dictionaries dynamically
 const dictionaries: Record<Locale, () => Promise<any>> = {

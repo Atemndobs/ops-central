@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useConvexAuth, useQuery } from "convex/react";
 import type { Id } from "@convex/_generated/dataModel";
 import { api } from "@convex/_generated/api";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight } from "lucide-react";
 import { ConversationThread } from "./conversation-thread";
 
 type MessagesInboxClientProps = {
@@ -56,6 +56,8 @@ type PropertyGroup = {
   propertyName: string;
   conversations: ConversationItem[];
   unreadCount: number;
+  latestMessageAt?: number;
+  latestMessagePreview?: string;
 };
 
 function groupByProperty(conversations: ConversationItem[]): PropertyGroup[] {
@@ -71,6 +73,8 @@ function groupByProperty(conversations: ConversationItem[]): PropertyGroup[] {
         propertyName: propName,
         conversations: [],
         unreadCount: 0,
+        latestMessageAt: undefined,
+        latestMessagePreview: undefined,
       });
     }
 
@@ -78,6 +82,13 @@ function groupByProperty(conversations: ConversationItem[]): PropertyGroup[] {
     group.conversations.push(conv);
     if (conv.unread) {
       group.unreadCount++;
+    }
+    if (
+      (conv.lastMessageAt ?? 0) > (group.latestMessageAt ?? 0) ||
+      (!group.latestMessageAt && conv.lastMessageAt)
+    ) {
+      group.latestMessageAt = conv.lastMessageAt;
+      group.latestMessagePreview = conv.lastMessagePreview;
     }
   }
 
@@ -102,6 +113,10 @@ export function MessagesInboxClient({
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
+  const [expandedPropertyIds, setExpandedPropertyIds] = useState<Set<string>>(() => new Set());
+  const [collapsedPropertyIds, setCollapsedPropertyIds] = useState<Set<string>>(() => new Set());
+  const conversationList = useMemo(() => conversations ?? [], [conversations]);
+  const hasLoadedConversations = conversations !== undefined;
 
   const selectedConversationId = useMemo(() => {
     const raw = searchParams.get("conversationId");
@@ -119,11 +134,37 @@ export function MessagesInboxClient({
     router.replace(`${pathname}?${nextParams.toString()}`);
   }, [conversations, pathname, router, searchParams, selectedConversationId]);
 
-  if (conversations === undefined) {
+  const selectedId = useMemo(() => {
+    if (conversationList.length === 0) {
+      return null;
+    }
+
+    if (
+      selectedConversationId &&
+      conversationList.some(
+        (item: ConversationItem) => item._id === selectedConversationId,
+      )
+    ) {
+      return selectedConversationId;
+    }
+
+    return conversationList[0]._id;
+  }, [conversationList, selectedConversationId]);
+
+  const groups = useMemo(
+    () => groupByProperty(conversationList as ConversationItem[]),
+    [conversationList],
+  );
+  const selectedConversation = useMemo(
+    () => conversationList.find((item) => item._id === selectedId) ?? null,
+    [conversationList, selectedId],
+  );
+
+  if (!hasLoadedConversations) {
     return <div className="text-sm text-[var(--muted-foreground)]">Loading messages...</div>;
   }
 
-  if (conversations.length === 0) {
+  if (conversationList.length === 0 || selectedId === null) {
     return (
       <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--card)] p-8 text-center">
         <h1 className="text-xl font-bold text-[var(--foreground)]">{title}</h1>
@@ -133,16 +174,6 @@ export function MessagesInboxClient({
       </div>
     );
   }
-
-  const selectedId =
-    selectedConversationId &&
-    conversations.some(
-      (item: ConversationItem) => item._id === selectedConversationId,
-    )
-      ? selectedConversationId
-      : conversations[0]._id;
-
-  const groups = groupByProperty(conversations as ConversationItem[]);
 
   function selectConversation(conversationId: Id<"conversations">) {
     const nextParams = new URLSearchParams(searchParams.toString());
@@ -156,6 +187,31 @@ export function MessagesInboxClient({
     router.replace(nextParams.size > 0 ? `${pathname}?${nextParams.toString()}` : pathname);
   }
 
+  function toggleProperty(propertyId: string) {
+    if (selectedConversation?.property?._id === propertyId) {
+      setCollapsedPropertyIds((current) => {
+        const next = new Set(current);
+        if (next.has(propertyId)) {
+          next.delete(propertyId);
+        } else {
+          next.add(propertyId);
+        }
+        return next;
+      });
+      return;
+    }
+
+    setExpandedPropertyIds((current) => {
+      const next = new Set(current);
+      if (next.has(propertyId)) {
+        next.delete(propertyId);
+      } else {
+        next.add(propertyId);
+      }
+      return next;
+    });
+  }
+
   return (
     <>
       {/* ─── DESKTOP: side-by-side ─── */}
@@ -164,6 +220,10 @@ export function MessagesInboxClient({
           groups={groups}
           selectedId={selectedId}
           onSelect={selectConversation}
+          expandedPropertyIds={expandedPropertyIds}
+          collapsedPropertyIds={collapsedPropertyIds}
+          activePropertyId={selectedConversation?.property?._id ?? null}
+          onToggleProperty={toggleProperty}
           title={title}
         />
         <section>
@@ -196,6 +256,10 @@ export function MessagesInboxClient({
             groups={groups}
             selectedId={selectedId}
             onSelect={selectConversation}
+            expandedPropertyIds={expandedPropertyIds}
+            collapsedPropertyIds={collapsedPropertyIds}
+            activePropertyId={selectedConversation?.property?._id ?? null}
+            onToggleProperty={toggleProperty}
             title={title}
           />
         )}
@@ -208,11 +272,19 @@ function InboxList({
   groups,
   selectedId,
   onSelect,
+  expandedPropertyIds,
+  collapsedPropertyIds,
+  activePropertyId,
+  onToggleProperty,
   title,
 }: {
   groups: PropertyGroup[];
   selectedId: Id<"conversations">;
   onSelect: (id: Id<"conversations">) => void;
+  expandedPropertyIds: Set<string>;
+  collapsedPropertyIds: Set<string>;
+  activePropertyId: string | null;
+  onToggleProperty: (propertyId: string) => void;
   title: string;
 }) {
   const totalUnread = groups.reduce((sum, g) => sum + g.unreadCount, 0);
@@ -235,82 +307,134 @@ function InboxList({
 
       <div className="max-h-[75vh] overflow-y-auto">
         {groups.map((group) => (
-          <div key={group.propertyId}>
-            {/* Property group header */}
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border)] bg-[var(--accent)]/50 px-4 py-2 backdrop-blur-sm">
-              <span className="text-xs font-bold uppercase tracking-wide text-[var(--primary)]">
-                {group.propertyName}
-              </span>
-              {group.unreadCount > 0 ? (
-                <span className="inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-[var(--primary)] px-1 text-[10px] font-bold text-white">
-                  {group.unreadCount}
-                </span>
-              ) : null}
-            </div>
-
-            {/* Conversations in this group */}
-            {group.conversations.map((conversation) => {
-              const selected = conversation._id === selectedId;
-              const jobSuffix = conversation.linkedJob
-                ? String(conversation.linkedJob._id).slice(-6)
-                : null;
+          <section key={group.propertyId} className="border-b border-[var(--border)] last:border-b-0">
+            {(() => {
+              const isExpanded =
+                group.propertyId === activePropertyId
+                  ? !collapsedPropertyIds.has(group.propertyId)
+                  : expandedPropertyIds.has(group.propertyId);
 
               return (
-                <button
-                  key={conversation._id}
-                  type="button"
-                  onClick={() => onSelect(conversation._id)}
-                  className={`block w-full border-b border-[var(--border)] px-4 py-3 text-left transition-colors ${
-                    selected
-                      ? "bg-[var(--primary)]/10"
-                      : "hover:bg-[var(--accent)]"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className={`truncate text-sm ${conversation.unread ? "font-bold text-[var(--foreground)]" : "font-medium text-[var(--foreground)]"}`}>
-                          {conversation.laneKind === "whatsapp_cleaner"
-                            ? conversation.linkedCleaner?.name ??
-                              conversation.messagingEndpoint?.displayName ??
-                              "WhatsApp lane"
-                            : jobSuffix
-                            ? `Job #${jobSuffix}`
-                            : "Thread"}
-                          {conversation.linkedJob?.status ? ` · ${conversation.linkedJob.status.replace(/_/g, " ")}` : ""}
-                        </p>
-                        <span
-                          className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                            conversation.laneKind === "whatsapp_cleaner"
-                              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
-                              : "border-[var(--border)] bg-[var(--background)] text-[var(--muted-foreground)]"
-                          }`}
-                        >
-                          {conversation.laneKind === "whatsapp_cleaner" ? "WhatsApp" : "Internal"}
-                        </span>
-                        {conversation.unread ? (
-                          <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--primary)]" />
-                        ) : null}
-                      </div>
-                      <p className={`mt-0.5 truncate text-xs ${conversation.unread ? "font-medium text-[var(--muted-foreground)]" : "text-[var(--muted-foreground)]"}`}>
-                        {conversation.lastMessagePreview ?? "No messages yet"}
-                      </p>
-                      {conversation.laneKind === "whatsapp_cleaner" ? (
-                        <p className="mt-1 truncate text-[11px] text-[var(--muted-foreground)]">
-                          {conversation.messagingEndpoint?.phoneNumber ??
-                            conversation.linkedCleaner?.phone ??
-                            "Awaiting lane bootstrap"}
-                        </p>
-                      ) : null}
-                    </div>
-                    <span className="shrink-0 text-[11px] text-[var(--muted-foreground)]">
-                      {formatListTime(conversation.lastMessageAt)}
+                <>
+            <button
+              type="button"
+              onClick={() => onToggleProperty(group.propertyId)}
+              className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--accent)]/70"
+              aria-expanded={isExpanded}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="truncate text-sm font-semibold text-[var(--foreground)]">
+                    {group.propertyName}
+                  </p>
+                  <span className="rounded-full border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+                    {group.conversations.length} job{group.conversations.length === 1 ? "" : "s"}
+                  </span>
+                  {group.unreadCount > 0 ? (
+                    <span className="inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-[var(--primary)] px-1 text-[10px] font-bold text-white">
+                      {group.unreadCount}
                     </span>
-                  </div>
-                </button>
+                  ) : null}
+                </div>
+                <p className="mt-0.5 truncate text-xs text-[var(--muted-foreground)]">
+                  {group.latestMessagePreview ?? "No messages yet"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] text-[var(--muted-foreground)]">
+                <span>{formatListTime(group.latestMessageAt)}</span>
+                {isExpanded ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </div>
+            </button>
+
+            {isExpanded ? (
+              <div className="border-t border-[var(--border)] bg-[var(--accent)]/20">
+                {group.conversations.map((conversation) => {
+                  const selected = conversation._id === selectedId;
+                  const jobSuffix = conversation.linkedJob
+                    ? String(conversation.linkedJob._id).slice(-6)
+                    : null;
+
+                  return (
+                    <button
+                      key={conversation._id}
+                      type="button"
+                      onClick={() => onSelect(conversation._id)}
+                      className={`block w-full border-b border-[var(--border)]/80 px-4 py-3 text-left transition-colors last:border-b-0 ${
+                        selected
+                          ? "bg-[var(--primary)]/10"
+                          : "hover:bg-[var(--accent)]"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p
+                              className={`truncate text-sm ${
+                                conversation.unread
+                                  ? "font-bold text-[var(--foreground)]"
+                                  : "font-medium text-[var(--foreground)]"
+                              }`}
+                            >
+                              {conversation.laneKind === "whatsapp_cleaner"
+                                ? conversation.linkedCleaner?.name ??
+                                  conversation.messagingEndpoint?.displayName ??
+                                  "WhatsApp lane"
+                                : jobSuffix
+                                ? `Job #${jobSuffix}`
+                                : "Thread"}
+                              {conversation.linkedJob?.status
+                                ? ` · ${conversation.linkedJob.status.replace(/_/g, " ")}`
+                                : ""}
+                            </p>
+                            <span
+                              className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                                conversation.laneKind === "whatsapp_cleaner"
+                                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+                                  : "border-[var(--border)] bg-[var(--background)] text-[var(--muted-foreground)]"
+                              }`}
+                            >
+                              {conversation.laneKind === "whatsapp_cleaner"
+                                ? "WhatsApp"
+                                : "Internal"}
+                            </span>
+                            {conversation.unread ? (
+                              <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--primary)]" />
+                            ) : null}
+                          </div>
+                          <p
+                            className={`mt-0.5 truncate text-xs ${
+                              conversation.unread
+                                ? "font-medium text-[var(--muted-foreground)]"
+                                : "text-[var(--muted-foreground)]"
+                            }`}
+                          >
+                            {conversation.lastMessagePreview ?? "No messages yet"}
+                          </p>
+                          {conversation.laneKind === "whatsapp_cleaner" ? (
+                            <p className="mt-1 truncate text-[11px] text-[var(--muted-foreground)]">
+                              {conversation.messagingEndpoint?.phoneNumber ??
+                                conversation.linkedCleaner?.phone ??
+                                "Awaiting lane bootstrap"}
+                            </p>
+                          ) : null}
+                        </div>
+                        <span className="shrink-0 text-[11px] text-[var(--muted-foreground)]">
+                          {formatListTime(conversation.lastMessageAt)}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+                </>
               );
-            })}
-          </div>
+            })()}
+          </section>
         ))}
       </div>
     </aside>
