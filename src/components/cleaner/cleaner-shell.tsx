@@ -364,11 +364,15 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     }
   }, [isConvexAuthenticated, resolvedTheme]);
 
-  const [currentLocale, setCurrentLocale] = useState<Locale>(() => {
-    if (typeof document === "undefined") return "en";
+  const [currentLocale, setCurrentLocale] = useState<Locale>("en");
+
+  useEffect(() => {
     const cookie = document.cookie.split("; ").find((c) => c.startsWith("NEXT_LOCALE="));
-    return (cookie?.split("=")[1] as Locale) || "en";
-  });
+    const cookieLocale = cookie?.split("=")[1] as Locale | undefined;
+    if (cookieLocale && cookieLocale !== currentLocale) {
+      setCurrentLocale(cookieLocale);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleLocale = useCallback(() => {
     const nextLocale: Locale = currentLocale === "en" ? "es" : "en";
