@@ -101,10 +101,13 @@
   "jobStatus": {
     "scheduled": "Scheduled",
     "assigned": "Assigned",
-    "inProgress": "In Progress",
+    "in_progress": "In Progress",
+    "awaiting_approval": "Awaiting Approval",
+    "rework_required": "Rework Required",
     "completed": "Completed",
     "approved": "Approved",
     "failed": "Failed",
+    "cancelled": "Cancelled",
     "rework": "Rework"
   },
   "roles": {
@@ -158,7 +161,12 @@
     "profileUpdated": "Profile updated",
     "failedSaveProfile": "Failed to save profile",
     "clearCache": "Clear Cache",
-    "pushNotifications": "Push Notifications"
+    "pushNotifications": "Push Notifications",
+    "unknownProperty": "Unknown property",
+    "noAddress": "No address",
+    "scheduledLabel": "Scheduled:",
+    "loadingJobs": "Loading assigned jobs...",
+    "feedSummary": "{count} submitted or completed job(s) in your current feed."
   },
   "settings": {
     "general": "General",

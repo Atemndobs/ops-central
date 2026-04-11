@@ -3,22 +3,13 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
+import { useTranslations } from "next-intl";
 import { api } from "@convex/_generated/api";
 
 function formatDate(value?: number) {
   if (!value) return "—";
   return new Date(value).toLocaleString();
 }
-
-const STATUS_LABELS: Record<string, string> = {
-  scheduled: "Scheduled",
-  assigned: "Assigned",
-  in_progress: "In Progress",
-  awaiting_approval: "Awaiting Approval",
-  rework_required: "Rework Required",
-  completed: "Completed",
-  cancelled: "Cancelled",
-};
 
 const STATUS_COLOR: Record<string, string> = {
   scheduled: "border-slate-500/60 text-slate-300",
@@ -35,6 +26,7 @@ const CLOSED_JOB_STATUSES = new Set(["completed"]);
 
 export function CleanerHomeClient() {
   const { isAuthenticated, isLoading } = useConvexAuth();
+  const t = useTranslations();
   const jobs = useQuery(api.cleaningJobs.queries.getMyAssigned, isAuthenticated ? { limit: 200 } : "skip") as
     | Array<{
         _id: string;
@@ -56,26 +48,26 @@ export function CleanerHomeClient() {
   }, [jobs]);
 
   if (isLoading || !isAuthenticated) {
-    return <p className="text-sm text-[var(--muted-foreground)]">Loading assigned jobs...</p>;
+    return <p className="text-sm text-[var(--muted-foreground)]">{t("cleaner.loadingJobs")}</p>;
   }
 
   if (jobs === undefined) {
-    return <p className="text-sm text-[var(--muted-foreground)]">Loading assigned jobs...</p>;
+    return <p className="text-sm text-[var(--muted-foreground)]">{t("cleaner.loadingJobs")}</p>;
   }
 
   return (
     <div className="space-y-4">
       <section className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
-        <p className="text-sm uppercase tracking-wide text-[var(--muted-foreground)]">Today</p>
-        <h2 className="mt-1 text-2xl font-semibold">{activeJobs.length} active job(s)</h2>
+        <p className="text-sm uppercase tracking-wide text-[var(--muted-foreground)]">{t("cleaner.today")}</p>
+        <h2 className="mt-1 text-2xl font-semibold">{activeJobs.length} {t("cleaner.activeJobs")}</h2>
         <p className="mt-1 text-base text-[var(--muted-foreground)]">
-          {closedJobs.length} submitted or completed job(s) in your current feed.
+          {t("cleaner.feedSummary", { count: closedJobs.length })}
         </p>
       </section>
 
       {activeJobs.length === 0 ? (
         <section className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4 text-sm text-[var(--muted-foreground)]">
-          No active jobs right now.
+          {t("cleaner.noActiveJobs")}
         </section>
       ) : (
         <ul className="space-y-3">
@@ -83,9 +75,9 @@ export function CleanerHomeClient() {
             <li key={job._id} className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-base font-semibold">{job.property?.name ?? "Unknown property"}</p>
+                  <p className="text-base font-semibold">{job.property?.name ?? t("cleaner.unknownProperty")}</p>
                   <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-                    {job.property?.address ?? "No address"}
+                    {job.property?.address ?? t("cleaner.noAddress")}
                   </p>
                 </div>
                 <span
@@ -93,12 +85,12 @@ export function CleanerHomeClient() {
                     STATUS_COLOR[job.status] ?? "border-[var(--border)]"
                   }`}
                 >
-                  {STATUS_LABELS[job.status] ?? job.status}
+                  {t(`jobStatus.${job.status}`)}
                 </span>
               </div>
 
               <p className="mt-3 text-sm text-[var(--muted-foreground)]">
-                Scheduled: <span className="text-[var(--foreground)]">{formatDate(job.scheduledStartAt)}</span>
+                {t("cleaner.scheduledLabel")} <span className="text-[var(--foreground)]">{formatDate(job.scheduledStartAt)}</span>
               </p>
 
               {job.notesForCleaner ? (
@@ -112,14 +104,14 @@ export function CleanerHomeClient() {
                   href={`/cleaner/jobs/${job._id}`}
                   className="rounded-md border border-[var(--border)] px-3 py-2 text-sm"
                 >
-                  Open Details
+                  {t("cleaner.openDetails")}
                 </Link>
                 {job.status === "awaiting_approval" ? null : (
                   <Link
                     href={`/cleaner/jobs/${job._id}/active`}
                     className="rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-[var(--primary-foreground)]"
                   >
-                    {job.status === "in_progress" ? "Resume" : "Start"}
+                    {job.status === "in_progress" ? t("cleaner.resume") : t("cleaner.start")}
                   </Link>
                 )}
               </div>

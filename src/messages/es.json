@@ -101,10 +101,13 @@
   "jobStatus": {
     "scheduled": "Programado",
     "assigned": "Asignado",
-    "inProgress": "En Progreso",
+    "in_progress": "En Progreso",
+    "awaiting_approval": "Esperando Aprobación",
+    "rework_required": "Requiere Rehacer",
     "completed": "Completado",
     "approved": "Aprobado",
     "failed": "Fallido",
+    "cancelled": "Cancelado",
     "rework": "Rehacer"
   },
   "roles": {
@@ -158,7 +161,12 @@
     "profileUpdated": "Perfil actualizado",
     "failedSaveProfile": "Error al guardar perfil",
     "clearCache": "Limpiar Caché",
-    "pushNotifications": "Notificaciones Push"
+    "pushNotifications": "Notificaciones Push",
+    "unknownProperty": "Propiedad desconocida",
+    "noAddress": "Sin dirección",
+    "scheduledLabel": "Programado:",
+    "loadingJobs": "Cargando trabajos asignados...",
+    "feedSummary": "{count} trabajo(s) enviado(s) o completado(s) en tu lista."
   },
   "settings": {
     "general": "General",
