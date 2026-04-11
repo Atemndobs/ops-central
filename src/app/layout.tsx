@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { NextIntlClientProvider } from "next-intl";
-import { getLocaleFromRequest, locales, type Locale } from "@/i18n";
+import { getMessages, getLocale } from "next-intl/server";
 import { ClerkThemeProvider } from "@/components/providers/clerk-theme-provider";
 import { ConvexClientProvider } from "@/components/providers/convex-provider";
 import { ClerkUserSync } from "@/components/providers/clerk-user-sync";
@@ -19,26 +19,13 @@ export const metadata: Metadata = {
   },
 };
 
-// Generate static params for all supported locales
-export async function generateStaticParams() {
-  return locales.map((locale) => ({ locale }));
-}
-
 export default async function RootLayout({
   children,
-  params,
 }: {
   children: React.ReactNode;
-  params: Promise<{ locale?: string }>;
 }) {
-  // Get the locale from params or resolve from request context
-  const { locale: paramLocale } = await params;
-  const locale = (paramLocale || (await getLocaleFromRequest())) as Locale;
-
-  // Import messages for the locale
-  const messages = await import(`@/messages/${locale}.json`).then(
-    (module) => module.default
-  );
+  const locale = await getLocale();
+  const messages = await getMessages();
 
   return (
     <html lang={locale} suppressHydrationWarning>
