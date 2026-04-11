@@ -118,6 +118,10 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
         dismissedAt?: number;
       }>
     | undefined;
+  const unreadMessageCount = useQuery(
+    api.conversations.queries.getUnreadConversationCount,
+    isConvexAuthenticated ? {} : "skip",
+  );
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
   const markNotificationRead = useMutation(api.users.mutations.markNotificationRead);
   const updateWebPushSubscription = useMutation(api.users.mutations.updateWebPushSubscription);
@@ -568,6 +572,10 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
         <ul className="mx-auto grid max-w-2xl grid-cols-4">
           {NAV_ITEMS.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const showMessageBadge =
+              item.href === "/cleaner/messages" &&
+              typeof unreadMessageCount === "number" &&
+              unreadMessageCount > 0;
             return (
               <li key={item.href}>
                 <Link
@@ -576,7 +584,14 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
                     isActive ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]"
                   }`}
                 >
-                  <item.icon className="h-5 w-5" />
+                  <span className="relative inline-flex">
+                    <item.icon className="h-5 w-5" />
+                    {showMessageBadge ? (
+                      <span className="absolute -right-2 -top-2 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-[var(--destructive)] px-1 text-[10px] font-bold text-white">
+                        {unreadMessageCount > 9 ? "9+" : unreadMessageCount}
+                      </span>
+                    ) : null}
+                  </span>
                   <span>{item.label}</span>
                 </Link>
               </li>
