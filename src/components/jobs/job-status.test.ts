@@ -2,6 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  canAccessJobPhotoReview,
+  canReturnJobToRework,
+  getJobPhotoReviewActionLabel,
   JOB_STATUSES,
   STATUS_CLASSNAMES,
   STATUS_LABELS,
@@ -38,4 +41,16 @@ test("getNextStatus follows the updated operational workflow", () => {
   assert.equal(getNextStatus("rework_required"), "in_progress");
   assert.equal(getNextStatus("completed"), null);
   assert.equal(getNextStatus("cancelled"), null);
+});
+
+test("completed jobs expose evidence viewing but no further decision actions", () => {
+  assert.equal(canAccessJobPhotoReview("completed"), true);
+  assert.equal(getJobPhotoReviewActionLabel("completed"), "View Photos");
+  assert.equal(canReturnJobToRework("completed"), false);
+});
+
+test("only awaiting approval jobs can be sent back to rework", () => {
+  assert.equal(canReturnJobToRework("awaiting_approval"), true);
+  assert.equal(canReturnJobToRework("in_progress"), false);
+  assert.equal(canReturnJobToRework("rework_required"), false);
 });

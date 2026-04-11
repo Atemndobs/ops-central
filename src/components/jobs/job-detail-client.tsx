@@ -11,7 +11,10 @@ import {
   STATUS_CLASSNAMES,
   STATUS_LABELS,
   WORKFLOW_STEPS,
+  canAccessJobPhotoReview,
+  canReturnJobToRework,
   getNextStatus,
+  getJobPhotoReviewActionLabel,
   type JobStatus,
 } from "@/components/jobs/job-status";
 import { AlertTriangle, Check, UserPlus } from "lucide-react";
@@ -117,7 +120,6 @@ export function JobDetailClient({ id }: { id: string }) {
   );
   const approveCompletion = useMutation(api.cleaningJobs.approve.approveCompletion);
   const rejectCompletion = useMutation(api.cleaningJobs.approve.rejectCompletion);
-  const reopenCompleted = useMutation(api.cleaningJobs.approve.reopenCompleted);
   const assignCleaner = useMutation(api.cleaningJobs.mutations.assign);
 
   const [assignPanelOpen, setAssignPanelOpen] = useState(false);
@@ -222,29 +224,21 @@ export function JobDetailClient({ id }: { id: string }) {
     }
   }
 
-  async function onRejectOrReopen() {
-    if (!canonicalJob) {
+  async function onSendToRework() {
+    if (!canonicalJob || canonicalJob.status !== "awaiting_approval") {
       return;
     }
 
     setError(null);
     setPending(true);
     try {
-      if (canonicalJob.status === "awaiting_approval") {
-        await rejectCompletion({
-          jobId,
-          rejectionReason: "Rejected from admin dashboard for rework.",
-        });
-        showToast("Submission rejected and reopened for rework.");
-      } else if (canonicalJob.status === "completed") {
-        await reopenCompleted({
-          jobId,
-          reason: "Reopened from admin dashboard.",
-        });
-        showToast("Completed job reopened for rework.");
-      }
+      await rejectCompletion({
+        jobId,
+        rejectionReason: "Rejected from admin dashboard for rework.",
+      });
+      showToast("Submission rejected and reopened for rework.");
     } catch (mutationError) {
-      const message = getErrorMessage(mutationError, "Unable to reopen job.");
+      const message = getErrorMessage(mutationError, "Unable to send job to rework.");
       setError(message);
       showToast(message, "error");
     } finally {
@@ -299,8 +293,9 @@ export function JobDetailClient({ id }: { id: string }) {
   }
 
   const currentStepIndex = getWorkflowStepIndex(canonicalJob.status);
-  const canRejectOrReopen =
-    canonicalJob.status === "awaiting_approval" || canonicalJob.status === "completed";
+  const canReturnToRework = canReturnJobToRework(canonicalJob.status);
+  const canOpenPhotoReview = canAccessJobPhotoReview(canonicalJob.status);
+  const photoReviewActionLabel = getJobPhotoReviewActionLabel(canonicalJob.status);
   const canForceStopAsAdmin =
     currentRole === "admin" &&
     canonicalJob.status === "in_progress" &&
@@ -415,15 +410,13 @@ export function JobDetailClient({ id }: { id: string }) {
                 </button>
               ) : null}
 
-              {canRejectOrReopen ? (
+              {canReturnToRework ? (
                 <button
-                  onClick={onRejectOrReopen}
+                  onClick={onSendToRework}
                   disabled={pending}
                   className="rounded-md border border-[var(--destructive)] px-3 py-1.5 text-sm text-[var(--destructive)] disabled:opacity-50"
                 >
-                  {canonicalJob.status === "awaiting_approval"
-                    ? "Reject"
-                    : "Rework"}
+                  Rework
                 </button>
               ) : null}
 
@@ -503,12 +496,12 @@ export function JobDetailClient({ id }: { id: string }) {
               </div>
 
               {/* Review Photos — only when job has progressed past assignment (photos may exist) */}
-              {["in_progress", "awaiting_approval", "completed", "rework_required"].includes(canonicalJob.status) ? (
+              {canOpenPhotoReview ? (
                 <Link
                   href={`/jobs/${canonicalJob._id}/photos-review`}
                   className="rounded-md border border-blue-700 bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
                 >
-                  Review
+                  {photoReviewActionLabel}
                 </Link>
               ) : null}
             </div>

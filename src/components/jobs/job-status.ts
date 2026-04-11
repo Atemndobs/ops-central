@@ -49,3 +49,22 @@ const NEXT_STATUS: Partial<Record<JobStatus, JobStatus>> = {
 export function getNextStatus(status: JobStatus): JobStatus | null {
   return NEXT_STATUS[status] ?? null;
 }
+
+const PHOTO_REVIEW_STATUSES: JobStatus[] = [
+  "in_progress",
+  "awaiting_approval",
+  "rework_required",
+  "completed",
+];
+
+export function canAccessJobPhotoReview(status: JobStatus): boolean {
+  return PHOTO_REVIEW_STATUSES.includes(status);
+}
+
+export function canReturnJobToRework(status: JobStatus): boolean {
+  return status === "awaiting_approval";
+}
+
+export function getJobPhotoReviewActionLabel(status: JobStatus): string {
+  return status === "completed" ? "View Photos" : "Review";
+}

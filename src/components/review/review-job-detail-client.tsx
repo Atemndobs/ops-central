@@ -16,7 +16,12 @@ import {
   Users,
   XCircle,
 } from "lucide-react";
-import { STATUS_CLASSNAMES, STATUS_LABELS, type JobStatus } from "@/components/jobs/job-status";
+import {
+  STATUS_CLASSNAMES,
+  STATUS_LABELS,
+  canReturnJobToRework,
+  type JobStatus,
+} from "@/components/jobs/job-status";
 import { JobConversationLanesPanel } from "@/components/conversations/job-conversation-lanes-panel";
 import { getErrorMessage } from "@/lib/errors";
 
@@ -70,11 +75,9 @@ export function ReviewJobDetailClient({ id }: { id: string }) {
   const detail = useQuery(api.cleaningJobs.queries.getReviewJobDetail, isAuthenticated ? { jobId } : "skip") as ReviewDetail | null | undefined;
   const approveCompletion = useMutation(api.cleaningJobs.approve.approveCompletion);
   const rejectCompletion = useMutation(api.cleaningJobs.approve.rejectCompletion);
-  const reopenCompleted = useMutation(api.cleaningJobs.approve.reopenCompleted);
 
   const [approvalNotes, setApprovalNotes] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
-  const [reopenReason, setReopenReason] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -138,23 +141,7 @@ export function ReviewJobDetailClient({ id }: { id: string }) {
     }
   }
 
-  async function handleReopen() {
-    setPending(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      await reopenCompleted({
-        jobId,
-        reason: reopenReason.trim() || "Reopened for rework.",
-      });
-      setSuccess("Job reopened.");
-      setTimeout(() => router.push("/review"), 1200);
-    } catch (actionError) {
-      setError(getErrorMessage(actionError, "Unable to reopen job."));
-    } finally {
-      setPending(false);
-    }
-  }
+  const canReturnToRework = canReturnJobToRework(detail.job.status);
 
   return (
     <div className="space-y-6">
@@ -310,7 +297,7 @@ export function ReviewJobDetailClient({ id }: { id: string }) {
           Decision
         </h2>
 
-        {detail.job.status === "awaiting_approval" ? (
+        {canReturnToRework ? (
           <div className="mt-4 space-y-4">
             <div>
               <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Approval notes (optional)</label>
@@ -354,31 +341,15 @@ export function ReviewJobDetailClient({ id }: { id: string }) {
         ) : null}
 
         {detail.job.status === "completed" ? (
-          <div className="mt-4 space-y-4">
-            <div>
-              <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Reason for reopening</label>
-              <textarea
-                value={reopenReason}
-                onChange={(event) => setReopenReason(event.target.value)}
-                rows={2}
-                className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-                placeholder="Guest reported issues after checkout."
-              />
-            </div>
-            <button
-              type="button"
-              disabled={pending}
-              className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:opacity-50"
-              onClick={handleReopen}
-            >
-              {pending ? "Working..." : "Reopen Completed Job"}
-            </button>
-          </div>
+          <p className="mt-4 rounded-lg border border-dashed border-[var(--border)] p-4 text-xs text-[var(--muted-foreground)]">
+            This job has already been approved and completed. Review decisions are locked; the
+            evidence remains available here for audit only.
+          </p>
         ) : null}
 
-        {detail.job.status !== "awaiting_approval" && detail.job.status !== "completed" ? (
+        {!canReturnToRework && detail.job.status !== "completed" ? (
           <p className="mt-4 rounded-lg border border-dashed border-[var(--border)] p-4 text-xs text-[var(--muted-foreground)]">
-            Decision actions are only available for jobs in &quot;Awaiting Approval&quot; or &quot;Completed&quot; status.
+            Decision actions are only available while a job is in &quot;Awaiting Approval&quot; status.
           </p>
         ) : null}
 
