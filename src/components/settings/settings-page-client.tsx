@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { useTranslations } from "next-intl";
 import { Bell, Building2, CheckCheck, ExternalLink, Settings, Trash2, Users, Zap } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { navigation } from "@/components/layout/navigation";
@@ -364,6 +365,7 @@ function SchedulingSettingsPanel() {
 }
 
 function TeamSettingsPanel() {
+  const t = useTranslations();
   const userManagementMetrics = useQuery(api.admin.queries.getUserManagementMetrics, {});
   const teamMetrics = useQuery(api.admin.queries.getTeamMetrics, {});
 
@@ -427,7 +429,7 @@ function TeamSettingsPanel() {
                   <tr key={item.href} className="border-b last:border-b-0">
                     <td className="px-3 py-3">
                       <div>
-                        <p className="font-medium text-[var(--foreground)]">{item.name}</p>
+                        <p className="font-medium text-[var(--foreground)]">{t(item.nameKey)}</p>
                         <p className="text-xs text-[var(--muted-foreground)]">{item.href}</p>
                       </div>
                     </td>

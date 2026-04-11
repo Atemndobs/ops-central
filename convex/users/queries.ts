@@ -97,6 +97,19 @@ export const getThemePreference = query({
   },
 });
 
+export const getLocalePreference = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
+
+    return {
+      locale: user.preferredLocale ?? null,
+      role: user.role,
+      updatedAt: user.updatedAt ?? user.createdAt,
+    };
+  },
+});
+
 export const getMyProfile = query({
   args: {},
   handler: async (ctx) => {

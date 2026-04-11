@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { UserButton, useAuth, useUser } from "@clerk/nextjs";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useTranslations } from "next-intl";
 import { api } from "@convex/_generated/api";
 import { cn } from "@/lib/utils";
 import {
@@ -86,6 +87,7 @@ function applyTheme(theme: ThemePreference) {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const t = useTranslations();
   const { isLoaded, isSignedIn, userId, sessionClaims, signOut } = useAuth();
   const { user } = useUser();
   const { isAuthenticated: isConvexAuthenticated, isLoading: isConvexAuthLoading } =
@@ -125,10 +127,10 @@ export function Sidebar() {
       : localTheme;
   const isDarkMode = resolvedTheme === "dark";
   const roleLabel: Record<UserRole, string> = {
-    admin: "Admin",
-    property_ops: "Property Ops",
-    manager: "Manager",
-    cleaner: "Cleaner",
+    admin: t("roles.admin"),
+    property_ops: t("roles.property_ops"),
+    manager: t("roles.manager"),
+    cleaner: t("roles.cleaner"),
   };
   const quickLinks = navigation
     .filter((item) => item.roles.includes(role))
@@ -203,7 +205,7 @@ export function Sidebar() {
         </div>
         {!isCollapsed ? (
           <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
-            Operations Management
+            {t("nav.operationsManagement")}
           </p>
         ) : null}
       </div>
@@ -215,13 +217,14 @@ export function Sidebar() {
         )}
       >
         {navigation.filter((item) => item.roles.includes(role)).map((item) => {
+          const label = t(item.nameKey);
           const isActive =
             pathname === item.href ||
             (item.href !== "/" && pathname.startsWith(item.href));
           const showBadge = item.href === "/messages" && typeof unreadMessageCount === "number" && unreadMessageCount > 0;
           return (
             <Link
-              key={item.name}
+              key={item.nameKey}
               href={item.href}
               className={cn(
                 "relative flex rounded-none transition-colors",
@@ -232,7 +235,7 @@ export function Sidebar() {
                   ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                   : "text-[var(--accent-foreground)] opacity-70 hover:opacity-100 hover:bg-[var(--accent)]",
               )}
-              title={isCollapsed ? item.name : undefined}
+              title={isCollapsed ? label : undefined}
             >
               <span className="relative">
                 <item.icon className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
@@ -244,7 +247,7 @@ export function Sidebar() {
               </span>
               {!isCollapsed ? (
                 <>
-                  <span className="flex-1">{item.name}</span>
+                  <span className="flex-1">{label}</span>
                   {showBadge ? (
                     <span className="inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-[var(--destructive)] px-1 text-[10px] font-bold text-white">
                       {unreadMessageCount > 9 ? "9+" : unreadMessageCount}
@@ -268,10 +271,10 @@ export function Sidebar() {
                 ? "mx-auto h-11 w-11 items-center justify-center"
                 : "items-center gap-3 px-3 py-2.5 text-sm",
             )}
-            title={isCollapsed ? "Help" : undefined}
+            title={isCollapsed ? t("nav.help") : undefined}
           >
             <HelpCircle className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
-            {!isCollapsed ? "Help" : null}
+            {!isCollapsed ? t("nav.help") : null}
           </button>
           <button
             type="button"
@@ -285,10 +288,10 @@ export function Sidebar() {
                 ? "mx-auto h-11 w-11 items-center justify-center"
                 : "items-center gap-3 px-3 py-2.5 text-sm",
             )}
-            title={isCollapsed ? "Logout" : undefined}
+            title={isCollapsed ? t("common.logout") : undefined}
           >
             <LogOut className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
-            {!isCollapsed ? "Logout" : null}
+            {!isCollapsed ? t("common.logout") : null}
           </button>
           <button
             type="button"
@@ -299,14 +302,14 @@ export function Sidebar() {
                 ? "mx-auto h-11 w-11 items-center justify-center"
                 : "items-center gap-3 px-3 py-2.5 text-sm",
             )}
-            title={isCollapsed ? (isDarkMode ? "Light Mode" : "Dark Mode") : undefined}
+            title={isCollapsed ? (isDarkMode ? t("nav.lightMode") : t("nav.darkMode")) : undefined}
           >
             {isDarkMode ? (
               <Sun className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
             ) : (
               <Moon className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
             )}
-            {!isCollapsed ? (isDarkMode ? "Light Mode" : "Dark Mode") : null}
+            {!isCollapsed ? (isDarkMode ? t("nav.lightMode") : t("nav.darkMode")) : null}
           </button>
           <button
             type="button"
@@ -317,10 +320,10 @@ export function Sidebar() {
                 ? "mx-auto h-11 w-11 items-center justify-center"
                 : "items-center gap-3 px-3 py-2.5 text-sm",
             )}
-            title={isCollapsed ? "Expand Sidebar" : undefined}
+            title={isCollapsed ? t("nav.expandSidebar") : undefined}
           >
             <Menu className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
-            {!isCollapsed ? "Collapse" : null}
+            {!isCollapsed ? t("nav.collapse") : null}
           </button>
         </div>
 
@@ -350,9 +353,9 @@ export function Sidebar() {
           >
             <div className="mb-4 flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-lg font-semibold">OpsCentral Help</h3>
+                <h3 className="text-lg font-semibold">{t("nav.helpTitle")}</h3>
                 <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-                  Use these shortcuts to navigate key operational pages quickly.
+                  {t("nav.helpDescription")}
                 </p>
               </div>
               <button
@@ -374,14 +377,13 @@ export function Sidebar() {
                   className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-[var(--accent)]"
                 >
                   <item.icon className="h-4 w-4 text-[var(--muted-foreground)]" />
-                  <span>{item.name}</span>
+                  <span>{t(item.nameKey)}</span>
                 </Link>
               ))}
             </div>
 
             <div className="mt-4 rounded-md border border-dashed px-3 py-2 text-xs text-[var(--muted-foreground)]">
-              Need account or alert preferences? Open Settings from the top-right
-              header.
+              {t("nav.helpSettingsHint")}
             </div>
           </div>
         </div>

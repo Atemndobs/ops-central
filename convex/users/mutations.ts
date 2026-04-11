@@ -5,6 +5,7 @@ import {
   readProfileOverrides,
   setProfileOverride,
 } from "../lib/profileMetadata";
+import { internal } from "../_generated/api";
 
 const roleValidator = v.union(
   v.literal("cleaner"),
@@ -14,6 +15,7 @@ const roleValidator = v.union(
 );
 
 const themeValidator = v.union(v.literal("dark"), v.literal("light"));
+const localeValidator = v.union(v.literal("en"), v.literal("es"));
 const webPushSubscriptionValidator = v.object({
   endpoint: v.string(),
   expirationTime: v.union(v.number(), v.null()),
@@ -75,12 +77,17 @@ export const ensureUser = mutation({
       return { userId: existingUser._id };
     }
 
+    const role = args.role ?? "cleaner";
+    // Role-based locale defaults: cleaners => es, ops/admin => en
+    const defaultLocale = role === "cleaner" ? "es" : "en";
+
     const userId = await ctx.db.insert("users", {
       clerkId: identity.subject,
       email: args.email,
       name: args.name,
-      role: args.role ?? "cleaner",
+      role,
       avatarUrl: args.avatarUrl,
+      preferredLocale: defaultLocale,
       createdAt: now,
       updatedAt: now,
     });
@@ -231,6 +238,28 @@ export const setThemePreference = mutation({
     });
 
     return { success: true, theme: args.theme };
+  },
+});
+
+export const setLocalePreference = mutation({
+  args: {
+    locale: localeValidator,
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+
+    await ctx.db.patch(user._id, {
+      preferredLocale: args.locale,
+      updatedAt: Date.now(),
+    });
+
+    // Sync locale preference back to Clerk in the background
+    await ctx.scheduler.runAfter(0, internal.clerk.actions.syncLocalePreferenceToClerk, {
+      clerkId: user.clerkId,
+      locale: args.locale,
+    });
+
+    return { success: true, locale: args.locale };
   },
 });
 

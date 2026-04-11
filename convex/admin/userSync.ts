@@ -11,12 +11,15 @@ const userRoleValidator = v.union(
   v.literal("admin"),
 );
 
+const localeValidator = v.union(v.literal("en"), v.literal("es"));
+
 const clerkDirectoryUserValidator = v.object({
   clerkId: v.string(),
   email: v.string(),
   name: v.optional(v.string()),
   role: v.optional(userRoleValidator),
   avatarUrl: v.optional(v.string()),
+  locale: v.optional(localeValidator),
 });
 
 type ClerkDirectoryUser = {
@@ -25,6 +28,7 @@ type ClerkDirectoryUser = {
   name?: string;
   role?: Doc<"users">["role"];
   avatarUrl?: string;
+  locale?: "en" | "es";
 };
 
 type ReferenceSummary = {
@@ -477,6 +481,9 @@ export const reconcileWithClerk = mutation({
             updates.avatarUrl = canonicalByClerkId.avatarUrl;
           }
         }
+        if (canonicalByClerkId.locale && canonicalByClerkId.locale !== user.preferredLocale) {
+          updates.preferredLocale = canonicalByClerkId.locale;
+        }
 
         if (Object.keys(updates).length > 0) {
           updates.updatedAt = now;
@@ -545,6 +552,9 @@ export const reconcileWithClerk = mutation({
       ) {
         updates.avatarUrl = canonicalByEmail.avatarUrl;
       }
+      if (canonicalByEmail.locale && canonicalByEmail.locale !== user.preferredLocale) {
+        updates.preferredLocale = canonicalByEmail.locale;
+      }
 
       if (!dryRun) {
         await ctx.db.patch(user._id, updates);
@@ -571,12 +581,18 @@ export const reconcileWithClerk = mutation({
 
     if (!dryRun && missingInConvex.length > 0) {
       for (const directoryUser of missingInConvex) {
+        const role = directoryUser.role ?? "cleaner";
+        // Role-based locale defaults: cleaners => es, ops/admin => en
+        const defaultLocale = role === "cleaner" ? "es" : "en";
+        const locale = directoryUser.locale ?? defaultLocale;
+
         const userId = await ctx.db.insert("users", {
           clerkId: directoryUser.clerkId,
           email: directoryUser.email,
           name: directoryUser.name,
-          role: directoryUser.role ?? "cleaner",
+          role,
           avatarUrl: directoryUser.avatarUrl,
+          preferredLocale: locale,
           createdAt: now,
           updatedAt: now,
         });

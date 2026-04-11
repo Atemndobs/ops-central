@@ -1,5 +1,6 @@
 import { clerkClient, clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { locales, roleDefaultLocale, type Locale } from "@/i18n";
 import {
   USER_ROLES,
   canAccessPath,
@@ -82,8 +83,22 @@ export default clerkMiddleware(async (auth, req) => {
     return redirectToSignIn({ returnBackUrl: req.url });
   }
 
+  const response = NextResponse.next();
+
   const claims = sessionClaims as Record<string, unknown> | null;
   const roleFromClaims = getRoleFromSessionClaimsOrNull(claims);
+
+  // Set locale cookie based on user role (will be refined in Phase 2 with Convex preference)
+  const locale = (roleFromClaims && roleDefaultLocale[roleFromClaims]) || "en";
+
+  if (!req.cookies.get("NEXT_LOCALE")) {
+    response.cookies.set("NEXT_LOCALE", locale, {
+      maxAge: 31536000, // 1 year
+      httpOnly: false, // Allow client-side access for language switcher
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+    });
+  }
   const roleFromClerkMetadata = roleFromClaims
     ? null
     : await getRoleFromClerkMetadata(userId);
@@ -118,7 +133,7 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.redirect(url);
   }
 
-  return NextResponse.next();
+  return response;
 });
 
 export const config = {

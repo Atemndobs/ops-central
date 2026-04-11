@@ -23,6 +23,7 @@ const users = defineTable({
   ),
   pushToken: v.optional(v.string()),
   phone: v.optional(v.string()),
+  preferredLocale: v.optional(v.union(v.literal("en"), v.literal("es"))),
   metadata: v.optional(v.any()),
   createdAt: v.number(),
   updatedAt: v.optional(v.number()),

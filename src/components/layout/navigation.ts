@@ -16,7 +16,7 @@ import {
 import type { UserRole } from "@/lib/auth";
 
 export type NavigationItem = {
-  name: string;
+  nameKey: string;
   href: string;
   icon: LucideIcon;
   roles: UserRole[];
@@ -24,73 +24,73 @@ export type NavigationItem = {
 
 export const navigation: NavigationItem[] = [
   {
-    name: "Dashboard",
+    nameKey: "common.dashboard",
     href: "/",
     icon: LayoutDashboard,
     roles: ["admin", "property_ops", "manager"],
   },
   {
-    name: "Schedule",
+    nameKey: "common.schedule",
     href: "/schedule",
     icon: Calendar,
     roles: ["admin", "property_ops", "manager"],
   },
   {
-    name: "Jobs",
+    nameKey: "common.jobs",
     href: "/jobs",
     icon: ClipboardList,
     roles: ["admin", "property_ops", "manager", "cleaner"],
   },
   {
-    name: "Messages",
+    nameKey: "common.messages",
     href: "/messages",
     icon: MessageSquare,
     roles: ["admin", "property_ops", "manager"],
   },
   {
-    name: "Review",
+    nameKey: "nav.review",
     href: "/review",
     icon: ClipboardCheck,
     roles: ["property_ops", "manager"],
   },
   {
-    name: "Properties",
+    nameKey: "common.properties",
     href: "/properties",
     icon: Building2,
     roles: ["admin", "property_ops", "manager"],
   },
   {
-    name: "Companies",
+    nameKey: "nav.companies",
     href: "/companies",
     icon: Building,
     roles: ["admin", "property_ops", "manager"],
   },
   {
-    name: "Team",
+    nameKey: "common.team",
     href: "/team",
     icon: Users,
     roles: ["admin", "property_ops", "manager"],
   },
   {
-    name: "Inventory",
+    nameKey: "common.inventory",
     href: "/inventory",
     icon: Package,
     roles: ["admin"],
   },
   {
-    name: "Work Orders",
+    nameKey: "common.workOrders",
     href: "/work-orders",
     icon: Wrench,
     roles: ["admin"],
   },
   {
-    name: "Reports",
+    nameKey: "common.reports",
     href: "/reports",
     icon: BarChart3,
     roles: ["admin", "property_ops", "manager"],
   },
   {
-    name: "Settings",
+    nameKey: "common.settings",
     href: "/settings",
     icon: Settings,
     roles: ["admin"],

@@ -11,6 +11,7 @@ type ClerkDirectoryUser = {
   name?: string;
   role?: AppRole;
   avatarUrl?: string;
+  locale?: "en" | "es";
 };
 
 function normalizeString(value: string | null | undefined): string | undefined {
@@ -28,6 +29,13 @@ function parseRole(value: unknown): AppRole | undefined {
     value === "property_ops" ||
     value === "admin"
   ) {
+    return value;
+  }
+  return undefined;
+}
+
+function parseLocale(value: unknown): "en" | "es" | undefined {
+  if (value === "en" || value === "es") {
     return value;
   }
   return undefined;
@@ -63,12 +71,17 @@ function fromClerkUser(user: {
     parseRole(user.publicMetadata?.role) ??
     parseRole(user.unsafeMetadata?.role);
 
+  const locale =
+    parseLocale(user.publicMetadata?.locale) ??
+    parseLocale(user.unsafeMetadata?.locale);
+
   return {
     clerkId: user.id,
     email,
     name: fullName || username || email.split("@")[0],
     role,
     avatarUrl: normalizeString(user.imageUrl),
+    locale,
   };
 }
 

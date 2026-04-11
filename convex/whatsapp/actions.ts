@@ -13,6 +13,7 @@ import {
   normalizeWhatsAppPhoneNumber,
 } from "./lib";
 import {
+  getMetaAppSecret,
   buildMetaInviteUrl,
   downloadMetaMedia,
   getMetaWebhookVerifyToken,
@@ -154,6 +155,21 @@ function mapStatus(status: string | undefined) {
   return "sent";
 }
 
+function shouldRetryWhatsAppSendWithoutContext(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("replied message not found") ||
+    message.includes("context") ||
+    message.includes("message_id") ||
+    message.includes("131047") ||
+    message.includes("131009")
+  );
+}
+
 async function getAuthenticatedUser(ctx: ActionCtx) {
   const identity = await requireAuth(ctx);
   const user = await ctx.runQuery(api.users.queries.getByClerkId, {
@@ -225,6 +241,13 @@ export const getWebhookVerifyToken = internalAction({
   },
 });
 
+export const getWebhookAppSecret = internalAction({
+  args: {},
+  handler: async () => {
+    return getMetaAppSecret();
+  },
+});
+
 export const sendReply = action({
   args: {
     conversationId: v.id("conversations"),
@@ -261,11 +284,33 @@ export const sendReply = action({
       );
     }
 
-    const sendResult = await sendMetaTextMessage({
-      to: outboundContext.endpoint.waId,
-      body,
-      replyToProviderMessageId: outboundContext.latestProviderMessageId ?? undefined,
-    });
+    let sendResult: Awaited<ReturnType<typeof sendMetaTextMessage>>;
+    try {
+      sendResult = await sendMetaTextMessage({
+        to: outboundContext.endpoint.waId,
+        body,
+        replyToProviderMessageId: outboundContext.latestProviderMessageId ?? undefined,
+      });
+    } catch (error) {
+      if (
+        outboundContext.latestProviderMessageId &&
+        shouldRetryWhatsAppSendWithoutContext(error)
+      ) {
+        console.warn(
+          "[whatsapp/sendReply] Reply context rejected by Meta; retrying send without context.",
+          {
+            conversationId: args.conversationId,
+            replyToProviderMessageId: outboundContext.latestProviderMessageId,
+          },
+        );
+        sendResult = await sendMetaTextMessage({
+          to: outboundContext.endpoint.waId,
+          body,
+        });
+      } else {
+        throw error;
+      }
+    }
 
     const result: {
       messageId: Id<"conversationMessages">;

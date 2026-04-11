@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useTranslations } from "next-intl";
 import { api } from "@convex/_generated/api";
 import { Bell, LogOut, Menu, Moon, Settings, Sun, X } from "lucide-react";
 import {
@@ -17,18 +18,18 @@ import { useConsumeNotificationIdFromSearchParam } from "@/lib/notifications-cli
 import { cn } from "@/lib/utils";
 import { navigation } from "@/components/layout/navigation";
 
-const pageTitles: Record<string, string> = {
-  "/": "Dashboard",
-  "/schedule": "Schedule",
-  "/jobs": "Jobs",
-  "/messages": "Messages",
-  "/properties": "Properties",
-  "/companies": "Companies",
-  "/team": "Team",
-  "/inventory": "Inventory",
-  "/work-orders": "Work Orders",
-  "/reports": "Reports",
-  "/settings": "Settings",
+const pageTitleKeys: Record<string, string> = {
+  "/": "common.dashboard",
+  "/schedule": "common.schedule",
+  "/jobs": "common.jobs",
+  "/messages": "common.messages",
+  "/properties": "common.properties",
+  "/companies": "nav.companies",
+  "/team": "common.team",
+  "/inventory": "common.inventory",
+  "/work-orders": "common.workOrders",
+  "/reports": "common.reports",
+  "/settings": "common.settings",
 };
 
 const THEME_STORAGE_KEY = "opscentral-theme";
@@ -96,6 +97,7 @@ function applyTheme(theme: ThemePreference) {
 
 export function Header() {
   const pathname = usePathname();
+  const t = useTranslations();
   const { isLoaded, isSignedIn, userId, sessionClaims, signOut } = useAuth();
   const { user } = useUser();
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -200,7 +202,8 @@ export function Header() {
     };
   }, [isNotificationsOpen]);
 
-  const title = getPageTitle(pathname);
+  const titleKey = getPageTitleKey(pathname);
+  const title = titleKey ? t(titleKey) : "ChezSoi";
 
   return (
     <>
@@ -379,7 +382,7 @@ export function Header() {
                 const showMsgBadge = item.href === "/messages" && typeof unreadMessageCount === "number" && unreadMessageCount > 0;
                 return (
                   <Link
-                    key={item.name}
+                    key={item.nameKey}
                     href={item.href}
                     onClick={() => setIsMobileMenuOpen(false)}
                     className={cn(
@@ -390,7 +393,7 @@ export function Header() {
                     )}
                   >
                     <item.icon className="h-4 w-4" />
-                    <span className="flex-1">{item.name}</span>
+                    <span className="flex-1">{t(item.nameKey)}</span>
                     {showMsgBadge ? (
                       <span className="inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-[var(--destructive)] px-1 text-[10px] font-bold text-white">
                         {unreadMessageCount > 9 ? "9+" : unreadMessageCount}
@@ -421,7 +424,7 @@ export function Header() {
                 className="flex w-full items-center gap-3 rounded-none px-3 py-3 text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
               >
                 <LogOut className="h-4 w-4" />
-                Logout
+                {t("common.logout")}
               </button>
             </div>
           </aside>
@@ -431,17 +434,17 @@ export function Header() {
   );
 }
 
-function getPageTitle(pathname: string) {
+function getPageTitleKey(pathname: string): string | null {
   if (/^\/jobs\/[^/]+\/photos-review$/.test(pathname)) {
-    return "Photo Review";
+    return null; // Special case: "Photo Review" — not a nav key
   }
 
   return (
-    pageTitles[pathname] ||
-    Object.entries(pageTitles).find(([key]) =>
+    pageTitleKeys[pathname] ||
+    Object.entries(pageTitleKeys).find(([key]) =>
       key !== "/" && pathname.startsWith(key),
     )?.[1] ||
-    "ChezSoi"
+    null
   );
 }
 

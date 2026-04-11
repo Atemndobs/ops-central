@@ -6,6 +6,7 @@ type MetaWhatsAppConfig = {
   accessToken: string;
   phoneNumberId: string;
   webhookVerifyToken: string;
+  appSecret: string;
   businessPhone: string | null;
   graphVersion: string;
 };
@@ -31,10 +32,19 @@ function getRequiredEnv(name: string) {
   return value;
 }
 
+export function getMetaWebhookVerifyToken() {
+  return getRequiredEnv("WHATSAPP_WEBHOOK_VERIFY_TOKEN");
+}
+
+export function getMetaAppSecret() {
+  return getRequiredEnv("WHATSAPP_APP_SECRET");
+}
+
 export function getMetaWhatsAppConfig(): MetaWhatsAppConfig {
   const accessToken = getRequiredEnv("WHATSAPP_ACCESS_TOKEN");
   const phoneNumberId = getRequiredEnv("WHATSAPP_PHONE_NUMBER_ID");
-  const webhookVerifyToken = getRequiredEnv("WHATSAPP_WEBHOOK_VERIFY_TOKEN");
+  const webhookVerifyToken = getMetaWebhookVerifyToken();
+  const appSecret = getMetaAppSecret();
   const graphVersion = process.env.WHATSAPP_GRAPH_API_VERSION?.trim() || "v23.0";
   const businessPhone = normalizeWhatsAppPhoneNumber(
     process.env.WHATSAPP_BUSINESS_PHONE_E164,
@@ -44,13 +54,10 @@ export function getMetaWhatsAppConfig(): MetaWhatsAppConfig {
     accessToken,
     phoneNumberId,
     webhookVerifyToken,
+    appSecret,
     businessPhone,
     graphVersion,
   };
-}
-
-export function getMetaWebhookVerifyToken() {
-  return getMetaWhatsAppConfig().webhookVerifyToken;
 }
 
 export function buildMetaInviteUrl(args: {
