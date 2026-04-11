@@ -7,13 +7,14 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslations } from "next-intl";
 import { api } from "@convex/_generated/api";
-import { Bell, LogOut, Menu, Moon, Settings, Sun, X } from "lucide-react";
+import { Bell, Globe, LogOut, Menu, Moon, Settings, Sun, X } from "lucide-react";
 import {
   canAccessPath,
   getRoleFromMetadata,
   getRoleFromSessionClaimsOrNull,
   type UserRole,
 } from "@/lib/auth";
+import { localeNames, type Locale } from "@/lib/locales";
 import { useConsumeNotificationIdFromSearchParam } from "@/lib/notifications-client";
 import { cn } from "@/lib/utils";
 import { navigation } from "@/components/layout/navigation";
@@ -110,6 +111,7 @@ export function Header() {
   const isDarkMode = theme === "dark";
   const notificationPanelRef = useRef<HTMLDivElement | null>(null);
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
+  const setLocalePreference = useMutation(api.users.mutations.setLocalePreference);
   const markNotificationRead = useMutation(api.users.mutations.markNotificationRead);
   const setThemePreferenceRef = useRef(setThemePreference);
 
@@ -201,6 +203,26 @@ export function Header() {
       document.removeEventListener("keydown", handleEscape);
     };
   }, [isNotificationsOpen]);
+
+  const [currentLocale, setCurrentLocale] = useState<Locale>(() => {
+    if (typeof document === "undefined") return "en";
+    const cookie = document.cookie.split("; ").find((c) => c.startsWith("NEXT_LOCALE="));
+    return (cookie?.split("=")[1] as Locale) || "en";
+  });
+
+  const toggleLocale = useCallback(() => {
+    const nextLocale: Locale = currentLocale === "en" ? "es" : "en";
+    setCurrentLocale(nextLocale);
+    document.cookie = `NEXT_LOCALE=${nextLocale}; path=/; max-age=31536000`;
+
+    if (isLoaded && isSignedIn) {
+      void setLocalePreference({ locale: nextLocale }).catch((error) => {
+        console.warn("[Locale] Failed to save locale in Convex", error);
+      });
+    }
+
+    setTimeout(() => window.location.reload(), 300);
+  }, [currentLocale, isLoaded, isSignedIn, setLocalePreference]);
 
   const titleKey = getPageTitleKey(pathname);
   const title = titleKey ? t(titleKey) : "ChezSoi";
@@ -325,6 +347,19 @@ export function Header() {
 
           <button
             type="button"
+            onClick={toggleLocale}
+            className="relative rounded-none p-2 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+            aria-label={`Switch to ${localeNames[currentLocale === "en" ? "es" : "en"]}`}
+            title={`Switch to ${localeNames[currentLocale === "en" ? "es" : "en"]}`}
+          >
+            <Globe className="h-4 w-4" />
+            <span className="absolute -bottom-0.5 -right-0.5 inline-flex min-h-3.5 min-w-3.5 items-center justify-center rounded-full bg-[var(--primary)] px-0.5 text-[8px] font-bold uppercase text-white">
+              {currentLocale}
+            </span>
+          </button>
+
+          <button
+            type="button"
             onClick={toggleTheme}
             className="rounded-none p-2 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
             aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
@@ -405,6 +440,15 @@ export function Header() {
             </nav>
 
             <div className="space-y-1 border-t px-3 py-3">
+              <button
+                type="button"
+                onClick={toggleLocale}
+                className="flex w-full items-center gap-3 rounded-none px-3 py-3 text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+              >
+                <Globe className="h-4 w-4" />
+                {currentLocale === "en" ? "Cambiar a Español" : "Switch to English"}
+              </button>
+
               <button
                 type="button"
                 onClick={toggleTheme}

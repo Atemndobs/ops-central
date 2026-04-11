@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
   ClipboardList,
+  Globe,
   MessageSquare,
   AlertTriangle,
   MoreHorizontal,
@@ -19,6 +20,7 @@ import {
   Sun,
 } from "lucide-react";
 import { api } from "@convex/_generated/api";
+import { localeNames, type Locale } from "@/lib/locales";
 import type { Id } from "@convex/_generated/dataModel";
 import { InstallPrompt } from "@/components/cleaner/install-prompt";
 import { useConsumeNotificationIdFromSearchParam } from "@/lib/notifications-client";
@@ -123,6 +125,7 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     isConvexAuthenticated ? {} : "skip",
   );
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
+  const setLocalePreference = useMutation(api.users.mutations.setLocalePreference);
   const markNotificationRead = useMutation(api.users.mutations.markNotificationRead);
   const updateWebPushSubscription = useMutation(api.users.mutations.updateWebPushSubscription);
   const clearWebPushSubscription = useMutation(api.users.mutations.clearWebPushSubscription);
@@ -361,6 +364,26 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     }
   }, [isConvexAuthenticated, resolvedTheme]);
 
+  const [currentLocale, setCurrentLocale] = useState<Locale>(() => {
+    if (typeof document === "undefined") return "en";
+    const cookie = document.cookie.split("; ").find((c) => c.startsWith("NEXT_LOCALE="));
+    return (cookie?.split("=")[1] as Locale) || "en";
+  });
+
+  const toggleLocale = useCallback(() => {
+    const nextLocale: Locale = currentLocale === "en" ? "es" : "en";
+    setCurrentLocale(nextLocale);
+    document.cookie = `NEXT_LOCALE=${nextLocale}; path=/; max-age=31536000`;
+
+    if (isConvexAuthenticated) {
+      void setLocalePreference({ locale: nextLocale }).catch((error) => {
+        console.warn("[CleanerLocale] Failed to save locale in Convex", error);
+      });
+    }
+
+    setTimeout(() => window.location.reload(), 300);
+  }, [currentLocale, isConvexAuthenticated, setLocalePreference]);
+
   const title = useMemo(() => {
     if (!pathname) {
       return "Cleaner";
@@ -509,6 +532,18 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
                 </div>
               ) : null}
             </div>
+            <button
+              type="button"
+              onClick={toggleLocale}
+              className="relative rounded-md border border-[var(--border)] p-2.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+              aria-label={`Switch to ${localeNames[currentLocale === "en" ? "es" : "en"]}`}
+              title={`Switch to ${localeNames[currentLocale === "en" ? "es" : "en"]}`}
+            >
+              <Globe className="h-5 w-5" />
+              <span className="absolute -bottom-1 -right-1 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-[var(--primary)] px-1 text-[9px] font-bold uppercase text-white">
+                {currentLocale}
+              </span>
+            </button>
             <button
               type="button"
               onClick={toggleTheme}
