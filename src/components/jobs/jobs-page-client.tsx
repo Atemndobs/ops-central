@@ -23,6 +23,7 @@ import {
   STATUS_LABELS,
   type JobStatus,
 } from "@/components/jobs/job-status";
+import { JobCountdown } from "@/components/jobs/job-countdown";
 import { CreateJobModal } from "@/components/jobs/create-job-modal";
 
 const workflowStatuses: JobStatus[] = [
@@ -476,9 +477,15 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
                     <p className="mt-0.5 truncate text-xs text-[var(--muted-foreground)]">
                       {job.property?.name ?? "Unknown property"}
                     </p>
-                    <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
-                      {STATUS_LABELS[job.status]} · {new Date(job.scheduledStartAt ?? 0).toLocaleString()}
-                    </p>
+                    <div className="mt-1 flex items-center gap-2 text-[11px] text-[var(--muted-foreground)]">
+                      <span>{STATUS_LABELS[job.status]} · {new Date(job.scheduledStartAt ?? 0).toLocaleString()}</span>
+                      <JobCountdown
+                        scheduledStartAt={job.scheduledStartAt}
+                        actualStartAt={job.actualStartAt}
+                        actualEndAt={job.actualEndAt}
+                        status={job.status}
+                      />
+                    </div>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <Link
@@ -548,6 +555,7 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
               <th className="px-4 py-3">Property</th>
               <th className="px-4 py-3">Cleaner</th>
               <th className="px-4 py-3">Scheduled</th>
+              <th className="px-4 py-3">Countdown</th>
               <th className="px-4 py-3">Workflow</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Actions</th>
@@ -563,6 +571,14 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
                 <td className="px-4 py-3">{job.property?.name ?? "Unknown property"}</td>
                 <td className="px-4 py-3">{job.cleaners?.[0]?.name ?? "Unassigned"}</td>
                 <td className="px-4 py-3">{new Date(job.scheduledStartAt ?? 0).toLocaleString()}</td>
+                <td className="px-4 py-3">
+                  <JobCountdown
+                    scheduledStartAt={job.scheduledStartAt}
+                    actualStartAt={job.actualStartAt}
+                    actualEndAt={job.actualEndAt}
+                    status={job.status}
+                  />
+                </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1.5">
                     {workflowStatuses.map((stepStatus, index) => {

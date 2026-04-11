@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { useTranslations } from "next-intl";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import {
@@ -15,6 +16,7 @@ import {
   STATUS_CLASSNAMES,
   STATUS_LABELS,
 } from "@/components/jobs/job-status";
+import { JobCountdown } from "@/components/jobs/job-countdown";
 import { useToast } from "@/components/ui/toast-provider";
 import { getErrorMessage } from "@/lib/errors";
 import { isPropertyStatus, type PropertyStatus } from "@/types/property";
@@ -22,22 +24,22 @@ import { isPropertyStatus, type PropertyStatus } from "@/types/property";
 const dayMs = 24 * 60 * 60 * 1000;
 
 const funnelStages = [
-  { status: "scheduled", label: "Scheduled", href: "/jobs?status=scheduled" },
-  { status: "assigned", label: "Assigned", href: "/jobs?status=assigned" },
-  { status: "in_progress", label: "In Progress", href: "/jobs?status=in_progress" },
+  { status: "scheduled", labelKey: "dashboard.scheduled", href: "/jobs?status=scheduled" },
+  { status: "assigned", labelKey: "dashboard.assigned", href: "/jobs?status=assigned" },
+  { status: "in_progress", labelKey: "dashboard.inProgress", href: "/jobs?status=in_progress" },
   {
     status: "awaiting_approval",
-    label: "Awaiting Approval",
+    labelKey: "dashboard.awaitingApproval",
     href: "/jobs?status=awaiting_approval",
   },
-  { status: "completed", label: "Completed", href: "/jobs?status=completed" },
+  { status: "completed", labelKey: "dashboard.completed", href: "/jobs?status=completed" },
 ] as const;
 
-const readinessLabel: Record<PropertyStatus, string> = {
-  ready: "Ready",
-  dirty: "Dirty",
-  in_progress: "In Progress",
-  vacant: "Vacant",
+const readinessLabelKey: Record<PropertyStatus, string> = {
+  ready: "dashboard.ready",
+  dirty: "dashboard.dirty",
+  in_progress: "dashboard.inProgress",
+  vacant: "dashboard.vacant",
 };
 
 const readinessColor: Record<PropertyStatus, string> = {
@@ -74,6 +76,7 @@ function firstNameOnly(name: string): string {
 }
 
 export function DashboardClient() {
+  const t = useTranslations();
   const { showToast } = useToast();
   const { isAuthenticated } = useConvexAuth();
   const [showAllAlerts, setShowAllAlerts] = useState(false);
@@ -127,14 +130,14 @@ export function DashboardClient() {
           returnWarnings: true,
         });
         setQuickAssignAlertId(null);
-        showToast("Cleaner assigned.");
+        showToast(t("dashboard.cleanerAssigned"));
         const warnings = getAssignWarnings(result);
         if (warnings.length > 0) {
-          showToast(`Dispatch warning: ${warnings.join(" ")}`, "error");
+          showToast(`${t("dashboard.dispatchWarning")}: ${warnings.join(" ")}`, "error");
         }
       } catch (error) {
         showToast(
-          getErrorMessage(error, "Unable to assign cleaner from dashboard."),
+          getErrorMessage(error, t("dashboard.unableToAssign")),
           "error",
         );
       } finally {
@@ -216,10 +219,10 @@ export function DashboardClient() {
         const urgent = Boolean(job.isUrgent);
         const rework = job.status === "rework_required";
 
-        let reason = "Urgent job";
-        if (rework) reason = "Rework required";
-        else if (overdue) reason = "Overdue start";
-        else if (hasNoCleaner) reason = "No cleaner assigned";
+        let reason = t("dashboard.urgentJob");
+        if (rework) reason = t("dashboard.reworkRequired");
+        else if (overdue) reason = t("dashboard.overdueStart");
+        else if (hasNoCleaner) reason = t("dashboard.noCleanerAssigned");
 
         const priority =
           rework ? 4 :
@@ -230,7 +233,7 @@ export function DashboardClient() {
         return {
           id: job._id,
           propertyId: job.propertyId,
-          property: job.property?.name ?? "Unknown property",
+          property: job.property?.name ?? t("dashboard.unknownProperty"),
           reason,
           startAt: job.scheduledStartAt,
           status: job.status,
@@ -283,23 +286,23 @@ export function DashboardClient() {
     return [
       {
         key: "unassigned",
-        label: "Missing cleaner",
+        label: t("dashboard.missingCleaner"),
         count: unassignedJobs.length,
-        helper: "Actionable jobs with no cleaner assignment.",
+        helper: t("dashboard.missingCleanerHelper"),
         href: "/jobs?status=scheduled",
       },
       {
         key: "overdue",
-        label: "Overdue start",
+        label: t("dashboard.overdueStart"),
         count: overdueJobs.length,
-        helper: "Scheduled/assigned jobs past start time.",
+        helper: t("dashboard.overdueStartHelper"),
         href: "/jobs?status=assigned",
       },
       {
         key: "rework",
-        label: "Rework required",
+        label: t("dashboard.reworkRequired"),
         count: reworkJobs.length,
-        helper: "Jobs returned for another cleaning pass.",
+        helper: t("dashboard.reworkRequiredHelper"),
         href: "/jobs?status=rework_required",
       },
     ];
@@ -332,10 +335,10 @@ export function DashboardClient() {
       <div className="flex flex-wrap items-center justify-between gap-3 sm:items-start sm:gap-4">
         <div className="min-w-0">
           <h1 className="hidden text-3xl font-extrabold tracking-tight sm:block">
-            Operations Dashboard
+            {t("dashboard.title")}
           </h1>
           <p className="mt-1 hidden text-sm text-[var(--muted-foreground)] sm:block">
-            Real-time status of property readiness and field jobs.
+            {t("dashboard.subtitle")}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -343,13 +346,13 @@ export function DashboardClient() {
             href="/reports"
             className="rounded-xl bg-[var(--secondary)] px-3 py-1.5 text-xs font-semibold text-[var(--secondary-foreground)] transition hover:opacity-90 sm:px-4 sm:py-2 sm:text-sm"
           >
-            Generate Report
+            {t("dashboard.generateReport")}
           </Link>
           <Link
             href="/jobs"
             className="rounded-xl bg-[var(--primary)] px-3 py-1.5 text-center text-xs font-semibold text-[var(--primary-foreground)] sm:px-4 sm:py-2 sm:text-sm"
           >
-            New Job
+            {t("dashboard.newJob")}
           </Link>
         </div>
       </div>
@@ -357,16 +360,16 @@ export function DashboardClient() {
       <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5">
         <div className="mb-3 flex items-center justify-between sm:mb-4">
           <div>
-            <h2 className="text-base font-bold sm:text-lg">Ops Funnel</h2>
+            <h2 className="text-base font-bold sm:text-lg">{t("dashboard.opsFunnel")}</h2>
             <p className="text-xs text-[var(--muted-foreground)]">
-              Stage count + overdue delta versus 24h ago
+              {t("dashboard.opsFunnelSubtitle")}
             </p>
           </div>
         </div>
         {loading ? (
           <div className="flex min-h-28 items-center justify-center text-sm text-[var(--muted-foreground)]">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Loading funnel...
+            {t("dashboard.loadingFunnel")}
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
@@ -388,7 +391,7 @@ export function DashboardClient() {
                   className="rounded-xl border bg-[var(--card)] px-3 py-2.5 transition hover:border-[var(--primary)]/40 hover:bg-[var(--accent)]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
                 >
                   <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--muted-foreground)]">
-                    {stage.label}
+                    {t(stage.labelKey)}
                   </p>
                   <p className="mt-1 text-2xl font-extrabold leading-none">
                     {stage.count}
@@ -406,18 +409,18 @@ export function DashboardClient() {
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
         <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5 xl:col-span-5">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-base font-bold sm:text-lg">Blockers</h2>
+            <h2 className="text-base font-bold sm:text-lg">{t("dashboard.blockers")}</h2>
             <Link
               href="/jobs"
               className="text-xs font-semibold text-[var(--primary)] hover:underline"
             >
-              Open jobs
+              {t("dashboard.openJobs")}
             </Link>
           </div>
           {loading ? (
             <div className="flex min-h-36 items-center justify-center text-sm text-[var(--muted-foreground)]">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Loading blockers...
+              {t("dashboard.loadingBlockers")}
             </div>
           ) : (
             <div className="space-y-2">
@@ -439,7 +442,7 @@ export function DashboardClient() {
                     href={blocker.href}
                     className="mt-1.5 inline-flex text-xs font-semibold text-[var(--primary)] hover:underline"
                   >
-                    Review queue
+                    {t("dashboard.reviewQueue")}
                   </Link>
                 </div>
               ))}
@@ -450,9 +453,9 @@ export function DashboardClient() {
         <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5 xl:col-span-7">
           <div className="mb-3 flex items-center justify-between sm:mb-4">
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold sm:text-lg">Critical Alerts</h2>
+              <h2 className="text-base font-bold sm:text-lg">{t("dashboard.criticalAlerts")}</h2>
               <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-rose-700">
-                Urgent
+                {t("dashboard.urgent")}
               </span>
             </div>
             {alerts.length > 2 ? (
@@ -461,18 +464,18 @@ export function DashboardClient() {
                 onClick={() => setShowAllAlerts((current) => !current)}
                 className="text-xs font-semibold text-[var(--primary)] hover:underline"
               >
-                {showAllAlerts ? "Show fewer" : `Show all (${alerts.length})`}
+                {showAllAlerts ? t("dashboard.showFewer") : `${t("dashboard.showAll")} (${alerts.length})`}
               </button>
             ) : null}
           </div>
           {loading ? (
             <div className="flex min-h-36 items-center justify-center text-sm text-[var(--muted-foreground)]">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Loading alerts...
+              {t("dashboard.loadingAlerts")}
             </div>
           ) : alerts.length === 0 ? (
             <p className="rounded-xl border border-dashed p-4 text-sm text-[var(--muted-foreground)]">
-              No urgent alerts right now.
+              {t("dashboard.noUrgentAlerts")}
             </p>
           ) : (
             <div className="space-y-2.5">
@@ -489,7 +492,7 @@ export function DashboardClient() {
                       <p className="mt-0.5 text-[11px] text-[var(--muted-foreground)]">
                         {alert.startAt
                           ? new Date(alert.startAt).toLocaleString()
-                          : "No schedule set"}
+                          : t("dashboard.noScheduleSet")}
                         {" · "}
                         {STATUS_LABELS[alert.status]}
                       </p>
@@ -516,7 +519,7 @@ export function DashboardClient() {
                           )}
                           {alert.assignedCleanerNames.length > 0
                             ? alert.assignedCleanerNames[0]
-                            : "Assign"}
+                            : t("dashboard.assign")}
                         </button>
                       </div>
                       {quickAssignAlertId === alert.id ? (
@@ -528,12 +531,12 @@ export function DashboardClient() {
                               <>
                                 <p className="text-[11px] text-[var(--muted-foreground)]">
                                   {availableAssignment?.companyName
-                                    ? `Company: ${availableAssignment.companyName}`
-                                    : "No company assigned to this property."}
+                                    ? `${t("dashboard.company")}: ${availableAssignment.companyName}`
+                                    : t("dashboard.noCompanyAssigned")}
                                 </p>
                                 {companyCleaners.length === 0 ? (
                                   <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
-                                    No eligible cleaners available.
+                                    {t("dashboard.noEligibleCleaners")}
                                   </p>
                                 ) : (
                                   <div className="mt-2 space-y-1">
@@ -579,12 +582,12 @@ export function DashboardClient() {
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
         <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5 xl:col-span-7">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-base font-bold sm:text-lg">Today Timeline</h2>
+            <h2 className="text-base font-bold sm:text-lg">{t("dashboard.todayTimeline")}</h2>
             <Link
               href="/jobs"
               className="text-xs font-semibold text-[var(--primary)] hover:underline"
             >
-              View all jobs
+              {t("dashboard.viewAllJobs")}
             </Link>
           </div>
           <div className="mb-2 hidden grid-cols-5 gap-2 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--muted-foreground)] sm:grid">
@@ -595,11 +598,11 @@ export function DashboardClient() {
           {loading ? (
             <div className="flex min-h-32 items-center justify-center text-sm text-[var(--muted-foreground)]">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Loading timeline...
+              {t("dashboard.loadingTimeline")}
             </div>
           ) : todayTimelineJobs.length === 0 ? (
             <div className="rounded-xl border border-dashed px-4 py-8 text-sm text-[var(--muted-foreground)]">
-              No jobs scheduled for today.
+              {t("dashboard.noJobsToday")}
             </div>
           ) : (
             <div className="space-y-2">
@@ -611,7 +614,7 @@ export function DashboardClient() {
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold">
-                      {job.property?.name ?? "Unknown property"}
+                      {job.property?.name ?? t("dashboard.unknownProperty")}
                     </p>
                     <p className="text-xs text-[var(--muted-foreground)]">
                       {new Date(job.scheduledStartAt ?? 0).toLocaleTimeString([], {
@@ -619,14 +622,22 @@ export function DashboardClient() {
                         minute: "2-digit",
                       })}
                       {" · "}
-                      {job.cleaners?.[0]?.name || "Unassigned"}
+                      {job.cleaners?.[0]?.name || t("dashboard.unassigned")}
                     </p>
                   </div>
-                  <span
-                    className={`shrink-0 rounded-full border px-2 py-1 text-[11px] font-semibold ${STATUS_CLASSNAMES[job.status]}`}
-                  >
-                    {STATUS_LABELS[job.status]}
-                  </span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <JobCountdown
+                      scheduledStartAt={job.scheduledStartAt}
+                      actualStartAt={job.actualStartAt}
+                      actualEndAt={job.actualEndAt}
+                      status={job.status}
+                    />
+                    <span
+                      className={`rounded-full border px-2 py-1 text-[11px] font-semibold ${STATUS_CLASSNAMES[job.status]}`}
+                    >
+                      {STATUS_LABELS[job.status]}
+                    </span>
+                  </div>
                 </Link>
               ))}
             </div>
@@ -635,11 +646,11 @@ export function DashboardClient() {
 
         <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5 xl:col-span-5">
           <div className="mb-3 flex items-center justify-between sm:mb-4">
-            <h2 className="text-base font-bold sm:text-lg">Property Readiness</h2>
+            <h2 className="text-base font-bold sm:text-lg">{t("dashboard.propertyReadiness")}</h2>
           </div>
           {readiness.mappedCount === 0 ? (
             <p className="rounded-xl border border-dashed p-4 text-sm text-[var(--muted-foreground)]">
-              No mapped readiness statuses found yet. Vacant is no longer inferred by default.
+              {t("dashboard.noReadinessData")}
             </p>
           ) : (
             <div className="grid grid-cols-2 gap-2">
@@ -650,7 +661,7 @@ export function DashboardClient() {
                   className={`group rounded-xl border p-2.5 transition hover:border-[var(--primary)]/40 hover:bg-[var(--accent)]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40 ${readinessBorder[status]}`}
                 >
                   <p className="truncate text-[10px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">
-                    {readinessLabel[status]}
+                    {t(readinessLabelKey[status])}
                   </p>
                   <p className="mt-1 text-2xl font-extrabold leading-none tracking-tight">
                     {readiness.summary[status]}
@@ -658,7 +669,7 @@ export function DashboardClient() {
                   <span
                     className={`mt-1.5 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${readinessColor[status]}`}
                   >
-                    {readinessLabel[status]}
+                    {t(readinessLabelKey[status])}
                   </span>
                 </Link>
               ))}
