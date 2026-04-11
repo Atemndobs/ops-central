@@ -5,9 +5,10 @@ import { useMemo, useState } from "react";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useTranslations } from "next-intl";
-import { Bell, Building2, CheckCheck, ExternalLink, Settings, Trash2, Users, Zap } from "lucide-react";
+import { Bell, Building2, CheckCheck, ExternalLink, Globe, Settings, Trash2, Users, Zap } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { navigation } from "@/components/layout/navigation";
+import { LanguageSwitcher } from "@/components/cleaner/language-switcher";
 import { useToast } from "@/components/ui/toast-provider";
 import {
   getRoleFromMetadata,
@@ -497,6 +498,29 @@ function TeamSettingsPanel() {
   );
 }
 
+function GeneralSettingsPanel() {
+  return (
+    <div className="space-y-6">
+      <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="flex items-center gap-2 text-lg font-semibold">
+              <Globe className="h-5 w-5" />
+              Language & Localization
+            </h3>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+              Choose your preferred language for the dashboard and notifications.
+            </p>
+          </div>
+        </div>
+        <div className="mt-4">
+          <LanguageSwitcher />
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function NotificationsSettingsPanel() {
   const { showToast } = useToast();
   const { isLoaded, isSignedIn, userId, sessionClaims } = useAuth();
@@ -775,13 +799,12 @@ export function SettingsPageClient({ initialTab }: { initialTab: SettingsTab }) 
         </div>
       </div>
 
+      {activeTab === "general" ? <GeneralSettingsPanel /> : null}
       {activeTab === "scheduling" ? <SchedulingSettingsPanel /> : null}
       {activeTab === "team" ? <TeamSettingsPanel /> : null}
       {activeTab === "notifications" ? <NotificationsSettingsPanel /> : null}
-      {activeTab !== "team" && activeTab !== "notifications" && activeTab !== "scheduling" ? (
-        <PlaceholderTab
-          sections={placeholderSections[activeTab as keyof typeof placeholderSections]}
-        />
+      {activeTab === "integrations" ? (
+        <PlaceholderTab sections={placeholderSections.integrations} />
       ) : null}
     </div>
   );
