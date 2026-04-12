@@ -157,18 +157,17 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
   );
   const visibleNotifications = unreadNotifications;
   const unreadCount = unreadNotifications.length;
-  const homeSummaryCount = useMemo(() => {
-    const source = assignedJobs ?? [];
-    const inReviewCount = source.filter((job) => job.status === "awaiting_approval").length;
-    const nextJobsCount = source.filter(
-      (job) =>
-        job.status === "scheduled" ||
-        job.status === "assigned" ||
-        job.status === "in_progress" ||
-        job.status === "rework_required",
-    ).length;
-    return nextJobsCount + inReviewCount;
-  }, [assignedJobs]);
+  // Use the true summary total emitted by the home client so the bell badge
+  // always matches the summary card (avoids query-param mismatches).
+  const [homeSummaryCount, setHomeSummaryCount] = useState(0);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      setHomeSummaryCount((event as CustomEvent<number>).detail);
+    };
+    window.addEventListener("cleaner:summary-count", handler);
+    return () => window.removeEventListener("cleaner:summary-count", handler);
+  }, []);
 
   useConsumeNotificationIdFromSearchParam(isConvexAuthenticated);
 

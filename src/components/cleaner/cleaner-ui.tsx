@@ -1,9 +1,117 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { CalendarDays, ClipboardList, Info, MessageCircle, Minimize2, RefreshCw, type LucideIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
+
+/* ------------------------------------------------------------------ */
+/*  Countdown hook + badge                                             */
+/* ------------------------------------------------------------------ */
+
+export type CountdownTier = "calm" | "soon" | "urgent";
+
+function getCountdownTier(ms: number): CountdownTier {
+  if (ms <= 0) return "urgent";
+  if (ms <= 60 * 60 * 1000) return "urgent";       // ≤ 60 min
+  if (ms <= 24 * 60 * 60 * 1000) return "soon";    // ≤ 1 day
+  return "calm";                                     // > 1 day
+}
+
+function formatCountdown(ms: number): string {
+  if (ms <= 0) return "Now";
+
+  const totalSeconds = Math.floor(ms / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (days > 0) {
+    return `${days}d ${hours}h`;
+  }
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  // Under 1 hour — show minutes'seconds"
+  return `${minutes}' ${String(seconds).padStart(2, "0")}"`;
+}
+
+export function useCountdown(targetTimestamp: number | null | undefined) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (targetTimestamp == null) return;
+
+    const remaining = targetTimestamp - Date.now();
+    // Tick every second when < 1 hour, every 30s otherwise
+    const interval = remaining <= 60 * 60 * 1000 ? 1000 : 30_000;
+
+    const id = setInterval(() => setNow(Date.now()), interval);
+    return () => clearInterval(id);
+  }, [targetTimestamp, now]);
+
+  if (targetTimestamp == null) {
+    return { formatted: "—", tier: "calm" as CountdownTier, remaining: Infinity };
+  }
+
+  const remaining = Math.max(0, targetTimestamp - now);
+  return {
+    formatted: formatCountdown(remaining),
+    tier: getCountdownTier(remaining),
+    remaining,
+  };
+}
+
+const TIER_STYLES: Record<CountdownTier, string> = {
+  calm: "bg-white text-[var(--cleaner-ink)]",
+  soon: "bg-[var(--cleaner-primary)] text-white",
+  urgent: "bg-[var(--destructive)] text-white",
+};
+
+export function CleanerCountdownBadge({
+  targetTimestamp,
+  label,
+  size = "normal",
+}: {
+  targetTimestamp: number | null | undefined;
+  label?: string;
+  size?: "normal" | "compact";
+}) {
+  const t = useTranslations();
+  const { formatted, tier } = useCountdown(targetTimestamp);
+  const displayLabel = label ?? t("cleaner.summary.timeToNextJob");
+
+  // Don't render anything for past timestamps
+  if (targetTimestamp != null && targetTimestamp <= Date.now()) {
+    return null;
+  }
+
+  if (size === "compact") {
+    return (
+      <div
+        className={cn(
+          "inline-flex items-center justify-center rounded-[10px] px-3 py-2 text-[13px] font-semibold",
+          TIER_STYLES[tier],
+        )}
+      >
+        {formatted}
+      </div>
+    );
+  }
+
+  return (
+    <div className={cn("rounded-[10px] px-4 py-2 shadow-sm", TIER_STYLES[tier])}>
+      <p className="font-[var(--font-cleaner-body)] text-[31px] font-bold leading-none tracking-[-0.03em]">
+        {formatted}
+      </p>
+      <p className={cn("mt-1 text-[10px]", tier === "calm" ? "text-[var(--cleaner-muted)]" : "text-white/90")}>
+        {displayLabel}
+      </p>
+    </div>
+  );
+}
 
 export type CleanerJobAppearance = "open" | "in_review" | "completed" | "rework";
 
@@ -128,6 +236,7 @@ export function CleanerSummaryCard({
   updates,
   onToggle,
   userName,
+  nextJobAt,
 }: {
   nextJobs: number;
   inReview: number;
@@ -135,6 +244,7 @@ export function CleanerSummaryCard({
   updates: number;
   onToggle?: () => void;
   userName?: string;
+  nextJobAt?: number | null;
 }) {
   const t = useTranslations();
   const items = [
@@ -161,12 +271,7 @@ export function CleanerSummaryCard({
         </button>
       </div>
       <div className="mt-4 flex items-start justify-between gap-3">
-        <div className="rounded-[10px] bg-[var(--destructive)] px-4 py-2 shadow-sm">
-          <p className="font-[var(--font-cleaner-body)] text-[31px] font-bold leading-none tracking-[-0.03em]">
-            60 mins
-          </p>
-          <p className="mt-1 text-[10px] text-white/90">{t("cleaner.summary.timeToNextJob")}</p>
-        </div>
+        <CleanerCountdownBadge targetTimestamp={nextJobAt} />
         <div className="grid flex-1 grid-cols-4 gap-2">
           {items.map(({ label, value, icon: Icon }) => (
             <div key={label} className="flex flex-col items-center gap-1.5 text-center">
@@ -233,7 +338,7 @@ export function CleanerJobCard({
         <CleanerMetaRow icon={Info} text={notes || t("cleaner.noCleanerNotes")} />
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap items-center gap-2">
         <Link href={detailHref} className="cleaner-outline-button">
           {t("cleaner.openDetails")}
         </Link>
@@ -242,6 +347,7 @@ export function CleanerJobCard({
             {actionLabel}
           </Link>
         ) : null}
+        <CleanerCountdownBadge targetTimestamp={scheduledAt} size="compact" />
       </div>
     </article>
   );

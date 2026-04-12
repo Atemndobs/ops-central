@@ -123,11 +123,14 @@ export function MessagesInboxClient({
     return raw as Id<"conversations"> | null;
   }, [searchParams]);
 
-  // Auto-select first conversation on desktop
+  // Auto-select first conversation on desktop only (mobile uses full-screen list/thread toggle)
   useEffect(() => {
     if (!conversations || conversations.length === 0 || selectedConversationId) {
       return;
     }
+
+    const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
+    if (!isDesktop) return;
 
     const nextParams = new URLSearchParams(searchParams.toString());
     nextParams.set("conversationId", conversations[0]._id);
