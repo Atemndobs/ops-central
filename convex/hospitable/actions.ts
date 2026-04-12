@@ -538,74 +538,77 @@ interface NormalizedPropertyDetails {
   rooms: NormalizedRoom[];
 }
 
+const ROOM_TYPE_LABELS: Record<string, string> = {
+  bedroom: "Bedroom",
+  full_bathroom: "Bathroom",
+  half_bathroom: "Half Bath",
+  living_room: "Living Room",
+  kitchen: "Kitchen",
+  dining_room: "Dining Room",
+  laundry_room: "Laundry Room",
+  patio: "Patio",
+  backyard: "Backyard",
+  office: "Office",
+  garage: "Garage",
+  workspace: "Workspace",
+  balcony: "Balcony",
+};
+
+// Types we skip (not cleanable rooms)
+const SKIPPED_ROOM_TYPES = new Set(["exterior"]);
+
 function extractRoomsFromProperty(property: GenericRecord): NormalizedRoom[] {
   const rooms: NormalizedRoom[] = [];
 
-  // Hospitable API returns room info in various formats
-  // Try "rooms" array first (most detailed)
-  const rawRooms = property.rooms;
-  if (Array.isArray(rawRooms)) {
-    for (const rawRoom of rawRooms) {
-      if (!isRecord(rawRoom)) continue;
-      const name = asString(rawRoom.name) ?? asString(rawRoom.label) ?? asString(rawRoom.title);
-      const type = asString(rawRoom.type) ?? asString(rawRoom.room_type) ?? asString(rawRoom.category) ?? "other";
-      if (name) {
-        rooms.push({ name, type });
-      }
+  // Hospitable API v2 returns room_details: [{type, beds}]
+  const roomDetails = property.room_details;
+  if (Array.isArray(roomDetails) && roomDetails.length > 0) {
+    // Count occurrences of each type to number them
+    const typeCounts: Record<string, number> = {};
+    const typeInstances: Array<{ type: string; index: number }> = [];
+
+    for (const entry of roomDetails) {
+      if (!isRecord(entry)) continue;
+      const type = asString(entry.type);
+      if (!type || SKIPPED_ROOM_TYPES.has(type)) continue;
+      typeCounts[type] = (typeCounts[type] ?? 0) + 1;
+      typeInstances.push({ type, index: typeCounts[type] });
+    }
+
+    for (const { type, index } of typeInstances) {
+      const total = typeCounts[type] ?? 1;
+      const baseLabel = ROOM_TYPE_LABELS[type] ?? type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      const name = total === 1 ? baseLabel : `${baseLabel} ${index}`;
+      rooms.push({ name, type });
+    }
+
+    return rooms;
+  }
+
+  // Fallback: use capacity object for counts
+  const capacity = isRecord(property.capacity) ? property.capacity : undefined;
+  const bedroomCount = asNumber(property.bedrooms) ?? asNumber(capacity?.bedrooms);
+  const bathroomCount = asNumber(property.bathrooms) ?? asNumber(capacity?.bathrooms);
+
+  if (typeof bedroomCount === "number" && bedroomCount > 0) {
+    for (let i = 1; i <= bedroomCount; i++) {
+      rooms.push({ name: bedroomCount === 1 ? "Bedroom" : `Bedroom ${i}`, type: "bedroom" });
     }
   }
 
-  // Try "bedrooms" array (some Hospitable responses)
-  const rawBedrooms = property.bedrooms_details ?? property.bedroom_details;
-  if (Array.isArray(rawBedrooms)) {
-    for (let i = 0; i < rawBedrooms.length; i++) {
-      const rawBedroom = rawBedrooms[i];
-      if (!isRecord(rawBedroom)) {
-        rooms.push({ name: rawBedrooms.length === 1 ? "Bedroom" : `Bedroom ${i + 1}`, type: "bedroom" });
-        continue;
-      }
-      const name = asString(rawBedroom.name) ?? asString(rawBedroom.label) ?? (rawBedrooms.length === 1 ? "Bedroom" : `Bedroom ${i + 1}`);
-      rooms.push({ name, type: "bedroom" });
+  if (typeof bathroomCount === "number" && bathroomCount > 0) {
+    const whole = Math.floor(bathroomCount);
+    const hasHalf = bathroomCount > whole;
+    for (let i = 1; i <= whole; i++) {
+      rooms.push({ name: whole === 1 && !hasHalf ? "Bathroom" : `Bathroom ${i}`, type: "bathroom" });
+    }
+    if (hasHalf) {
+      rooms.push({ name: "Half Bath", type: "bathroom" });
     }
   }
 
-  // Try "bathrooms" array
-  const rawBathrooms = property.bathrooms_details ?? property.bathroom_details;
-  if (Array.isArray(rawBathrooms)) {
-    for (let i = 0; i < rawBathrooms.length; i++) {
-      const rawBathroom = rawBathrooms[i];
-      if (!isRecord(rawBathroom)) {
-        rooms.push({ name: rawBathrooms.length === 1 ? "Bathroom" : `Bathroom ${i + 1}`, type: "bathroom" });
-        continue;
-      }
-      const name = asString(rawBathroom.name) ?? asString(rawBathroom.label) ?? (rawBathrooms.length === 1 ? "Bathroom" : `Bathroom ${i + 1}`);
-      rooms.push({ name, type: "bathroom" });
-    }
-  }
-
-  // If no detailed room info, generate from counts
+  // Add common rooms if we have no rooms at all
   if (rooms.length === 0) {
-    const bedroomCount = asNumber(property.bedrooms) ?? asNumber(property.bedroom_count);
-    const bathroomCount = asNumber(property.bathrooms) ?? asNumber(property.bathroom_count);
-
-    if (typeof bedroomCount === "number" && bedroomCount > 0) {
-      for (let i = 1; i <= bedroomCount; i++) {
-        rooms.push({ name: bedroomCount === 1 ? "Bedroom" : `Bedroom ${i}`, type: "bedroom" });
-      }
-    }
-
-    if (typeof bathroomCount === "number" && bathroomCount > 0) {
-      const whole = Math.floor(bathroomCount);
-      const hasHalf = bathroomCount > whole;
-      for (let i = 1; i <= whole; i++) {
-        rooms.push({ name: whole === 1 && !hasHalf ? "Bathroom" : `Bathroom ${i}`, type: "bathroom" });
-      }
-      if (hasHalf) {
-        rooms.push({ name: "Half Bath", type: "bathroom" });
-      }
-    }
-
-    // Add common rooms based on property type
     rooms.push({ name: "Living Room", type: "living_room" });
     rooms.push({ name: "Kitchen", type: "kitchen" });
   }
@@ -619,15 +622,18 @@ function normalizePropertyDetails(rawProperty: unknown): NormalizedPropertyDetai
   const hospitableId = asString(rawProperty.id);
   if (!hospitableId) return null;
 
-  const bedroomCount = asNumber(rawProperty.bedrooms) ?? asNumber(rawProperty.bedroom_count);
-  const bathroomCount = asNumber(rawProperty.bathrooms) ?? asNumber(rawProperty.bathroom_count);
+  const capacity = isRecord(rawProperty.capacity) ? rawProperty.capacity : undefined;
+  const bedroomCount = asNumber(rawProperty.bedrooms) ?? asNumber(capacity?.bedrooms);
+  const bathroomCount = asNumber(rawProperty.bathrooms) ?? asNumber(capacity?.bathrooms);
+
+  const rooms = extractRoomsFromProperty(rawProperty);
 
   return {
     hospitableId,
     name: asString(rawProperty.name) ?? asString(rawProperty.title),
     bedrooms: bedroomCount,
     bathrooms: bathroomCount,
-    rooms: extractRoomsFromProperty(rawProperty),
+    rooms,
   };
 }
 
@@ -666,13 +672,16 @@ export const syncPropertyDetails = internalAction({
         const detailPayload = await fetchHospitableJson(apiKey, `${baseUrl}/properties/${details.hospitableId}`);
         const detailData = isRecord(detailPayload) && isRecord(detailPayload.data) ? detailPayload.data : detailPayload;
         if (isRecord(detailData)) {
+          // Update counts from detail endpoint capacity object
+          const detailCapacity = isRecord(detailData.capacity) ? detailData.capacity : undefined;
+          details.bedrooms = details.bedrooms ?? asNumber(detailCapacity?.bedrooms);
+          details.bathrooms = details.bathrooms ?? asNumber(detailCapacity?.bathrooms);
+
+          // Detail endpoint has room_details — extract rooms from it
           const detailRooms = extractRoomsFromProperty(detailData);
           if (detailRooms.length > enrichedRooms.length) {
             enrichedRooms = detailRooms;
           }
-          // Update counts from detail if available
-          details.bedrooms = details.bedrooms ?? asNumber((detailData as GenericRecord).bedrooms);
-          details.bathrooms = details.bathrooms ?? asNumber((detailData as GenericRecord).bathrooms);
         }
       } catch {
         // Individual property detail fetch failed, use list data
