@@ -2,14 +2,15 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useChat } from "@ai-sdk/react";
-import { Bot, Send, X, Loader2 } from "lucide-react";
+import { Send, X, Loader2, Square, CheckCircle2 } from "lucide-react";
+import Markdown from "react-markdown";
 
 const SUGGESTED_QUERIES = [
   "What's open today?",
   "What needs attention?",
-  "Any check-ins coming up?",
+  "Who last cleaned Dallas?",
   "Show me the review queue",
-  "Any low stock items?",
+  "Who are my cleaners?",
 ];
 
 export function AiChatPanel() {
@@ -17,7 +18,11 @@ export function AiChatPanel() {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { messages, sendMessage, status, setMessages } = useChat();
+  const { messages, sendMessage, stop, status, error, setMessages } = useChat({
+    onError(err) {
+      console.error("[OpsBot] Chat error:", err);
+    },
+  });
   const isStreaming = status === "streaming" || status === "submitted";
 
   useEffect(() => {
@@ -29,12 +34,16 @@ export function AiChatPanel() {
     const text = input.trim();
     if (!text || isStreaming) return;
     setInput("");
-    sendMessage({ text });
+    sendMessage({ text }).catch((err) => {
+      console.error("[OpsBot] sendMessage failed:", err);
+    });
   }
 
   function handleSuggestion(query: string) {
     setInput("");
-    sendMessage({ text: query });
+    sendMessage({ text: query }).catch((err) => {
+      console.error("[OpsBot] sendMessage failed:", err);
+    });
   }
 
   function handleClear() {
@@ -45,57 +54,176 @@ export function AiChatPanel() {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg transition-transform hover:scale-105 hover:bg-blue-500 active:scale-95"
+        style={{
+          position: "fixed",
+          bottom: 24,
+          right: 24,
+          zIndex: 9999,
+          width: 56,
+          height: 56,
+          borderRadius: "50%",
+          backgroundColor: "#7c3aed",
+          color: "white",
+          border: "none",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow: "0 8px 30px rgba(0,0,0,0.2)",
+        }}
         aria-label="Open AI assistant"
       >
-        <Bot className="h-6 w-6" />
+        <img src="/chezsoi-logo.svg" alt="ChezSoi" style={{ width: 56, height: 56, borderRadius: "50%" }} />
       </button>
     );
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-40 flex h-[520px] w-96 flex-col overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl">
+    <div
+      style={{
+        position: "fixed",
+        bottom: 24,
+        right: 24,
+        zIndex: 9999,
+        width: 384,
+        height: 520,
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+        borderRadius: 16,
+        border: "1px solid var(--border)",
+        backgroundColor: "var(--card)",
+        color: "var(--card-foreground)",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
+      }}
+    >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-zinc-700 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Bot className="h-5 w-5 text-blue-400" />
-          <span className="font-semibold text-zinc-100">OpsBot</span>
-          <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          borderBottom: "1px solid var(--border)",
+          padding: "12px 16px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <img src="/chezsoi-logo.svg" alt="ChezSoi" style={{ width: 24, height: 24, borderRadius: 6 }} />
+          <span style={{ fontWeight: 600 }}>ChezSoi</span>
+          <span
+            style={{
+              fontSize: 11,
+              padding: "2px 8px",
+              borderRadius: 999,
+              backgroundColor: "var(--muted)",
+              color: "var(--muted-foreground)",
+            }}
+          >
             AI
           </span>
         </div>
-        <div className="flex items-center gap-1">
-          {messages.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          {isStreaming && (
+            <button
+              onClick={() => stop()}
+              style={{
+                fontSize: 12,
+                padding: "4px 8px",
+                borderRadius: 8,
+                border: "none",
+                background: "none",
+                color: "var(--destructive, #ef4444)",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <Square style={{ width: 10, height: 10 }} />
+              Stop
+            </button>
+          )}
+          {messages.length > 0 && !isStreaming && (
             <button
               onClick={handleClear}
-              className="rounded-lg px-2 py-1 text-xs text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+              style={{
+                fontSize: 12,
+                padding: "4px 8px",
+                borderRadius: 8,
+                border: "none",
+                background: "none",
+                color: "var(--muted-foreground)",
+                cursor: "pointer",
+              }}
             >
               Clear
             </button>
           )}
           <button
             onClick={() => setIsOpen(false)}
-            className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+            style={{
+              padding: 6,
+              borderRadius: 8,
+              border: "none",
+              background: "none",
+              color: "var(--muted-foreground)",
+              cursor: "pointer",
+            }}
             aria-label="Close AI assistant"
           >
-            <X className="h-4 w-4" />
+            <X style={{ width: 16, height: 16 }} />
           </button>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-3" role="log">
+      <div
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: "12px 16px",
+        }}
+        role="log"
+      >
         {messages.length === 0 && (
-          <div className="flex flex-col gap-3 pt-4">
-            <p className="text-center text-sm text-zinc-400">
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+              paddingTop: 16,
+            }}
+          >
+            <p
+              style={{
+                textAlign: "center",
+                fontSize: 14,
+                color: "var(--muted-foreground)",
+              }}
+            >
               Ask me about your operations
             </p>
-            <div className="flex flex-wrap justify-center gap-2">
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                justifyContent: "center",
+                gap: 8,
+              }}
+            >
               {SUGGESTED_QUERIES.map((query) => (
                 <button
                   key={query}
                   onClick={() => handleSuggestion(query)}
-                  className="rounded-full border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:border-blue-500 hover:bg-zinc-800 hover:text-blue-400"
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 999,
+                    border: "1px solid var(--border)",
+                    backgroundColor: "transparent",
+                    color: "var(--foreground)",
+                    fontSize: 12,
+                    cursor: "pointer",
+                  }}
                 >
                   {query}
                 </button>
@@ -107,26 +235,83 @@ export function AiChatPanel() {
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`mb-3 flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+            style={{
+              marginBottom: 12,
+              display: "flex",
+              justifyContent:
+                message.role === "user" ? "flex-end" : "flex-start",
+            }}
           >
             <div
-              className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
-                message.role === "user"
-                  ? "bg-blue-600 text-white"
-                  : "bg-zinc-800 text-zinc-200"
-              }`}
+              style={{
+                maxWidth: "85%",
+                borderRadius: 16,
+                padding: "10px 14px",
+                fontSize: 14,
+                lineHeight: 1.6,
+                ...(message.role === "user"
+                  ? {
+                      backgroundColor: "var(--primary)",
+                      color: "var(--primary-foreground)",
+                    }
+                  : {
+                      backgroundColor: "var(--muted)",
+                      color: "var(--foreground)",
+                    }),
+              }}
             >
-              <MessageContent parts={message.parts} role={message.role} />
+              <MessageContent
+                parts={message.parts}
+                role={message.role}
+              />
             </div>
           </div>
         ))}
 
         {isStreaming && messages[messages.length - 1]?.role !== "assistant" && (
-          <div className="mb-3 flex justify-start">
-            <div className="flex items-center gap-2 rounded-2xl bg-zinc-800 px-3.5 py-2.5 text-sm text-zinc-400">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          <div
+            style={{
+              marginBottom: 12,
+              display: "flex",
+              justifyContent: "flex-start",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                borderRadius: 16,
+                padding: "10px 14px",
+                fontSize: 14,
+                backgroundColor: "var(--muted)",
+                color: "var(--muted-foreground)",
+              }}
+            >
+              <Loader2
+                style={{
+                  width: 14,
+                  height: 14,
+                  animation: "spin 1s linear infinite",
+                }}
+              />
               Thinking...
             </div>
+          </div>
+        )}
+
+        {error && (
+          <div
+            style={{
+              marginBottom: 12,
+              padding: "8px 12px",
+              borderRadius: 12,
+              backgroundColor: "var(--destructive, #ef4444)",
+              color: "white",
+              fontSize: 13,
+            }}
+          >
+            Error: {error.message || "Something went wrong"}
           </div>
         )}
 
@@ -136,27 +321,63 @@ export function AiChatPanel() {
       {/* Input */}
       <form
         onSubmit={handleSubmit}
-        className="flex items-center gap-2 border-t border-zinc-700 px-4 py-3"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          borderTop: "1px solid var(--border)",
+          padding: "12px 16px",
+        }}
       >
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Ask about jobs, properties, inventory..."
-          className="flex-1 rounded-xl border border-zinc-700 bg-zinc-800 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-blue-500"
           disabled={isStreaming}
+          style={{
+            flex: 1,
+            borderRadius: 12,
+            border: "1px solid var(--border)",
+            backgroundColor: "var(--background)",
+            color: "var(--foreground)",
+            padding: "8px 14px",
+            fontSize: 14,
+            outline: "none",
+          }}
         />
         <button
           type="submit"
           disabled={!input.trim() || isStreaming}
-          className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white transition-colors hover:bg-blue-500 disabled:opacity-40 disabled:hover:bg-blue-600"
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 12,
+            border: "none",
+            backgroundColor: "var(--primary)",
+            color: "var(--primary-foreground)",
+            cursor: !input.trim() || isStreaming ? "default" : "pointer",
+            opacity: !input.trim() || isStreaming ? 0.4 : 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
           aria-label="Send message"
         >
-          <Send className="h-4 w-4" />
+          <Send style={{ width: 16, height: 16 }} />
         </button>
       </form>
     </div>
   );
+}
+
+function isToolPart(type: string): boolean {
+  return type.startsWith("tool-") || type === "dynamic-tool";
+}
+
+function isToolDone(part: Record<string, unknown>): boolean {
+  const state = part.state as string | undefined;
+  return state === "output-available" || state === "error";
 }
 
 function MessageContent({
@@ -171,18 +392,50 @@ function MessageContent({
       {parts.map((part, i) => {
         if (part.type === "text" && part.text) {
           return (
-            <span key={i} className="whitespace-pre-wrap">
-              {part.text}
-            </span>
+            <div key={i} className="opsbot-markdown">
+              <Markdown>{part.text}</Markdown>
+            </div>
           );
         }
-        if (part.type.startsWith("tool-") && role === "assistant") {
+        if (isToolPart(part.type) && role === "assistant") {
+          if (isToolDone(part)) {
+            return (
+              <span
+                key={i}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 12,
+                  color: "var(--muted-foreground)",
+                  margin: "2px 0",
+                  opacity: 0.6,
+                }}
+              >
+                <CheckCircle2 style={{ width: 12, height: 12 }} />
+                Data loaded
+              </span>
+            );
+          }
           return (
             <span
               key={i}
-              className="my-1 flex items-center gap-1.5 text-xs text-zinc-500"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 12,
+                color: "var(--muted-foreground)",
+                margin: "4px 0",
+              }}
             >
-              <Loader2 className="h-3 w-3 animate-spin" />
+              <Loader2
+                style={{
+                  width: 12,
+                  height: 12,
+                  animation: "spin 1s linear infinite",
+                }}
+              />
               Looking up data...
             </span>
           );
