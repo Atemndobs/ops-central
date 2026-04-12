@@ -524,3 +524,180 @@ export const listTeammatesForImport = action({
     );
   },
 });
+
+interface NormalizedRoom {
+  name: string;
+  type: string;
+}
+
+interface NormalizedPropertyDetails {
+  hospitableId: string;
+  name?: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  rooms: NormalizedRoom[];
+}
+
+function extractRoomsFromProperty(property: GenericRecord): NormalizedRoom[] {
+  const rooms: NormalizedRoom[] = [];
+
+  // Hospitable API returns room info in various formats
+  // Try "rooms" array first (most detailed)
+  const rawRooms = property.rooms;
+  if (Array.isArray(rawRooms)) {
+    for (const rawRoom of rawRooms) {
+      if (!isRecord(rawRoom)) continue;
+      const name = asString(rawRoom.name) ?? asString(rawRoom.label) ?? asString(rawRoom.title);
+      const type = asString(rawRoom.type) ?? asString(rawRoom.room_type) ?? asString(rawRoom.category) ?? "other";
+      if (name) {
+        rooms.push({ name, type });
+      }
+    }
+  }
+
+  // Try "bedrooms" array (some Hospitable responses)
+  const rawBedrooms = property.bedrooms_details ?? property.bedroom_details;
+  if (Array.isArray(rawBedrooms)) {
+    for (let i = 0; i < rawBedrooms.length; i++) {
+      const rawBedroom = rawBedrooms[i];
+      if (!isRecord(rawBedroom)) {
+        rooms.push({ name: rawBedrooms.length === 1 ? "Bedroom" : `Bedroom ${i + 1}`, type: "bedroom" });
+        continue;
+      }
+      const name = asString(rawBedroom.name) ?? asString(rawBedroom.label) ?? (rawBedrooms.length === 1 ? "Bedroom" : `Bedroom ${i + 1}`);
+      rooms.push({ name, type: "bedroom" });
+    }
+  }
+
+  // Try "bathrooms" array
+  const rawBathrooms = property.bathrooms_details ?? property.bathroom_details;
+  if (Array.isArray(rawBathrooms)) {
+    for (let i = 0; i < rawBathrooms.length; i++) {
+      const rawBathroom = rawBathrooms[i];
+      if (!isRecord(rawBathroom)) {
+        rooms.push({ name: rawBathrooms.length === 1 ? "Bathroom" : `Bathroom ${i + 1}`, type: "bathroom" });
+        continue;
+      }
+      const name = asString(rawBathroom.name) ?? asString(rawBathroom.label) ?? (rawBathrooms.length === 1 ? "Bathroom" : `Bathroom ${i + 1}`);
+      rooms.push({ name, type: "bathroom" });
+    }
+  }
+
+  // If no detailed room info, generate from counts
+  if (rooms.length === 0) {
+    const bedroomCount = asNumber(property.bedrooms) ?? asNumber(property.bedroom_count);
+    const bathroomCount = asNumber(property.bathrooms) ?? asNumber(property.bathroom_count);
+
+    if (typeof bedroomCount === "number" && bedroomCount > 0) {
+      for (let i = 1; i <= bedroomCount; i++) {
+        rooms.push({ name: bedroomCount === 1 ? "Bedroom" : `Bedroom ${i}`, type: "bedroom" });
+      }
+    }
+
+    if (typeof bathroomCount === "number" && bathroomCount > 0) {
+      const whole = Math.floor(bathroomCount);
+      const hasHalf = bathroomCount > whole;
+      for (let i = 1; i <= whole; i++) {
+        rooms.push({ name: whole === 1 && !hasHalf ? "Bathroom" : `Bathroom ${i}`, type: "bathroom" });
+      }
+      if (hasHalf) {
+        rooms.push({ name: "Half Bath", type: "bathroom" });
+      }
+    }
+
+    // Add common rooms based on property type
+    rooms.push({ name: "Living Room", type: "living_room" });
+    rooms.push({ name: "Kitchen", type: "kitchen" });
+  }
+
+  return rooms;
+}
+
+function normalizePropertyDetails(rawProperty: unknown): NormalizedPropertyDetails | null {
+  if (!isRecord(rawProperty)) return null;
+
+  const hospitableId = asString(rawProperty.id);
+  if (!hospitableId) return null;
+
+  const bedroomCount = asNumber(rawProperty.bedrooms) ?? asNumber(rawProperty.bedroom_count);
+  const bathroomCount = asNumber(rawProperty.bathrooms) ?? asNumber(rawProperty.bathroom_count);
+
+  return {
+    hospitableId,
+    name: asString(rawProperty.name) ?? asString(rawProperty.title),
+    bedrooms: bedroomCount,
+    bathrooms: bathroomCount,
+    rooms: extractRoomsFromProperty(rawProperty),
+  };
+}
+
+export const syncPropertyDetails = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{
+    success: boolean;
+    propertiesSynced: number;
+    propertiesSkipped: number;
+    errors: string[];
+  }> => {
+    const apiKey = process.env.HOSPITABLE_API_KEY ?? process.env.HOSPITABLE_API_TOKEN;
+    if (!apiKey) {
+      throw new Error("Missing HOSPITABLE_API_KEY/HOSPITABLE_API_TOKEN environment variable.");
+    }
+
+    const baseUrl = process.env.HOSPITABLE_API_URL ?? DEFAULT_HOSPITABLE_BASE_URL;
+
+    const propertiesPayload = await fetchHospitableJson(apiKey, `${baseUrl}/properties`);
+    const rawProperties = getArrayFromApiPayload(propertiesPayload);
+
+    let propertiesSynced = 0;
+    let propertiesSkipped = 0;
+    const errors: string[] = [];
+
+    for (const rawProperty of rawProperties) {
+      const details = normalizePropertyDetails(rawProperty);
+      if (!details) {
+        propertiesSkipped++;
+        continue;
+      }
+
+      // Also try fetching individual property detail for richer room data
+      let enrichedRooms = details.rooms;
+      try {
+        const detailPayload = await fetchHospitableJson(apiKey, `${baseUrl}/properties/${details.hospitableId}`);
+        const detailData = isRecord(detailPayload) && isRecord(detailPayload.data) ? detailPayload.data : detailPayload;
+        if (isRecord(detailData)) {
+          const detailRooms = extractRoomsFromProperty(detailData);
+          if (detailRooms.length > enrichedRooms.length) {
+            enrichedRooms = detailRooms;
+          }
+          // Update counts from detail if available
+          details.bedrooms = details.bedrooms ?? asNumber((detailData as GenericRecord).bedrooms);
+          details.bathrooms = details.bathrooms ?? asNumber((detailData as GenericRecord).bathrooms);
+        }
+      } catch {
+        // Individual property detail fetch failed, use list data
+      }
+
+      try {
+        await ctx.runMutation(internal.hospitable.mutations.updatePropertyDetails, {
+          hospitableId: details.hospitableId,
+          bedrooms: details.bedrooms,
+          bathrooms: details.bathrooms,
+          rooms: enrichedRooms,
+        });
+        propertiesSynced++;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        errors.push(`Property ${details.hospitableId}: ${message}`);
+        propertiesSkipped++;
+      }
+    }
+
+    return {
+      success: errors.length === 0,
+      propertiesSynced,
+      propertiesSkipped,
+      errors,
+    };
+  },
+});

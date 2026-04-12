@@ -283,6 +283,40 @@ export const upsertReservations = internalMutation({
   },
 });
 
+export const updatePropertyDetails = internalMutation({
+  args: {
+    hospitableId: v.string(),
+    bedrooms: v.optional(v.number()),
+    bathrooms: v.optional(v.number()),
+    rooms: v.array(v.object({ name: v.string(), type: v.string() })),
+  },
+  handler: async (ctx, args) => {
+    const property = await ctx.db
+      .query("properties")
+      .withIndex("by_hospitable", (q) => q.eq("hospitableId", args.hospitableId))
+      .first();
+
+    if (!property) {
+      throw new Error(`No property found with hospitableId ${args.hospitableId}`);
+    }
+
+    const patch: Record<string, unknown> = {
+      rooms: args.rooms,
+      updatedAt: Date.now(),
+    };
+
+    if (args.bedrooms !== undefined) {
+      patch.bedrooms = args.bedrooms;
+    }
+    if (args.bathrooms !== undefined) {
+      patch.bathrooms = args.bathrooms;
+    }
+
+    await ctx.db.patch(property._id, patch);
+    return property._id;
+  },
+});
+
 export const markSyncFailed = internalMutation({
   args: {
     error: v.string(),

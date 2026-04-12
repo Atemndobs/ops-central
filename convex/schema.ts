@@ -116,6 +116,12 @@ const properties = defineTable({
   squareFeet: v.optional(v.number()),
   propertyType: v.optional(v.string()),
 
+  // Room list (synced from Hospitable or manually configured)
+  rooms: v.optional(v.array(v.object({
+    name: v.string(),
+    type: v.string(),
+  }))),
+
   // Links
   airbnbUrl: v.optional(v.string()),
   vrboUrl: v.optional(v.string()),
