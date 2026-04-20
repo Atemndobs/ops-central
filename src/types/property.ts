@@ -23,6 +23,9 @@ export interface PropertyRecord {
   bathrooms?: number;
   estimatedCleaningMinutes?: number;
   accessNotes?: string;
+  keyLocation?: string;
+  parkingNotes?: string;
+  urgentNotes?: string;
   tag?: string;
   primaryPhotoUrl?: string;
   photoUrls?: string[];
@@ -47,6 +50,9 @@ export interface PropertyFormValues {
   bathrooms?: number;
   estimatedCleaningMinutes?: number;
   accessNotes?: string;
+  keyLocation?: string;
+  parkingNotes?: string;
+  urgentNotes?: string;
   tag?: string;
   primaryPhotoUrl?: string;
   photoUrls?: string[];

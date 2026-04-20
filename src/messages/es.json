@@ -192,6 +192,15 @@
     "bedCount": "{count, plural, one {# Cama} other {# Camas}}",
     "bathCount": "{count, plural, one {# Baño} other {# Baños}}",
     "highRisk": "Alto Riesgo",
+    "access": {
+      "eyebrow": "ANTES DE LLEGAR",
+      "title": "Acceso y notas de la propiedad",
+      "empty": "Aún no hay datos de acceso para esta propiedad. Confirma con operaciones antes de llegar.",
+      "entry": "Instrucciones de entrada",
+      "key": "Ubicación de la llave",
+      "parking": "Estacionamiento",
+      "urgent": "Urgente — revisar siempre"
+    },
     "rooms": {
       "livingRoom": "Sala de Estar",
       "kitchen": "Cocina",

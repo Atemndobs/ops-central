@@ -68,6 +68,10 @@ function toMutationInput(values: PropertyFormValues) {
     bedrooms: values.bedrooms,
     bathrooms: values.bathrooms,
     imageUrl: values.primaryPhotoUrl || undefined,
+    accessNotes: values.accessNotes || undefined,
+    keyLocation: values.keyLocation || undefined,
+    parkingNotes: values.parkingNotes || undefined,
+    urgentNotes: values.urgentNotes || undefined,
   };
 }
 
@@ -619,6 +623,9 @@ function PropertiesPageContent() {
                 bathrooms: editingProperty.bathrooms,
                 estimatedCleaningMinutes: editingProperty.estimatedCleaningMinutes,
                 accessNotes: editingProperty.accessNotes,
+                keyLocation: editingProperty.keyLocation,
+                parkingNotes: editingProperty.parkingNotes,
+                urgentNotes: editingProperty.urgentNotes,
                 tag: editingProperty.tag,
                 primaryPhotoUrl: editingProperty.primaryPhotoUrl,
                 photoUrls: editingProperty.photoUrls,

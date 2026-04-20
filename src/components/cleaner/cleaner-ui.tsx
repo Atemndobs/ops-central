@@ -443,7 +443,7 @@ export function CleanerJobCard({
         {typeof guestCount === "number" && guestCount > 0 ? (
           <span className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--muted)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--cleaner-ink)]">
             <Users className="h-3.5 w-3.5" />
-            {guestCount}
+            {t("cleaner.guestCount", { count: guestCount })}
           </span>
         ) : null}
         {actionHref && actionLabel ? (
@@ -468,6 +468,90 @@ function CleanerMetaRow({
     <div className="flex items-start gap-2 text-[var(--cleaner-muted)]">
       <Icon className="mt-0.5 h-4 w-4 shrink-0" />
       <p className="min-w-0 whitespace-pre-line text-[13px] leading-[1.35]">{text}</p>
+    </div>
+  );
+}
+
+export function CleanerAccessSection({
+  accessNotes,
+  keyLocation,
+  parkingNotes,
+  urgentNotes,
+}: {
+  accessNotes?: string | null;
+  keyLocation?: string | null;
+  parkingNotes?: string | null;
+  urgentNotes?: string | null;
+}) {
+  const t = useTranslations();
+  const hasAny =
+    Boolean(accessNotes) ||
+    Boolean(keyLocation) ||
+    Boolean(parkingNotes) ||
+    Boolean(urgentNotes);
+
+  if (!hasAny) {
+    return (
+      <CleanerSection eyebrow={t("cleaner.access.eyebrow")} title={t("cleaner.access.title")}>
+        <p className="text-sm text-[var(--cleaner-muted)]">{t("cleaner.access.empty")}</p>
+      </CleanerSection>
+    );
+  }
+
+  return (
+    <CleanerSection eyebrow={t("cleaner.access.eyebrow")} title={t("cleaner.access.title")}>
+      <div className="space-y-3">
+        {urgentNotes ? (
+          <AccessBlock
+            variant="urgent"
+            label={t("cleaner.access.urgent")}
+            body={urgentNotes}
+          />
+        ) : null}
+        {accessNotes ? (
+          <AccessBlock label={t("cleaner.access.entry")} body={accessNotes} />
+        ) : null}
+        {keyLocation ? (
+          <AccessBlock label={t("cleaner.access.key")} body={keyLocation} />
+        ) : null}
+        {parkingNotes ? (
+          <AccessBlock label={t("cleaner.access.parking")} body={parkingNotes} />
+        ) : null}
+      </div>
+    </CleanerSection>
+  );
+}
+
+function AccessBlock({
+  label,
+  body,
+  variant,
+}: {
+  label: string;
+  body: string;
+  variant?: "urgent";
+}) {
+  const isUrgent = variant === "urgent";
+  return (
+    <div
+      className={cn(
+        "rounded-[16px] border p-3",
+        isUrgent
+          ? "border-[var(--destructive)]/40 bg-[var(--destructive)]/10"
+          : "border-[var(--border)] bg-[var(--muted)]/35",
+      )}
+    >
+      <div
+        className={cn(
+          "text-[10px] font-semibold uppercase tracking-[0.16em]",
+          isUrgent ? "text-[var(--destructive)]" : "text-[var(--cleaner-muted)]",
+        )}
+      >
+        {label}
+      </div>
+      <p className="mt-1 whitespace-pre-line text-[13px] leading-[1.45] text-[var(--cleaner-ink)]">
+        {body}
+      </p>
     </div>
   );
 }

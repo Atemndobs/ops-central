@@ -7,7 +7,13 @@ import { useTranslations } from "next-intl";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { JobConversationPanel } from "@/components/conversations/job-conversation-panel";
-import { CleanerSection, CleanerStatusPill, formatCleanerDate, mapJobAppearance } from "@/components/cleaner/cleaner-ui";
+import {
+  CleanerAccessSection,
+  CleanerSection,
+  CleanerStatusPill,
+  formatCleanerDate,
+  mapJobAppearance,
+} from "@/components/cleaner/cleaner-ui";
 import { getErrorMessage } from "@/lib/errors";
 
 export function CleanerJobDetailClient({ id }: { id: string }) {
@@ -27,7 +33,14 @@ export function CleanerJobDetailClient({ id }: { id: string }) {
           notesForCleaner?: string;
           assignedCleanerIds: string[];
         };
-        property?: { name?: string | null; address?: string | null } | null;
+        property?: {
+          name?: string | null;
+          address?: string | null;
+          accessNotes?: string | null;
+          keyLocation?: string | null;
+          parkingNotes?: string | null;
+          urgentNotes?: string | null;
+        } | null;
         cleaners: Array<{ _id?: string; name?: string | null; email?: string | null }>;
         execution: { unresolvedCleanerIds: string[] };
         evidence: { current: { byType: { before: unknown[]; after: unknown[]; incident: unknown[] } } };
@@ -138,6 +151,13 @@ export function CleanerJobDetailClient({ id }: { id: string }) {
 
         {error ? <p className="mt-2 text-xs text-[var(--destructive)]">{error}</p> : null}
       </CleanerSection>
+
+      <CleanerAccessSection
+        accessNotes={detail.property?.accessNotes ?? null}
+        keyLocation={detail.property?.keyLocation ?? null}
+        parkingNotes={detail.property?.parkingNotes ?? null}
+        urgentNotes={detail.property?.urgentNotes ?? null}
+      />
 
       <JobConversationPanel
         jobId={jobId}

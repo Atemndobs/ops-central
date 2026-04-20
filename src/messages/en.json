@@ -192,6 +192,15 @@
     "bedCount": "{count, plural, one {# Bed} other {# Bed}}",
     "bathCount": "{count, plural, one {# Bath} other {# Bath}}",
     "highRisk": "High Risk",
+    "access": {
+      "eyebrow": "BEFORE YOU ARRIVE",
+      "title": "Access & property notes",
+      "empty": "No access details saved for this property yet. Check with ops before arriving.",
+      "entry": "Entry instructions",
+      "key": "Key location",
+      "parking": "Parking",
+      "urgent": "Urgent — check every time"
+    },
     "rooms": {
       "livingRoom": "Living Room",
       "kitchen": "Kitchen",

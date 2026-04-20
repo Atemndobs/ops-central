@@ -130,6 +130,12 @@ const properties = defineTable({
   // Media
   imageUrl: v.optional(v.string()),
 
+  // Access / field-ops context (shown to cleaners on the job detail)
+  accessNotes: v.optional(v.string()),
+  keyLocation: v.optional(v.string()),
+  parkingNotes: v.optional(v.string()),
+  urgentNotes: v.optional(v.string()),
+
   // Config
   isActive: v.boolean(),
   currency: v.optional(v.string()),

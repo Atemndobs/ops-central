@@ -19,6 +19,10 @@ export const create = mutation({
     vrboUrl: v.optional(v.string()),
     directBookingUrl: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
+    accessNotes: v.optional(v.string()),
+    keyLocation: v.optional(v.string()),
+    parkingNotes: v.optional(v.string()),
+    urgentNotes: v.optional(v.string()),
     currency: v.optional(v.string()),
     amenities: v.optional(v.array(v.string())),
     metadata: v.optional(v.any()),
@@ -64,6 +68,10 @@ export const create = mutation({
         vrboUrl: args.vrboUrl,
         directBookingUrl: args.directBookingUrl,
         imageUrl: args.imageUrl,
+        accessNotes: args.accessNotes?.trim() || undefined,
+        keyLocation: args.keyLocation?.trim() || undefined,
+        parkingNotes: args.parkingNotes?.trim() || undefined,
+        urgentNotes: args.urgentNotes?.trim() || undefined,
         currency: args.currency,
         amenities: args.amenities,
         metadata: args.metadata,
@@ -99,6 +107,10 @@ export const update = mutation({
     vrboUrl: v.optional(v.string()),
     directBookingUrl: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
+    accessNotes: v.optional(v.string()),
+    keyLocation: v.optional(v.string()),
+    parkingNotes: v.optional(v.string()),
+    urgentNotes: v.optional(v.string()),
     currency: v.optional(v.string()),
     amenities: v.optional(v.array(v.string())),
     metadata: v.optional(v.any()),
@@ -147,6 +159,22 @@ export const update = mutation({
         country: patch.country?.trim(),
         timezone: patch.timezone?.trim(),
         propertyType: patch.propertyType?.trim(),
+        accessNotes:
+          patch.accessNotes === undefined
+            ? undefined
+            : patch.accessNotes.trim() || undefined,
+        keyLocation:
+          patch.keyLocation === undefined
+            ? undefined
+            : patch.keyLocation.trim() || undefined,
+        parkingNotes:
+          patch.parkingNotes === undefined
+            ? undefined
+            : patch.parkingNotes.trim() || undefined,
+        urgentNotes:
+          patch.urgentNotes === undefined
+            ? undefined
+            : patch.urgentNotes.trim() || undefined,
         updatedAt: Date.now(),
       });
 
