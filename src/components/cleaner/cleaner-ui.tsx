@@ -170,21 +170,40 @@ export function formatCleanerTimeRange(
 }
 
 // Lines that earlier versions of the Hospitable sync wrote into notesForCleaner.
-// They're surfaced as localized UI now, so strip them when rendering legacy data.
-const LEGACY_NOTE_PATTERNS: RegExp[] = [
-  /^late checkout expected\.?$/i,
-  /^early check-?in( expected)?\.?$/i,
-  /^party risk flagged[^\n]*$/i,
-  /^\d+\s+guest\(s\)$/i,
-];
+// We only strip a legacy line when we can re-render it in the user's locale
+// from a structured flag, so notes on jobs without a linked stay stay visible.
+const LEGACY_GUEST_LINE = /^\d+\s+guest\(s\)$/i;
+const LEGACY_LATE_CHECKOUT = /^late checkout expected\.?$/i;
+const LEGACY_EARLY_CHECKIN = /^early check-?in( expected)?\.?$/i;
+const LEGACY_PARTY_RISK = /^party risk flagged[^\n]*$/i;
 
-function stripLegacyNotes(notes?: string | null): string {
+function stripLegacyNotes(
+  notes: string | null | undefined,
+  {
+    lateCheckout,
+    earlyCheckin,
+    partyRiskFlag,
+  }: {
+    lateCheckout?: boolean;
+    earlyCheckin?: boolean;
+    partyRiskFlag?: boolean;
+  },
+): string {
   if (!notes) return "";
   return notes
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .filter((line) => !LEGACY_NOTE_PATTERNS.some((pattern) => pattern.test(line)))
+    .filter((line) => {
+      // Guest count is always shown as a chip, so drop any legacy "N guest(s)" line.
+      if (LEGACY_GUEST_LINE.test(line)) return false;
+      // Only drop the structured-flag lines when the flag is actually set on the
+      // stay — otherwise we lose real ops notes for jobs without a stay link.
+      if (lateCheckout && LEGACY_LATE_CHECKOUT.test(line)) return false;
+      if (earlyCheckin && LEGACY_EARLY_CHECKIN.test(line)) return false;
+      if (partyRiskFlag && LEGACY_PARTY_RISK.test(line)) return false;
+      return true;
+    })
     .join("\n");
 }
 
@@ -388,7 +407,11 @@ export function CleanerJobCard({
   const noteLines: string[] = [];
   if (lateCheckout) noteLines.push(t("cleaner.note.lateCheckout"));
   if (earlyCheckin) noteLines.push(t("cleaner.note.earlyCheckin"));
-  const freeform = stripLegacyNotes(notes);
+  const freeform = stripLegacyNotes(notes, {
+    lateCheckout,
+    earlyCheckin,
+    partyRiskFlag,
+  });
   if (freeform) noteLines.push(freeform);
   const notesText = noteLines.length > 0 ? noteLines.join("\n") : t("cleaner.noCleanerNotes");
 
