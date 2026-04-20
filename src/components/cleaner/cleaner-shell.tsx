@@ -6,7 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   Bell,
   ClipboardList,
@@ -369,18 +369,11 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     }
   }, [isConvexAuthenticated, resolvedTheme]);
 
-  const [currentLocale, setCurrentLocale] = useState<Locale>(() => {
-    if (typeof document === "undefined") {
-      return "en";
-    }
-    const cookie = document.cookie.split("; ").find((c) => c.startsWith("NEXT_LOCALE="));
-    const cookieLocale = cookie?.split("=")[1] as Locale | undefined;
-    return cookieLocale ?? "en";
-  });
+  // Source locale from next-intl so SSR and client agree on first paint.
+  const currentLocale = useLocale() as Locale;
 
   const toggleLocale = useCallback(() => {
     const nextLocale: Locale = currentLocale === "en" ? "es" : "en";
-    setCurrentLocale(nextLocale);
     document.cookie = `NEXT_LOCALE=${nextLocale}; path=/; max-age=31536000`;
 
     if (isConvexAuthenticated) {

@@ -32,30 +32,19 @@ function isCancelledStatus(status: string | undefined): boolean {
 }
 
 function buildCleaningNotes(
-  partyRiskFlag: boolean,
-  lateCheckout: boolean,
-  numberOfGuests: number | undefined,
+  _partyRiskFlag: boolean,
+  _lateCheckout: boolean,
+  _numberOfGuests: number | undefined,
   specialRequests: string | undefined
 ): string | undefined {
-  const notes: string[] = [];
-
-  if (partyRiskFlag) {
-    notes.push("Party risk flagged - check for extra cleaning needs.");
+  // Structured signals (party risk, late checkout, guest count) are surfaced
+  // as localized UI on the cleaner views. Only freeform ops text lives here so
+  // the stored note doesn't lock us into an English-only rendering.
+  if (specialRequests && specialRequests.trim()) {
+    return `Special requests: ${specialRequests.trim()}`;
   }
 
-  if (lateCheckout) {
-    notes.push("Late checkout expected.");
-  }
-
-  if (typeof numberOfGuests === "number" && numberOfGuests > 0) {
-    notes.push(`${numberOfGuests} guest(s)`);
-  }
-
-  if (specialRequests) {
-    notes.push(`Special requests: ${specialRequests}`);
-  }
-
-  return notes.length > 0 ? notes.join("\n") : undefined;
+  return undefined;
 }
 
 export const upsertReservations = internalMutation({

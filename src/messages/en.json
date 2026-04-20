@@ -192,6 +192,10 @@
     "bedCount": "{count, plural, one {# Bed} other {# Bed}}",
     "bathCount": "{count, plural, one {# Bath} other {# Bath}}",
     "highRisk": "High Risk",
+    "note": {
+      "lateCheckout": "Late checkout expected.",
+      "earlyCheckin": "Early check-in expected."
+    },
     "access": {
       "eyebrow": "BEFORE YOU ARRIVE",
       "title": "Access & property notes",

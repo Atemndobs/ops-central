@@ -169,6 +169,25 @@ export function formatCleanerTimeRange(
   return `${formatCleanerTime(start)} – ${formatCleanerTime(end)}`;
 }
 
+// Lines that earlier versions of the Hospitable sync wrote into notesForCleaner.
+// They're surfaced as localized UI now, so strip them when rendering legacy data.
+const LEGACY_NOTE_PATTERNS: RegExp[] = [
+  /^late checkout expected\.?$/i,
+  /^early check-?in( expected)?\.?$/i,
+  /^party risk flagged[^\n]*$/i,
+  /^\d+\s+guest\(s\)$/i,
+];
+
+function stripLegacyNotes(notes?: string | null): string {
+  if (!notes) return "";
+  return notes
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !LEGACY_NOTE_PATTERNS.some((pattern) => pattern.test(line)))
+    .join("\n");
+}
+
 export function CleanerSection({
   title,
   eyebrow,
@@ -330,6 +349,8 @@ export function CleanerJobCard({
   bedrooms,
   bathrooms,
   partyRiskFlag,
+  lateCheckout,
+  earlyCheckin,
   scheduledAt,
   scheduledEndAt,
   notes,
@@ -346,6 +367,8 @@ export function CleanerJobCard({
   bedrooms?: number | null;
   bathrooms?: number | null;
   partyRiskFlag?: boolean;
+  lateCheckout?: boolean;
+  earlyCheckin?: boolean;
   scheduledAt?: number | null;
   scheduledEndAt?: number | null;
   notes?: string | null;
@@ -361,6 +384,13 @@ export function CleanerJobCard({
   const mapsHref = address
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
     : null;
+
+  const noteLines: string[] = [];
+  if (lateCheckout) noteLines.push(t("cleaner.note.lateCheckout"));
+  if (earlyCheckin) noteLines.push(t("cleaner.note.earlyCheckin"));
+  const freeform = stripLegacyNotes(notes);
+  if (freeform) noteLines.push(freeform);
+  const notesText = noteLines.length > 0 ? noteLines.join("\n") : t("cleaner.noCleanerNotes");
 
   return (
     <article
@@ -418,7 +448,7 @@ export function CleanerJobCard({
             </p>
           </div>
         ) : null}
-        <CleanerMetaRow icon={Info} text={notes || t("cleaner.noCleanerNotes")} />
+        <CleanerMetaRow icon={Info} text={notesText} />
       </div>
 
       <div className="relative z-10 mt-4 flex flex-wrap items-center gap-2">

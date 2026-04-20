@@ -22,7 +22,12 @@ export function CleanerHistoryClient() {
           bedrooms?: number | null;
           bathrooms?: number | null;
         } | null;
-        stay?: { numberOfGuests?: number | null; partyRiskFlag?: boolean } | null;
+        stay?: {
+          numberOfGuests?: number | null;
+          partyRiskFlag?: boolean;
+          lateCheckout?: boolean;
+          earlyCheckin?: boolean;
+        } | null;
       }>
     | undefined;
 
@@ -74,6 +79,8 @@ export function CleanerHistoryClient() {
           bedrooms={job.property?.bedrooms ?? null}
           bathrooms={job.property?.bathrooms ?? null}
           partyRiskFlag={job.stay?.partyRiskFlag ?? false}
+          lateCheckout={job.stay?.lateCheckout ?? false}
+          earlyCheckin={job.stay?.earlyCheckin ?? false}
           scheduledAt={job.scheduledStartAt}
           scheduledEndAt={job.scheduledEndAt ?? null}
           appearance={mapJobAppearance(job.status)}
