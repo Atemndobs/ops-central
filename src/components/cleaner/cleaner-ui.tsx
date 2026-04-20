@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
-  AlertTriangle,
   Bath,
   BedDouble,
   CalendarDays,
@@ -22,11 +21,69 @@ import type { Locale } from "@/lib/locales";
 
 // Short, safe labels rendered independent of the JSON dictionary so they
 // survive Turbopack JSON HMR hiccups. Label text only — the decision to
-// render these comes from Hospitable-sourced data (stay.checkOutAt).
-const LABELS: Record<Locale, { checkout: string; checkin: string }> = {
-  en: { checkout: "Checkout", checkin: "Check-in" },
-  es: { checkout: "Salida", checkin: "Entrada" },
+// render these is derived from Hospitable-sourced timestamps.
+const LABELS: Record<
+  Locale,
+  {
+    checkout: string;
+    checkin: string;
+    lateCheckout: string;
+    earlyCheckin: string;
+    partyRisk: string;
+  }
+> = {
+  en: {
+    checkout: "Checkout",
+    checkin: "Check-in",
+    lateCheckout: "Late checkout expected.",
+    earlyCheckin: "Early check-in expected.",
+    partyRisk: "Party risk flagged.",
+  },
+  es: {
+    checkout: "Salida",
+    checkin: "Entrada",
+    lateCheckout: "Se espera salida tardía.",
+    earlyCheckin: "Se espera llegada anticipada.",
+    partyRisk: "Riesgo de fiesta.",
+  },
 };
+
+// J&A standard stay window — late/early risks are detected relative to these.
+// If this ever becomes property-specific, move these onto the property record.
+const STANDARD_CHECKOUT_MINUTES = 10 * 60; // 10:00 AM
+const STANDARD_CHECKIN_MINUTES = 16 * 60; // 4:00 PM
+
+function minutesInTimezone(ms: number, timezone?: string | null): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone ?? undefined,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(ms));
+  const hour = Number.parseInt(
+    parts.find((p) => p.type === "hour")?.value ?? "0",
+    10,
+  );
+  const minute = Number.parseInt(
+    parts.find((p) => p.type === "minute")?.value ?? "0",
+    10,
+  );
+  return hour * 60 + minute;
+}
+
+function deriveTimingRisks(
+  checkInAt?: number | null,
+  checkOutAt?: number | null,
+  timezone?: string | null,
+): { lateCheckout: boolean; earlyCheckin: boolean } {
+  const lateCheckout =
+    typeof checkOutAt === "number" &&
+    minutesInTimezone(checkOutAt, timezone) > STANDARD_CHECKOUT_MINUTES;
+  const earlyCheckin =
+    typeof checkInAt === "number" &&
+    minutesInTimezone(checkInAt, timezone) < STANDARD_CHECKIN_MINUTES;
+  return { lateCheckout, earlyCheckin };
+}
 import { cn } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
@@ -437,24 +494,33 @@ export function CleanerJobCard({
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
     : null;
 
-  const noteLines: string[] = [];
-  if (typeof checkOutAt === "number") {
-    noteLines.push(
-      `${labels.checkout}: ${formatCleanerTime(checkOutAt, timezone)}`,
+  // Derive timing risks from Hospitable timestamps in the property's local
+  // timezone so the check is accurate regardless of where the viewer is.
+  const risks = deriveTimingRisks(checkInAt, checkOutAt, timezone);
+  const showLateCheckout = risks.lateCheckout;
+  const showEarlyCheckin = risks.earlyCheckin;
+
+  const infoLines: string[] = [];
+  if (showLateCheckout && typeof checkOutAt === "number") {
+    infoLines.push(
+      `${labels.lateCheckout} ${labels.checkout} ${formatCleanerTime(checkOutAt, timezone)}.`,
     );
   }
-  if (typeof checkInAt === "number") {
-    noteLines.push(
-      `${labels.checkin}: ${formatCleanerTime(checkInAt, timezone)}`,
+  if (showEarlyCheckin && typeof checkInAt === "number") {
+    infoLines.push(
+      `${labels.earlyCheckin} ${labels.checkin} ${formatCleanerTime(checkInAt, timezone)}.`,
     );
+  }
+  if (partyRiskFlag) {
+    infoLines.push(labels.partyRisk);
   }
   const freeform = stripLegacyNotes(notes, {
-    lateCheckout,
-    earlyCheckin,
+    lateCheckout: showLateCheckout,
+    earlyCheckin: showEarlyCheckin,
     partyRiskFlag,
   });
-  if (freeform) noteLines.push(freeform);
-  const notesText = noteLines.length > 0 ? noteLines.join("\n") : t("cleaner.noCleanerNotes");
+  if (freeform) infoLines.push(freeform);
+  const infoText = infoLines.join("\n");
 
   return (
     <article
@@ -504,15 +570,7 @@ export function CleanerJobCard({
           icon={ClipboardList}
           text={city ? `${propertyName}, ${city}` : propertyName}
         />
-        {partyRiskFlag ? (
-          <div className="flex items-start gap-2 text-[var(--destructive)]">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <p className="min-w-0 whitespace-pre-line text-[13px] font-semibold leading-[1.35]">
-              {t("cleaner.highRisk")}
-            </p>
-          </div>
-        ) : null}
-        <CleanerMetaRow icon={Info} text={notesText} />
+        {infoText ? <CleanerMetaRow icon={Info} text={infoText} /> : null}
       </div>
 
       <div className="relative z-10 mt-4 flex flex-nowrap items-center gap-1.5 overflow-hidden">
