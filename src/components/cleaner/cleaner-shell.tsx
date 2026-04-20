@@ -28,12 +28,66 @@ import {
   isWebPushSupported,
 } from "@/lib/web-push";
 
-const NAV_ITEMS = [
-  { href: "/cleaner", labelKey: "common.jobs", icon: ClipboardList },
-  { href: "/cleaner/messages", labelKey: "common.messages", icon: MessageCircle },
-  { href: "/cleaner/incidents/new", labelKey: "cleaner.incidentNav", icon: AlertTriangle },
-  { href: "/cleaner/more", labelKey: "cleaner.more", icon: User },
+const NAV_ITEMS: Array<{
+  href: string;
+  labelKey: string;
+  icon: typeof ClipboardList;
+  // Path prefixes this tab claims. Longest-prefix-wins, so a specific tab
+  // like Messages can beat the generic Jobs ("/cleaner") root.
+  matchPrefixes: string[];
+}> = [
+  {
+    href: "/cleaner",
+    labelKey: "common.jobs",
+    icon: ClipboardList,
+    matchPrefixes: ["/cleaner/jobs", "/cleaner/history", "/cleaner"],
+  },
+  {
+    href: "/cleaner/messages",
+    labelKey: "common.messages",
+    icon: MessageCircle,
+    matchPrefixes: ["/cleaner/messages"],
+  },
+  {
+    href: "/cleaner/incidents/new",
+    labelKey: "cleaner.incidentNav",
+    icon: AlertTriangle,
+    matchPrefixes: ["/cleaner/incidents"],
+  },
+  {
+    href: "/cleaner/more",
+    labelKey: "cleaner.more",
+    icon: User,
+    matchPrefixes: [
+      "/cleaner/more",
+      "/cleaner/settings",
+      "/cleaner/notifications",
+    ],
+  },
 ];
+
+function matchLength(prefixes: string[], pathname: string): number {
+  let best = 0;
+  for (const prefix of prefixes) {
+    if (pathname === prefix || pathname.startsWith(`${prefix}/`)) {
+      if (prefix.length > best) best = prefix.length;
+    }
+  }
+  return best;
+}
+
+function isNavItemActive(itemHref: string, pathname: string): boolean {
+  let winnerHref: string | null = null;
+  let winnerLength = 0;
+  for (const candidate of NAV_ITEMS) {
+    const length = matchLength(candidate.matchPrefixes, pathname);
+    if (length > winnerLength) {
+      winnerLength = length;
+      winnerHref = candidate.href;
+    }
+  }
+  return winnerHref === itemHref;
+}
 
 const THEME_STORAGE_KEY = "opscentral-theme";
 
@@ -414,28 +468,26 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     <div className="cleaner-theme cleaner-app-shell relative h-[100svh] overflow-hidden text-[15px] text-[var(--foreground)]">
       <header className="fixed inset-x-0 top-0 z-40 border-b border-[var(--border)] bg-white/92 px-3 py-3 backdrop-blur">
         <div className="mx-auto flex w-full max-w-[402px] items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <Link
-              href="/cleaner"
-              aria-label={t("cleaner.myJobs")}
-              className="shrink-0 rounded-full transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cleaner-primary)]"
-            >
-              <Image
-                src="https://chezsoistays.com/wp-content/uploads/2026/02/cropped-chezsoi_favicon@2x.png"
-                alt="ChezSoiCleaning logo"
-                width={32}
-                height={32}
-                className="h-8 w-8 object-contain"
-                priority
-              />
-            </Link>
-            <div>
+          <Link
+            href="/cleaner"
+            aria-label={t("cleaner.myJobs")}
+            className="flex min-w-0 items-center gap-3 rounded-lg transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cleaner-primary)]"
+          >
+            <Image
+              src="https://chezsoistays.com/wp-content/uploads/2026/02/cropped-chezsoi_favicon@2x.png"
+              alt="ChezSoiCleaning logo"
+              width={32}
+              height={32}
+              className="h-8 w-8 shrink-0 object-contain"
+              priority
+            />
+            <div className="min-w-0">
               <p className="cleaner-meta text-[10px] text-[var(--cleaner-ink)]">{t("cleaner.myJobs")}</p>
               <h1 className="truncate font-[var(--font-cleaner-body)] text-[13px] font-semibold text-[var(--cleaner-muted)]">
                 {title}
               </h1>
             </div>
-          </div>
+          </Link>
           <div className="flex items-center gap-2">
             <div className="relative" ref={notificationPanelRef}>
               <button
@@ -600,7 +652,7 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
       >
         <ul className="pointer-events-auto mx-auto grid max-w-[402px] grid-cols-4 items-center justify-items-center gap-x-3 px-9 pb-2">
           {NAV_ITEMS.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const isActive = isNavItemActive(item.href, pathname ?? "");
             const showMessageBadge =
               item.href === "/cleaner/messages" &&
               typeof unreadMessageCount === "number" &&
