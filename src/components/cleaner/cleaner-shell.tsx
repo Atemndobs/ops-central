@@ -415,14 +415,20 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
       <header className="fixed inset-x-0 top-0 z-40 border-b border-[var(--border)] bg-white/92 px-3 py-3 backdrop-blur">
         <div className="mx-auto flex w-full max-w-[402px] items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <Image
-              src="https://chezsoistays.com/wp-content/uploads/2026/02/cropped-chezsoi_favicon@2x.png"
-              alt="ChezSoiCleaning logo"
-              width={32}
-              height={32}
-              className="h-8 w-8 object-contain"
-              priority
-            />
+            <Link
+              href="/cleaner"
+              aria-label={t("cleaner.myJobs")}
+              className="shrink-0 rounded-full transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cleaner-primary)]"
+            >
+              <Image
+                src="https://chezsoistays.com/wp-content/uploads/2026/02/cropped-chezsoi_favicon@2x.png"
+                alt="ChezSoiCleaning logo"
+                width={32}
+                height={32}
+                className="h-8 w-8 object-contain"
+                priority
+              />
+            </Link>
             <div>
               <p className="cleaner-meta text-[10px] text-[var(--cleaner-ink)]">{t("cleaner.myJobs")}</p>
               <h1 className="truncate font-[var(--font-cleaner-body)] text-[13px] font-semibold text-[var(--cleaner-muted)]">

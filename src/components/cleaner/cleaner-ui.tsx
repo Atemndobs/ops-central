@@ -154,10 +154,12 @@ export function CleanerCountdownBadge({
   targetTimestamp,
   label,
   size = "normal",
+  href,
 }: {
   targetTimestamp: number | null | undefined;
   label?: string;
   size?: "normal" | "compact";
+  href?: string | null;
 }) {
   const t = useTranslations();
   const { formatted, tier } = useCountdown(targetTimestamp);
@@ -169,28 +171,46 @@ export function CleanerCountdownBadge({
   }
 
   if (size === "compact") {
-    return (
-      <div
-        className={cn(
-          "inline-flex items-center justify-center rounded-[10px] px-3 py-2 text-[13px] font-semibold",
-          TIER_STYLES[tier],
-        )}
-      >
-        {formatted}
-      </div>
+    const compactClass = cn(
+      "inline-flex items-center justify-center rounded-[10px] px-3 py-2 text-[13px] font-semibold",
+      TIER_STYLES[tier],
+      href ? "transition hover:opacity-90" : "",
     );
+    if (href) {
+      return (
+        <Link href={href} aria-label={displayLabel} className={compactClass}>
+          {formatted}
+        </Link>
+      );
+    }
+    return <div className={compactClass}>{formatted}</div>;
   }
 
-  return (
-    <div className={cn("rounded-[10px] px-4 py-2 shadow-sm", TIER_STYLES[tier])}>
+  const normalClass = cn(
+    "block rounded-[10px] px-4 py-2 shadow-sm",
+    TIER_STYLES[tier],
+    href ? "transition hover:opacity-95" : "",
+  );
+  const content = (
+    <>
       <p className="font-[var(--font-cleaner-body)] text-[31px] font-bold leading-none tracking-[-0.03em]">
         {formatted}
       </p>
       <p className={cn("mt-1 text-[10px]", tier === "calm" ? "text-[var(--cleaner-muted)]" : "text-white/90")}>
         {displayLabel}
       </p>
-    </div>
+    </>
   );
+
+  if (href) {
+    return (
+      <Link href={href} aria-label={displayLabel} className={normalClass}>
+        {content}
+      </Link>
+    );
+  }
+
+  return <div className={normalClass}>{content}</div>;
 }
 
 export type CleanerJobAppearance = "open" | "in_review" | "completed" | "rework";
@@ -397,6 +417,7 @@ export function CleanerSummaryCard({
   onToggle,
   userName,
   nextJobAt,
+  nextJobHref,
 }: {
   nextJobs: number;
   inReview: number;
@@ -405,6 +426,7 @@ export function CleanerSummaryCard({
   onToggle?: () => void;
   userName?: string;
   nextJobAt?: number | null;
+  nextJobHref?: string | null;
 }) {
   const t = useTranslations();
   const items: Array<{
@@ -461,7 +483,10 @@ export function CleanerSummaryCard({
         </button>
       </div>
       <div className="mt-4 flex items-start justify-between gap-3">
-        <CleanerCountdownBadge targetTimestamp={nextJobAt} />
+        <CleanerCountdownBadge
+          targetTimestamp={nextJobAt}
+          href={nextJobHref ?? undefined}
+        />
         <div className="grid flex-1 grid-cols-4 gap-2">
           {items.map(({ key, label, value, icon: Icon, href }) => (
             <Link

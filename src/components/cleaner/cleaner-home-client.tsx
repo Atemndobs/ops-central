@@ -88,14 +88,16 @@ export function CleanerHomeClient() {
     () => (notifications ?? []).filter((item) => !item.readAt && !item.dismissedAt).length,
     [notifications],
   );
-  const nextJobAt = useMemo(() => {
+  const nextJob = useMemo(() => {
     if (activeJobs.length === 0) return null;
     const now = Date.now();
     const upcoming = activeJobs
       .filter((job) => job.scheduledStartAt > now)
       .sort((a, b) => a.scheduledStartAt - b.scheduledStartAt);
-    return upcoming[0]?.scheduledStartAt ?? null;
+    return upcoming[0] ?? null;
   }, [activeJobs]);
+  const nextJobAt = nextJob?.scheduledStartAt ?? null;
+  const nextJobHref = nextJob ? `/cleaner/jobs/${nextJob._id}` : null;
   const msgCount = typeof unreadMessageCount === "number" ? unreadMessageCount : 0;
   const summaryTotal = activeJobs.length + inReviewJobs + msgCount + updateCount;
 
@@ -134,6 +136,7 @@ export function CleanerHomeClient() {
           onToggle={() => setIsSummaryVisible(false)}
           userName={profile?.name}
           nextJobAt={nextJobAt}
+          nextJobHref={nextJobHref}
         />
       ) : null}
 
