@@ -407,11 +407,41 @@ export function CleanerSummaryCard({
   nextJobAt?: number | null;
 }) {
   const t = useTranslations();
-  const items = [
-    { label: t("cleaner.summary.nextJobs"), value: nextJobs, icon: ClipboardList },
-    { label: t("cleaner.summary.inReview"), value: inReview, icon: Info },
-    { label: t("cleaner.summary.messages"), value: unreadMessages, icon: MessageCircle },
-    { label: t("cleaner.summary.update"), value: updates, icon: RefreshCw },
+  const items: Array<{
+    key: string;
+    label: string;
+    value: number;
+    icon: LucideIcon;
+    href: string;
+  }> = [
+    {
+      key: "nextJobs",
+      label: t("cleaner.summary.nextJobs"),
+      value: nextJobs,
+      icon: ClipboardList,
+      href: "/cleaner",
+    },
+    {
+      key: "inReview",
+      label: t("cleaner.summary.inReview"),
+      value: inReview,
+      icon: Info,
+      href: "/cleaner/history",
+    },
+    {
+      key: "messages",
+      label: t("cleaner.summary.messages"),
+      value: unreadMessages,
+      icon: MessageCircle,
+      href: "/cleaner/messages",
+    },
+    {
+      key: "updates",
+      label: t("cleaner.summary.update"),
+      value: updates,
+      icon: RefreshCw,
+      href: "/cleaner/notifications",
+    },
   ];
 
   return (
@@ -433,8 +463,13 @@ export function CleanerSummaryCard({
       <div className="mt-4 flex items-start justify-between gap-3">
         <CleanerCountdownBadge targetTimestamp={nextJobAt} />
         <div className="grid flex-1 grid-cols-4 gap-2">
-          {items.map(({ label, value, icon: Icon }) => (
-            <div key={label} className="flex flex-col items-center gap-1.5 text-center">
+          {items.map(({ key, label, value, icon: Icon, href }) => (
+            <Link
+              key={key}
+              href={href}
+              aria-label={label}
+              className="flex flex-col items-center gap-1.5 rounded-xl px-1 py-1 text-center transition hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline-none"
+            >
               <div className="relative flex h-7 w-7 items-center justify-center rounded-full bg-white/15">
                 <Icon className="h-3.5 w-3.5" />
                 {value > 0 ? (
@@ -444,7 +479,7 @@ export function CleanerSummaryCard({
                 ) : null}
               </div>
               <span className="text-[8px] leading-tight text-white/90">{label}</span>
-            </div>
+            </Link>
           ))}
         </div>
       </div>
@@ -595,42 +630,50 @@ export function CleanerJobCard({
       </div>
 
       <div className="relative z-10 mt-4 flex flex-nowrap items-center gap-1.5">
-        {/* Chips show icon + number only (locale-independent, always fits).
-            Icons carry the bed/bath/guests semantics; aria-labels keep
-            screen-reader text full for accessibility. */}
-        {typeof bedrooms === "number" && bedrooms > 0 ? (
-          <Link
-            href={detailHref}
-            aria-label={t("cleaner.bedCount", { count: bedrooms })}
-            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[var(--muted)] px-2 py-1.5 text-[11px] font-medium text-[var(--cleaner-ink)] hover:bg-[var(--muted)]/80"
-          >
-            <BedDouble className="h-3 w-3" />
-            {bedrooms}
-          </Link>
-        ) : null}
-        {typeof bathrooms === "number" && bathrooms > 0 ? (
-          <Link
-            href={detailHref}
-            aria-label={t("cleaner.bathCount", { count: bathrooms })}
-            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[var(--muted)] px-2 py-1.5 text-[11px] font-medium text-[var(--cleaner-ink)] hover:bg-[var(--muted)]/80"
-          >
-            <Bath className="h-3 w-3" />
-            {bathrooms}
-          </Link>
-        ) : null}
-        {typeof guestCount === "number" && guestCount > 0 ? (
-          <span
-            aria-label={t("cleaner.guestCount", { count: guestCount })}
-            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[var(--muted)] px-2 py-1.5 text-[11px] font-medium text-[var(--cleaner-ink)]"
-          >
-            <Users className="h-3 w-3" />
-            {guestCount}
-          </span>
-        ) : null}
+        {/* Chips share a flex-1 lane with text labels. Labels truncate with
+            ellipsis only when the row gets tight; Start button and
+            countdown keep shrink-0 so they always render fully. */}
+        <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-1.5">
+          {typeof bedrooms === "number" && bedrooms > 0 ? (
+            <Link
+              href={detailHref}
+              aria-label={t("cleaner.bedCount", { count: bedrooms })}
+              className="inline-flex min-w-0 items-center gap-1 overflow-hidden rounded-lg bg-[var(--muted)] px-2 py-1.5 text-[11px] font-medium text-[var(--cleaner-ink)] hover:bg-[var(--muted)]/80"
+            >
+              <BedDouble className="h-3 w-3 shrink-0" />
+              <span className="truncate">
+                {t("cleaner.bedCount", { count: bedrooms })}
+              </span>
+            </Link>
+          ) : null}
+          {typeof bathrooms === "number" && bathrooms > 0 ? (
+            <Link
+              href={detailHref}
+              aria-label={t("cleaner.bathCount", { count: bathrooms })}
+              className="inline-flex min-w-0 items-center gap-1 overflow-hidden rounded-lg bg-[var(--muted)] px-2 py-1.5 text-[11px] font-medium text-[var(--cleaner-ink)] hover:bg-[var(--muted)]/80"
+            >
+              <Bath className="h-3 w-3 shrink-0" />
+              <span className="truncate">
+                {t("cleaner.bathCount", { count: bathrooms })}
+              </span>
+            </Link>
+          ) : null}
+          {typeof guestCount === "number" && guestCount > 0 ? (
+            <span
+              aria-label={t("cleaner.guestCount", { count: guestCount })}
+              className="inline-flex min-w-0 items-center gap-1 overflow-hidden rounded-lg bg-[var(--muted)] px-2 py-1.5 text-[11px] font-medium text-[var(--cleaner-ink)]"
+            >
+              <Users className="h-3 w-3 shrink-0" />
+              <span className="truncate">
+                {t("cleaner.guestCount", { count: guestCount })}
+              </span>
+            </span>
+          ) : null}
+        </div>
         {actionHref && actionLabel ? (
           <Link
             href={actionHref}
-            className="ml-auto inline-flex shrink-0 items-center rounded-lg bg-[var(--cleaner-primary)] px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90"
+            className="inline-flex shrink-0 items-center rounded-lg bg-[var(--cleaner-primary)] px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90"
           >
             {actionLabel}
           </Link>
