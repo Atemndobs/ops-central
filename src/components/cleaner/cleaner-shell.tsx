@@ -533,8 +533,12 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
               className="cleaner-tool-button h-8 w-8 bg-white text-[var(--cleaner-ink)]"
               aria-label={`Switch to ${localeNames[currentLocale === "en" ? "es" : "en"]}`}
               title={`Switch to ${localeNames[currentLocale === "en" ? "es" : "en"]}`}
+              suppressHydrationWarning
             >
-              <span className="font-[var(--font-cleaner-body)] text-[10px] font-bold uppercase">
+              <span
+                className="font-[var(--font-cleaner-body)] text-[10px] font-bold uppercase"
+                suppressHydrationWarning
+              >
                 {currentLocale}
               </span>
             </button>
@@ -544,6 +548,7 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
               className="cleaner-tool-button h-8 w-8 bg-white text-[var(--cleaner-ink)]"
               aria-label={isDarkMode ? t("cleaner.shell.switchToLight") : t("cleaner.shell.switchToDark")}
               title={isDarkMode ? t("nav.lightMode") : t("nav.darkMode")}
+              suppressHydrationWarning
             >
               {isDarkMode ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
             </button>
