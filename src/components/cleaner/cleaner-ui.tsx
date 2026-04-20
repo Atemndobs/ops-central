@@ -17,7 +17,21 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import type { Locale } from "@/lib/locales";
+
+// Critical short labels rendered on every card. Bypassing the JSON dictionary
+// keeps them resilient to next-intl HMR quirks in Turbopack dev mode.
+const NOTE_LABELS: Record<Locale, { lateCheckout: string; earlyCheckin: string }> = {
+  en: {
+    lateCheckout: "Late checkout expected.",
+    earlyCheckin: "Early check-in expected.",
+  },
+  es: {
+    lateCheckout: "Se espera salida tardía.",
+    earlyCheckin: "Se espera llegada anticipada.",
+  },
+};
 import { cn } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
@@ -398,15 +412,18 @@ export function CleanerJobCard({
   actionLabel?: string;
 }) {
   const t = useTranslations();
-  const titleClass =
-    appearance === "open" ? "text-[var(--cleaner-primary)]" : "text-[var(--cleaner-ink)]";
+  const locale = useLocale() as Locale;
+  const labels = NOTE_LABELS[locale] ?? NOTE_LABELS.en;
+  // Titles stay ink-black regardless of appearance; the purple border on the
+  // article already signals a new job.
+  const titleClass = "text-[var(--cleaner-ink)]";
   const mapsHref = address
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
     : null;
 
   const noteLines: string[] = [];
-  if (lateCheckout) noteLines.push(t("cleaner.note.lateCheckout"));
-  if (earlyCheckin) noteLines.push(t("cleaner.note.earlyCheckin"));
+  if (lateCheckout) noteLines.push(labels.lateCheckout);
+  if (earlyCheckin) noteLines.push(labels.earlyCheckin);
   const freeform = stripLegacyNotes(notes, {
     lateCheckout,
     earlyCheckin,
@@ -474,33 +491,36 @@ export function CleanerJobCard({
         <CleanerMetaRow icon={Info} text={notesText} />
       </div>
 
-      <div className="relative z-10 mt-4 flex flex-wrap items-center gap-2">
+      <div className="relative z-10 mt-4 flex flex-nowrap items-center gap-1.5 overflow-hidden">
         {typeof bedrooms === "number" && bedrooms > 0 ? (
           <Link
             href={detailHref}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--muted)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--cleaner-ink)] hover:bg-[var(--muted)]/80"
+            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[var(--muted)] px-2 py-1.5 text-[11px] font-medium text-[var(--cleaner-ink)] hover:bg-[var(--muted)]/80"
           >
-            <BedDouble className="h-3.5 w-3.5" />
+            <BedDouble className="h-3 w-3" />
             {t("cleaner.bedCount", { count: bedrooms })}
           </Link>
         ) : null}
         {typeof bathrooms === "number" && bathrooms > 0 ? (
           <Link
             href={detailHref}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--muted)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--cleaner-ink)] hover:bg-[var(--muted)]/80"
+            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[var(--muted)] px-2 py-1.5 text-[11px] font-medium text-[var(--cleaner-ink)] hover:bg-[var(--muted)]/80"
           >
-            <Bath className="h-3.5 w-3.5" />
+            <Bath className="h-3 w-3" />
             {t("cleaner.bathCount", { count: bathrooms })}
           </Link>
         ) : null}
         {typeof guestCount === "number" && guestCount > 0 ? (
-          <span className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--muted)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--cleaner-ink)]">
-            <Users className="h-3.5 w-3.5" />
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[var(--muted)] px-2 py-1.5 text-[11px] font-medium text-[var(--cleaner-ink)]">
+            <Users className="h-3 w-3" />
             {t("cleaner.guestCount", { count: guestCount })}
           </span>
         ) : null}
         {actionHref && actionLabel ? (
-          <Link href={actionHref} className="cleaner-primary-button ml-auto">
+          <Link
+            href={actionHref}
+            className="ml-auto inline-flex shrink-0 items-center rounded-lg bg-[var(--cleaner-primary)] px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90"
+          >
             {actionLabel}
           </Link>
         ) : null}
