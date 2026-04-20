@@ -217,10 +217,10 @@ export function TestableSignIn({
       ) : null}
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <div className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-5" suppressHydrationWarning>
+        <div className="space-y-4" suppressHydrationWarning>
           {/* Email */}
-          <div className="space-y-1.5">
+          <div className="space-y-1.5" suppressHydrationWarning>
             <label
               htmlFor="email"
               className="block text-sm font-medium text-white/70"
@@ -235,18 +235,19 @@ export function TestableSignIn({
               onChange={(event) => setEmail(event.target.value)}
               placeholder="Enter your email"
               className="h-[52px] w-full rounded-2xl bg-black/40 px-4 text-[15px] text-white outline-none ring-1 ring-white/[0.08] placeholder:text-white/35 focus:ring-white/25 sm:h-[56px] sm:px-5 sm:text-base"
+              suppressHydrationWarning
             />
           </div>
 
           {/* Password */}
-          <div className="space-y-1.5">
+          <div className="space-y-1.5" suppressHydrationWarning>
             <label
               htmlFor="password"
               className="block text-sm font-medium text-white/70"
             >
               Password
             </label>
-            <div className="relative">
+            <div className="relative" suppressHydrationWarning>
               <input
                 id="password"
                 type={showPassword ? "text" : "password"}
@@ -255,6 +256,7 @@ export function TestableSignIn({
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="Enter your password"
                 className="h-[52px] w-full rounded-2xl bg-black/40 px-4 pr-12 text-[15px] text-white outline-none ring-1 ring-white/[0.08] placeholder:text-white/35 focus:ring-white/25 sm:h-[56px] sm:px-5 sm:pr-14 sm:text-base"
+                suppressHydrationWarning
               />
               <button
                 type="button"
