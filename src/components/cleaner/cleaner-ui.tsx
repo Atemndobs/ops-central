@@ -595,42 +595,42 @@ export function CleanerJobCard({
       </div>
 
       <div className="relative z-10 mt-4 flex flex-nowrap items-center gap-1.5">
-        {/* Chips share remaining space — their text truncates before the
-            Start button and countdown badge, which stay at fixed size. */}
-        <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-hidden">
-          {typeof bedrooms === "number" && bedrooms > 0 ? (
-            <Link
-              href={detailHref}
-              className="inline-flex min-w-0 items-center gap-1 overflow-hidden rounded-lg bg-[var(--muted)] px-2 py-1.5 text-[11px] font-medium text-[var(--cleaner-ink)] hover:bg-[var(--muted)]/80"
-            >
-              <BedDouble className="h-3 w-3 shrink-0" />
-              <span className="truncate">
-                {t("cleaner.bedCount", { count: bedrooms })}
-              </span>
-            </Link>
-          ) : null}
-          {typeof bathrooms === "number" && bathrooms > 0 ? (
-            <Link
-              href={detailHref}
-              className="inline-flex min-w-0 items-center gap-1 overflow-hidden rounded-lg bg-[var(--muted)] px-2 py-1.5 text-[11px] font-medium text-[var(--cleaner-ink)] hover:bg-[var(--muted)]/80"
-            >
-              <Bath className="h-3 w-3 shrink-0" />
-              <span className="truncate">
-                {t("cleaner.bathCount", { count: bathrooms })}
-              </span>
-            </Link>
-          ) : null}
-          {typeof guestCount === "number" && guestCount > 0 ? (
-            <span className="inline-flex min-w-0 items-center gap-1 overflow-hidden rounded-lg bg-[var(--muted)] px-2 py-1.5 text-[11px] font-medium text-[var(--cleaner-ink)]">
-              <Users className="h-3 w-3 shrink-0" />
-              <span className="truncate">{guestCount}</span>
-            </span>
-          ) : null}
-        </div>
+        {/* Chips show icon + number only (locale-independent, always fits).
+            Icons carry the bed/bath/guests semantics; aria-labels keep
+            screen-reader text full for accessibility. */}
+        {typeof bedrooms === "number" && bedrooms > 0 ? (
+          <Link
+            href={detailHref}
+            aria-label={t("cleaner.bedCount", { count: bedrooms })}
+            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[var(--muted)] px-2 py-1.5 text-[11px] font-medium text-[var(--cleaner-ink)] hover:bg-[var(--muted)]/80"
+          >
+            <BedDouble className="h-3 w-3" />
+            {bedrooms}
+          </Link>
+        ) : null}
+        {typeof bathrooms === "number" && bathrooms > 0 ? (
+          <Link
+            href={detailHref}
+            aria-label={t("cleaner.bathCount", { count: bathrooms })}
+            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[var(--muted)] px-2 py-1.5 text-[11px] font-medium text-[var(--cleaner-ink)] hover:bg-[var(--muted)]/80"
+          >
+            <Bath className="h-3 w-3" />
+            {bathrooms}
+          </Link>
+        ) : null}
+        {typeof guestCount === "number" && guestCount > 0 ? (
+          <span
+            aria-label={t("cleaner.guestCount", { count: guestCount })}
+            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[var(--muted)] px-2 py-1.5 text-[11px] font-medium text-[var(--cleaner-ink)]"
+          >
+            <Users className="h-3 w-3" />
+            {guestCount}
+          </span>
+        ) : null}
         {actionHref && actionLabel ? (
           <Link
             href={actionHref}
-            className="inline-flex shrink-0 items-center rounded-lg bg-[var(--cleaner-primary)] px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90"
+            className="ml-auto inline-flex shrink-0 items-center rounded-lg bg-[var(--cleaner-primary)] px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90"
           >
             {actionLabel}
           </Link>
