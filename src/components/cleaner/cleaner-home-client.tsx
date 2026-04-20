@@ -29,7 +29,12 @@ export function CleanerHomeClient() {
         _id: string;
         status: string;
         scheduledStartAt: number;
-        property?: { name?: string | null; address?: string | null } | null;
+        property?: {
+          name?: string | null;
+          address?: string | null;
+          city?: string | null;
+        } | null;
+        stay?: { numberOfGuests?: number | null } | null;
         notesForCleaner?: string;
       }>
     | undefined;
@@ -153,6 +158,8 @@ export function CleanerHomeClient() {
                 key={job._id}
                 propertyName={job.property?.name ?? t("cleaner.unknownProperty")}
                 address={job.property?.address ?? t("cleaner.noAddress")}
+                city={job.property?.city ?? null}
+                guestCount={job.stay?.numberOfGuests ?? null}
                 scheduledAt={job.scheduledStartAt}
                 notes={job.notesForCleaner ?? null}
                 appearance={appearance}

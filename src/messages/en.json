@@ -188,6 +188,7 @@
     "recentJobs": "Recent jobs",
     "historyCount": "{count} jobs sorted by most recent scheduled date.",
     "noCleanerNotes": "No cleaner notes",
+    "guestCount": "{count, plural, one {# guest} other {# guests}}",
     "rooms": {
       "livingRoom": "Living Room",
       "kitchen": "Kitchen",

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { CalendarDays, ClipboardList, Info, MessageCircle, Minimize2, RefreshCw, type LucideIcon } from "lucide-react";
+import { CalendarDays, ClipboardList, Info, MapPin, MessageCircle, Minimize2, RefreshCw, Users, type LucideIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 
@@ -295,6 +295,8 @@ export function CleanerSummaryCard({
 export function CleanerJobCard({
   propertyName,
   address,
+  city,
+  guestCount,
   scheduledAt,
   notes,
   appearance,
@@ -305,6 +307,8 @@ export function CleanerJobCard({
 }: {
   propertyName: string;
   address?: string | null;
+  city?: string | null;
+  guestCount?: number | null;
   scheduledAt?: number | null;
   notes?: string | null;
   appearance: CleanerJobAppearance;
@@ -333,6 +337,13 @@ export function CleanerJobCard({
 
       <div className="mt-3 space-y-2.5">
         <CleanerMetaRow icon={ClipboardList} text={propertyName} />
+        {city ? <CleanerMetaRow icon={MapPin} text={city} /> : null}
+        {typeof guestCount === "number" && guestCount > 0 ? (
+          <CleanerMetaRow
+            icon={Users}
+            text={t("cleaner.guestCount", { count: guestCount })}
+          />
+        ) : null}
         <CleanerMetaRow
           icon={CalendarDays}
           text={`${t("cleaner.scheduledLabel")} ${formatCleanerDate(scheduledAt)}`}

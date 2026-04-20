@@ -188,6 +188,7 @@
     "recentJobs": "Trabajos recientes",
     "historyCount": "{count} trabajos ordenados por fecha programada más reciente.",
     "noCleanerNotes": "Sin notas",
+    "guestCount": "{count, plural, one {# huésped} other {# huéspedes}}",
     "rooms": {
       "livingRoom": "Sala de Estar",
       "kitchen": "Cocina",

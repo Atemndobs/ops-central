@@ -10,7 +10,13 @@ export function CleanerHistoryClient() {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const t = useTranslations();
   const jobs = useQuery(api.cleaningJobs.queries.getMyAssigned, isAuthenticated ? { limit: 500 } : "skip") as
-    | Array<{ _id: string; status: string; scheduledStartAt: number; property?: { name?: string | null } | null }>
+    | Array<{
+        _id: string;
+        status: string;
+        scheduledStartAt: number;
+        property?: { name?: string | null; address?: string | null; city?: string | null } | null;
+        stay?: { numberOfGuests?: number | null } | null;
+      }>
     | undefined;
 
   const history = useMemo(() => {
@@ -55,6 +61,9 @@ export function CleanerHistoryClient() {
         <CleanerJobCard
           key={job._id}
           propertyName={job.property?.name ?? t("cleaner.unknownProperty")}
+          address={job.property?.address ?? null}
+          city={job.property?.city ?? null}
+          guestCount={job.stay?.numberOfGuests ?? null}
           scheduledAt={job.scheduledStartAt}
           appearance={mapJobAppearance(job.status)}
           statusLabel={getStatusLabel(job.status)}
