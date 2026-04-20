@@ -20,17 +20,12 @@ import {
 import { useLocale, useTranslations } from "next-intl";
 import type { Locale } from "@/lib/locales";
 
-// Critical short labels rendered on every card. Bypassing the JSON dictionary
-// keeps them resilient to next-intl HMR quirks in Turbopack dev mode.
-const NOTE_LABELS: Record<Locale, { lateCheckout: string; earlyCheckin: string }> = {
-  en: {
-    lateCheckout: "Late checkout expected.",
-    earlyCheckin: "Early check-in expected.",
-  },
-  es: {
-    lateCheckout: "Se espera salida tardía.",
-    earlyCheckin: "Se espera llegada anticipada.",
-  },
+// Short, safe labels rendered independent of the JSON dictionary so they
+// survive Turbopack JSON HMR hiccups. Label text only — the decision to
+// render these comes from Hospitable-sourced data (stay.checkOutAt).
+const LABELS: Record<Locale, { checkout: string; checkin: string }> = {
+  en: { checkout: "Checkout", checkin: "Check-in" },
+  es: { checkout: "Salida", checkin: "Entrada" },
 };
 import { cn } from "@/lib/utils";
 
@@ -167,20 +162,35 @@ export function formatCleanerDate(value?: number | null) {
   });
 }
 
-function formatCleanerTime(value: number) {
+function formatCleanerTime(value: number, timezone?: string | null) {
   return new Date(value).toLocaleTimeString([], {
     hour: "numeric",
     minute: "2-digit",
+    timeZone: timezone ?? undefined,
   });
 }
 
 export function formatCleanerTimeRange(
   start?: number | null,
   end?: number | null,
+  timezone?: string | null,
 ): string {
   if (!start) return "—";
-  if (!end) return formatCleanerTime(start);
-  return `${formatCleanerTime(start)} – ${formatCleanerTime(end)}`;
+  if (!end) return formatCleanerTime(start, timezone);
+  return `${formatCleanerTime(start, timezone)} – ${formatCleanerTime(end, timezone)}`;
+}
+
+export function formatCleanerDateInZone(
+  value: number,
+  timezone?: string | null,
+): string {
+  return new Date(value).toLocaleString([], {
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: timezone ?? undefined,
+  });
 }
 
 // Lines that earlier versions of the Hospitable sync wrote into notesForCleaner.
@@ -386,6 +396,9 @@ export function CleanerJobCard({
   earlyCheckin,
   scheduledAt,
   scheduledEndAt,
+  checkInAt,
+  checkOutAt,
+  timezone,
   notes,
   appearance,
   statusLabel,
@@ -404,6 +417,9 @@ export function CleanerJobCard({
   earlyCheckin?: boolean;
   scheduledAt?: number | null;
   scheduledEndAt?: number | null;
+  checkInAt?: number | null;
+  checkOutAt?: number | null;
+  timezone?: string | null;
   notes?: string | null;
   appearance: CleanerJobAppearance;
   statusLabel: string;
@@ -413,7 +429,7 @@ export function CleanerJobCard({
 }) {
   const t = useTranslations();
   const locale = useLocale() as Locale;
-  const labels = NOTE_LABELS[locale] ?? NOTE_LABELS.en;
+  const labels = LABELS[locale] ?? LABELS.en;
   // Titles stay ink-black regardless of appearance; the purple border on the
   // article already signals a new job.
   const titleClass = "text-[var(--cleaner-ink)]";
@@ -422,8 +438,16 @@ export function CleanerJobCard({
     : null;
 
   const noteLines: string[] = [];
-  if (lateCheckout) noteLines.push(labels.lateCheckout);
-  if (earlyCheckin) noteLines.push(labels.earlyCheckin);
+  if (typeof checkOutAt === "number") {
+    noteLines.push(
+      `${labels.checkout}: ${formatCleanerTime(checkOutAt, timezone)}`,
+    );
+  }
+  if (typeof checkInAt === "number") {
+    noteLines.push(
+      `${labels.checkin}: ${formatCleanerTime(checkInAt, timezone)}`,
+    );
+  }
   const freeform = stripLegacyNotes(notes, {
     lateCheckout,
     earlyCheckin,
@@ -471,7 +495,7 @@ export function CleanerJobCard({
       <div className="relative z-10 mt-2 inline-flex items-center gap-1.5 text-[var(--cleaner-muted)]">
         <Clock className="h-4 w-4" />
         <span className="text-[13px] font-medium">
-          {formatCleanerTimeRange(scheduledAt, scheduledEndAt)}
+          {formatCleanerTimeRange(scheduledAt, scheduledEndAt, timezone)}
         </span>
       </div>
 

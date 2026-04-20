@@ -277,6 +277,7 @@ export const updatePropertyDetails = internalMutation({
     hospitableId: v.string(),
     bedrooms: v.optional(v.number()),
     bathrooms: v.optional(v.number()),
+    timezone: v.optional(v.string()),
     rooms: v.array(v.object({ name: v.string(), type: v.string() })),
   },
   handler: async (ctx, args) => {
@@ -299,6 +300,9 @@ export const updatePropertyDetails = internalMutation({
     }
     if (args.bathrooms !== undefined) {
       patch.bathrooms = args.bathrooms;
+    }
+    if (args.timezone !== undefined) {
+      patch.timezone = args.timezone;
     }
 
     await ctx.db.patch(property._id, patch);

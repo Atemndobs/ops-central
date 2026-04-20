@@ -36,12 +36,15 @@ export function CleanerHomeClient() {
           city?: string | null;
           bedrooms?: number | null;
           bathrooms?: number | null;
+          timezone?: string | null;
         } | null;
         stay?: {
           numberOfGuests?: number | null;
           partyRiskFlag?: boolean;
           lateCheckout?: boolean;
           earlyCheckin?: boolean;
+          checkInAt?: number | null;
+          checkOutAt?: number | null;
         } | null;
         notesForCleaner?: string;
       }>
@@ -175,6 +178,9 @@ export function CleanerHomeClient() {
                 earlyCheckin={job.stay?.earlyCheckin ?? false}
                 scheduledAt={job.scheduledStartAt}
                 scheduledEndAt={job.scheduledEndAt ?? null}
+                checkInAt={job.stay?.checkInAt ?? null}
+                checkOutAt={job.stay?.checkOutAt ?? null}
+                timezone={job.property?.timezone ?? null}
                 notes={job.notesForCleaner ?? null}
                 appearance={appearance}
                 statusLabel={statusLabel}

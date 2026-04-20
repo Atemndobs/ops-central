@@ -53,6 +53,7 @@ async function enrichJobs(ctx: QueryCtx, jobs: Doc<"cleaningJobs">[]) {
               bedrooms: property!.bedrooms,
               bathrooms: property!.bathrooms,
               rooms: property!.rooms,
+              timezone: property!.timezone ?? null,
               accessNotes: property!.accessNotes ?? null,
               keyLocation: property!.keyLocation ?? null,
               parkingNotes: property!.parkingNotes ?? null,
@@ -88,6 +89,8 @@ async function enrichJobs(ctx: QueryCtx, jobs: Doc<"cleaningJobs">[]) {
             stay!._id,
             {
               numberOfGuests: stay!.numberOfGuests ?? null,
+              checkInAt: stay!.checkInAt,
+              checkOutAt: stay!.checkOutAt,
               lateCheckout: stay!.lateCheckout,
               earlyCheckin: stay!.earlyCheckin,
               partyRiskFlag: stay!.partyRiskFlag,

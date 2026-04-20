@@ -21,12 +21,15 @@ export function CleanerHistoryClient() {
           city?: string | null;
           bedrooms?: number | null;
           bathrooms?: number | null;
+          timezone?: string | null;
         } | null;
         stay?: {
           numberOfGuests?: number | null;
           partyRiskFlag?: boolean;
           lateCheckout?: boolean;
           earlyCheckin?: boolean;
+          checkInAt?: number | null;
+          checkOutAt?: number | null;
         } | null;
       }>
     | undefined;
@@ -83,6 +86,9 @@ export function CleanerHistoryClient() {
           earlyCheckin={job.stay?.earlyCheckin ?? false}
           scheduledAt={job.scheduledStartAt}
           scheduledEndAt={job.scheduledEndAt ?? null}
+          checkInAt={job.stay?.checkInAt ?? null}
+          checkOutAt={job.stay?.checkOutAt ?? null}
+          timezone={job.property?.timezone ?? null}
           appearance={mapJobAppearance(job.status)}
           statusLabel={getStatusLabel(job.status)}
           detailHref={`/cleaner/jobs/${job._id}`}

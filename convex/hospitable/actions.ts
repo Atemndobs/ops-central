@@ -535,6 +535,7 @@ interface NormalizedPropertyDetails {
   name?: string;
   bedrooms?: number;
   bathrooms?: number;
+  timezone?: string;
   rooms: NormalizedRoom[];
 }
 
@@ -628,11 +629,20 @@ function normalizePropertyDetails(rawProperty: unknown): NormalizedPropertyDetai
 
   const rooms = extractRoomsFromProperty(rawProperty);
 
+  // Hospitable returns IANA timezone like "America/Chicago" on the property.
+  const address = isRecord(rawProperty.address) ? rawProperty.address : undefined;
+  const timezone =
+    asString(rawProperty.timezone) ??
+    asString(rawProperty.time_zone) ??
+    asString(address?.timezone) ??
+    asString(address?.time_zone);
+
   return {
     hospitableId,
     name: asString(rawProperty.name) ?? asString(rawProperty.title),
     bedrooms: bedroomCount,
     bathrooms: bathroomCount,
+    timezone,
     rooms,
   };
 }
@@ -677,6 +687,15 @@ export const syncPropertyDetails = internalAction({
           details.bedrooms = details.bedrooms ?? asNumber(detailCapacity?.bedrooms);
           details.bathrooms = details.bathrooms ?? asNumber(detailCapacity?.bathrooms);
 
+          // Detail endpoint can carry timezone we missed in the list payload.
+          const detailAddress = isRecord(detailData.address) ? detailData.address : undefined;
+          details.timezone =
+            details.timezone ??
+            asString(detailData.timezone) ??
+            asString(detailData.time_zone) ??
+            asString(detailAddress?.timezone) ??
+            asString(detailAddress?.time_zone);
+
           // Detail endpoint has room_details — extract rooms from it
           const detailRooms = extractRoomsFromProperty(detailData);
           if (detailRooms.length > enrichedRooms.length) {
@@ -692,6 +711,7 @@ export const syncPropertyDetails = internalAction({
           hospitableId: details.hospitableId,
           bedrooms: details.bedrooms,
           bathrooms: details.bathrooms,
+          timezone: details.timezone,
           rooms: enrichedRooms,
         });
         propertiesSynced++;
