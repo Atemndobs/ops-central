@@ -144,7 +144,7 @@ export function CleanerJobDetailClient({ id }: { id: string }) {
         </div>
 
         {detail.execution.unresolvedCleanerIds.length > 0 ? (
-          <p className="mt-3 text-xs text-amber-300">
+          <p className="mt-3 text-xs font-medium text-[var(--cleaner-ink)]">
             {t("cleaner.submissionGatePending", { count: detail.execution.unresolvedCleanerIds.length })}
           </p>
         ) : null}
