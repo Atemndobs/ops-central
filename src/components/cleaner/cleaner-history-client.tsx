@@ -14,8 +14,15 @@ export function CleanerHistoryClient() {
         _id: string;
         status: string;
         scheduledStartAt: number;
-        property?: { name?: string | null; address?: string | null; city?: string | null } | null;
-        stay?: { numberOfGuests?: number | null } | null;
+        scheduledEndAt?: number | null;
+        property?: {
+          name?: string | null;
+          address?: string | null;
+          city?: string | null;
+          bedrooms?: number | null;
+          bathrooms?: number | null;
+        } | null;
+        stay?: { numberOfGuests?: number | null; partyRiskFlag?: boolean } | null;
       }>
     | undefined;
 
@@ -64,7 +71,11 @@ export function CleanerHistoryClient() {
           address={job.property?.address ?? null}
           city={job.property?.city ?? null}
           guestCount={job.stay?.numberOfGuests ?? null}
+          bedrooms={job.property?.bedrooms ?? null}
+          bathrooms={job.property?.bathrooms ?? null}
+          partyRiskFlag={job.stay?.partyRiskFlag ?? false}
           scheduledAt={job.scheduledStartAt}
+          scheduledEndAt={job.scheduledEndAt ?? null}
           appearance={mapJobAppearance(job.status)}
           statusLabel={getStatusLabel(job.status)}
           detailHref={`/cleaner/jobs/${job._id}`}

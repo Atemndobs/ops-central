@@ -189,6 +189,9 @@
     "historyCount": "{count} jobs sorted by most recent scheduled date.",
     "noCleanerNotes": "No cleaner notes",
     "guestCount": "{count, plural, one {# guest} other {# guests}}",
+    "bedCount": "{count, plural, one {# Bed} other {# Bed}}",
+    "bathCount": "{count, plural, one {# Bath} other {# Bath}}",
+    "highRisk": "High Risk",
     "rooms": {
       "livingRoom": "Living Room",
       "kitchen": "Kitchen",

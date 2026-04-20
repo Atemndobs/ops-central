@@ -2,7 +2,21 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { CalendarDays, ClipboardList, Info, MapPin, MessageCircle, Minimize2, RefreshCw, Users, type LucideIcon } from "lucide-react";
+import {
+  AlertTriangle,
+  Bath,
+  BedDouble,
+  CalendarDays,
+  ClipboardList,
+  Clock,
+  Info,
+  MapPin,
+  MessageCircle,
+  Minimize2,
+  RefreshCw,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 
@@ -137,6 +151,22 @@ export function formatCleanerDate(value?: number | null) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatCleanerTime(value: number) {
+  return new Date(value).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+export function formatCleanerTimeRange(
+  start?: number | null,
+  end?: number | null,
+): string {
+  if (!start) return "—";
+  if (!end) return formatCleanerTime(start);
+  return `${formatCleanerTime(start)} – ${formatCleanerTime(end)}`;
 }
 
 export function CleanerSection({
@@ -297,7 +327,11 @@ export function CleanerJobCard({
   address,
   city,
   guestCount,
+  bedrooms,
+  bathrooms,
+  partyRiskFlag,
   scheduledAt,
+  scheduledEndAt,
   notes,
   appearance,
   statusLabel,
@@ -309,7 +343,11 @@ export function CleanerJobCard({
   address?: string | null;
   city?: string | null;
   guestCount?: number | null;
+  bedrooms?: number | null;
+  bathrooms?: number | null;
+  partyRiskFlag?: boolean;
   scheduledAt?: number | null;
+  scheduledEndAt?: number | null;
   notes?: string | null;
   appearance: CleanerJobAppearance;
   statusLabel: string;
@@ -320,22 +358,56 @@ export function CleanerJobCard({
   const t = useTranslations();
   const titleClass =
     appearance === "open" ? "text-[var(--cleaner-primary)]" : "text-[var(--cleaner-ink)]";
+  const mapsHref = address
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
+    : null;
 
   return (
     <article
       className={cn(
-        "cleaner-card p-4",
+        "cleaner-card relative p-4 transition-colors hover:bg-[var(--muted)]/40",
         appearance === "open" ? "border-[3px] border-[var(--cleaner-primary)]" : "",
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <h3 className={cn("cleaner-display text-[18px]", titleClass)}>
-          {address || t("cleaner.noAddress")}
-        </h3>
+      {/* Full-card tap target → job detail. Interactive children sit above via z-10. */}
+      <Link
+        href={detailHref}
+        aria-label={address || propertyName}
+        className="absolute inset-0 z-0 rounded-[24px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--cleaner-primary)]"
+      />
+
+      <div className="relative z-10 flex items-center justify-between gap-3">
+        <div className="inline-flex items-center gap-1.5 text-[var(--cleaner-muted)]">
+          <Clock className="h-4 w-4" />
+          <span className="text-[13px] font-medium">
+            {formatCleanerTimeRange(scheduledAt, scheduledEndAt)}
+          </span>
+        </div>
         <CleanerStatusPill appearance={appearance} label={statusLabel} />
       </div>
 
-      <div className="mt-3 space-y-2.5">
+      <div className="relative z-10 mt-3">
+        {mapsHref ? (
+          <a
+            href={mapsHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn(
+              "inline-flex items-start gap-1.5 cleaner-display text-[18px] hover:underline",
+              titleClass,
+            )}
+          >
+            <MapPin className="mt-1 h-4 w-4 shrink-0" />
+            <span>{address}</span>
+          </a>
+        ) : (
+          <h3 className={cn("cleaner-display text-[18px]", titleClass)}>
+            {t("cleaner.noAddress")}
+          </h3>
+        )}
+      </div>
+
+      <div className="relative z-10 mt-3 space-y-2.5">
         <CleanerMetaRow icon={ClipboardList} text={propertyName} />
         {city ? <CleanerMetaRow icon={MapPin} text={city} /> : null}
         {typeof guestCount === "number" && guestCount > 0 ? (
@@ -344,19 +416,36 @@ export function CleanerJobCard({
             text={t("cleaner.guestCount", { count: guestCount })}
           />
         ) : null}
-        <CleanerMetaRow
-          icon={CalendarDays}
-          text={`${t("cleaner.scheduledLabel")} ${formatCleanerDate(scheduledAt)}`}
-        />
         <CleanerMetaRow icon={Info} text={notes || t("cleaner.noCleanerNotes")} />
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <Link href={detailHref} className="cleaner-outline-button">
-          {t("cleaner.openDetails")}
-        </Link>
+      <div className="relative z-10 mt-4 flex flex-wrap items-center gap-2">
+        {typeof bedrooms === "number" && bedrooms > 0 ? (
+          <Link
+            href={detailHref}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--muted)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--cleaner-ink)] hover:bg-[var(--muted)]/80"
+          >
+            <BedDouble className="h-3.5 w-3.5" />
+            {t("cleaner.bedCount", { count: bedrooms })}
+          </Link>
+        ) : null}
+        {typeof bathrooms === "number" && bathrooms > 0 ? (
+          <Link
+            href={detailHref}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--muted)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--cleaner-ink)] hover:bg-[var(--muted)]/80"
+          >
+            <Bath className="h-3.5 w-3.5" />
+            {t("cleaner.bathCount", { count: bathrooms })}
+          </Link>
+        ) : null}
+        {partyRiskFlag ? (
+          <span className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--destructive)]/15 px-2.5 py-1.5 text-[12px] font-semibold text-[var(--destructive)]">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            {t("cleaner.highRisk")}
+          </span>
+        ) : null}
         {actionHref && actionLabel ? (
-          <Link href={actionHref} className="cleaner-primary-button">
+          <Link href={actionHref} className="cleaner-primary-button ml-auto">
             {actionLabel}
           </Link>
         ) : null}
