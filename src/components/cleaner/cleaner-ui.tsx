@@ -376,17 +376,7 @@ export function CleanerJobCard({
         className="absolute inset-0 z-0 rounded-[24px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--cleaner-primary)]"
       />
 
-      <div className="relative z-10 flex items-center justify-between gap-3">
-        <div className="inline-flex items-center gap-1.5 text-[var(--cleaner-muted)]">
-          <Clock className="h-4 w-4" />
-          <span className="text-[13px] font-medium">
-            {formatCleanerTimeRange(scheduledAt, scheduledEndAt)}
-          </span>
-        </div>
-        <CleanerStatusPill appearance={appearance} label={statusLabel} />
-      </div>
-
-      <div className="relative z-10 mt-3">
+      <div className="relative z-10 flex items-start justify-between gap-3">
         {mapsHref ? (
           <a
             href={mapsHref}
@@ -405,16 +395,28 @@ export function CleanerJobCard({
             {t("cleaner.noAddress")}
           </h3>
         )}
+        <CleanerStatusPill appearance={appearance} label={statusLabel} />
+      </div>
+
+      <div className="relative z-10 mt-2 inline-flex items-center gap-1.5 text-[var(--cleaner-muted)]">
+        <Clock className="h-4 w-4" />
+        <span className="text-[13px] font-medium">
+          {formatCleanerTimeRange(scheduledAt, scheduledEndAt)}
+        </span>
       </div>
 
       <div className="relative z-10 mt-3 space-y-2.5">
-        <CleanerMetaRow icon={ClipboardList} text={propertyName} />
-        {city ? <CleanerMetaRow icon={MapPin} text={city} /> : null}
-        {typeof guestCount === "number" && guestCount > 0 ? (
-          <CleanerMetaRow
-            icon={Users}
-            text={t("cleaner.guestCount", { count: guestCount })}
-          />
+        <CleanerMetaRow
+          icon={ClipboardList}
+          text={city ? `${propertyName}, ${city}` : propertyName}
+        />
+        {partyRiskFlag ? (
+          <div className="flex items-start gap-2 text-[var(--destructive)]">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <p className="min-w-0 whitespace-pre-line text-[13px] font-semibold leading-[1.35]">
+              {t("cleaner.highRisk")}
+            </p>
+          </div>
         ) : null}
         <CleanerMetaRow icon={Info} text={notes || t("cleaner.noCleanerNotes")} />
       </div>
@@ -438,10 +440,10 @@ export function CleanerJobCard({
             {t("cleaner.bathCount", { count: bathrooms })}
           </Link>
         ) : null}
-        {partyRiskFlag ? (
-          <span className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--destructive)]/15 px-2.5 py-1.5 text-[12px] font-semibold text-[var(--destructive)]">
-            <AlertTriangle className="h-3.5 w-3.5" />
-            {t("cleaner.highRisk")}
+        {typeof guestCount === "number" && guestCount > 0 ? (
+          <span className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--muted)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--cleaner-ink)]">
+            <Users className="h-3.5 w-3.5" />
+            {guestCount}
           </span>
         ) : null}
         {actionHref && actionLabel ? (
