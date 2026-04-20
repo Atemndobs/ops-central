@@ -250,6 +250,17 @@ export function formatCleanerDateInZone(
   });
 }
 
+export function formatCleanerShortDate(
+  value: number,
+  timezone?: string | null,
+): string {
+  return new Date(value).toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+    timeZone: timezone ?? undefined,
+  });
+}
+
 // Lines that earlier versions of the Hospitable sync wrote into notesForCleaner.
 // We only strip a legacy line when we can re-render it in the user's locale
 // from a structured flag, so notes on jobs without a linked stay stay visible.
@@ -563,6 +574,16 @@ export function CleanerJobCard({
         <span className="text-[13px] font-medium">
           {formatCleanerTimeRange(scheduledAt, scheduledEndAt, timezone)}
         </span>
+        {typeof scheduledAt === "number" ? (
+          <>
+            <span aria-hidden className="text-[var(--cleaner-muted)]/60">
+              ·
+            </span>
+            <span className="text-[13px] font-medium">
+              {formatCleanerShortDate(scheduledAt, timezone)}
+            </span>
+          </>
+        ) : null}
       </div>
 
       <div className="relative z-10 mt-3 space-y-2.5">
