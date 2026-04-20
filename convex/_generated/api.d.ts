@@ -33,6 +33,8 @@ import type * as hospitable_queries from "../hospitable/queries.js";
 import type * as http from "../http.js";
 import type * as incidents_mutations from "../incidents/mutations.js";
 import type * as incidents_queries from "../incidents/queries.js";
+import type * as integrations_mutations from "../integrations/mutations.js";
+import type * as integrations_queries from "../integrations/queries.js";
 import type * as inventory_queries from "../inventory/queries.js";
 import type * as jobChecks_mutations from "../jobChecks/mutations.js";
 import type * as jobChecks_queries from "../jobChecks/queries.js";
@@ -97,6 +99,8 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   "incidents/mutations": typeof incidents_mutations;
   "incidents/queries": typeof incidents_queries;
+  "integrations/mutations": typeof integrations_mutations;
+  "integrations/queries": typeof integrations_queries;
   "inventory/queries": typeof inventory_queries;
   "jobChecks/mutations": typeof jobChecks_mutations;
   "jobChecks/queries": typeof jobChecks_queries;

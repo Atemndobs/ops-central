@@ -283,37 +283,141 @@ export const upsertReservations = internalMutation({
   },
 });
 
-export const updatePropertyDetails = internalMutation({
+export const upsertPropertyFromHospitable = internalMutation({
   args: {
     hospitableId: v.string(),
+    name: v.optional(v.string()),
+    address: v.optional(v.string()),
+    city: v.optional(v.string()),
+    state: v.optional(v.string()),
+    zipCode: v.optional(v.string()),
+    country: v.optional(v.string()),
+    timezone: v.optional(v.string()),
+    currency: v.optional(v.string()),
+    imageUrl: v.optional(v.string()),
     bedrooms: v.optional(v.number()),
     bathrooms: v.optional(v.number()),
     rooms: v.array(v.object({ name: v.string(), type: v.string() })),
   },
   handler: async (ctx, args) => {
-    const property = await ctx.db
+    const now = Date.now();
+    const existing = await ctx.db
       .query("properties")
       .withIndex("by_hospitable", (q) => q.eq("hospitableId", args.hospitableId))
       .first();
 
-    if (!property) {
-      throw new Error(`No property found with hospitableId ${args.hospitableId}`);
+    if (existing) {
+      const patch: Record<string, unknown> = {
+        rooms: args.rooms,
+        updatedAt: now,
+        // Re-activate if it had been soft-deleted — presence in Hospitable is source of truth.
+        isActive: true,
+      };
+      if (args.bedrooms !== undefined) patch.bedrooms = args.bedrooms;
+      if (args.bathrooms !== undefined) patch.bathrooms = args.bathrooms;
+      // Only patch address/meta fields when Hospitable supplied a non-empty value, to avoid
+      // clobbering admin-edited data with nulls from a sparse Hospitable payload.
+      if (args.name) patch.name = args.name;
+      if (args.address) patch.address = args.address;
+      if (args.city) patch.city = args.city;
+      if (args.state) patch.state = args.state;
+      if (args.zipCode) patch.zipCode = args.zipCode;
+      if (args.country) patch.country = args.country;
+      if (args.timezone) patch.timezone = args.timezone;
+      if (args.currency) patch.currency = args.currency;
+      if (args.imageUrl) patch.imageUrl = args.imageUrl;
+
+      await ctx.db.patch(existing._id, patch);
+      return { id: existing._id, action: "updated" as const };
     }
 
-    const patch: Record<string, unknown> = {
+    // Insert — Hospitable has a property we don't know about yet.
+    const inserted = await ctx.db.insert("properties", {
+      hospitableId: args.hospitableId,
+      name: args.name ?? `Hospitable ${args.hospitableId.slice(0, 8)}`,
+      address: args.address ?? "Unknown",
+      city: args.city,
+      state: args.state,
+      zipCode: args.zipCode,
+      country: args.country,
+      timezone: args.timezone,
+      currency: args.currency,
+      imageUrl: args.imageUrl,
+      bedrooms: args.bedrooms,
+      bathrooms: args.bathrooms,
       rooms: args.rooms,
-      updatedAt: Date.now(),
-    };
+      isActive: true,
+      metadata: { source: "hospitable_auto_sync" },
+      createdAt: now,
+      updatedAt: now,
+    });
+    return { id: inserted, action: "inserted" as const };
+  },
+});
 
-    if (args.bedrooms !== undefined) {
-      patch.bedrooms = args.bedrooms;
-    }
-    if (args.bathrooms !== undefined) {
-      patch.bathrooms = args.bathrooms;
+export const softDeletePropertyByHospitableId = internalMutation({
+  args: { hospitableId: v.string(), reason: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const property = await ctx.db
+      .query("properties")
+      .withIndex("by_hospitable", (q) => q.eq("hospitableId", args.hospitableId))
+      .first();
+    if (!property) return { action: "noop" as const };
+    const now = Date.now();
+    await ctx.db.patch(property._id, {
+      isActive: false,
+      updatedAt: now,
+      metadata: {
+        ...(property.metadata ?? {}),
+        deactivatedAt: now,
+        deactivatedReason: args.reason ?? "hospitable_property_deleted",
+      },
+    });
+    return { action: "deactivated" as const, id: property._id };
+  },
+});
+
+export const deactivateMissingProperties = internalMutation({
+  args: {
+    hospitableIdsSeen: v.array(v.string()),
+    maxDeactivationRatio: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const all = await ctx.db.query("properties").collect();
+    const activeTracked = all.filter(
+      (p) => p.isActive && typeof p.hospitableId === "string" && p.hospitableId.length > 0,
+    );
+
+    const seen = new Set(args.hospitableIdsSeen);
+    const toDeactivate = activeTracked.filter(
+      (p) => !seen.has(p.hospitableId as string),
+    );
+
+    if (activeTracked.length > 0) {
+      const ratio = toDeactivate.length / activeTracked.length;
+      if (ratio > args.maxDeactivationRatio) {
+        return {
+          skipped: true,
+          reason: `Refused to deactivate ${toDeactivate.length}/${activeTracked.length} (${(ratio * 100).toFixed(0)}%) — exceeds safety cap ${(args.maxDeactivationRatio * 100).toFixed(0)}%`,
+          deactivated: 0,
+        };
+      }
     }
 
-    await ctx.db.patch(property._id, patch);
-    return property._id;
+    for (const property of toDeactivate) {
+      await ctx.db.patch(property._id, {
+        isActive: false,
+        updatedAt: now,
+        metadata: {
+          ...(property.metadata ?? {}),
+          deactivatedAt: now,
+          deactivatedReason: "not_in_hospitable_listings",
+        },
+      });
+    }
+
+    return { skipped: false, deactivated: toDeactivate.length };
   },
 });
 
