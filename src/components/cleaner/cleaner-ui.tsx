@@ -325,12 +325,14 @@ export function CleanerJobCard({
       )}
     >
       <div className="flex items-start justify-between gap-3">
-        <h3 className={cn("cleaner-display text-[18px]", titleClass)}>{propertyName}</h3>
+        <h3 className={cn("cleaner-display text-[18px]", titleClass)}>
+          {address || t("cleaner.noAddress")}
+        </h3>
         <CleanerStatusPill appearance={appearance} label={statusLabel} />
       </div>
 
       <div className="mt-3 space-y-2.5">
-        <CleanerMetaRow icon={ClipboardList} text={address || t("cleaner.noAddress")} />
+        <CleanerMetaRow icon={ClipboardList} text={propertyName} />
         <CleanerMetaRow
           icon={CalendarDays}
           text={`${t("cleaner.scheduledLabel")} ${formatCleanerDate(scheduledAt)}`}

@@ -45,11 +45,16 @@ export function CleanerHomeClient() {
   const activeJobs = useMemo(() => {
     const source = jobs ?? [];
     const active = source.filter((job) => ACTIVE_JOB_STATUSES.has(job.status));
-    // Actionable jobs first (soonest start time), in-review jobs at the bottom
+    // Urgency order: rework first (must be fixed), then the next countdown job
+    // and subsequent actionable jobs by soonest start, then awaiting-approval last.
+    const statusPriority = (status: string) => {
+      if (status === "rework_required") return 0;
+      if (status === "awaiting_approval") return 2;
+      return 1;
+    };
     return active.sort((a, b) => {
-      const aReview = a.status === "awaiting_approval" ? 1 : 0;
-      const bReview = b.status === "awaiting_approval" ? 1 : 0;
-      if (aReview !== bReview) return aReview - bReview;
+      const priorityDiff = statusPriority(a.status) - statusPriority(b.status);
+      if (priorityDiff !== 0) return priorityDiff;
       return a.scheduledStartAt - b.scheduledStartAt;
     });
   }, [jobs]);
