@@ -7,6 +7,7 @@
     "team": "Equipo",
     "inventory": "Inventario",
     "workOrders": "Órdenes de Trabajo",
+    "incidents": "Incidentes",
     "messages": "Mensajes",
     "reports": "Reportes",
     "settings": "Configuración",
@@ -494,5 +495,69 @@
     "companySettings": "Configuración de Empresa",
     "automatedRules": "Reglas de Programación Automática",
     "syncHealth": "Estado de Sincronización"
+  },
+  "incidentsAdmin": {
+    "eyebrow": "Operaciones",
+    "title": "Incidentes",
+    "subtitle": "Revisa y resuelve los problemas reportados desde el terreno.",
+    "tabs": {
+      "all": "Todos",
+      "open": "Abiertos",
+      "in_progress": "En Progreso",
+      "resolved": "Resueltos",
+      "wont_fix": "No se Resolverá"
+    },
+    "searchPlaceholder": "Buscar título, propiedad, reportante...",
+    "severityLabel": "Severidad",
+    "severityAll": "Todas",
+    "stats": {
+      "open": "Abiertos",
+      "inProgress": "En Progreso",
+      "resolved": "Resueltos",
+      "criticalActive": "Críticos (Activos)"
+    },
+    "emptyFiltered": "Ningún incidente coincide con estos filtros",
+    "emptyAll": "No hay incidentes reportados",
+    "emptyFilteredHint": "Prueba a borrar los filtros o términos de búsqueda.",
+    "emptyAllHint": "Cuando los limpiadores reporten problemas, aparecerán aquí.",
+    "reportedBy": "Reportado por",
+    "detail": {
+      "close": "Cerrar",
+      "notFound": "Incidente no encontrado",
+      "property": "Propiedad",
+      "room": "Habitación",
+      "reportedByLabel": "Reportado por",
+      "reportedAt": "Reportado",
+      "linkedJob": "Trabajo vinculado",
+      "openJob": "Abrir trabajo",
+      "description": "Descripción",
+      "context": "Contexto",
+      "missingItem": "Artículo faltante / afectado",
+      "resolveFooterActive": "Actualiza el estado o marca como resuelto.",
+      "resolveFooterTerminal": "Reabre o actualiza las notas de resolución.",
+      "updateStatus": "Actualizar Estado",
+      "statusField": "Estado",
+      "notesFieldOptional": "Notas de resolución (opcional)",
+      "notesField": "Notas de resolución",
+      "notesPlaceholder": "Qué se hizo, o por qué no se atenderá...",
+      "cancel": "Cancelar",
+      "save": "Guardar",
+      "resolvedBy": "por",
+      "unknownUser": "Desconocido"
+    },
+    "severity": {
+      "low": "Baja",
+      "medium": "Media",
+      "high": "Alta",
+      "critical": "Crítica"
+    },
+    "types": {
+      "missing_item": "Artículo Faltante",
+      "damaged_item": "Artículo Dañado",
+      "maintenance_needed": "Mantenimiento",
+      "guest_issue": "Problema de Huésped",
+      "suggestion": "Sugerencia",
+      "other": "Otro"
+    }
   }
 }

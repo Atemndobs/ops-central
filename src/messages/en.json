@@ -7,6 +7,7 @@
     "team": "Team",
     "inventory": "Inventory",
     "workOrders": "Work Orders",
+    "incidents": "Incidents",
     "messages": "Messages",
     "reports": "Reports",
     "settings": "Settings",
@@ -494,5 +495,69 @@
     "companySettings": "Company Settings",
     "automatedRules": "Automated Scheduling Rules",
     "syncHealth": "Sync Health"
+  },
+  "incidentsAdmin": {
+    "eyebrow": "Operations",
+    "title": "Incidents",
+    "subtitle": "Review and resolve issues reported from the field.",
+    "tabs": {
+      "all": "All",
+      "open": "Open",
+      "in_progress": "In Progress",
+      "resolved": "Resolved",
+      "wont_fix": "Won't Fix"
+    },
+    "searchPlaceholder": "Search title, property, reporter...",
+    "severityLabel": "Severity",
+    "severityAll": "All",
+    "stats": {
+      "open": "Open",
+      "inProgress": "In Progress",
+      "resolved": "Resolved",
+      "criticalActive": "Critical (Active)"
+    },
+    "emptyFiltered": "No incidents match these filters",
+    "emptyAll": "No incidents reported",
+    "emptyFilteredHint": "Try clearing filters or search terms.",
+    "emptyAllHint": "When cleaners report issues, they'll show up here.",
+    "reportedBy": "Reported by",
+    "detail": {
+      "close": "Close",
+      "notFound": "Incident not found",
+      "property": "Property",
+      "room": "Room",
+      "reportedByLabel": "Reported by",
+      "reportedAt": "Reported",
+      "linkedJob": "Linked job",
+      "openJob": "Open job",
+      "description": "Description",
+      "context": "Context",
+      "missingItem": "Missing / affected item",
+      "resolveFooterActive": "Update status or mark as resolved.",
+      "resolveFooterTerminal": "Reopen or update resolution notes.",
+      "updateStatus": "Update Status",
+      "statusField": "Status",
+      "notesFieldOptional": "Resolution notes (optional)",
+      "notesField": "Resolution notes",
+      "notesPlaceholder": "What was done, or why it won't be addressed...",
+      "cancel": "Cancel",
+      "save": "Save",
+      "resolvedBy": "by",
+      "unknownUser": "Unknown"
+    },
+    "severity": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "critical": "Critical"
+    },
+    "types": {
+      "missing_item": "Missing Item",
+      "damaged_item": "Damaged Item",
+      "maintenance_needed": "Maintenance",
+      "guest_issue": "Guest Issue",
+      "suggestion": "Suggestion",
+      "other": "Other"
+    }
   }
 }
