@@ -464,9 +464,17 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     return t("cleaner.myJobs");
   }, [pathname, t]);
 
+  const isPropertyDetail = pathname?.startsWith("/cleaner/properties/") ?? false;
+
   return (
     <div className="cleaner-theme cleaner-app-shell relative h-[100svh] overflow-hidden text-[15px] text-[var(--foreground)]">
-      <header className="fixed inset-x-0 top-0 z-40 border-b border-[var(--border)] bg-white/92 px-3 py-3 backdrop-blur">
+      <header
+        className={`fixed inset-x-0 top-0 z-40 px-3 py-3 backdrop-blur transition-colors ${
+          isPropertyDetail
+            ? "border-b border-transparent bg-white/30 dark:bg-black/25"
+            : "border-b border-[var(--border)] bg-white/92"
+        }`}
+      >
         <div className="mx-auto flex w-full max-w-[402px] items-center justify-between gap-3">
           <Link
             href="/cleaner"
