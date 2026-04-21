@@ -153,9 +153,11 @@ export const updateIncidentStatus = mutation({
 export const pruneIncidentsWithBrokenPhotos = internalMutation({
   args: {
     dryRun: v.optional(v.boolean()),
+    includeEmpty: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const dryRun = args.dryRun ?? true;
+    const includeEmpty = args.includeEmpty ?? false;
 
     const all = await ctx.db.query("incidents").collect();
 
@@ -173,7 +175,22 @@ export const pruneIncidentsWithBrokenPhotos = internalMutation({
     for (const incident of all) {
       totalScanned++;
       if (incident.photoIds.length === 0) {
-        skippedNoPhotos++;
+        if (includeEmpty) {
+          toDelete++;
+          if (sampleDeletions.length < 20) {
+            sampleDeletions.push({
+              _id: incident._id,
+              title: incident.title,
+              createdAt: incident.createdAt,
+              photoCount: 0,
+            });
+          }
+          if (!dryRun) {
+            await ctx.db.delete(incident._id);
+          }
+        } else {
+          skippedNoPhotos++;
+        }
         continue;
       }
 

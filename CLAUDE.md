@@ -43,6 +43,42 @@ OpsCentral is the admin web dashboard for J&A Business Solutions' property care 
 
 **Any schema change affects both apps.** Coordinate carefully.
 
+## 🚨🚨 VERY IMPORTANT: ja-bs.com RUNS ON THE *DEV* CONVEX DEPLOYMENT
+
+**Current reality (as of 2026-04-21):** the production Vercel site at
+https://ja-bs.com is pointed at the Convex deployment labeled
+**"Development"** in the Convex dashboard:
+
+- Effective-prod DB: `usable-anaconda-394` (labeled *Development* in Convex)
+- Unused real-prod DB: `optimistic-guanaco-990` (labeled *Production*, empty)
+
+All production data — users, properties, jobs, incidents, photos,
+messages — lives in `usable-anaconda-394`. The real "Production"
+Convex deployment has never been used.
+
+**What this means in practice:**
+- **`npx convex dev --once` is what updates the live site.** It pushes
+  to `usable-anaconda-394`.
+- **`npx convex deploy` pushes to an unused deployment**
+  (`optimistic-guanaco-990`) and has no effect on users. Skip it until
+  the split below is done.
+- There is no prod/dev separation right now. Any code or data change
+  affects real users immediately.
+
+**At go-live (before announcing / onboarding real customers):**
+1. Export data from `usable-anaconda-394` and import into
+   `optimistic-guanaco-990`.
+2. Update Vercel env vars (`CONVEX_DEPLOYMENT`,
+   `NEXT_PUBLIC_CONVEX_URL`, `NEXT_PUBLIC_CONVEX_SITE_URL`) to point
+   at `optimistic-guanaco-990.eu-west-1.convex.cloud`.
+3. Also clean the trailing `\n` currently present in those encrypted
+   env values.
+4. Redeploy Vercel.
+5. Then `npx convex deploy` and `npx convex dev --once` behave as
+   their names suggest: deploy → prod, dev → sandbox.
+
+Until that migration runs, treat `usable-anaconda-394` AS PROD.
+
 ## 🚨 BIG FAT WARNING: VERY DANGEROUS CONVEX DEPLOYMENT RULE
 
 - This repo (`opscentral-admin`) is the Convex backend owner.
