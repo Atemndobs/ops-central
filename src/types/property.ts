@@ -12,11 +12,17 @@ export type PropertyInstructionCategory =
   | "pets"
   | "other";
 
+export type PropertyInstructionLang = "en" | "es";
+
 export interface PropertyInstruction {
   id: string;
   category: PropertyInstructionCategory;
   title: string;
   body: string;
+  sourceLang?: PropertyInstructionLang;
+  translations?: Partial<
+    Record<PropertyInstructionLang, { title: string; body: string }>
+  >;
   updatedAt: number;
 }
 

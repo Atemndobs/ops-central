@@ -156,6 +156,19 @@ const properties = defineTable({
         ),
         title: v.string(),
         body: v.string(),
+        // Source language of the human-authored title/body (defaults to "en"
+        // for legacy rows). Auto-translations live in `translations`.
+        sourceLang: v.optional(v.union(v.literal("en"), v.literal("es"))),
+        translations: v.optional(
+          v.object({
+            en: v.optional(
+              v.object({ title: v.string(), body: v.string() }),
+            ),
+            es: v.optional(
+              v.object({ title: v.string(), body: v.string() }),
+            ),
+          }),
+        ),
         updatedAt: v.number(),
       }),
     ),

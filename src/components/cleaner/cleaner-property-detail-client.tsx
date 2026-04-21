@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useConvexAuth, useQuery } from "convex/react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   AlertCircle,
   Car,
@@ -52,9 +52,37 @@ type PropertyRecord = {
     category: PropertyInstructionCategory;
     title: string;
     body: string;
+    sourceLang?: "en" | "es" | null;
+    translations?: Partial<
+      Record<"en" | "es", { title: string; body: string }>
+    > | null;
     updatedAt: number;
   }> | null;
 };
+
+/** Pick the user-locale text if present, else fall back to source. */
+function localizedInstruction(
+  instruction: {
+    title: string;
+    body: string;
+    sourceLang?: "en" | "es" | null;
+    translations?: Partial<
+      Record<"en" | "es", { title: string; body: string }>
+    > | null;
+  },
+  locale: "en" | "es",
+): { title: string; body: string } {
+  const source: "en" | "es" = (instruction.sourceLang as "en" | "es") ?? "en";
+  if (locale === source) {
+    return { title: instruction.title, body: instruction.body };
+  }
+  return (
+    instruction.translations?.[locale] ?? {
+      title: instruction.title,
+      body: instruction.body,
+    }
+  );
+}
 
 type PropertyInstructionCategory =
   | "access"
@@ -309,10 +337,16 @@ function InstructionsBlock({
     category: PropertyInstructionCategory;
     title: string;
     body: string;
+    sourceLang?: "en" | "es" | null;
+    translations?: Partial<
+      Record<"en" | "es", { title: string; body: string }>
+    > | null;
     updatedAt: number;
   }>;
 }) {
   const t = useTranslations();
+  const rawLocale = useLocale();
+  const locale: "en" | "es" = rawLocale === "es" ? "es" : "en";
   if (instructions.length === 0) return null;
   // Access-tagged instructions float to the top; others follow in insertion order
   const sorted = [...instructions].sort((a, b) => {
@@ -330,6 +364,7 @@ function InstructionsBlock({
           {sorted.map((instruction) => {
             const Icon = INSTRUCTION_ICON[instruction.category] ?? Info;
             const tint = INSTRUCTION_TINT[instruction.category] ?? "text-slate-500";
+            const localized = localizedInstruction(instruction, locale);
             return (
               <li key={instruction.id} className="flex items-start gap-3">
                 <span
@@ -339,10 +374,10 @@ function InstructionsBlock({
                 </span>
                 <div className="min-w-0 flex-1">
                   <h3 className="text-[14px] font-semibold text-[var(--cleaner-ink)]">
-                    {instruction.title}
+                    {localized.title}
                   </h3>
                   <p className="mt-0.5 whitespace-pre-line text-[13px] leading-[1.4] text-[var(--cleaner-muted)]">
-                    {instruction.body}
+                    {localized.body}
                   </p>
                 </div>
               </li>

@@ -1,5 +1,89 @@
-import { mutation } from "../_generated/server";
+import { mutation, type MutationCtx } from "../_generated/server";
+import { internal } from "../_generated/api";
 import { ConvexError, v } from "convex/values";
+import type { Id } from "../_generated/dataModel";
+
+const SUPPORTED_LANGS = ["en", "es"] as const;
+type SupportedLang = (typeof SUPPORTED_LANGS)[number];
+
+const TRANSLATE_LANG = v.union(v.literal("en"), v.literal("es"));
+
+/** Auto-translation override shape provided by admin's side-by-side editor. */
+const TRANSLATIONS_INPUT = v.optional(
+  v.object({
+    en: v.optional(v.object({ title: v.string(), body: v.string() })),
+    es: v.optional(v.object({ title: v.string(), body: v.string() })),
+  }),
+);
+
+type TranslationsRecord = Partial<
+  Record<SupportedLang, { title: string; body: string }>
+>;
+
+/**
+ * Drop translations matching the source language (those would shadow the
+ * source) and entries with empty title or body. Returns undefined when no
+ * usable entries remain so callers can avoid persisting empty objects.
+ */
+function sanitizeTranslations(
+  input: TranslationsRecord | undefined,
+  sourceLang: SupportedLang,
+): TranslationsRecord | undefined {
+  if (!input) return undefined;
+  const out: TranslationsRecord = {};
+  for (const lang of SUPPORTED_LANGS) {
+    if (lang === sourceLang) continue;
+    const entry = input[lang];
+    if (!entry) continue;
+    const title = entry.title.trim();
+    const body = entry.body.trim();
+    if (!title || !body) continue;
+    out[lang] = { title, body };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** Merge two translation maps; later overrides earlier. */
+function mergeTranslations(
+  base: TranslationsRecord | undefined,
+  overrides: TranslationsRecord | undefined,
+): TranslationsRecord | undefined {
+  if (!base && !overrides) return undefined;
+  return { ...(base ?? {}), ...(overrides ?? {}) };
+}
+
+/**
+ * Schedule the translation action for every supported language that
+ * differs from the source AND wasn't supplied manually by the admin.
+ */
+function scheduleMissingTranslations(
+  ctx: MutationCtx,
+  args: {
+    propertyId: Id<"properties">;
+    instructionId: string;
+    sourceLang: SupportedLang;
+    title: string;
+    body: string;
+    provided: TranslationsRecord | undefined;
+  },
+): void {
+  for (const target of SUPPORTED_LANGS) {
+    if (target === args.sourceLang) continue;
+    if (args.provided?.[target]) continue;
+    void ctx.scheduler.runAfter(
+      0,
+      internal.translation.actions.translateInstruction,
+      {
+        propertyId: args.propertyId,
+        instructionId: args.instructionId,
+        sourceLang: args.sourceLang,
+        targetLang: target,
+        title: args.title,
+        body: args.body,
+      },
+    );
+  }
+}
 
 export const create = mutation({
   args: {
@@ -246,6 +330,10 @@ export const addInstruction = mutation({
     category: INSTRUCTION_CATEGORY,
     title: v.string(),
     body: v.string(),
+    sourceLang: v.optional(TRANSLATE_LANG),
+    // If admin filled the side-by-side editor manually, persist their text and
+    // skip the auto-translation for those languages.
+    translations: TRANSLATIONS_INPUT,
   },
   handler: async (ctx, args) => {
     const property = await ctx.db.get(args.propertyId);
@@ -258,14 +346,20 @@ export const addInstruction = mutation({
     if (!title) throw new ConvexError("Title is required.");
     if (!body) throw new ConvexError("Body is required.");
 
+    const sourceLang: SupportedLang = args.sourceLang ?? "en";
+    const cleanedTranslations = sanitizeTranslations(args.translations, sourceLang);
+
     const now = Date.now();
+    const newId = randomInstructionId();
     const next = [
       ...(property.instructions ?? []),
       {
-        id: randomInstructionId(),
+        id: newId,
         category: args.category,
         title,
         body,
+        sourceLang,
+        translations: cleanedTranslations,
         updatedAt: now,
       },
     ];
@@ -275,7 +369,17 @@ export const addInstruction = mutation({
       updatedAt: now,
     });
 
-    return next[next.length - 1].id;
+    // Auto-translate any language not supplied manually.
+    scheduleMissingTranslations(ctx, {
+      propertyId: args.propertyId,
+      instructionId: newId,
+      sourceLang,
+      title,
+      body,
+      provided: cleanedTranslations,
+    });
+
+    return newId;
   },
 });
 
@@ -287,6 +391,8 @@ export const updateInstruction = mutation({
     category: v.optional(INSTRUCTION_CATEGORY),
     title: v.optional(v.string()),
     body: v.optional(v.string()),
+    sourceLang: v.optional(TRANSLATE_LANG),
+    translations: TRANSLATIONS_INPUT,
   },
   handler: async (ctx, args) => {
     const property = await ctx.db.get(args.propertyId);
@@ -311,12 +417,27 @@ export const updateInstruction = mutation({
       throw new ConvexError("Body cannot be empty.");
     }
 
+    const existing = current[index];
+    const sourceLang: SupportedLang =
+      args.sourceLang ?? (existing.sourceLang as SupportedLang | undefined) ?? "en";
+    const finalTitle = trimmedTitle ?? existing.title;
+    const finalBody = trimmedBody ?? existing.body;
+    const sourceChanged = trimmedTitle !== undefined || trimmedBody !== undefined;
+
+    // Source edits invalidate stale auto-translations. Admin-supplied
+    // translations override that (side-by-side editor).
+    const baseTranslations = sourceChanged ? undefined : existing.translations;
+    const cleanedManual = sanitizeTranslations(args.translations, sourceLang);
+    const mergedTranslations = mergeTranslations(baseTranslations, cleanedManual);
+
     const next = current.slice();
     next[index] = {
-      ...current[index],
-      category: args.category ?? current[index].category,
-      title: trimmedTitle ?? current[index].title,
-      body: trimmedBody ?? current[index].body,
+      ...existing,
+      category: args.category ?? existing.category,
+      title: finalTitle,
+      body: finalBody,
+      sourceLang,
+      translations: mergedTranslations,
       updatedAt: now,
     };
 
@@ -324,6 +445,17 @@ export const updateInstruction = mutation({
       instructions: next,
       updatedAt: now,
     });
+
+    if (sourceChanged) {
+      scheduleMissingTranslations(ctx, {
+        propertyId: args.propertyId,
+        instructionId: args.instructionId,
+        sourceLang,
+        title: finalTitle,
+        body: finalBody,
+        provided: cleanedManual,
+      });
+    }
 
     return args.instructionId;
   },

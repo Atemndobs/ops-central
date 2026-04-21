@@ -39,6 +39,14 @@ export const seedInstructionsByName = mutation({
         title: "Front door code",
         body:
           "Use code 5542 on the keypad by the front door. Press the lock button once after entering to confirm. If the door sticks, lift the handle slightly while pushing.",
+        sourceLang: "en" as const,
+        translations: {
+          es: {
+            title: "Código de la puerta principal",
+            body:
+              "Use el código 5542 en el teclado junto a la puerta principal. Presione el botón de bloqueo una vez después de entrar para confirmar. Si la puerta se atasca, levante la manija ligeramente mientras empuja.",
+          },
+        },
         updatedAt: now,
       },
       {
@@ -47,6 +55,14 @@ export const seedInstructionsByName = mutation({
         title: "Trash pickup",
         body:
           "Trash takeout is every Wednesday morning. Roll both bins (black + blue recycling) to the curb on Tuesday evening after turnover. Return them to the side of the house on Wednesday evening if still on-site.",
+        sourceLang: "en" as const,
+        translations: {
+          es: {
+            title: "Recolección de basura",
+            body:
+              "La recolección de basura es todos los miércoles por la mañana. Lleve ambos contenedores (negro + azul de reciclaje) al borde de la acera el martes por la noche después del cambio. Devuélvalos al costado de la casa el miércoles por la noche si todavía está en el lugar.",
+          },
+        },
         updatedAt: now + 1,
       },
       {
@@ -55,6 +71,14 @@ export const seedInstructionsByName = mutation({
         title: "Lawn mowing",
         body:
           "A landscaper mows every other Friday. If you see fresh cuttings on the porch or driveway, sweep them off before guest check-in so the entrance looks clean.",
+        sourceLang: "en" as const,
+        translations: {
+          es: {
+            title: "Corte del césped",
+            body:
+              "Un jardinero corta el césped cada dos viernes. Si ve restos frescos de césped en el porche o la entrada, bárralos antes del check-in del huésped para que la entrada se vea limpia.",
+          },
+        },
         updatedAt: now + 2,
       },
       {
@@ -63,6 +87,14 @@ export const seedInstructionsByName = mutation({
         title: "Hot tub",
         body:
           "Wipe the cover clean and secure both straps after every turnover. Check the pH test strip stored on the shelf to the left — if yellow or orange, message ops immediately; don't run the jets.",
+        sourceLang: "en" as const,
+        translations: {
+          es: {
+            title: "Jacuzzi",
+            body:
+              "Limpie la cubierta y asegure ambas correas después de cada cambio. Revise la tira de prueba de pH guardada en el estante a la izquierda — si está amarilla o anaranjada, avise a operaciones de inmediato; no encienda los chorros.",
+          },
+        },
         updatedAt: now + 3,
       },
     ];

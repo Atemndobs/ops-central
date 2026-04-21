@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useMutation } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import {
@@ -11,11 +11,13 @@ import {
   Flame,
   Info,
   KeyRound,
+  Languages,
   LogOut,
   Pencil,
   Plus,
   Save,
   Scissors,
+  Sparkles,
   Trash2,
   Waves,
   Wifi,
@@ -36,11 +38,17 @@ type InstructionCategory =
   | "pets"
   | "other";
 
+type InstructionLang = "en" | "es";
+
 type Instruction = {
   id: string;
   category: InstructionCategory;
   title: string;
   body: string;
+  sourceLang?: InstructionLang;
+  translations?: Partial<
+    Record<InstructionLang, { title: string; body: string }>
+  >;
   updatedAt: number;
 };
 
@@ -315,8 +323,12 @@ function InstructionsCard({
     await addInstruction({
       propertyId: propertyId as Id<"properties">,
       category: draft.category,
-      title: draft.title,
-      body: draft.body,
+      title: draft.en.title,
+      body: draft.en.body,
+      sourceLang: "en",
+      translations: draft.es.title.trim() && draft.es.body.trim()
+        ? { es: { title: draft.es.title, body: draft.es.body } }
+        : undefined,
     });
     showToast("Instruction added.");
     setAddOpen(false);
@@ -327,8 +339,12 @@ function InstructionsCard({
       propertyId: propertyId as Id<"properties">,
       instructionId: id,
       category: draft.category,
-      title: draft.title,
-      body: draft.body,
+      title: draft.en.title,
+      body: draft.en.body,
+      sourceLang: "en",
+      translations: draft.es.title.trim() && draft.es.body.trim()
+        ? { es: { title: draft.es.title, body: draft.es.body } }
+        : undefined,
     });
     showToast("Instruction updated.");
     setEditingId(null);
@@ -396,8 +412,8 @@ function InstructionsCard({
               mode="edit"
               initial={{
                 category: instruction.category,
-                title: instruction.title,
-                body: instruction.body,
+                en: { title: instruction.title, body: instruction.body },
+                es: instruction.translations?.es ?? { title: "", body: "" },
               }}
               onSubmit={(draft) => handleUpdate(instruction.id, draft)}
               onCancel={() => setEditingId(null)}
@@ -445,10 +461,34 @@ function InstructionRow({
           <span className="rounded-full bg-[var(--muted)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">
             {meta?.label ?? instruction.category}
           </span>
+          {instruction.translations?.es ? (
+            <span
+              title="Spanish translation available"
+              className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+            >
+              <Languages className="h-3 w-3" />
+              ES
+            </span>
+          ) : (
+            <span
+              title="Translation pending — auto-generating"
+              className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
+            >
+              <Languages className="h-3 w-3" />
+              …
+            </span>
+          )}
         </div>
         <p className="mt-1 whitespace-pre-line text-sm text-[var(--muted-foreground)]">
           {instruction.body}
         </p>
+        {instruction.translations?.es ? (
+          <p className="mt-2 whitespace-pre-line border-l-2 border-emerald-300/60 pl-3 text-[13px] italic text-[var(--muted-foreground)]">
+            <span className="text-[10px] font-bold uppercase tracking-wider not-italic text-emerald-600">ES</span>
+            <br />
+            {instruction.translations.es.body}
+          </p>
+        ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-1">
         <button
@@ -472,8 +512,8 @@ function InstructionRow({
 
 type InstructionDraft = {
   category: InstructionCategory;
-  title: string;
-  body: string;
+  en: { title: string; body: string };
+  es: { title: string; body: string };
 };
 
 function InstructionForm({
@@ -487,13 +527,21 @@ function InstructionForm({
   onSubmit: (draft: InstructionDraft) => Promise<void>;
   onCancel: () => void;
 }) {
+  const translate = useAction(api.translation.actions.translate);
   const [draft, setDraft] = useState<InstructionDraft>(
-    initial ?? { category: "access", title: "", body: "" },
+    initial ?? {
+      category: "access",
+      en: { title: "", body: "" },
+      es: { title: "", body: "" },
+    },
   );
   const [saving, setSaving] = useState(false);
+  const [translating, setTranslating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canSubmit = draft.title.trim().length > 0 && draft.body.trim().length > 0;
+  const canSubmit =
+    draft.en.title.trim().length > 0 && draft.en.body.trim().length > 0;
+  const canAutoTranslate = canSubmit && !translating;
 
   const submit = async () => {
     setSaving(true);
@@ -504,6 +552,34 @@ function InstructionForm({
       setError(getErrorMessage(e, "Failed to save instruction."));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const autoTranslate = async () => {
+    if (!canAutoTranslate) return;
+    setTranslating(true);
+    setError(null);
+    try {
+      const [esTitle, esBody] = await Promise.all([
+        translate({
+          text: draft.en.title,
+          sourceLang: "en",
+          targetLang: "es",
+        }),
+        translate({
+          text: draft.en.body,
+          sourceLang: "en",
+          targetLang: "es",
+        }),
+      ]);
+      setDraft((d) => ({
+        ...d,
+        es: { title: esTitle, body: esBody },
+      }));
+    } catch (e) {
+      setError(getErrorMessage(e, "Auto-translate failed."));
+    } finally {
+      setTranslating(false);
     }
   };
 
@@ -531,31 +607,52 @@ function InstructionForm({
             ))}
           </select>
         </label>
-        <label className="block">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">
-            Title
-          </span>
-          <input
-            value={draft.title}
-            onChange={(event) => setDraft((d) => ({ ...d, title: event.target.value }))}
-            placeholder="e.g. Front door code"
-            maxLength={80}
-            className="mt-1 w-full rounded-md border bg-[var(--background)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
-          />
-        </label>
+        <div className="flex items-end justify-end">
+          <button
+            type="button"
+            onClick={autoTranslate}
+            disabled={!canAutoTranslate}
+            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--primary)]/40 bg-[var(--primary)]/10 px-2.5 py-1.5 text-xs font-semibold text-[var(--primary)] hover:bg-[var(--primary)]/20 disabled:opacity-40"
+            title="Fill the Spanish column using Gemini"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            {translating ? "Translating..." : "Auto-translate to Spanish"}
+          </button>
+        </div>
       </div>
-      <label className="block">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">
-          Body
-        </span>
-        <textarea
-          value={draft.body}
-          onChange={(event) => setDraft((d) => ({ ...d, body: event.target.value }))}
-          placeholder="Detailed instructions the cleaner will see."
-          rows={3}
-          className="mt-1 w-full rounded-md border bg-[var(--background)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <LangColumn
+          lang="EN (source)"
+          accent="primary"
+          title={draft.en.title}
+          body={draft.en.body}
+          onTitle={(title) =>
+            setDraft((d) => ({ ...d, en: { ...d.en, title } }))
+          }
+          onBody={(body) => setDraft((d) => ({ ...d, en: { ...d.en, body } }))}
+          titlePlaceholder="e.g. Front door code"
+          bodyPlaceholder="Detailed instructions the cleaner will see."
         />
-      </label>
+        <LangColumn
+          lang="ES (translation)"
+          accent="emerald"
+          title={draft.es.title}
+          body={draft.es.body}
+          onTitle={(title) =>
+            setDraft((d) => ({ ...d, es: { ...d.es, title } }))
+          }
+          onBody={(body) => setDraft((d) => ({ ...d, es: { ...d.es, body } }))}
+          titlePlaceholder="p. ej. Código de la puerta principal"
+          bodyPlaceholder="Instrucciones detalladas que verá el limpiador."
+        />
+      </div>
+
+      <p className="text-[11px] text-[var(--muted-foreground)]">
+        Leave Spanish blank and we&apos;ll auto-translate on save. Filling it
+        in manually (or editing after auto-translate) preserves your wording.
+      </p>
+
       {error ? (
         <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
           {error}
@@ -578,6 +675,58 @@ function InstructionForm({
           {saving ? "Saving..." : mode === "create" ? "Add" : "Save"}
         </button>
       </div>
+    </div>
+  );
+}
+
+function LangColumn({
+  lang,
+  accent,
+  title,
+  body,
+  onTitle,
+  onBody,
+  titlePlaceholder,
+  bodyPlaceholder,
+}: {
+  lang: string;
+  accent: "primary" | "emerald";
+  title: string;
+  body: string;
+  onTitle: (value: string) => void;
+  onBody: (value: string) => void;
+  titlePlaceholder?: string;
+  bodyPlaceholder?: string;
+}) {
+  const tint =
+    accent === "primary"
+      ? "border-[var(--primary)]/40 bg-[var(--primary)]/5"
+      : "border-emerald-300/60 bg-emerald-50/40 dark:bg-emerald-950/20";
+  const badge =
+    accent === "primary"
+      ? "text-[var(--primary)]"
+      : "text-emerald-700 dark:text-emerald-300";
+  return (
+    <div className={`space-y-2 rounded-lg border p-3 ${tint}`}>
+      <span
+        className={`text-[10px] font-bold uppercase tracking-wider ${badge}`}
+      >
+        {lang}
+      </span>
+      <input
+        value={title}
+        onChange={(event) => onTitle(event.target.value)}
+        placeholder={titlePlaceholder}
+        maxLength={80}
+        className="block w-full rounded-md border bg-[var(--background)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+      />
+      <textarea
+        value={body}
+        onChange={(event) => onBody(event.target.value)}
+        placeholder={bodyPlaceholder}
+        rows={4}
+        className="block w-full rounded-md border bg-[var(--background)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+      />
     </div>
   );
 }

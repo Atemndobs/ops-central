@@ -43,6 +43,7 @@ import type * as lib_notificationLifecycle from "../lib/notificationLifecycle.js
 import type * as lib_opsNotifications from "../lib/opsNotifications.js";
 import type * as lib_photoUrls from "../lib/photoUrls.js";
 import type * as lib_profileMetadata from "../lib/profileMetadata.js";
+import type * as lib_translation from "../lib/translation.js";
 import type * as notifications_actions from "../notifications/actions.js";
 import type * as notifications_mutations from "../notifications/mutations.js";
 import type * as notifications_queries from "../notifications/queries.js";
@@ -59,6 +60,8 @@ import type * as reports_mutations from "../reports/mutations.js";
 import type * as reports_queries from "../reports/queries.js";
 import type * as reviewAnnotations_mutations from "../reviewAnnotations/mutations.js";
 import type * as reviewAnnotations_queries from "../reviewAnnotations/queries.js";
+import type * as translation_actions from "../translation/actions.js";
+import type * as translation_internal from "../translation/internal.js";
 import type * as users_mutations from "../users/mutations.js";
 import type * as users_queries from "../users/queries.js";
 import type * as whatsapp_actions from "../whatsapp/actions.js";
@@ -109,6 +112,7 @@ declare const fullApi: ApiFromModules<{
   "lib/opsNotifications": typeof lib_opsNotifications;
   "lib/photoUrls": typeof lib_photoUrls;
   "lib/profileMetadata": typeof lib_profileMetadata;
+  "lib/translation": typeof lib_translation;
   "notifications/actions": typeof notifications_actions;
   "notifications/mutations": typeof notifications_mutations;
   "notifications/queries": typeof notifications_queries;
@@ -125,6 +129,8 @@ declare const fullApi: ApiFromModules<{
   "reports/queries": typeof reports_queries;
   "reviewAnnotations/mutations": typeof reviewAnnotations_mutations;
   "reviewAnnotations/queries": typeof reviewAnnotations_queries;
+  "translation/actions": typeof translation_actions;
+  "translation/internal": typeof translation_internal;
   "users/mutations": typeof users_mutations;
   "users/queries": typeof users_queries;
   "whatsapp/actions": typeof whatsapp_actions;
