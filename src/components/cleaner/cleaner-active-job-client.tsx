@@ -38,7 +38,9 @@ const STEPS: Array<{ phase: ActivePhase; labelKey: string; shortLabelKey: string
   { phase: "review", labelKey: "cleaner.active.steps.review.label", shortLabelKey: "cleaner.active.steps.review.short" },
 ];
 
-const DEFAULT_ROOM_KEYS = [
+// Fallback shown only when property.rooms has not been synced from Hospitable yet.
+// Property.rooms is the source of truth — see Docs/cleaner-rollout-and-saas/2026-04-21-property-rooms-from-hospitable-plan.md
+const FALLBACK_ROOM_KEYS = [
   "cleaner.rooms.livingRoom",
   "cleaner.rooms.kitchen",
   "cleaner.rooms.bedroom",
@@ -51,10 +53,24 @@ function readRoomName(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function buildRoomList(detail: JobDetailLike | null | undefined, defaultRooms: string[]): string[] {
-  const set = new Set<string>(defaultRooms);
-  if (!detail) return [...set];
+function buildRoomList(detail: JobDetailLike | null | undefined, fallbackRooms: string[]): string[] {
+  if (!detail) return [...fallbackRooms];
 
+  const propertyRooms = detail.property?.rooms ?? [];
+  const hasPropertyRooms = propertyRooms.length > 0;
+
+  const set = new Set<string>();
+  if (hasPropertyRooms) {
+    propertyRooms.forEach((room) => {
+      const name = readRoomName(room?.name);
+      if (name) set.add(name);
+    });
+  } else {
+    fallbackRooms.forEach((name) => set.add(name));
+  }
+
+  // Merge in any legacy rooms referenced by existing evidence so in-flight jobs
+  // keep their uploaded photos visible even if a room was renamed upstream.
   const byRoom = detail.evidence?.current?.byRoom ?? [];
   byRoom.forEach((row) => {
     const name = readRoomName((row as { roomName?: unknown }).roomName);
@@ -118,7 +134,11 @@ type JobDetailLike = {
     propertyId: Id<"properties">;
     notesForCleaner?: string;
   };
-  property?: { name?: string | null; address?: string | null } | null;
+  property?: {
+    name?: string | null;
+    address?: string | null;
+    rooms?: Array<{ name: string; type: string }> | null;
+  } | null;
   evidence: {
     current: {
       byType: {
@@ -431,11 +451,11 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
   const [canForceSubmit, setCanForceSubmit] = useState(false);
   const [submitSuccess, setSubmitSuccess]   = useState<string | null>(null);
 
-  const translatedDefaultRooms = useMemo(
-    () => DEFAULT_ROOM_KEYS.map((key) => t(key)),
+  const translatedFallbackRooms = useMemo(
+    () => FALLBACK_ROOM_KEYS.map((key) => t(key)),
     [t],
   );
-  const roomList  = useMemo(() => buildRoomList(detail, translatedDefaultRooms), [detail, translatedDefaultRooms]);
+  const roomList  = useMemo(() => buildRoomList(detail, translatedFallbackRooms), [detail, translatedFallbackRooms]);
   const syncState = useMemo(
     () => buildSyncState({ queue: pendingUploads, isOnline, isSyncing, lastError: syncError ?? undefined }),
     [isOnline, isSyncing, pendingUploads, syncError],
@@ -997,12 +1017,18 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
               placeholder={t("cleaner.active.incidentTitlePlaceholder")}
             />
             <div className="grid grid-cols-2 gap-2">
-              <input
+              <select
                 value={newIncidentRoomName}
                 onChange={(e) => setNewIncidentRoomName(e.target.value)}
-                className="rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
-                placeholder={t("cleaner.active.incidentRoomOptional")}
-              />
+                className="rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
+              >
+                <option value="">{t("cleaner.active.incidentRoomOptional")}</option>
+                {roomList.map((roomName) => (
+                  <option key={roomName} value={roomName}>
+                    {roomName}
+                  </option>
+                ))}
+              </select>
               <select
                 value={newIncidentSeverity}
                 onChange={(e) => setNewIncidentSeverity(e.target.value as "low" | "medium" | "high" | "critical")}

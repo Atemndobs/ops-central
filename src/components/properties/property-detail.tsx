@@ -14,6 +14,7 @@ import { PropertyFormValues, PropertyRecord } from "@/types/property";
 import { PropertyCriticalCheckpointsPanel } from "@/components/properties/property-critical-checkpoints-panel";
 import { PropertyRefillTrackingPanel } from "@/components/properties/property-refill-tracking-panel";
 import { PropertyInstructionsPanel } from "@/components/properties/property-instructions-panel";
+import { PropertyRoomsPanel } from "@/components/properties/property-rooms-panel";
 
 function formatDateTime(timestamp?: number) {
   if (!timestamp) {
@@ -211,6 +212,12 @@ export function PropertyDetail({ id }: { id: string }) {
         parkingNotes={property.parkingNotes ?? null}
         urgentNotes={property.urgentNotes ?? null}
         instructions={property.instructions ?? null}
+      />
+
+      <PropertyRoomsPanel
+        propertyId={id}
+        rooms={property.rooms ?? []}
+        hasHospitableId={Boolean(property.hospitableId)}
       />
 
       <PropertyCriticalCheckpointsPanel propertyId={id} />

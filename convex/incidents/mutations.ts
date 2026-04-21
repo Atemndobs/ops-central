@@ -1,6 +1,7 @@
 import { mutation } from "../_generated/server";
 import { v } from "convex/values";
 import { getCurrentUser } from "../lib/auth";
+import { normalizeRoomName } from "../lib/rooms";
 
 export const createIncident = mutation({
   args: {
@@ -47,12 +48,15 @@ export const createIncident = mutation({
       }
     }
 
+    const normalizedRoomName = normalizeRoomName(property, args.roomName);
+    const roomName = normalizedRoomName || undefined;
+
     const now = Date.now();
     const title =
       args.title?.trim() ||
       [
         args.incidentType.replace("_", " "),
-        args.roomName ? `(${args.roomName})` : undefined,
+        roomName ? `(${roomName})` : undefined,
       ]
         .filter(Boolean)
         .join(" ");
@@ -71,7 +75,7 @@ export const createIncident = mutation({
       severity: args.severity,
       title,
       description: args.description,
-      roomName: args.roomName,
+      roomName,
       inventoryItemId: args.inventoryItemId,
       quantityMissing: args.quantityMissing,
       photoIds: mergedPhotoIds,

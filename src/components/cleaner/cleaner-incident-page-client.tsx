@@ -49,6 +49,7 @@ type PropertyListItem = {
   address?: string;
   bedrooms?: number | null;
   bathrooms?: number | null;
+  rooms?: Array<{ name: string; type: string }> | null;
 };
 
 type InventoryItem = {

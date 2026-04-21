@@ -15,6 +15,10 @@ import {
   seedJobConversationParticipants,
   syncConversationStatusForJob,
 } from "../conversations/lib";
+import {
+  markAcknowledgementAccepted,
+  reconcileAcknowledgements,
+} from "./acknowledgements";
 
 const qaModeValidator = v.union(v.literal("standard"), v.literal("quick"));
 
@@ -558,16 +562,30 @@ export const start = mutation({
       });
     }
 
+    const nextAcks =
+      user.role === "cleaner"
+        ? markAcknowledgementAccepted(job.acknowledgements, {
+            cleanerId: user._id,
+            now,
+          })
+        : job.acknowledgements;
+
     if (job.status !== "in_progress" || job.actualStartAt === undefined) {
       await ctx.db.patch(args.jobId, {
         status: "in_progress",
         actualStartAt: job.actualStartAt ?? now,
         currentRevision: revision,
+        acknowledgements: nextAcks,
         updatedAt: now,
       });
       await syncConversationStatusForJob(ctx, {
         jobId: args.jobId,
         nextStatus: "in_progress",
+      });
+    } else if (nextAcks !== job.acknowledgements) {
+      await ctx.db.patch(args.jobId, {
+        acknowledgements: nextAcks,
+        updatedAt: now,
       });
     }
 
@@ -1134,8 +1152,15 @@ export const assign = mutation({
     );
 
     const now = Date.now();
+    const nextAcks = reconcileAcknowledgements({
+      assignedCleanerIds: args.cleanerIds,
+      existing: job.acknowledgements,
+      assignedAt: now,
+      scheduledStartAt: job.scheduledStartAt,
+    });
     await ctx.db.patch(args.jobId, {
       assignedCleanerIds: args.cleanerIds,
+      acknowledgements: nextAcks,
       status: updatedStatus,
       updatedAt: now,
     });

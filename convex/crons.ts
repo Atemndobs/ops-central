@@ -24,6 +24,13 @@ crons.interval(
   {},
 );
 
+crons.interval(
+  "escalate-pending-acknowledgements",
+  { minutes: 15 },
+  internal.cleaningJobs.acknowledgements.escalateExpiredAcknowledgements,
+  {},
+);
+
 crons.cron(
   "archive-photos-to-minio-every-7-days",
   "0 2 */7 * *",

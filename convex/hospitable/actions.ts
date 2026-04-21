@@ -730,3 +730,100 @@ export const syncPropertyDetails = internalAction({
     };
   },
 });
+
+/**
+ * Resync a single property's details (rooms, bedrooms, bathrooms, timezone) from
+ * Hospitable. Admin-facing alternative to the full-sweep `syncPropertyDetails` cron.
+ */
+export const resyncPropertyDetails = action({
+  args: {
+    propertyId: v.id("properties"),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    success: boolean;
+    roomsSynced: number;
+    bedrooms?: number;
+    bathrooms?: number;
+  }> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated.");
+    }
+
+    const currentUser: Doc<"users"> | null = await ctx.runQuery(
+      api.users.queries.getByClerkId,
+      { clerkId: identity.subject },
+    );
+    if (
+      !currentUser ||
+      (currentUser.role !== "admin" &&
+        currentUser.role !== "property_ops" &&
+        currentUser.role !== "manager")
+    ) {
+      throw new Error("You do not have permission to resync property details.");
+    }
+
+    const property: Doc<"properties"> | null = await ctx.runQuery(
+      api.properties.queries.getById,
+      { id: args.propertyId },
+    );
+    if (!property) {
+      throw new Error("Property not found.");
+    }
+    if (!property.hospitableId) {
+      throw new Error(
+        "This property has no Hospitable ID — nothing to resync. Set hospitableId on the property first.",
+      );
+    }
+
+    const apiKey = process.env.HOSPITABLE_API_KEY ?? process.env.HOSPITABLE_API_TOKEN;
+    if (!apiKey) {
+      throw new Error("Missing HOSPITABLE_API_KEY/HOSPITABLE_API_TOKEN environment variable.");
+    }
+
+    const baseUrl = process.env.HOSPITABLE_API_URL ?? DEFAULT_HOSPITABLE_BASE_URL;
+    const detailPayload = await fetchHospitableJson(
+      apiKey,
+      `${baseUrl}/properties/${property.hospitableId}`,
+    );
+    const detailData =
+      isRecord(detailPayload) && isRecord(detailPayload.data)
+        ? detailPayload.data
+        : detailPayload;
+    const details = normalizePropertyDetails(detailData);
+    if (!details) {
+      throw new Error("Hospitable returned no usable property details.");
+    }
+
+    if (isRecord(detailData)) {
+      const detailCapacity = isRecord(detailData.capacity) ? detailData.capacity : undefined;
+      details.bedrooms = details.bedrooms ?? asNumber(detailCapacity?.bedrooms);
+      details.bathrooms = details.bathrooms ?? asNumber(detailCapacity?.bathrooms);
+      const detailAddress = isRecord(detailData.address) ? detailData.address : undefined;
+      details.timezone =
+        details.timezone ??
+        asString(detailData.timezone) ??
+        asString(detailData.time_zone) ??
+        asString(detailAddress?.timezone) ??
+        asString(detailAddress?.time_zone);
+    }
+
+    await ctx.runMutation(internal.hospitable.mutations.updatePropertyDetails, {
+      hospitableId: details.hospitableId,
+      bedrooms: details.bedrooms,
+      bathrooms: details.bathrooms,
+      timezone: details.timezone,
+      rooms: details.rooms,
+    });
+
+    return {
+      success: true,
+      roomsSynced: details.rooms.length,
+      bedrooms: details.bedrooms,
+      bathrooms: details.bathrooms,
+    };
+  },
+});

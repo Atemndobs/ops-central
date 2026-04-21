@@ -43,6 +43,7 @@ import type * as lib_notificationLifecycle from "../lib/notificationLifecycle.js
 import type * as lib_opsNotifications from "../lib/opsNotifications.js";
 import type * as lib_photoUrls from "../lib/photoUrls.js";
 import type * as lib_profileMetadata from "../lib/profileMetadata.js";
+import type * as lib_rooms from "../lib/rooms.js";
 import type * as lib_translation from "../lib/translation.js";
 import type * as notifications_actions from "../notifications/actions.js";
 import type * as notifications_mutations from "../notifications/mutations.js";
@@ -112,6 +113,7 @@ declare const fullApi: ApiFromModules<{
   "lib/opsNotifications": typeof lib_opsNotifications;
   "lib/photoUrls": typeof lib_photoUrls;
   "lib/profileMetadata": typeof lib_profileMetadata;
+  "lib/rooms": typeof lib_rooms;
   "lib/translation": typeof lib_translation;
   "notifications/actions": typeof notifications_actions;
   "notifications/mutations": typeof notifications_mutations;

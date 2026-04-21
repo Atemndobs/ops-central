@@ -47,6 +47,8 @@ export interface PropertyRecord {
   propertyType?: string;
   bedrooms?: number;
   bathrooms?: number;
+  rooms?: Array<{ name: string; type: string }>;
+  hospitableId?: string;
   estimatedCleaningMinutes?: number;
   accessNotes?: string;
   keyLocation?: string;

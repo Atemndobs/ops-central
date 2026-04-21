@@ -7,6 +7,7 @@ import {
   deleteExternalObject,
   requireExternalStorageConfig,
 } from "../lib/externalStorage";
+import { normalizeRoomName } from "../lib/rooms";
 
 const photoTypeValidator = v.union(
   v.literal("before"),
@@ -45,10 +46,13 @@ export const uploadJobPhoto = mutation({
       throw new Error("Cleaning job not found");
     }
 
+    const property = await ctx.db.get(job.propertyId);
+    const roomName = normalizeRoomName(property, args.roomName);
+
     return await ctx.db.insert("photos", {
       cleaningJobId: args.jobId,
       storageId: args.storageId,
-      roomName: args.roomName,
+      roomName,
       type: args.photoType,
       source: args.source,
       notes: args.notes,
@@ -124,9 +128,12 @@ export const completeExternalUpload = mutation({
       throw new Error("Cleaning job not found");
     }
 
+    const property = await ctx.db.get(job.propertyId);
+    const roomName = normalizeRoomName(property, args.roomName);
+
     const photoId = await ctx.db.insert("photos", {
       cleaningJobId: args.jobId,
-      roomName: args.roomName,
+      roomName,
       type: args.photoType,
       source: args.source,
       notes: args.notes,
