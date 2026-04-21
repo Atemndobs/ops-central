@@ -47,7 +47,7 @@ const NAV_ITEMS: Array<{
     matchPrefixes: ["/cleaner/messages"],
   },
   {
-    href: "/cleaner/incidents/new",
+    href: "/cleaner/incidents",
     labelKey: "cleaner.incidentNav",
     icon: AlertTriangle,
     matchPrefixes: ["/cleaner/incidents"],
@@ -447,8 +447,11 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     if (pathname.startsWith("/cleaner/history")) {
       return t("cleaner.history");
     }
-    if (pathname.startsWith("/cleaner/incidents")) {
+    if (pathname === "/cleaner/incidents/new") {
       return t("cleaner.incidentReport");
+    }
+    if (pathname.startsWith("/cleaner/incidents")) {
+      return t("cleaner.incidents.title");
     }
     if (pathname.startsWith("/cleaner/settings")) {
       return t("common.settings");

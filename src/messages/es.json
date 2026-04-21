@@ -140,7 +140,36 @@
     "jobDetail": "Detalle del Trabajo",
     "history": "Historial",
     "incidentReport": "Reporte de Incidente",
-    "incidentNav": "Incidente",
+    "incidentNav": "Incidentes",
+    "incidents": {
+      "title": "Mis Incidentes",
+      "subtitle": "Sigue los reportes que has enviado y su estado actual.",
+      "reportNew": "Reportar Nuevo",
+      "tabAll": "Todos",
+      "tabOpen": "Abiertos",
+      "tabInProgress": "En Progreso",
+      "tabResolved": "Resueltos",
+      "emptyAll": "Aún no has reportado incidentes",
+      "emptyAllHint": "Toca \"Reportar Nuevo\" para registrar un artículo faltante, daño o necesidad de mantenimiento.",
+      "emptyFiltered": "Ningún incidente en este filtro",
+      "emptyFilteredHint": "Prueba otra pestaña.",
+      "submittedBanner": "Tu incidente fue enviado. Ya aparece aquí con estado Abierto.",
+      "backToList": "Volver a Mis Incidentes",
+      "status": {
+        "open": "Abierto",
+        "in_progress": "En Progreso",
+        "resolved": "Resuelto",
+        "wont_fix": "No se Resolverá"
+      },
+      "detail": {
+        "property": "Propiedad",
+        "room": "Habitación",
+        "reported": "Reportado",
+        "linkedJob": "Trabajo vinculado",
+        "openJob": "Abrir trabajo",
+        "description": "Descripción"
+      }
+    },
     "more": "Más",
     "today": "Hoy",
     "activeJobs": "trabajo(s) activo(s)",

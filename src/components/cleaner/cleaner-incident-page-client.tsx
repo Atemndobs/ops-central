@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
@@ -66,6 +67,7 @@ type ReportMode = "job" | "standalone";
 export function CleanerIncidentPageClient() {
   const t = useTranslations();
   const locale = useLocale();
+  const router = useRouter();
   const { isAuthenticated, isLoading } = useConvexAuth();
 
   // --- mode selection ---
@@ -381,6 +383,9 @@ export function CleanerIncidentPageClient() {
 
       setSuccess(t("cleaner.incident.incidentCreated"));
       resetAll();
+      // Route to the hub so the cleaner immediately sees their new report in
+      // the list with status "Open" alongside any prior ones.
+      router.push("/cleaner/incidents?submitted=1");
     } catch (submitError) {
       setError(getErrorMessage(submitError, t("cleaner.incident.unableToCreate")));
     } finally {

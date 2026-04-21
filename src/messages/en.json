@@ -140,7 +140,36 @@
     "jobDetail": "Job Detail",
     "history": "History",
     "incidentReport": "Incident Report",
-    "incidentNav": "Incident",
+    "incidentNav": "Incidents",
+    "incidents": {
+      "title": "My Incidents",
+      "subtitle": "Track the reports you've filed and their current status.",
+      "reportNew": "Report New",
+      "tabAll": "All",
+      "tabOpen": "Open",
+      "tabInProgress": "In Progress",
+      "tabResolved": "Resolved",
+      "emptyAll": "No incidents reported yet",
+      "emptyAllHint": "Tap \"Report New\" to log a missing item, damage, or maintenance need.",
+      "emptyFiltered": "No incidents in this filter",
+      "emptyFilteredHint": "Try a different tab.",
+      "submittedBanner": "Your incident was submitted. It's visible here with status Open.",
+      "backToList": "Back to My Incidents",
+      "status": {
+        "open": "Open",
+        "in_progress": "In Progress",
+        "resolved": "Resolved",
+        "wont_fix": "Won't Fix"
+      },
+      "detail": {
+        "property": "Property",
+        "room": "Room",
+        "reported": "Reported",
+        "linkedJob": "Linked job",
+        "openJob": "Open job",
+        "description": "Description"
+      }
+    },
     "more": "More",
     "today": "Today",
     "activeJobs": "active job(s)",
