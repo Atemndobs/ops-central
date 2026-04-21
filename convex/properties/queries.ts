@@ -2,6 +2,7 @@ import { query } from "../_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
+import { getCurrentUser } from "../lib/auth";
 
 type PropertyStatus = "ready" | "dirty" | "in_progress" | "vacant";
 
@@ -268,6 +269,60 @@ export const getAll = query({
 
     const sorted = properties
       .sort((a, b) => (b.updatedAt ?? b.createdAt) - (a.updatedAt ?? a.createdAt))
+      .slice(0, limit);
+    return await enrichProperties(ctx, sorted);
+  },
+});
+
+/**
+ * Returns properties the current user can access.
+ *
+ * - Admin / property_ops / manager: all active properties (same as getAll).
+ * - Cleaner / any other role: only properties the user has been assigned to
+ *   on at least one cleaning job (past or upcoming). Derived from
+ *   cleaningJobs.assignedCleanerIds, mirroring how jobs are scoped in
+ *   cleaningJobs.getMyAssigned.
+ *
+ * This is the canonical query for any cleaner-facing property picker
+ * (incident reports, standalone reports, etc.) so cleaners only see the
+ * properties they legitimately have context on.
+ */
+export const getMyAccessibleProperties = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    const limit = args.limit ?? 500;
+
+    const isPrivileged =
+      user.role === "admin" ||
+      user.role === "property_ops" ||
+      user.role === "manager";
+
+    const activeProperties = await ctx.db
+      .query("properties")
+      .withIndex("by_active", (q) => q.eq("isActive", true))
+      .collect();
+
+    let filtered: Doc<"properties">[];
+    if (isPrivileged) {
+      filtered = activeProperties;
+    } else {
+      const jobs = await ctx.db.query("cleaningJobs").collect();
+      const assignedPropertyIds = new Set<Id<"properties">>();
+      for (const job of jobs) {
+        if (job.assignedCleanerIds.includes(user._id)) {
+          assignedPropertyIds.add(job.propertyId);
+        }
+      }
+      filtered = activeProperties.filter((p) => assignedPropertyIds.has(p._id));
+    }
+
+    const sorted = filtered
+      .sort(
+        (a, b) => (b.updatedAt ?? b.createdAt) - (a.updatedAt ?? a.createdAt),
+      )
       .slice(0, limit);
     return await enrichProperties(ctx, sorted);
   },
