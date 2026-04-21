@@ -188,6 +188,174 @@ export const update = mutation({
   },
 });
 
+const INSTRUCTION_CATEGORY = v.union(
+  v.literal("access"),
+  v.literal("trash"),
+  v.literal("lawn"),
+  v.literal("hot_tub"),
+  v.literal("pool"),
+  v.literal("parking"),
+  v.literal("wifi"),
+  v.literal("checkout"),
+  v.literal("pets"),
+  v.literal("other"),
+);
+
+function randomInstructionId(): string {
+  return `ins_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+}
+
+/**
+ * Update the 4 legacy "before you arrive" fields inline from the admin
+ * property-detail panel. Any field omitted is left untouched; passing an
+ * empty string clears it.
+ */
+export const updateAccessFields = mutation({
+  args: {
+    id: v.id("properties"),
+    accessNotes: v.optional(v.string()),
+    keyLocation: v.optional(v.string()),
+    parkingNotes: v.optional(v.string()),
+    urgentNotes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db.get(args.id);
+    if (!existing || !existing.isActive) {
+      throw new ConvexError("Property not found.");
+    }
+
+    const clean = (value: string | undefined) =>
+      value === undefined ? undefined : value.trim() || undefined;
+
+    await ctx.db.patch(args.id, {
+      accessNotes: clean(args.accessNotes),
+      keyLocation: clean(args.keyLocation),
+      parkingNotes: clean(args.parkingNotes),
+      urgentNotes: clean(args.urgentNotes),
+      updatedAt: Date.now(),
+    });
+
+    return args.id;
+  },
+});
+
+/** Append a new instruction to a property's extensible instructions list. */
+export const addInstruction = mutation({
+  args: {
+    propertyId: v.id("properties"),
+    category: INSTRUCTION_CATEGORY,
+    title: v.string(),
+    body: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const property = await ctx.db.get(args.propertyId);
+    if (!property || !property.isActive) {
+      throw new ConvexError("Property not found.");
+    }
+
+    const title = args.title.trim();
+    const body = args.body.trim();
+    if (!title) throw new ConvexError("Title is required.");
+    if (!body) throw new ConvexError("Body is required.");
+
+    const now = Date.now();
+    const next = [
+      ...(property.instructions ?? []),
+      {
+        id: randomInstructionId(),
+        category: args.category,
+        title,
+        body,
+        updatedAt: now,
+      },
+    ];
+
+    await ctx.db.patch(args.propertyId, {
+      instructions: next,
+      updatedAt: now,
+    });
+
+    return next[next.length - 1].id;
+  },
+});
+
+/** Edit an existing instruction by id. */
+export const updateInstruction = mutation({
+  args: {
+    propertyId: v.id("properties"),
+    instructionId: v.string(),
+    category: v.optional(INSTRUCTION_CATEGORY),
+    title: v.optional(v.string()),
+    body: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const property = await ctx.db.get(args.propertyId);
+    if (!property || !property.isActive) {
+      throw new ConvexError("Property not found.");
+    }
+
+    const current = property.instructions ?? [];
+    const index = current.findIndex((ins) => ins.id === args.instructionId);
+    if (index === -1) {
+      throw new ConvexError("Instruction not found.");
+    }
+
+    const now = Date.now();
+    const trimmedTitle = args.title?.trim();
+    const trimmedBody = args.body?.trim();
+
+    if (trimmedTitle !== undefined && !trimmedTitle) {
+      throw new ConvexError("Title cannot be empty.");
+    }
+    if (trimmedBody !== undefined && !trimmedBody) {
+      throw new ConvexError("Body cannot be empty.");
+    }
+
+    const next = current.slice();
+    next[index] = {
+      ...current[index],
+      category: args.category ?? current[index].category,
+      title: trimmedTitle ?? current[index].title,
+      body: trimmedBody ?? current[index].body,
+      updatedAt: now,
+    };
+
+    await ctx.db.patch(args.propertyId, {
+      instructions: next,
+      updatedAt: now,
+    });
+
+    return args.instructionId;
+  },
+});
+
+/** Remove an instruction by id. */
+export const removeInstruction = mutation({
+  args: {
+    propertyId: v.id("properties"),
+    instructionId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const property = await ctx.db.get(args.propertyId);
+    if (!property || !property.isActive) {
+      throw new ConvexError("Property not found.");
+    }
+
+    const current = property.instructions ?? [];
+    const next = current.filter((ins) => ins.id !== args.instructionId);
+    if (next.length === current.length) {
+      throw new ConvexError("Instruction not found.");
+    }
+
+    await ctx.db.patch(args.propertyId, {
+      instructions: next,
+      updatedAt: Date.now(),
+    });
+
+    return args.instructionId;
+  },
+});
+
 export const softDelete = mutation({
   args: {
     id: v.id("properties"),

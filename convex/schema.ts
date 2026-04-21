@@ -136,6 +136,31 @@ const properties = defineTable({
   parkingNotes: v.optional(v.string()),
   urgentNotes: v.optional(v.string()),
 
+  // Extensible property instructions — admin-managed, shown to cleaners.
+  // Categories are a closed list so the cleaner UI can render a matching icon.
+  instructions: v.optional(
+    v.array(
+      v.object({
+        id: v.string(),
+        category: v.union(
+          v.literal("access"),
+          v.literal("trash"),
+          v.literal("lawn"),
+          v.literal("hot_tub"),
+          v.literal("pool"),
+          v.literal("parking"),
+          v.literal("wifi"),
+          v.literal("checkout"),
+          v.literal("pets"),
+          v.literal("other"),
+        ),
+        title: v.string(),
+        body: v.string(),
+        updatedAt: v.number(),
+      }),
+    ),
+  ),
+
   // Config
   isActive: v.boolean(),
   currency: v.optional(v.string()),
@@ -277,6 +302,22 @@ const cleaningJobs = defineTable({
     label: v.string(),
     completed: v.boolean(),
     completedAt: v.optional(v.number()),
+  }))),
+
+  // Per-cleaner assignment acknowledgements (accept/decline with expiry)
+  acknowledgements: v.optional(v.array(v.object({
+    cleanerId: v.id("users"),
+    state: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("declined"),
+      v.literal("expired"),
+    ),
+    assignedAt: v.number(),
+    expiresAt: v.number(),
+    respondedAt: v.optional(v.number()),
+    reason: v.optional(v.string()),
+    notifiedOpsAt: v.optional(v.number()),
   }))),
 
   metadata: v.optional(v.any()),

@@ -30,7 +30,9 @@ export function CleanerHomeClient() {
         status: string;
         scheduledStartAt: number;
         scheduledEndAt?: number | null;
+        propertyId: string;
         property?: {
+          _id?: string;
           name?: string | null;
           address?: string | null;
           city?: string | null;
@@ -188,6 +190,7 @@ export function CleanerHomeClient() {
                 appearance={appearance}
                 statusLabel={statusLabel}
                 detailHref={`/cleaner/jobs/${job._id}`}
+                propertyHref={`/cleaner/properties/${job.property?._id ?? job.propertyId}`}
                 actionHref={job.status === "awaiting_approval" ? undefined : `/cleaner/jobs/${job._id}/active`}
                 actionLabel={job.status === "in_progress" ? t("cleaner.resume") : t("cleaner.start")}
               />

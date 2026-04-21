@@ -13,6 +13,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { PropertyFormValues, PropertyRecord } from "@/types/property";
 import { PropertyCriticalCheckpointsPanel } from "@/components/properties/property-critical-checkpoints-panel";
 import { PropertyRefillTrackingPanel } from "@/components/properties/property-refill-tracking-panel";
+import { PropertyInstructionsPanel } from "@/components/properties/property-instructions-panel";
 
 function formatDateTime(timestamp?: number) {
   if (!timestamp) {
@@ -202,6 +203,15 @@ export function PropertyDetail({ id }: { id: string }) {
           {actionError}
         </div>
       ) : null}
+
+      <PropertyInstructionsPanel
+        propertyId={id}
+        accessNotes={property.accessNotes ?? null}
+        keyLocation={property.keyLocation ?? null}
+        parkingNotes={property.parkingNotes ?? null}
+        urgentNotes={property.urgentNotes ?? null}
+        instructions={property.instructions ?? null}
+      />
 
       <PropertyCriticalCheckpointsPanel propertyId={id} />
 

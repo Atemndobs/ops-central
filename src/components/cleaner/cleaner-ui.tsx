@@ -6,6 +6,7 @@ import {
   Bath,
   BedDouble,
   CalendarDays,
+  ChevronRight,
   ClipboardList,
   Clock,
   Info,
@@ -531,6 +532,7 @@ export function CleanerJobCard({
   appearance,
   statusLabel,
   detailHref,
+  propertyHref,
   actionHref,
   actionLabel,
 }: {
@@ -552,6 +554,7 @@ export function CleanerJobCard({
   appearance: CleanerJobAppearance;
   statusLabel: string;
   detailHref: string;
+  propertyHref?: string;
   actionHref?: string;
   actionLabel?: string;
 }) {
@@ -647,10 +650,24 @@ export function CleanerJobCard({
       </div>
 
       <div className="relative z-10 mt-3 space-y-2.5">
-        <CleanerMetaRow
-          icon={ClipboardList}
-          text={city ? `${propertyName}, ${city}` : propertyName}
-        />
+        {propertyHref ? (
+          <Link
+            href={propertyHref}
+            aria-label={propertyName}
+            className="group -mx-1 flex items-center gap-2 rounded-md px-1 py-0.5 transition-colors hover:bg-[var(--cleaner-primary)]/5"
+          >
+            <ClipboardList className="h-4 w-4 shrink-0 text-[var(--cleaner-muted)]" />
+            <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-[1.35] text-[var(--cleaner-primary)] underline decoration-[var(--cleaner-primary)]/25 decoration-from-font underline-offset-[3px] group-hover:decoration-[var(--cleaner-primary)]">
+              {city ? `${propertyName}, ${city}` : propertyName}
+            </span>
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--cleaner-primary)]/70 transition-transform group-hover:translate-x-0.5" />
+          </Link>
+        ) : (
+          <CleanerMetaRow
+            icon={ClipboardList}
+            text={city ? `${propertyName}, ${city}` : propertyName}
+          />
+        )}
         {infoText ? <CleanerMetaRow icon={Info} text={infoText} /> : null}
       </div>
 
