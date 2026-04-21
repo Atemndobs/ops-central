@@ -267,3 +267,44 @@ export const pruneIncidentsWithBrokenPhotos = internalMutation({
     };
   },
 });
+
+/**
+ * One-shot cleanup: delete incidents whose `title` matches any entry in the
+ * supplied list (case-insensitive, exact match). Used to sweep specific
+ * batches of test/duplicate data identified visually.
+ *
+ *   npx convex run incidents/mutations:deleteIncidentsByTitle \\
+ *     '{"titles":["Nightstand table","Fixer"],"dryRun":true}'
+ */
+export const deleteIncidentsByTitle = internalMutation({
+  args: {
+    titles: v.array(v.string()),
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const dryRun = args.dryRun ?? true;
+    const wanted = new Set(args.titles.map((t) => t.trim().toLowerCase()));
+
+    const all = await ctx.db.query("incidents").collect();
+    const deletions: Array<{
+      _id: Id<"incidents">;
+      title: string;
+      createdAt: number;
+    }> = [];
+
+    for (const incident of all) {
+      const key = incident.title.trim().toLowerCase();
+      if (!wanted.has(key)) continue;
+      deletions.push({
+        _id: incident._id,
+        title: incident.title,
+        createdAt: incident.createdAt,
+      });
+      if (!dryRun) {
+        await ctx.db.delete(incident._id);
+      }
+    }
+
+    return { dryRun, matched: deletions.length, deletions };
+  },
+});
