@@ -11,9 +11,14 @@ async function getFirstPhotoUrl(
   ctx: QueryCtx,
   photoIds: IncidentDoc["photoIds"],
 ): Promise<string | null> {
-  const firstId = photoIds[0];
-  if (!firstId) return null;
-  return resolvePhotoIdToUrl(ctx, firstId);
+  // Walk through photoIds until we find one that resolves to a URL. Avoids
+  // "broken thumbnail" when photoIds[0] is stale/corrupt but later indices
+  // point at valid photos.
+  for (const rawId of photoIds) {
+    const url = await resolvePhotoIdToUrl(ctx, rawId);
+    if (url) return url;
+  }
+  return null;
 }
 
 async function resolvePhotoIdToUrl(
