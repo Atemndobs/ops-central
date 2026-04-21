@@ -13,11 +13,25 @@ async function getFirstPhotoUrl(
 ): Promise<string | null> {
   const firstId = photoIds[0];
   if (!firstId) return null;
-  const photoDoc = await ctx.db.get(firstId as Id<"photos">);
-  if (photoDoc && "storageId" in photoDoc) {
-    return resolvePhotoAccessUrl(ctx, photoDoc);
+  return resolvePhotoIdToUrl(ctx, firstId);
+}
+
+async function resolvePhotoIdToUrl(
+  ctx: QueryCtx,
+  rawId: string,
+): Promise<string | null> {
+  // photoIds may contain either a `photos` table ID or a raw `_storage` ID.
+  // normalizeId returns null when the string isn't a valid ID for the given
+  // user table, so we can safely fall through to storage without triggering
+  // the "System tables can only be accessed with db.system" error.
+  const photoTableId = ctx.db.normalizeId("photos", rawId);
+  if (photoTableId) {
+    const photoDoc = await ctx.db.get(photoTableId);
+    if (photoDoc && "storageId" in photoDoc) {
+      return resolvePhotoAccessUrl(ctx, photoDoc);
+    }
   }
-  return ctx.storage.getUrl(firstId as Id<"_storage">);
+  return ctx.storage.getUrl(rawId as Id<"_storage">);
 }
 
 const incidentStatusValidator = v.union(
@@ -51,16 +65,8 @@ export const getIncidentsForJob = query({
         const photoUrls: Array<{ id: string; url: string | null }> = [];
 
         for (const photoId of incident.photoIds) {
-          // First try as a photos table ID
-          const photoDoc = await ctx.db.get(photoId as Id<"photos">);
-          if (photoDoc && "storageId" in photoDoc) {
-            const url = await resolvePhotoAccessUrl(ctx, photoDoc);
-            photoUrls.push({ id: photoId, url });
-          } else {
-            // Fall back to raw storage ID
-            const url = await ctx.storage.getUrl(photoId as Id<"_storage">);
-            photoUrls.push({ id: photoId, url });
-          }
+          const url = await resolvePhotoIdToUrl(ctx, photoId);
+          photoUrls.push({ id: photoId, url });
         }
 
         const reporter = incident.reportedBy
@@ -185,14 +191,8 @@ export const getIncidentById = query({
 
     const photoUrls: Array<{ id: string; url: string | null }> = [];
     for (const photoId of incident.photoIds) {
-      const photoDoc = await ctx.db.get(photoId as Id<"photos">);
-      if (photoDoc && "storageId" in photoDoc) {
-        const url = await resolvePhotoAccessUrl(ctx, photoDoc);
-        photoUrls.push({ id: photoId, url });
-      } else {
-        const url = await ctx.storage.getUrl(photoId as Id<"_storage">);
-        photoUrls.push({ id: photoId, url });
-      }
+      const url = await resolvePhotoIdToUrl(ctx, photoId);
+      photoUrls.push({ id: photoId, url });
     }
 
     return {
