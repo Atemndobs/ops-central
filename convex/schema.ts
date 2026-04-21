@@ -792,7 +792,8 @@ const incidents = defineTable({
   .index("by_created_at", ["createdAt"])
   .index("by_property_and_created_at", ["propertyId", "createdAt"])
   .index("by_status", ["status"])
-  .index("by_severity", ["severity"]);
+  .index("by_severity", ["severity"])
+  .index("by_reporter_and_created_at", ["reportedBy", "createdAt"]);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // INVENTORY

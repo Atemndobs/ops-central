@@ -1,6 +1,6 @@
 import { mutation } from "../_generated/server";
 import { v } from "convex/values";
-import { getCurrentUser } from "../lib/auth";
+import { getCurrentUser, requireRole } from "../lib/auth";
 import { normalizeRoomName } from "../lib/rooms";
 
 export const createIncident = mutation({
@@ -87,5 +87,51 @@ export const createIncident = mutation({
     });
 
     return incidentId;
+  },
+});
+
+export const updateIncidentStatus = mutation({
+  args: {
+    incidentId: v.id("incidents"),
+    status: v.union(
+      v.literal("open"),
+      v.literal("in_progress"),
+      v.literal("resolved"),
+      v.literal("wont_fix"),
+    ),
+    resolutionNotes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireRole(ctx, ["admin", "property_ops", "manager"]);
+
+    const incident = await ctx.db.get(args.incidentId);
+    if (!incident) {
+      throw new Error("Incident not found");
+    }
+
+    const now = Date.now();
+    const isTerminal = args.status === "resolved" || args.status === "wont_fix";
+    const wasTerminal =
+      incident.status === "resolved" || incident.status === "wont_fix";
+
+    const patch: Record<string, unknown> = {
+      status: args.status,
+      updatedAt: now,
+    };
+
+    if (args.resolutionNotes !== undefined) {
+      patch.resolutionNotes = args.resolutionNotes.trim() || undefined;
+    }
+
+    if (isTerminal) {
+      patch.resolvedAt = incident.resolvedAt ?? now;
+      patch.resolvedBy = incident.resolvedBy ?? user._id;
+    } else if (wasTerminal) {
+      patch.resolvedAt = undefined;
+      patch.resolvedBy = undefined;
+    }
+
+    await ctx.db.patch(args.incidentId, patch);
+    return args.incidentId;
   },
 });
