@@ -712,6 +712,9 @@ export function CleanerJobCard({
             </span>
           ) : null}
         </div>
+        <div className="shrink-0">
+          <CleanerCountdownBadge targetTimestamp={scheduledAt} size="compact" />
+        </div>
         {actionHref && actionLabel ? (
           <Link
             href={actionHref}
@@ -720,9 +723,6 @@ export function CleanerJobCard({
             {actionLabel}
           </Link>
         ) : null}
-        <div className="shrink-0">
-          <CleanerCountdownBadge targetTimestamp={scheduledAt} size="compact" />
-        </div>
       </div>
     </article>
   );

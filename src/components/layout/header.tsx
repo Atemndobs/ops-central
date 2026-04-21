@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslations } from "next-intl";
 import { api } from "@convex/_generated/api";
-import { Bell, LogOut, Menu, Moon, Settings, Sun, X } from "lucide-react";
+import { Bell, LogOut, Menu, Settings, X } from "lucide-react";
 import {
   canAccessPath,
   getRoleFromMetadata,
@@ -359,16 +359,6 @@ export function Header() {
             {currentLocale}
           </button>
 
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="rounded-none p-2 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
-            aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
-            title={isDarkMode ? "Light mode" : "Dark mode"}
-          >
-            {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </button>
-
           {isSignedIn ? (
             <div className="flex items-center">
               <UserButton signInUrl="/sign-in" />
@@ -448,15 +438,6 @@ export function Header() {
               >
                 <span className="inline-flex h-4 w-4 items-center justify-center text-[10px] font-bold uppercase">{currentLocale}</span>
                 {currentLocale === "en" ? "Cambiar a Español" : "Switch to English"}
-              </button>
-
-              <button
-                type="button"
-                onClick={toggleTheme}
-                className="flex w-full items-center gap-3 rounded-none px-3 py-3 text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
-              >
-                {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                {isDarkMode ? "Light Mode" : "Dark Mode"}
               </button>
 
               <button
