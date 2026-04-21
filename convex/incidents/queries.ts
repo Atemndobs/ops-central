@@ -20,10 +20,14 @@ async function resolvePhotoIdToUrl(
   ctx: QueryCtx,
   rawId: string,
 ): Promise<string | null> {
-  // photoIds may contain either a `photos` table ID or a raw `_storage` ID.
-  // normalizeId returns null when the string isn't a valid ID for the given
-  // user table, so we can safely fall through to storage without triggering
-  // the "System tables can only be accessed with db.system" error.
+  // photoIds may contain either a `photos` table ID, a raw `_storage` ID, or
+  // (from legacy/orphaned data) an ID that no longer matches any known table.
+  //
+  // ctx.db.get() throws for system-table IDs ("System tables can only be
+  // accessed with db.system") and ctx.storage.getUrl() throws for IDs that
+  // belong to a non-storage user table ("Invalid storage ID"). We use
+  // normalizeId to safely probe `photos` first, then try storage with a
+  // defensive try/catch so a single bad reference doesn't blow up the list.
   const photoTableId = ctx.db.normalizeId("photos", rawId);
   if (photoTableId) {
     const photoDoc = await ctx.db.get(photoTableId);
@@ -31,7 +35,11 @@ async function resolvePhotoIdToUrl(
       return resolvePhotoAccessUrl(ctx, photoDoc);
     }
   }
-  return ctx.storage.getUrl(rawId as Id<"_storage">);
+  try {
+    return await ctx.storage.getUrl(rawId as Id<"_storage">);
+  } catch {
+    return null;
+  }
 }
 
 const incidentStatusValidator = v.union(
