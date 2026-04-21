@@ -52,6 +52,10 @@ const cleaningCompanies = defineTable({
   contactEmail: v.optional(v.string()),
   contactPhone: v.optional(v.string()),
   logoUrl: v.optional(v.string()),
+  // Service city — a cleaning company only covers one city (e.g. "Dallas",
+  // "Austin", "Houston"). Used to filter the company dropdown on the property
+  // assignment table so admins only see companies in the property's city.
+  city: v.optional(v.string()),
   isActive: v.boolean(),
   settings: v.optional(v.object({
     autoAssign: v.optional(v.boolean()),
