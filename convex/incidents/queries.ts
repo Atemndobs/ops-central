@@ -31,7 +31,12 @@ async function resolvePhotoIdToUrl(
   const photoTableId = ctx.db.normalizeId("photos", rawId);
   if (photoTableId) {
     const photoDoc = await ctx.db.get(photoTableId);
-    if (photoDoc && "storageId" in photoDoc) {
+    if (photoDoc) {
+      // resolvePhotoAccessUrl handles BOTH storage paths: Convex _storage
+      // (legacy, via photo.storageId) and B2 (primary, via
+      // photo.provider/bucket/objectKey). The earlier `"storageId" in photoDoc`
+      // check was wrong — for B2-only photos the key is absent from the doc,
+      // so the check skipped the resolver and we silently lost B2 thumbnails.
       return resolvePhotoAccessUrl(ctx, photoDoc);
     }
   }
