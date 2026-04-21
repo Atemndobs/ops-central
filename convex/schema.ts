@@ -548,6 +548,17 @@ const conversationMessages = defineTable({
     v.literal("email"),
   ),
   body: v.string(),
+  // Source language of the human-authored body (sender's UI locale at send
+  // time). Rows without sourceLang are treated as "en" for backwards compat.
+  sourceLang: v.optional(v.union(v.literal("en"), v.literal("es"))),
+  // Lazy-filled cache of body translations, written by the translateMessage
+  // action on first read in a different locale.
+  translations: v.optional(
+    v.object({
+      en: v.optional(v.string()),
+      es: v.optional(v.string()),
+    }),
+  ),
   metadata: v.optional(v.any()),
   createdAt: v.number(),
 })

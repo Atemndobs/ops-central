@@ -4,11 +4,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
+import { useLocale } from "next-intl";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/components/ui/toast-provider";
-import { Image as ImageIcon, Paperclip, Send } from "lucide-react";
+import { ExternalLink, Image as ImageIcon, Languages, Loader2, Paperclip, Send } from "lucide-react";
 
 function formatMessageTime(timestamp: number) {
   const now = new Date();
@@ -46,9 +47,13 @@ type ThreadAttachment = {
   url?: string | null;
 };
 
+type MessageLocale = "en" | "es";
+
 type ThreadMessage = {
   _id: Id<"conversationMessages">;
   body: string;
+  sourceLang?: MessageLocale | null;
+  translations?: Partial<Record<MessageLocale, string>> | null;
   createdAt: number;
   authorUserId?: Id<"users">;
   author?: { name?: string | null; email?: string | null } | null;
@@ -67,7 +72,11 @@ type ConversationDetail = {
     phoneNumber?: string | null;
     serviceWindowClosesAt?: number;
   } | null;
-  linkedJob?: { _id: Id<"cleaningJobs"> } | null;
+  linkedJob?: {
+    _id: Id<"cleaningJobs">;
+    status?: string;
+    scheduledStartAt?: number;
+  } | null;
   property?: { name?: string | null } | null;
   selfParticipant?: { userId?: Id<"users"> } | null;
   messages: ThreadMessage[];
@@ -85,7 +94,10 @@ export function ConversationThread({
   const sendInternalMessage = useMutation(api.conversations.mutations.sendMessage);
   const sendWhatsAppReply = useAction(api.whatsapp.actions.sendReply);
   const markRead = useMutation(api.conversations.mutations.markConversationRead);
+  const translateMessage = useAction(api.translation.actions.translateMessage);
   const { showToast } = useToast();
+  const rawLocale = useLocale();
+  const myLocale: MessageLocale = rawLocale === "es" ? "es" : "en";
   const [body, setBody] = useState("");
   const [pending, setPending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -147,16 +159,44 @@ export function ConversationThread({
 
   return (
     <div className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--card)]">
-      <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-        <div>
+      <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
+        <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-[var(--foreground)]">{headerTitle}</p>
-          <p className="text-xs text-[var(--muted-foreground)]">
-            {detail.linkedJob ? `Job ${String(detail.linkedJob._id).slice(-6)}` : "Thread"}
-            {detail.property ? ` · ${detail.property.name}` : ""}
-            {detail.messagingEndpoint?.phoneNumber
-              ? ` · ${detail.messagingEndpoint.phoneNumber}`
-              : ""}
-          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--muted-foreground)]">
+            {detail.linkedJob ? (
+              <Link
+                href={`/jobs/${detail.linkedJob._id}`}
+                className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-0.5 text-[11px] font-medium text-[var(--primary)] transition-colors hover:border-[var(--primary)]/50 hover:bg-[var(--primary)]/10"
+              >
+                <ExternalLink className="h-3 w-3" />
+                <span>
+                  {detail.linkedJob.scheduledStartAt
+                    ? new Date(detail.linkedJob.scheduledStartAt).toLocaleDateString(undefined, {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                      }) +
+                      " · " +
+                      new Date(detail.linkedJob.scheduledStartAt).toLocaleTimeString(undefined, {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })
+                    : "View job"}
+                </span>
+                {detail.linkedJob.status ? (
+                  <span className="text-[var(--muted-foreground)]">
+                    · {detail.linkedJob.status.replace(/_/g, " ")}
+                  </span>
+                ) : null}
+              </Link>
+            ) : (
+              <span>Thread</span>
+            )}
+            {detail.property ? <span>· {detail.property.name}</span> : null}
+            {detail.messagingEndpoint?.phoneNumber ? (
+              <span>· {detail.messagingEndpoint.phoneNumber}</span>
+            ) : null}
+          </div>
           <p
             className={`mt-1 text-[11px] ${
               isWhatsAppLane && canReplyInApp
@@ -170,7 +210,7 @@ export function ConversationThread({
         {fullHref ? (
           <Link
             href={fullHref}
-            className="text-xs font-medium text-[var(--primary)] hover:opacity-80"
+            className="shrink-0 text-xs font-medium text-[var(--primary)] hover:opacity-80"
           >
             Open inbox
           </Link>
@@ -222,7 +262,15 @@ export function ConversationThread({
                         {authorName}
                       </p>
                     ) : null}
-                    <p className="whitespace-pre-wrap text-sm">{message.body}</p>
+                    <TranslatedMessageBody
+                      messageId={message._id}
+                      body={message.body}
+                      sourceLang={message.sourceLang ?? "en"}
+                      cached={message.translations ?? null}
+                      myLocale={myLocale}
+                      isSelf={isSelf}
+                      translate={translateMessage}
+                    />
 
                     {Array.isArray(message.attachments) && message.attachments.length > 0 ? (
                       <div className="mt-2 space-y-2">
@@ -319,6 +367,7 @@ export function ConversationThread({
               await sendInternalMessage({
                 conversationId,
                 body: body.trim(),
+                sourceLang: myLocale,
               });
             }
             setBody("");
@@ -361,6 +410,111 @@ export function ConversationThread({
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+/**
+ * Renders a message body in the viewer's locale. If the message's sourceLang
+ * differs from myLocale:
+ *   - If a cached translation exists, show it with a "Show original" toggle.
+ *   - Otherwise, show the source as a placeholder and kick off the translate
+ *     action in the background; once Convex's reactive query picks up the
+ *     cached translation, the parent re-renders and we display it.
+ * Never retranslates in both directions (avoids loops); skips entirely when
+ * sender and viewer share a locale.
+ */
+function TranslatedMessageBody({
+  messageId,
+  body,
+  sourceLang,
+  cached,
+  myLocale,
+  isSelf,
+  translate,
+}: {
+  messageId: Id<"conversationMessages">;
+  body: string;
+  sourceLang: MessageLocale;
+  cached: Partial<Record<MessageLocale, string>> | null;
+  myLocale: MessageLocale;
+  isSelf: boolean;
+  translate: (args: {
+    messageId: Id<"conversationMessages">;
+    targetLang: MessageLocale;
+  }) => Promise<string | null>;
+}) {
+  const needsTranslation = sourceLang !== myLocale;
+  const translated = needsTranslation ? cached?.[myLocale] ?? null : null;
+  const [showOriginal, setShowOriginal] = useState(false);
+  const [fetching, setFetching] = useState(false);
+  const requestedRef = useRef<string | null>(null);
+
+  // Kick off the translation once per message when the cache is empty.
+  useEffect(() => {
+    if (!needsTranslation) return;
+    if (translated) return;
+    if (requestedRef.current === messageId) return;
+    requestedRef.current = messageId;
+    setFetching(true);
+    translate({ messageId, targetLang: myLocale })
+      .catch(() => {
+        /* soft-fail: parent keeps showing source */
+      })
+      .finally(() => setFetching(false));
+  }, [messageId, needsTranslation, translated, translate, myLocale]);
+
+  // Same locale — nothing to do.
+  if (!needsTranslation) {
+    return <p className="whitespace-pre-wrap text-sm">{body}</p>;
+  }
+
+  const display = showOriginal ? body : translated ?? body;
+  const canToggle = Boolean(translated);
+  const toggleClass = isSelf
+    ? "text-[var(--primary-foreground)]/70 hover:text-[var(--primary-foreground)]"
+    : "text-[var(--primary)] hover:underline";
+
+  return (
+    <div>
+      <p className="whitespace-pre-wrap text-sm">{display}</p>
+      <div
+        className={`mt-1 flex items-center gap-1.5 text-[10px] ${
+          isSelf
+            ? "text-[var(--primary-foreground)]/70"
+            : "text-[var(--muted-foreground)]"
+        }`}
+      >
+        {fetching && !translated ? (
+          <>
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span>Translating…</span>
+          </>
+        ) : translated ? (
+          <>
+            <Languages className="h-3 w-3" />
+            <span>
+              {showOriginal
+                ? `Translated from ${sourceLang.toUpperCase()}`
+                : `Translated from ${sourceLang.toUpperCase()}`}
+            </span>
+            {canToggle ? (
+              <button
+                type="button"
+                onClick={() => setShowOriginal((v) => !v)}
+                className={`font-semibold ${toggleClass}`}
+              >
+                · {showOriginal ? "Show translation" : "Show original"}
+              </button>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <Languages className="h-3 w-3" />
+            <span>Translation unavailable — showing original</span>
+          </>
+        )}
+      </div>
     </div>
   );
 }

@@ -43,6 +43,7 @@ type PropertyRecord = {
   propertyType?: string | null;
   imageUrl?: string | null;
   airbnbUrl?: string | null;
+  rooms?: Array<{ name: string; type: string }> | null;
   accessNotes?: string | null;
   keyLocation?: string | null;
   parkingNotes?: string | null;
@@ -321,10 +322,56 @@ export function CleanerPropertyDetailClient({ id }: { id: string }) {
               />
             </div>
 
+            <RoomsBlock rooms={property.rooms ?? []} />
+
             <InstructionsBlock instructions={property.instructions ?? []} />
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function RoomsBlock({
+  rooms,
+}: {
+  rooms: Array<{ name: string; type: string }>;
+}) {
+  const t = useTranslations();
+  const count = rooms.length;
+  const countLabel =
+    count === 1
+      ? t("cleaner.roomsSection.countOne", { count })
+      : t("cleaner.roomsSection.countOther", { count });
+
+  return (
+    <div className="mt-4">
+      <CleanerSection
+        eyebrow={t("cleaner.roomsSection.eyebrow")}
+        title={t("cleaner.roomsSection.title")}
+      >
+        {count === 0 ? (
+          <p className="text-[13px] text-[var(--cleaner-muted)]">
+            {t("cleaner.roomsSection.empty")}
+          </p>
+        ) : (
+          <>
+            <p className="mb-3 text-[12px] font-medium uppercase tracking-wide text-[var(--cleaner-muted)]">
+              {countLabel}
+            </p>
+            <ul className="flex flex-wrap gap-2">
+              {rooms.map((room, index) => (
+                <li
+                  key={`${room.name}-${index}`}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[color-mix(in_srgb,var(--cleaner-primary)_18%,transparent)] bg-[var(--cleaner-bg)] px-3 py-1.5 text-[13px] font-medium text-[var(--cleaner-ink)]"
+                >
+                  {room.name}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </CleanerSection>
     </div>
   );
 }

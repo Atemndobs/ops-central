@@ -36,6 +36,54 @@ export const translate = action({
  *
  * Safe to re-run — overwrites the cached translation each time.
  */
+/**
+ * Translate a single conversation message into the requested locale and
+ * cache the result. Called lazily by clients when a viewer's locale
+ * differs from the message's sourceLang and the cache is empty.
+ *
+ * Idempotent: if the translation is already cached, this is a no-op and
+ * still returns the cached text.
+ */
+export const translateMessage = action({
+  args: {
+    messageId: v.id("conversationMessages"),
+    targetLang: TRANSLATE_LANG,
+  },
+  handler: async (ctx, args): Promise<string | null> => {
+    const message = await ctx.runQuery(
+      internal.translation.internal.getMessageForTranslation,
+      { messageId: args.messageId },
+    );
+    if (!message) return null;
+
+    const sourceLang = (message.sourceLang ?? "en") as "en" | "es";
+    if (sourceLang === args.targetLang) return message.body;
+
+    const cached = message.translations?.[args.targetLang];
+    if (cached) return cached;
+
+    try {
+      const translated = await translateText(
+        message.body,
+        sourceLang,
+        args.targetLang,
+      );
+      await ctx.runMutation(
+        internal.translation.internal.setMessageTranslation,
+        {
+          messageId: args.messageId,
+          lang: args.targetLang,
+          body: translated,
+        },
+      );
+      return translated;
+    } catch (error) {
+      console.error("translateMessage failed:", error);
+      return null;
+    }
+  },
+});
+
 export const translateInstruction = internalAction({
   args: {
     propertyId: v.id("properties"),

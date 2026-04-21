@@ -237,6 +237,13 @@
       "bedroom": "Dormitorio",
       "bathroom": "Baño"
     },
+    "roomsSection": {
+      "eyebrow": "HABITACIONES",
+      "title": "Habitaciones en esta propiedad",
+      "countOne": "{count} habitación",
+      "countOther": "{count} habitaciones",
+      "empty": "Lista de habitaciones aún no sincronizada — contacta a operaciones."
+    },
     "shell": {
       "notifications": "Notificaciones",
       "unreadCount": "{count} sin leer",

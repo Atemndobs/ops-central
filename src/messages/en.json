@@ -237,6 +237,13 @@
       "bedroom": "Bedroom",
       "bathroom": "Bathroom"
     },
+    "roomsSection": {
+      "eyebrow": "ROOMS",
+      "title": "Rooms in this property",
+      "countOne": "{count} room",
+      "countOther": "{count} rooms",
+      "empty": "Room list not synced yet — contact ops."
+    },
     "shell": {
       "notifications": "Notifications",
       "unreadCount": "{count} unread",
