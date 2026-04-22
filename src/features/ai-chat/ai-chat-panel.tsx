@@ -342,7 +342,8 @@ export function AiChatPanel() {
             backgroundColor: "var(--background)",
             color: "var(--foreground)",
             padding: "8px 14px",
-            fontSize: 14,
+            // iOS Safari zooms inputs with font-size < 16px; keep at 16 to prevent auto-zoom.
+            fontSize: 16,
             outline: "none",
           }}
         />
