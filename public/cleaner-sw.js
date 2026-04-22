@@ -1,4 +1,4 @@
-const SW_VERSION = "cleaner-v5";
+const SW_VERSION = "cleaner-v6";
 const STATIC_CACHE = `${SW_VERSION}-static`;
 const DATA_CACHE = `${SW_VERSION}-data`;
 
