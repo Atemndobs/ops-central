@@ -2,8 +2,10 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useChat } from "@ai-sdk/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { Send, X, Loader2, Square, CheckCircle2 } from "lucide-react";
 import Markdown from "react-markdown";
+import { api } from "@convex/_generated/api";
 
 const SUGGESTED_QUERIES = [
   "What's open today?",
@@ -13,7 +15,15 @@ const SUGGESTED_QUERIES = [
   "Who are my cleaners?",
 ];
 
+// Only these roles get the AI assistant. Managers and cleaners are hidden.
+const ALLOWED_ROLES = new Set(["admin", "property_ops"]);
+
 export function AiChatPanel() {
+  const { isAuthenticated } = useConvexAuth();
+  const profile = useQuery(
+    api.users.queries.getMyProfile,
+    isAuthenticated ? {} : "skip",
+  ) as { role?: string } | null | undefined;
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -48,6 +58,13 @@ export function AiChatPanel() {
 
   function handleClear() {
     setMessages([]);
+  }
+
+  // Gate the whole panel to admins and ops only. Managers and cleaners
+  // don't see it. While the profile query is loading we hide it too to
+  // avoid a flash before role is known.
+  if (!profile || !profile.role || !ALLOWED_ROLES.has(profile.role)) {
+    return null;
   }
 
   if (!isOpen) {
