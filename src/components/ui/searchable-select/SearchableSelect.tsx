@@ -7,6 +7,7 @@ import { useMemo, useRef, useState } from "react";
 
 import type { SearchableSelectProps } from "./contract";
 import { groupSearchableItems } from "./contract";
+import { capture } from "@/lib/posthog/client";
 
 export function SearchableSelect<Meta = unknown>({
   items,
@@ -47,6 +48,10 @@ export function SearchableSelect<Meta = unknown>({
         setOpen(next);
         if (!next) setQuery("");
         if (next) {
+          capture("searchable_select_opened", {
+            surface: ariaLabel ?? placeholder,
+            item_count: items.length,
+          });
         }
       }}
     >
@@ -183,6 +188,11 @@ export function SearchableSelect<Meta = unknown>({
                       value={composedValue}
                       disabled={item.disabled}
                       onSelect={() => {
+                        capture("searchable_select_selected", {
+                          surface: ariaLabel ?? placeholder,
+                          item_count: items.length,
+                          search_length: query.length,
+                        });
                         onChange(item.id);
                         setOpen(false);
                       }}
