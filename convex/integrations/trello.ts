@@ -194,7 +194,7 @@ export const syncIncidentToCard = internalAction({
       incident.roomName ? `**Room:** ${incident.roomName}` : null,
       `**Reported by:** ${reporterName}`,
       incident.cleaningJobId ? `**Job:** ${siteUrl}/jobs/${incident.cleaningJobId}` : null,
-      `**OpsCentral:** ${siteUrl}/incidents/${incident._id}`,
+      `**OpsCentral:** ${siteUrl}/incidents?id=${incident._id}`,
     ].filter(Boolean) as string[];
 
     if (incident.description) {
@@ -596,6 +596,82 @@ export const deleteTrelloWebhook = internalAction({
       {},
     );
     return { deleted: webhookId };
+  },
+});
+
+/**
+ * Fix the OpsCentral link in existing Trello card descriptions.
+ * Replaces `/incidents/<id>` with `/incidents?id=<id>` for every incident
+ * that has a Trello card. Run once after the URL format changed.
+ *
+ *   npx convex run integrations/trello:rewriteCardDescriptions
+ */
+export const rewriteCardDescriptions = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    const apiKey = process.env.TRELLO_API_KEY;
+    const apiToken = process.env.TRELLO_API_TOKEN;
+    if (!apiKey || !apiToken) return { updated: 0, error: "no creds" };
+
+    const cards = await ctx.runQuery(
+      internal.integrations.trello.listIncidentsWithCards,
+      {},
+    );
+
+    let updated = 0;
+    for (const { cardId, incidentId } of cards) {
+      const context = await ctx.runQuery(
+        internal.integrations.trello.getIncidentSyncContext,
+        { incidentId },
+      );
+      if (!context) continue;
+
+      const { incident, propertyName, propertyCity, reporterName } = context;
+      const siteUrl = process.env.OPSCENTRAL_SITE_URL ?? "https://ja-bs.com";
+      const descParts: string[] = [
+        `**Type:** ${humanizeType(incident.incidentType)}`,
+        incident.severity ? `**Severity:** ${incident.severity}` : null,
+        `**Property:** ${propertyName}${propertyCity ? ` (${propertyCity})` : ""}`,
+        incident.roomName ? `**Room:** ${incident.roomName}` : null,
+        `**Reported by:** ${reporterName}`,
+        incident.cleaningJobId
+          ? `**Job:** ${siteUrl}/jobs/${incident.cleaningJobId}`
+          : null,
+        `**OpsCentral:** ${siteUrl}/incidents?id=${incident._id}`,
+      ].filter(Boolean) as string[];
+
+      if (incident.description) {
+        descParts.push("", "---", "", incident.description);
+      }
+      if (incident.customItemDescription) {
+        descParts.push("", `**Item:** ${incident.customItemDescription}`);
+      }
+      if (incident.incidentContext) {
+        descParts.push("", `**Context:** ${incident.incidentContext}`);
+      }
+      const desc = descParts.join("\n");
+
+      try {
+        await trelloFetch("PUT", `/1/cards/${cardId}`, apiKey, apiToken, {
+          desc,
+        });
+        updated++;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      } catch (err) {
+        console.error("trello: failed to rewrite card", { cardId, err });
+      }
+    }
+    return { updated };
+  },
+});
+
+export const listIncidentsWithCards = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const all = await ctx.db.query("incidents").collect();
+    return all
+      .filter((i) => i.trelloCardId)
+      .map((i) => ({ incidentId: i._id, cardId: i.trelloCardId as string }));
   },
 });
 

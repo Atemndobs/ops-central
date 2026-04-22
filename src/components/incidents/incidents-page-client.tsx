@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { useLocale, useTranslations } from "next-intl";
+import { useRouter, useSearchParams } from "next/navigation";
 import { translateRoomDisplay } from "@/lib/room-i18n";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -49,6 +50,25 @@ export function IncidentsPageClient() {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<Id<"incidents"> | null>(null);
   const [nowTs, setNowTs] = useState<number>(() => Date.now());
+
+  // Deep-link support: ?id=<incidentId> auto-opens the drawer. Used by the
+  // "OpsCentral" link on Trello cards (see convex/integrations/trello.ts).
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  useEffect(() => {
+    const idParam = searchParams.get("id");
+    if (idParam && idParam !== selectedId) {
+      setSelectedId(idParam as Id<"incidents">);
+    }
+  }, [searchParams, selectedId]);
+
+  function handleDrawerClose() {
+    setSelectedId(null);
+    // Drop the ?id= from the URL so refresh doesn't re-open it.
+    if (searchParams.get("id")) {
+      router.replace("/incidents", { scroll: false });
+    }
+  }
 
   useEffect(() => {
     const id = window.setInterval(() => setNowTs(Date.now()), 60_000);
@@ -293,7 +313,7 @@ export function IncidentsPageClient() {
 
       <IncidentDetailDrawer
         incidentId={selectedId}
-        onClose={() => setSelectedId(null)}
+        onClose={handleDrawerClose}
       />
     </>
   );
