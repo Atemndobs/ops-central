@@ -17,6 +17,7 @@ const isPublicRoute = createRouteMatcher([
   "/sso-callback(.*)",
   "/api/webhooks/hospitable(.*)",
   "/api/webhooks/clerk(.*)",
+  "/api/webhooks/trello(.*)",
 ]);
 
 function isUserRole(value: unknown): value is UserRole {
