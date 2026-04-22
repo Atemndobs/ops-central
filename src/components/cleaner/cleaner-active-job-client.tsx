@@ -118,9 +118,19 @@ function getPhotoUrlsByRoom(args: {
   return [...serverUrls, ...localUrls];
 }
 
-function getPendingUploadPreviews(photoRefs: string[], pendingUploads: PendingUpload[]): Array<{ photoRef: string; url: string }> {
+function getPendingUploadPreviews(
+  photoRefs: string[],
+  pendingUploads: PendingUpload[],
+  previewCache: Record<string, string> = {},
+): Array<{ photoRef: string; url: string }> {
   return photoRefs
     .map((photoRef) => {
+      // Prefer the in-memory cache — it survives the local-id -> server-id
+      // swap. Fall back to the pending-uploads queue for backward compat.
+      const cached = previewCache[photoRef];
+      if (typeof cached === "string" && cached.length > 0) {
+        return { photoRef, url: cached };
+      }
       const url = pendingUploads.find((upload) => upload.id === photoRef)?.fileDataUrl;
       return typeof url === "string" && url.length > 0 ? { photoRef, url } : null;
     })
@@ -434,6 +444,11 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
 
   // Offline / sync
   const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
+  // Preview cache — survives the pendingUploads -> server photoId swap so the
+  // thumbnail in the incident composer doesn't vanish once the upload lands.
+  // Keyed by current photoRef (starts as the local upload id, gets migrated to
+  // the server photo id on completion).
+  const [photoPreviewCache, setPhotoPreviewCache] = useState<Record<string, string>>({});
   const [isOnline, setIsOnline]             = useState(true);
   const [isSyncing, setIsSyncing]           = useState(false);
   const isSyncingRef                        = useRef(false);
@@ -622,6 +637,17 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                 current.map((photoRef) => (photoRef === syncing.id ? String(photoId) : photoRef)),
               );
 
+              // Carry the preview blob under the new server photo id so the
+              // composer thumbnail stays visible after the upload completes.
+              setPhotoPreviewCache((current) => {
+                const blob = current[syncing.id];
+                if (!blob) return current;
+                const next = { ...current };
+                next[String(photoId)] = blob;
+                delete next[syncing.id];
+                return next;
+              });
+
               await deletePendingUpload(syncing.id);
               queue = await loadJobQueue();
               setPendingUploads(queue);
@@ -750,6 +776,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
       };
       await upsertPendingUpload(upload);
       setPendingUploads((current) => enqueueUpload(current, upload));
+      setPhotoPreviewCache((current) => ({ ...current, [upload.id]: fileDataUrl }));
       if (isOnline) void drainQueue();
       return upload.id;
     },
@@ -758,6 +785,13 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
 
   const removeIncidentPhotoRef = useCallback(
     async (photoRef: string) => {
+      setPhotoPreviewCache((current) => {
+        if (!(photoRef in current)) return current;
+        const next = { ...current };
+        delete next[photoRef];
+        return next;
+      });
+
       const pendingUpload = pendingUploads.find((upload) => upload.id === photoRef);
       if (pendingUpload) {
         await deletePendingUpload(photoRef);
@@ -1061,7 +1095,12 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                     const files = event.target.files;
                     if (!files || files.length === 0) return;
 
-                    const roomName = newIncidentRoomName.trim() || t("cleaner.incident");
+                    // Fall back to a translated "Incident" label rather than
+                    // the key "cleaner.incident" — that key resolves to an
+                    // object (nested strings), so calling t() on it returned
+                    // the literal key and leaked "cleaner.incident" as a room
+                    // name into the after-photos step.
+                    const roomName = newIncidentRoomName.trim() || t("cleaner.incidentNav");
                     const addedPhotoIds: string[] = [];
 
                     for (const file of Array.from(files)) {
@@ -1080,7 +1119,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                     {t("cleaner.active.photoCountSelected", { count: newIncidentPhotoIds.length })}
                   </p>
                   <div className="flex gap-2 overflow-x-auto pb-1">
-                    {getPendingUploadPreviews(newIncidentPhotoIds, pendingUploads).map(({ photoRef, url }, index) => {
+                    {getPendingUploadPreviews(newIncidentPhotoIds, pendingUploads, photoPreviewCache).map(({ photoRef, url }, index) => {
                       return (
                         <div key={`${photoRef}-${index}`} className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border border-[var(--border)]">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1100,7 +1139,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                       );
                     })}
                   </div>
-                  {getPendingUploadPreviews(newIncidentPhotoIds, pendingUploads).length < newIncidentPhotoIds.length && (
+                  {getPendingUploadPreviews(newIncidentPhotoIds, pendingUploads, photoPreviewCache).length < newIncidentPhotoIds.length && (
                     <p className="text-[11px] text-[var(--muted-foreground)]">
                       {t("cleaner.active.somePhotosAlreadyAttached")}
                     </p>

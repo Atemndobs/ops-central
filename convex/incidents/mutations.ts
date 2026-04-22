@@ -308,3 +308,47 @@ export const deleteIncidentsByTitle = internalMutation({
     return { dryRun, matched: deletions.length, deletions };
   },
 });
+
+/**
+ * One-shot data-hygiene: replace the literal "cleaner.incident" i18n-key
+ * string (which leaked into roomName from a bug in the active-job composer)
+ * with a sensible label. Scans both photos.roomName and incidents.roomName.
+ *
+ *   npx convex run incidents/mutations:renameCleanerIncidentRoomName \
+ *     '{"dryRun":true}'
+ */
+export const renameCleanerIncidentRoomName = internalMutation({
+  args: {
+    dryRun: v.optional(v.boolean()),
+    replacement: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const dryRun = args.dryRun ?? true;
+    const replacement = (args.replacement ?? "Incident").trim() || "Incident";
+    const BAD = "cleaner.incident";
+
+    const photos = await ctx.db.query("photos").collect();
+    let photosTouched = 0;
+    for (const photo of photos) {
+      if (photo.roomName === BAD) {
+        photosTouched++;
+        if (!dryRun) {
+          await ctx.db.patch(photo._id, { roomName: replacement });
+        }
+      }
+    }
+
+    const incidents = await ctx.db.query("incidents").collect();
+    let incidentsTouched = 0;
+    for (const incident of incidents) {
+      if (incident.roomName === BAD) {
+        incidentsTouched++;
+        if (!dryRun) {
+          await ctx.db.patch(incident._id, { roomName: replacement });
+        }
+      }
+    }
+
+    return { dryRun, replacement, photosTouched, incidentsTouched };
+  },
+});
