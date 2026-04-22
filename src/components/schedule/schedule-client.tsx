@@ -30,6 +30,7 @@ import {
   type JobStatus,
 } from "@/components/jobs/job-status";
 import { useToast } from "@/components/ui/toast-provider";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { cn } from "@/lib/utils";
 import type { PropertyStatus } from "@/types/property";
 
@@ -688,16 +689,16 @@ export function ScheduleClient() {
             </div>
 
             {/* Property filter (desktop) */}
-            <select
-              value={propertyFilter}
-              onChange={(event) => setPropertyFilter(event.target.value)}
-              className="hidden rounded-md border bg-[var(--card)] px-2 py-1 text-xs md:block"
-            >
-              <option value="all">All Properties</option>
-              {(properties ?? []).map((property) => (
-                <option key={property._id} value={property._id}>{property.name}</option>
-              ))}
-            </select>
+            <div className="hidden w-48 md:block">
+              <SearchableSelect
+                value={propertyFilter === "all" ? null : propertyFilter}
+                onChange={(id) => setPropertyFilter(id ?? "all")}
+                placeholder="All Properties"
+                searchPlaceholder="Search properties…"
+                aria-label="Filter by property"
+                items={(properties ?? []).map((p) => ({ id: p._id, label: p.name }))}
+              />
+            </div>
 
             {/* Show/hide team (desktop) */}
             <button
@@ -808,16 +809,16 @@ export function ScheduleClient() {
               </button>
             )}
 
-            <select
-              value={propertyFilter}
-              onChange={(event) => setPropertyFilter(event.target.value)}
-              className="max-w-[120px] truncate rounded-md border bg-[var(--card)] px-1.5 py-1 text-[10px]"
-            >
-              <option value="all">All</option>
-              {(properties ?? []).map((property) => (
-                <option key={property._id} value={property._id}>{property.name}</option>
-              ))}
-            </select>
+            <div className="max-w-[160px]">
+              <SearchableSelect
+                value={propertyFilter === "all" ? null : propertyFilter}
+                onChange={(id) => setPropertyFilter(id ?? "all")}
+                placeholder="All"
+                searchPlaceholder="Search…"
+                aria-label="Filter by property"
+                items={(properties ?? []).map((p) => ({ id: p._id, label: p.name }))}
+              />
+            </div>
           </div>
         ) : null}
       </header>
