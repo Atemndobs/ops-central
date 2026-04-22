@@ -472,7 +472,7 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
       <header
         className={`fixed inset-x-0 top-0 z-40 px-3 py-3 transition-colors ${
           isPropertyDetail
-            ? "border-b border-transparent bg-transparent"
+            ? "bg-transparent"
             : "border-b border-[var(--border)] bg-white/92 backdrop-blur"
         }`}
       >
