@@ -230,6 +230,10 @@ export const getIncidentById = query({
       updatedAt: incident.updatedAt,
       resolvedAt: incident.resolvedAt,
       resolutionNotes: incident.resolutionNotes,
+      trelloCardId: incident.trelloCardId,
+      trelloCardUrl: incident.trelloCardUrl,
+      trelloSyncedAt: incident.trelloSyncedAt,
+      trelloSyncError: incident.trelloSyncError,
       property: property ? { _id: property._id, name: property.name } : null,
       reporter: reporter
         ? { _id: reporter._id, name: reporter.name, email: reporter.email }

@@ -1,6 +1,7 @@
 import { internalMutation, mutation } from "../_generated/server";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
+import { internal } from "../_generated/api";
 import { getCurrentUser, requireRole } from "../lib/auth";
 import { resolvePhotoAccessUrl } from "../lib/photoUrls";
 import { normalizeRoomName } from "../lib/rooms";
@@ -88,6 +89,15 @@ export const createIncident = mutation({
       updatedAt: now,
     });
 
+    // Fire-and-forget: create a matching Trello card on the Ops board.
+    // Runs in an action (can do outbound HTTP); failures don't affect the
+    // incident insert. See convex/integrations/trello.ts.
+    await ctx.scheduler.runAfter(
+      0,
+      internal.integrations.trello.syncIncidentToCard,
+      { incidentId },
+    );
+
     return incidentId;
   },
 });
@@ -134,6 +144,17 @@ export const updateIncidentStatus = mutation({
     }
 
     await ctx.db.patch(args.incidentId, patch);
+
+    // If the incident has a Trello card, move it to match the new status.
+    // Fire-and-forget; idempotent.
+    if (incident.trelloCardId) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.integrations.trello.moveTrelloCardForStatus,
+        { incidentId: args.incidentId, status: args.status },
+      );
+    }
+
     return args.incidentId;
   },
 });

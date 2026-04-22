@@ -788,6 +788,13 @@ const incidents = defineTable({
   resolvedBy: v.optional(v.id("users")),
   resolutionNotes: v.optional(v.string()),
 
+  // Trello integration — card created on the Ops board when the incident is opened
+  trelloCardId: v.optional(v.string()),
+  trelloCardUrl: v.optional(v.string()),
+  trelloCardShortLink: v.optional(v.string()),
+  trelloSyncedAt: v.optional(v.number()),
+  trelloSyncError: v.optional(v.string()),
+
   createdAt: v.number(),
   updatedAt: v.optional(v.number()),
 })

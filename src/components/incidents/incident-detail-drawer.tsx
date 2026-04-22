@@ -15,6 +15,8 @@ import {
   ExternalLink,
   Loader2,
   MapPin,
+  RefreshCw,
+  Trello,
   User,
   X,
 } from "lucide-react";
@@ -86,12 +88,14 @@ function DrawerBody({
     incidentId,
   });
   const updateStatus = useMutation(api.incidents.mutations.updateIncidentStatus);
+  const retryTrello = useMutation(api.integrations.trello.retryIncidentSync);
 
   const [editMode, setEditMode] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<IncidentStatus | null>(null);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
     if (incident) {
@@ -145,6 +149,17 @@ function DrawerBody({
       setError(err instanceof Error ? err.message : "Failed to update status");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleRetryTrello() {
+    setRetrying(true);
+    try {
+      await retryTrello({ incidentId });
+    } catch (err) {
+      console.error("Trello retry failed", err);
+    } finally {
+      setRetrying(false);
     }
   }
 
@@ -252,6 +267,44 @@ function DrawerBody({
             </div>
           ) : null}
         </dl>
+
+        <section className="border-t px-5 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
+              <Trello className="h-4 w-4" />
+              <span className="font-semibold uppercase tracking-wide">Trello</span>
+            </div>
+            {incident.trelloCardUrl ? (
+              <a
+                href={incident.trelloCardUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1 text-xs font-semibold text-[var(--primary)] hover:underline"
+              >
+                Open card <ExternalLink className="h-3 w-3" />
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={handleRetryTrello}
+                disabled={retrying}
+                className="flex items-center gap-1 rounded-none border border-[var(--border)] px-2 py-1 text-[10px] font-bold uppercase tracking-wide hover:bg-[var(--accent)] disabled:opacity-50"
+              >
+                {retrying ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3 w-3" />
+                )}
+                {retrying ? "Syncing…" : "Sync to Trello"}
+              </button>
+            )}
+          </div>
+          {incident.trelloSyncError && !incident.trelloCardUrl ? (
+            <p className="mt-2 rounded-none border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
+              Last sync failed: {incident.trelloSyncError}
+            </p>
+          ) : null}
+        </section>
 
         {incident.description ? (
           <section className="border-t p-5">

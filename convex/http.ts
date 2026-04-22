@@ -113,4 +113,7 @@ http.route({
   }),
 });
 
+// Trello webhooks come in via Next.js (Convex HTTP routes don't support HEAD,
+// which Trello requires). See src/app/api/webhooks/trello/route.ts.
+
 export default http;
