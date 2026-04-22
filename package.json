@@ -11,7 +11,8 @@
     "test": "node --test",
     "check:convex-owner": "node ./scripts/check-convex-owner.mjs",
     "check:mobile-compat": "bash ./scripts/verify-mobile-api-compat.sh",
-    "predeploy": "bash ./scripts/verify-mobile-api-compat.sh"
+    "predeploy": "bash ./scripts/verify-mobile-api-compat.sh && bash ./scripts/verify-searchable-select-contract.sh",
+    "check:searchable-select-contract": "bash ./scripts/verify-searchable-select-contract.sh"
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.62",
