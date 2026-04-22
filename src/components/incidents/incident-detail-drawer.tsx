@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import { translateRoomDisplay } from "@/lib/room-i18n";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import Link from "next/link";
@@ -80,6 +81,7 @@ function DrawerBody({
   onClose: () => void;
 }) {
   const t = useTranslations("incidentsAdmin");
+  const locale = useLocale();
   const incident = useQuery(api.incidents.queries.getIncidentById, {
     incidentId,
   });
@@ -224,7 +226,7 @@ function DrawerBody({
           <InfoCell
             icon={<MapPin className="h-4 w-4" />}
             label={t("detail.room")}
-            value={incident.roomName ?? "—"}
+            value={translateRoomDisplay(incident.roomName ?? "", locale) || "—"}
           />
           <InfoCell
             icon={<User className="h-4 w-4" />}

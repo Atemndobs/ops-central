@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import { translateRoomDisplay } from "@/lib/room-i18n";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import {
@@ -41,6 +42,7 @@ const STATUS_TAB_VALUES: StatusFilter[] = [
 
 export function IncidentsPageClient() {
   const t = useTranslations("incidentsAdmin");
+  const locale = useLocale();
   const { isAuthenticated } = useConvexAuth();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
@@ -242,7 +244,7 @@ export function IncidentsPageClient() {
                       <span className="font-medium text-[var(--foreground)]">
                         {incident.property?.name ?? "Unknown property"}
                       </span>
-                      {incident.roomName ? <span>{incident.roomName}</span> : null}
+                      {incident.roomName ? <span>{translateRoomDisplay(incident.roomName, locale)}</span> : null}
                       <span>
                         {t("reportedBy")}{" "}
                         {incident.reporter?.name ?? t("detail.unknownUser")}

@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import { translateRoomDisplay } from "@/lib/room-i18n";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import {
@@ -33,6 +34,7 @@ const STATUS_TAB_VALUES: StatusFilter[] = [
 export function CleanerIncidentsListClient() {
   const t = useTranslations("cleaner.incidents");
   const tAdmin = useTranslations("incidentsAdmin");
+  const locale = useLocale();
   const { isAuthenticated } = useConvexAuth();
   const searchParams = useSearchParams();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -176,7 +178,7 @@ export function CleanerIncidentsListClient() {
                   <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[var(--muted-foreground)]">
                     <span>{incident.property?.name ?? "—"}</span>
                     {incident.roomName ? (
-                      <span>· {incident.roomName}</span>
+                      <span>· {translateRoomDisplay(incident.roomName, locale)}</span>
                     ) : null}
                     <span>
                       ·{" "}

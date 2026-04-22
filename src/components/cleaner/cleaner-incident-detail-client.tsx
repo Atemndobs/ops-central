@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useConvexAuth, useQuery } from "convex/react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import { translateRoomDisplay } from "@/lib/room-i18n";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import {
@@ -31,6 +32,7 @@ type Props = {
 export function CleanerIncidentDetailClient({ incidentId }: Props) {
   const t = useTranslations("cleaner.incidents");
   const tAdmin = useTranslations("incidentsAdmin");
+  const locale = useLocale();
   const { isAuthenticated } = useConvexAuth();
 
   const incident = useQuery(
@@ -136,7 +138,7 @@ export function CleanerIncidentDetailClient({ incidentId }: Props) {
         <InfoCell
           icon={<MapPin className="h-4 w-4" />}
           label={t("detail.room")}
-          value={incident.roomName ?? "—"}
+          value={translateRoomDisplay(incident.roomName ?? "", locale) || "—"}
         />
         <InfoCell
           icon={<CalendarClock className="h-4 w-4" />}
