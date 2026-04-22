@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useConvexAuth, useQuery } from "convex/react";
 import { useLocale, useTranslations } from "next-intl";
 import {
@@ -176,36 +178,49 @@ export function CleanerPropertyDetailClient({ id }: { id: string }) {
   // the hero with the 30px rounded top, matching mobile.
   const CARD_OVERLAP = 60;
 
+  // iOS Safari has a known quirk where a `fixed` element nested inside
+  // another `fixed` + overflow-scroll parent (our CleanerShell <main>) is
+  // treated as `absolute` relative to that parent instead of the viewport.
+  // That causes the hero to render below the nav instead of behind it.
+  // Portal the hero into document.body so it's a direct viewport child.
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setPortalTarget(document.body);
+  }, []);
+
+  const heroNode = (
+    <div
+      aria-hidden={!property}
+      className="pointer-events-none fixed inset-x-0 top-0 z-[5] mx-auto w-full max-w-[402px] overflow-hidden bg-[color-mix(in_srgb,var(--cleaner-bg)_90%,black)]"
+      style={{ height: HERO_HEIGHT }}
+    >
+      {property?.imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element -- external CDN with signed params
+        <img
+          src={upgradeAirbnbImageQuality(property.imageUrl)}
+          alt={property.name}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-[var(--cleaner-muted)]">
+          <Home className="h-10 w-10" />
+        </div>
+      )}
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/30" />
+      <Link
+        href="/cleaner"
+        className="pointer-events-auto absolute left-4 inline-flex items-center gap-1 rounded-full bg-black/45 px-3 py-1.5 text-[13px] font-semibold text-white backdrop-blur-md transition-colors hover:bg-black/60"
+        style={{ top: "calc(env(safe-area-inset-top) + 80px)" }}
+      >
+        <ChevronLeft className="h-4 w-4" />
+        {t("cleaner.propertyBackLabel")}
+      </Link>
+    </div>
+  );
+
   return (
     <div className="relative">
-      {/* Fixed hero — sits at viewport top, behind the translucent header. */}
-      <div
-        aria-hidden={!property}
-        className="pointer-events-none fixed inset-x-0 top-0 z-[5] mx-auto w-full max-w-[402px] overflow-hidden bg-[color-mix(in_srgb,var(--cleaner-bg)_90%,black)]"
-        style={{ height: HERO_HEIGHT }}
-      >
-        {property?.imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- external CDN with signed params
-          <img
-            src={upgradeAirbnbImageQuality(property.imageUrl)}
-            alt={property.name}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-[var(--cleaner-muted)]">
-            <Home className="h-10 w-10" />
-          </div>
-        )}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/30" />
-        <Link
-          href="/cleaner"
-          className="pointer-events-auto absolute left-4 inline-flex items-center gap-1 rounded-full bg-black/45 px-3 py-1.5 text-[13px] font-semibold text-white backdrop-blur-md transition-colors hover:bg-black/60"
-          style={{ top: "calc(env(safe-area-inset-top) + 80px)" }}
-        >
-          <ChevronLeft className="h-4 w-4" />
-          {t("cleaner.propertyBackLabel")}
-        </Link>
-      </div>
+      {portalTarget ? createPortal(heroNode, portalTarget) : null}
 
       {/* Spacer reserves the area visually occupied by the hero, accounting
           for the cleaner shell's 72px header offset already applied to main. */}
