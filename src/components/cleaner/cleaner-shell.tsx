@@ -620,7 +620,7 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
           bottom: "max(env(safe-area-inset-bottom), 8px)",
         }}
       >
-        <div className="mx-auto w-full max-w-[402px] pb-24 pt-4">
+        <div className="mx-auto w-full max-w-[402px] pb-24">
           <InstallPrompt />
           {updateReady ? (
             <div className="cleaner-card mt-2 border-blue-500/60 bg-blue-500/10 p-3 text-xs text-blue-100">

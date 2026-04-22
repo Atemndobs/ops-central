@@ -211,7 +211,7 @@ export function CleanerPropertyDetailClient({ id }: { id: string }) {
           for the cleaner shell's 72px header offset already applied to main. */}
       <div
         aria-hidden
-        className="-mx-3 -mt-4"
+        className="-mx-3"
         style={{ height: HERO_HEIGHT - 72 }}
       />
 
