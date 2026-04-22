@@ -179,6 +179,7 @@ export const listIncidents = query({
             ? { _id: reporter._id, name: reporter.name, email: reporter.email }
             : null,
           firstPhotoUrl,
+          photoCount: incident.photoIds.length,
         };
       }),
     );

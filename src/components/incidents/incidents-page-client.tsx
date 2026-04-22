@@ -238,10 +238,31 @@ export function IncidentsPageClient() {
                 >
                   <span
                     className={
-                      "h-10 w-1 shrink-0 " + STATUS_BAR_CLASSNAMES[incident.status as IncidentStatus]
+                      "h-14 w-1 shrink-0 " + STATUS_BAR_CLASSNAMES[incident.status as IncidentStatus]
                     }
                     aria-hidden
                   />
+                  {/* Photo thumbnail — mirrors the cleaner mobile list */}
+                  <span className="relative block h-14 w-14 shrink-0 overflow-hidden border border-[var(--border)]">
+                    {incident.firstPhotoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={incident.firstPhotoUrl}
+                        alt=""
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span className="flex h-full w-full items-center justify-center bg-[var(--secondary)]/40 text-[var(--muted-foreground)]">
+                        <ImageIcon className="h-5 w-5" />
+                      </span>
+                    )}
+                    {(incident.photoCount ?? 0) > 1 ? (
+                      <span className="absolute bottom-0 right-0 rounded-none bg-black/70 px-1 text-[9px] font-bold leading-tight text-white">
+                        +{(incident.photoCount ?? 0) - 1}
+                      </span>
+                    ) : null}
+                  </span>
                   <span className="flex flex-1 flex-col gap-1 min-w-0">
                     <span className="flex flex-wrap items-center gap-2">
                       {incident.severity ? (
@@ -273,18 +294,6 @@ export function IncidentsPageClient() {
                     </span>
                   </span>
                   <span className="flex items-center gap-3 shrink-0">
-                    {incident.firstPhotoUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={incident.firstPhotoUrl}
-                        alt=""
-                        className="hidden h-12 w-12 border border-[var(--border)] object-cover sm:block"
-                      />
-                    ) : (
-                      <span className="hidden h-12 w-12 items-center justify-center border border-dashed border-[var(--border)] text-[var(--muted-foreground)] sm:flex">
-                        <ImageIcon className="h-4 w-4" />
-                      </span>
-                    )}
                     {incident.severity ? (
                       <span
                         className={
