@@ -18,6 +18,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/webhooks/hospitable(.*)",
   "/api/webhooks/clerk(.*)",
   "/api/webhooks/trello(.*)",
+  ...(process.env.NODE_ENV !== "production" ? ["/playground(.*)"] : []),
 ]);
 
 function isUserRole(value: unknown): value is UserRole {
