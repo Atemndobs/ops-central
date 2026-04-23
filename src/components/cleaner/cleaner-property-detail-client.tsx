@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useConvexAuth, useQuery } from "convex/react";
@@ -8,7 +7,6 @@ import { useLocale, useTranslations } from "next-intl";
 import {
   AlertCircle,
   Car,
-  ChevronLeft,
   Dog,
   DoorOpen,
   Droplet,
@@ -207,14 +205,6 @@ export function CleanerPropertyDetailClient({ id }: { id: string }) {
         </div>
       )}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/30" />
-      <Link
-        href="/cleaner"
-        className="pointer-events-auto absolute left-4 inline-flex items-center gap-1 rounded-full bg-black/45 px-3 py-1.5 text-[13px] font-semibold text-white backdrop-blur-md transition-colors hover:bg-black/60"
-        style={{ top: "calc(env(safe-area-inset-top) + 80px)" }}
-      >
-        <ChevronLeft className="h-4 w-4" />
-        {t("cleaner.propertyBackLabel")}
-      </Link>
     </div>
   );
 
