@@ -613,7 +613,7 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
       </header>
 
       <main
-        className="fixed inset-x-0 overflow-y-auto px-3"
+        className="fixed inset-x-0 z-10 overflow-y-auto px-3"
         style={{
           top: "calc(env(safe-area-inset-top) + 72px)",
           bottom: "max(env(safe-area-inset-bottom), 8px)",
