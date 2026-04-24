@@ -278,17 +278,42 @@ export const VOICE_PROVIDERS: Record<VoiceProviderKey, VoiceProvider> = {
     key: "gemini-flash-paid",
     // Reported env var is the dedicated paid key — that's what admins should
     // set when they want a separate billed key. The implementation below
-    // falls back to the shared key so selection doesn't hard-fail.
+    // falls back to the free key so selection doesn't hard-fail.
     envVar: GEMINI_PAID_ENV,
-    transcribe: (input) => {
-      const key = resolveGeminiPaidKey();
-      if (!key) {
-        throw new Error(
-          `Missing Gemini API key. Set either "${GEMINI_PAID_ENV}" ` +
-            `(preferred for paid tier) or "${GEMINI_FREE_ENV}" in the Convex dashboard.`
-        );
+    transcribe: async (input) => {
+      const paidKey = process.env[GEMINI_PAID_ENV];
+      const freeKey = process.env[GEMINI_FREE_ENV];
+
+      // If there's no dedicated paid key, transparently behave as "free".
+      if (!paidKey) {
+        if (!freeKey) {
+          throw new Error(
+            `Missing Gemini API key. Set "${GEMINI_PAID_ENV}" or ` +
+              `"${GEMINI_FREE_ENV}" in the Convex dashboard.`
+          );
+        }
+        return transcribeWithGemini(input, freeKey);
       }
-      return transcribeWithGemini(input, key);
+
+      // Try the paid key first. If it fails with a cap / quota / billing
+      // error — very likely on a $1-capped experimentation key — retry with
+      // the free key so the user still gets their transcript.
+      try {
+        return await transcribeWithGemini(input, paidKey);
+      } catch (err) {
+        if (!freeKey) throw err;
+        const msg = String(err instanceof Error ? err.message : err);
+        const isCapError =
+          msg.includes(" 402 ") || // payment required
+          msg.includes(" 429 ") || // rate / quota exhausted
+          /quota|billing|exceeded|limit/i.test(msg);
+        if (!isCapError) throw err;
+        console.warn(
+          `[voice] Gemini paid key failed (${msg.slice(0, 120)}); ` +
+            `falling back to free key.`
+        );
+        return transcribeWithGemini(input, freeKey);
+      }
     },
   },
   "groq-whisper-turbo": {
