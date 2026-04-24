@@ -65,6 +65,13 @@ export function PropertyTabStrip({
       tabs = groups.slice(0, MAX_VISIBLE_TABS);
     }
   }
+
+  // Index of the active tab inside the rendered slice; -1 if the user has
+  // no active selection. Used below to make the tab nearest to active sit
+  // on top of the stack, so its full thumbnail + label stay visible.
+  const activeTabIndex = tabs.findIndex(
+    (t) => t.propertyId === activePropertyId,
+  );
   return (
     <div className="flex items-start gap-2 border-b border-[var(--msg-divider)] bg-[var(--msg-card)] px-3 py-2 lg:rounded-t-2xl">
       <div
@@ -88,14 +95,28 @@ export function PropertyTabStrip({
                 ? -TOUCH_OVERLAP
                 : -STACK_OVERLAP;
           // The label (tiny address) sits below the thumbnail at full tab
-          // width. On stacked inactive tabs the next tab's label overlaps
-          // this one's, producing an unreadable smear (see fix/property-
-          // tab-strip-overlapping-labels). Only show the label when nothing
-          // will stack on top — the active tab itself, the last tab in the
-          // strip, and the tab right before the active one (which only has
-          // the small TOUCH_OVERLAP on its right edge).
-          const isLastTab = index === tabs.length - 1;
-          const showLabel = active || isLastTab || nextActive;
+          // width. Among stacked inactive tabs, only the one whose
+          // thumbnail and label are fully visible should render text —
+          // otherwise adjacent labels collide. We elevate the tab nearest
+          // the active selection via zIndex (see below), so the label
+          // rules are:
+          //   • the active tab itself always shows its label
+          //   • the tab immediately before or after the active tab (its
+          //     "neighbour") is on top of the deck and shows its label
+          //   • every other inactive tab is stacked behind — hide its
+          //     label to avoid collisions, and fall back to the native
+          //     tooltip (title/aria-label) for identification
+          const showLabel = active || prevActive || nextActive;
+          // Layer order. Active sits on top. Inactive tabs closer to the
+          // active selection take precedence over further ones so the
+          // "nearest unseen conversation" is fully visible — users almost
+          // always want to see *what's next to where they are*, not the
+          // furthest tab in the deck.
+          const distanceFromActive =
+            activeTabIndex >= 0 ? Math.abs(index - activeTabIndex) : index;
+          const zIndex = active
+            ? 50
+            : Math.max(1, 40 - distanceFromActive);
           const tile = propertyTileColor(group.propertyId);
           const initial = propertyInitial(group.propertyName);
           const shortName = shortPropertyName(group.propertyName, active ? 18 : 10);
@@ -119,7 +140,7 @@ export function PropertyTabStrip({
                 marginLeft,
                 borderColor: active ? "var(--msg-primary)" : undefined,
                 boxShadow: active ? "var(--msg-shadow-float)" : undefined,
-                zIndex: active ? 50 : 10 + index,
+                zIndex,
               }}
             >
               <span
