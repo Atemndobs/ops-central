@@ -123,6 +123,12 @@ export function Header() {
     api.users.queries.getByClerkId,
     isLoaded && isSignedIn && userId ? { clerkId: userId } : "skip",
   );
+  // Admin-controlled flag. When off (default), the theme toggle button is
+  // hidden — keeps the working theme code in place without exposing the UI.
+  const themeSwitcherEnabled = useQuery(
+    api.admin.featureFlags.isFeatureEnabled,
+    { key: "theme_switcher" },
+  );
   const roleFromClaims = getRoleFromSessionClaimsOrNull(
     sessionClaims as Record<string, unknown> | null,
   );
@@ -359,15 +365,21 @@ export function Header() {
             {currentLocale}
           </button>
 
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="rounded-none p-2 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
-            aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
-            title={isDarkMode ? "Light mode" : "Dark mode"}
-          >
-            {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </button>
+          {themeSwitcherEnabled ? (
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="rounded-none p-2 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+              aria-label={isDarkMode ? t("nav.lightMode") : t("nav.darkMode")}
+              title={isDarkMode ? t("nav.lightMode") : t("nav.darkMode")}
+            >
+              {isDarkMode ? (
+                <Sun className="h-4 w-4" />
+              ) : (
+                <Moon className="h-4 w-4" />
+              )}
+            </button>
+          ) : null}
 
           {isSignedIn ? (
             <div className="flex items-center">

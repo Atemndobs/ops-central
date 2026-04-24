@@ -90,6 +90,13 @@ export function ConversationThread({
   const { showToast } = useToast();
   const locale = useLocale();
   const languageHint = locale === "es" ? "es" : "en";
+  // Admin-controlled flag. When off (default), the voice-to-text mic button
+  // is hidden from the composer. Follow the same pattern for every new
+  // user-facing feature — ship behind a flag, let admin flip it when ready.
+  const voiceMessagesEnabled = useQuery(
+    api.admin.featureFlags.isFeatureEnabled,
+    { key: "voice_messages" },
+  );
   const [body, setBody] = useState("");
   const [pending, setPending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -356,18 +363,20 @@ export function ConversationThread({
             }
             className="flex-1 resize-none rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-60"
           />
-          <VoiceRecordButton
-            disabled={pending || !canReplyInApp}
-            languageHint={languageHint}
-            size={compact ? "sm" : "md"}
-            onTranscript={(text) => {
-              // Append the transcript so a user who already started typing
-              // doesn't lose their draft. Trim so we don't prepend leading
-              // whitespace when appending to an empty composer.
-              setBody((prev) => (prev ? `${prev} ${text}`.trim() : text));
-            }}
-            onError={(message) => showToast(message, "error")}
-          />
+          {voiceMessagesEnabled ? (
+            <VoiceRecordButton
+              disabled={pending || !canReplyInApp}
+              languageHint={languageHint}
+              size={compact ? "sm" : "md"}
+              onTranscript={(text) => {
+                // Append the transcript so a user who already started typing
+                // doesn't lose their draft. Trim so we don't prepend leading
+                // whitespace when appending to an empty composer.
+                setBody((prev) => (prev ? `${prev} ${text}`.trim() : text));
+              }}
+              onError={(message) => showToast(message, "error")}
+            />
+          ) : null}
           <button
             type="submit"
             disabled={pending || !body.trim() || !canReplyInApp}

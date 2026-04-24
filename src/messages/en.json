@@ -456,6 +456,15 @@
       "saving": "Saving…",
       "saved": "Saved",
       "saveFailed": "Could not save. {error}"
+    },
+    "featureFlags": {
+      "title": "Feature Flags",
+      "description": "Turn UI features on or off across the entire app without a redeploy. Flags default to off — enable here when a feature is ready to ship.",
+      "offBehaviour": "When off: {detail}",
+      "enable": "Enable",
+      "disable": "Disable",
+      "saved": "Saved",
+      "saveFailed": "Could not save. {error}"
     }
   },
   "voice": {

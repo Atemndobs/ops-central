@@ -9,6 +9,7 @@
  */
 
 import type * as admin_cleanup from "../admin/cleanup.js";
+import type * as admin_featureFlags from "../admin/featureFlags.js";
 import type * as admin_mutations from "../admin/mutations.js";
 import type * as admin_queries from "../admin/queries.js";
 import type * as admin_userSync from "../admin/userSync.js";
@@ -76,6 +77,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   "admin/cleanup": typeof admin_cleanup;
+  "admin/featureFlags": typeof admin_featureFlags;
   "admin/mutations": typeof admin_mutations;
   "admin/queries": typeof admin_queries;
   "admin/userSync": typeof admin_userSync;

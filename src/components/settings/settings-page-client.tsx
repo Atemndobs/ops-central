@@ -11,6 +11,7 @@ import { navigation } from "@/components/layout/navigation";
 import { LanguageSwitcher } from "@/components/cleaner/language-switcher";
 import { useToast } from "@/components/ui/toast-provider";
 import { AIProviderCard } from "@/components/settings/ai-provider-card";
+import { FeatureFlagsCard } from "@/components/settings/feature-flags-card";
 import {
   getRoleFromMetadata,
   getRoleFromSessionClaimsOrNull,
@@ -806,6 +807,7 @@ export function SettingsPageClient({ initialTab }: { initialTab: SettingsTab }) 
       {activeTab === "notifications" ? <NotificationsSettingsPanel /> : null}
       {activeTab === "integrations" ? (
         <div className="space-y-6">
+          <FeatureFlagsCard />
           <AIProviderCard />
           <PlaceholderTab sections={placeholderSections.integrations} />
         </div>
