@@ -54,6 +54,15 @@ crons.cron(
   {},
 );
 
+// Nightly Clerk MAU snapshot — queries Clerk admin API for users with
+// activity in the trailing 30 days and records one gauge event.
+crons.cron(
+  "service-usage-clerk-mau-snapshot-daily",
+  "30 1 * * *", // 01:30 UTC daily (staggered after B2)
+  internal.serviceUsage.clerkSnapshot.snapshot,
+  {},
+);
+
 crons.cron(
   "archive-photos-to-minio-every-7-days",
   "0 2 */7 * *",
