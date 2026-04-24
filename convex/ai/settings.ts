@@ -67,7 +67,9 @@ const PROVIDER_METADATA: Record<VoiceProviderKey, ProviderMetadata> = {
     costLabel: "~$0.001 / min",
     description:
       "Same model, paid tier. Higher rate limits and no training on data. " +
-      "Recommended before onboarding outside-J&A customers.",
+      "Uses GOOGLE_GENERATIVE_AI_API_KEY_PAID if set, otherwise falls back " +
+      "to the shared GOOGLE_GENERATIVE_AI_API_KEY. Recommended before " +
+      "onboarding outside-J&A customers.",
   },
   "groq-whisper-turbo": {
     key: "groq-whisper-turbo",
