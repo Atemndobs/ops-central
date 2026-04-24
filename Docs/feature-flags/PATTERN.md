@@ -161,6 +161,8 @@ later regret killing the kill-switch.
 |---|---|---|---|
 | `theme_switcher` | Sun/Moon toggle in sidebar + header | 2026-04-24 | OFF |
 | `voice_messages` | Mic button in conversation composer | 2026-04-24 | OFF |
+| `voice_audio_attachments` | Retain voice recordings as playable attachments | 2026-04-24 | OFF |
+| `usage_dashboard` | Settings → Usage admin area (Phase B of service-usage-tracking) | 2026-04-24 | OFF |
 
 Keep this table in sync when adding or retiring flags.
 

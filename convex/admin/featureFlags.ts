@@ -23,14 +23,16 @@ import { requireAdmin } from "../lib/auth";
 const flagKeyValidator = v.union(
   v.literal("theme_switcher"),
   v.literal("voice_messages"),
-  v.literal("voice_audio_attachments")
+  v.literal("voice_audio_attachments"),
+  v.literal("usage_dashboard")
   // future flags go here
 );
 
 export type FeatureFlagKey =
   | "theme_switcher"
   | "voice_messages"
-  | "voice_audio_attachments";
+  | "voice_audio_attachments"
+  | "usage_dashboard";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UI metadata — single source of truth for the admin Feature Flags card.
@@ -75,6 +77,17 @@ const FLAG_METADATA: Record<FeatureFlagKey, FlagMetadata> = {
     offBehaviour:
       "Audio is discarded immediately after transcription (privacy- and " +
       "cost-minimising default). Only the transcript text is sent.",
+  },
+  usage_dashboard: {
+    key: "usage_dashboard",
+    label: "Service usage & cost dashboard",
+    description:
+      "Exposes the Settings \u2192 Usage admin area showing request volume, " +
+      "quota consumption, and estimated monthly spend across every tracked " +
+      "external service (Gemini, Clerk, Hospitable, Resend, Convex).",
+    offBehaviour:
+      "The Usage tab and all service detail pages are hidden. Usage data " +
+      "keeps recording in the background; only the admin UI disappears.",
   },
 };
 

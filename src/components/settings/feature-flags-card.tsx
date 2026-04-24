@@ -18,7 +18,11 @@ import { api } from "@convex/_generated/api";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/components/ui/toast-provider";
 
-type FlagKey = "theme_switcher";
+type FlagKey =
+  | "theme_switcher"
+  | "voice_messages"
+  | "voice_audio_attachments"
+  | "usage_dashboard";
 
 export function FeatureFlagsCard() {
   const t = useTranslations();

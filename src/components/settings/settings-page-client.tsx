@@ -12,6 +12,7 @@ import { LanguageSwitcher } from "@/components/cleaner/language-switcher";
 import { useToast } from "@/components/ui/toast-provider";
 import { AIProviderCard } from "@/components/settings/ai-provider-card";
 import { FeatureFlagsCard } from "@/components/settings/feature-flags-card";
+import { UsageDashboardCard } from "@/components/settings/usage/usage-dashboard-card";
 import {
   getRoleFromMetadata,
   getRoleFromSessionClaimsOrNull,
@@ -808,6 +809,7 @@ export function SettingsPageClient({ initialTab }: { initialTab: SettingsTab }) 
       {activeTab === "integrations" ? (
         <div className="space-y-6">
           <FeatureFlagsCard />
+          <UsageDashboardCard />
           <AIProviderCard />
           <PlaceholderTab sections={placeholderSections.integrations} />
         </div>
