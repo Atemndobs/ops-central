@@ -4,6 +4,9 @@
 **Date:** 2026-04-23
 **Owner:** TBD
 **Scope:** Both admin web (OpsCentral) and cleaner PWA, shared Convex backend
+**Feature flag:** `voice_messages` — see `Docs/feature-flags/PATTERN.md`.
+Default OFF. Admins flip it on from Settings → Integrations → Feature Flags
+once the feature is ready for their users.
 
 ---
 
@@ -418,7 +421,35 @@ has data when deciding to switch.
 
 ---
 
-## 13. File Map (what we'll add/change)
+## 13. Feature-flag gate (§new — adopt as standard)
+
+Voice messaging is shipped behind a `voice_messages` entry in the shared
+`featureFlags` table. The mic button renders only when an admin has
+explicitly enabled the flag from **Settings → Integrations → Feature Flags**.
+
+Rationale:
+- **Ship-dark default.** New user-facing features should never appear in
+  production the moment they merge. An admin flips them on when ready.
+- **Kill switch.** If voice transcription burns through free-tier quota,
+  surfaces an embarrassing bug, or a provider dies, admin can turn it off
+  from the UI in seconds — no redeploy.
+- **Same pattern everywhere.** Theme switcher, voice messages, AI ops
+  assistant, anything new — all gated the same way. No special cases.
+
+**Implementation in this PR:**
+- `voice_messages` added to the `featureFlags.key` union in `convex/schema.ts`.
+- Matching metadata entry in `convex/admin/featureFlags.ts` → `FLAG_METADATA`.
+- `conversation-thread.tsx` calls `api.admin.featureFlags.isFeatureEnabled`
+  with `{ key: "voice_messages" }` and wraps the `<VoiceRecordButton>` in
+  a conditional.
+
+**Note:** the `AIProviderCard` on Settings is NOT gated — admins need access
+to configure providers *before* flipping the voice flag on, otherwise the
+first voice recording would fail for lack of a selected provider.
+
+---
+
+## 14. File Map (what we'll add/change)
 
 ```
 Docs/voice-messages/

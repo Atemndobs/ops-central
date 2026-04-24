@@ -18,8 +18,6 @@ import { navigation } from "@/components/layout/navigation";
 import {
   HelpCircle,
   LogOut,
-  Moon,
-  Sun,
   Menu,
   Moon,
   Sun,
@@ -334,24 +332,6 @@ export function Sidebar() {
                 : null}
             </button>
           ) : null}
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className={cn(
-              "flex w-full rounded-none text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
-              isCollapsed
-                ? "mx-auto h-11 w-11 items-center justify-center"
-                : "items-center gap-3 px-3 py-2.5 text-sm",
-            )}
-            title={isCollapsed ? (isDarkMode ? t("nav.lightMode") : t("nav.darkMode")) : undefined}
-          >
-            {isDarkMode ? (
-              <Sun className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
-            ) : (
-              <Moon className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
-            )}
-            {!isCollapsed ? (isDarkMode ? t("nav.lightMode") : t("nav.darkMode")) : null}
-          </button>
           <button
             type="button"
             onClick={() => setIsCollapsed((prev) => !prev)}
