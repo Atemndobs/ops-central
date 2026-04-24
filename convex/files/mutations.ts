@@ -10,6 +10,10 @@ import {
 } from "../lib/externalStorage";
 import { normalizeRoomName } from "../lib/rooms";
 import { logServiceUsage } from "../lib/serviceUsage";
+import {
+  onPhotoDeleted,
+  onPhotoInserted,
+} from "../lib/photoStorageAggregate";
 import type { Id } from "../_generated/dataModel";
 
 /**
@@ -200,6 +204,11 @@ export const completeExternalUpload = mutation({
       archivedTier: "hot",
     });
 
+    await onPhotoInserted(ctx, {
+      objectKey: args.objectKey,
+      byteSize: args.byteSize,
+    });
+
     let accessUrl: string | null = null;
     const readStartedAt = Date.now();
     try {
@@ -290,6 +299,7 @@ export const deleteJobPhoto = mutation({
       }
     }
 
+    await onPhotoDeleted(ctx, photo);
     await ctx.db.delete(args.photoId);
     return true;
   },
