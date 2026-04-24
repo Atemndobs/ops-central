@@ -1133,6 +1133,67 @@ const aiProviderSettings = defineTable({
 //   2. Add matching metadata in `convex/admin/featureFlags.ts`.
 //   3. Gate the client render on `api.admin.featureFlags.isFeatureEnabled`.
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// SERVICE USAGE TRACKING (Phase A — see Docs/usage-tracking/ADR.md)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const serviceUsageEvents = defineTable({
+  serviceKey: v.union(
+    v.literal("gemini"),
+    v.literal("groq"),
+    v.literal("openai"),
+    v.literal("clerk"),
+    v.literal("hospitable"),
+    v.literal("resend"),
+    v.literal("sentry"),
+    v.literal("posthog"),
+    v.literal("convex"),
+  ),
+  feature: v.string(),
+  status: v.union(
+    v.literal("success"),
+    v.literal("rate_limited"),
+    v.literal("quota_exceeded"),
+    v.literal("auth_error"),
+    v.literal("client_error"),
+    v.literal("server_error"),
+    v.literal("timeout"),
+    v.literal("unknown_error"),
+  ),
+  userId: v.optional(v.id("users")),
+  durationMs: v.optional(v.number()),
+  requestBytes: v.optional(v.number()),
+  responseBytes: v.optional(v.number()),
+  inputTokens: v.optional(v.number()),
+  outputTokens: v.optional(v.number()),
+  audioSeconds: v.optional(v.number()),
+  estimatedCostUsd: v.optional(v.number()),
+  errorCode: v.optional(v.string()),
+  errorMessage: v.optional(v.string()),
+  metadata: v.optional(v.any()),
+  createdAt: v.number(),
+})
+  .index("by_service_created", ["serviceKey", "createdAt"])
+  .index("by_feature_created", ["feature", "createdAt"])
+  .index("by_status_created", ["status", "createdAt"])
+  .index("by_user_created", ["userId", "createdAt"]);
+
+const serviceUsageRollups = defineTable({
+  serviceKey: v.string(),
+  feature: v.string(),
+  bucketStart: v.number(),
+  bucketSize: v.literal("1h"),
+  successCount: v.number(),
+  errorCount: v.number(),
+  totalDurationMs: v.number(),
+  totalInputTokens: v.number(),
+  totalOutputTokens: v.number(),
+  totalAudioSeconds: v.number(),
+  totalCostUsd: v.number(),
+})
+  .index("by_service_bucket", ["serviceKey", "bucketStart"])
+  .index("by_feature_bucket", ["feature", "bucketStart"]);
+
 const featureFlags = defineTable({
   key: v.union(
     v.literal("theme_switcher"),
@@ -1217,4 +1278,8 @@ export default defineSchema({
 
   // Feature Flags (admin-controlled UI gates)
   featureFlags,
+
+  // Service Usage Tracking (Phase A)
+  serviceUsageEvents,
+  serviceUsageRollups,
 });

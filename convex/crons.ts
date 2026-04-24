@@ -31,6 +31,20 @@ crons.interval(
   {},
 );
 
+crons.interval(
+  "service-usage-rollup",
+  { hours: 1 },
+  internal.serviceUsage.crons.rollup,
+  {},
+);
+
+crons.interval(
+  "service-usage-retention",
+  { hours: 24 },
+  internal.serviceUsage.crons.retention,
+  {},
+);
+
 crons.cron(
   "archive-photos-to-minio-every-7-days",
   "0 2 */7 * *",
