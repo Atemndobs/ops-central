@@ -24,6 +24,7 @@ const serviceKeyValidator = v.union(
   v.literal("hospitable"),
   v.literal("resend"),
   v.literal("convex"),
+  v.literal("b2"),
 );
 
 const eventStatusValidator = v.union(

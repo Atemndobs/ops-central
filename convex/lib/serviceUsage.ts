@@ -45,6 +45,13 @@ export interface LogServiceUsageInput {
   errorCode?: string;
   errorMessage?: string;
   metadata?: Record<string, unknown>;
+  /**
+   * Escape hatch for callers that compute cost precisely at the call site
+   * (e.g. the B2 storage snapshot cron, which multiplies total stored bytes
+   * by the B2 per-GB-month price). If set, this overrides the registry's
+   * `computeCost` output.
+   */
+  overrideCostUsd?: number;
 }
 
 export async function logServiceUsage(
@@ -63,9 +70,12 @@ export async function logServiceUsage(
     audioSeconds: input.audioSeconds,
   };
 
-  const estimatedCostUsd = definition?.computeCost
-    ? definition.computeCost(metrics)
-    : undefined;
+  const estimatedCostUsd =
+    input.overrideCostUsd !== undefined
+      ? input.overrideCostUsd
+      : definition?.computeCost
+        ? definition.computeCost(metrics)
+        : undefined;
 
   const eventId = await ctx.db.insert("serviceUsageEvents", {
     serviceKey: input.serviceKey,
