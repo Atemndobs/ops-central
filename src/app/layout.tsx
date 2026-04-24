@@ -4,6 +4,7 @@ import { getMessages, getLocale } from "next-intl/server";
 import { ClerkThemeProvider } from "@/components/providers/clerk-theme-provider";
 import { ConvexClientProvider } from "@/components/providers/convex-provider";
 import { ClerkUserSync } from "@/components/providers/clerk-user-sync";
+import { PostHogProvider } from "@/components/providers/posthog-provider";
 import { ToastProvider } from "@/components/ui/toast-provider";
 import "./globals.css";
 
@@ -36,7 +37,9 @@ export default async function RootLayout({
           <ClerkThemeProvider>
             <ConvexClientProvider>
               <ClerkUserSync />
-              <ToastProvider>{children}</ToastProvider>
+              <PostHogProvider>
+                <ToastProvider>{children}</ToastProvider>
+              </PostHogProvider>
             </ConvexClientProvider>
           </ClerkThemeProvider>
         </NextIntlClientProvider>

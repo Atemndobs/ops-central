@@ -171,6 +171,7 @@ async function buildConversationSummary(
           _id: property._id,
           name: property.name,
           address: property.address,
+          imageUrl: property.imageUrl,
         }
       : null,
     linkedCleaner: linkedCleaner

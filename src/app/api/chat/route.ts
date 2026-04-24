@@ -468,12 +468,13 @@ export async function POST(req: Request) {
     }
     convex.setAuth(convexToken);
 
-    // 3. Role gate — only admin, property_ops, manager
+    // 3. Role gate — only admin and property_ops. Cleaning managers and
+    //    cleaners are not allowed.
     const profile = await convex.query(api.users.queries.getMyProfile, {});
-    const allowedRoles = ["admin", "property_ops", "manager"];
+    const allowedRoles = ["admin", "property_ops"];
     if (!allowedRoles.includes(profile.role)) {
       return Response.json(
-        { error: "Only admins and managers can use the AI assistant" },
+        { error: "Only admins and property ops can use the AI assistant" },
         { status: 403 },
       );
     }
@@ -500,7 +501,22 @@ export async function POST(req: Request) {
       },
     });
 
-    return result.toUIMessageStreamResponse();
+    // Surface real error messages to the client. Without this, ai-sdk
+    // returns a generic "An error occurred" and the chat appears to die
+    // silently when a tool call throws (e.g. a Convex auth/permission
+    // error for non-admin users).
+    return result.toUIMessageStreamResponse({
+      onError: (error) => {
+        if (error == null) return "Unknown error";
+        if (typeof error === "string") return error;
+        if (error instanceof Error) return error.message;
+        try {
+          return JSON.stringify(error);
+        } catch {
+          return "Unknown error";
+        }
+      },
+    });
   } catch (error) {
     console.error("[OpsBot] Error:", error);
     return Response.json(

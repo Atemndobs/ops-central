@@ -464,15 +464,6 @@ export function Header() {
 
               <button
                 type="button"
-                onClick={toggleTheme}
-                className="flex w-full items-center gap-3 rounded-none px-3 py-3 text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
-              >
-                {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                {isDarkMode ? "Light Mode" : "Dark Mode"}
-              </button>
-
-              <button
-                type="button"
                 onClick={async () => {
                   setIsMobileMenuOpen(false);
                   await signOut();

@@ -23,10 +23,18 @@ async function enrichJobs(ctx: QueryCtx, jobs: Doc<"cleaningJobs">[]) {
   const uniqueCleanerIds = [
     ...new Set(jobs.flatMap((job) => job.assignedCleanerIds)),
   ];
+  const uniqueStayIds = [
+    ...new Set(
+      jobs
+        .map((job) => job.stayId)
+        .filter((id): id is Id<"stays"> => Boolean(id)),
+    ),
+  ];
 
-  const [fetchedProperties, fetchedCleaners] = await Promise.all([
+  const [fetchedProperties, fetchedCleaners, fetchedStays] = await Promise.all([
     Promise.all(uniquePropertyIds.map((id) => ctx.db.get(id))),
     Promise.all(uniqueCleanerIds.map((id) => ctx.db.get(id))),
+    Promise.all(uniqueStayIds.map((id) => ctx.db.get(id))),
   ]);
 
   const propertyById = new Map(
@@ -40,6 +48,16 @@ async function enrichJobs(ctx: QueryCtx, jobs: Doc<"cleaningJobs">[]) {
               _id: property!._id,
               name: property!.name,
               address: property!.address,
+              city: property!.city ?? null,
+              imageUrl: property!.imageUrl ?? null,
+              bedrooms: property!.bedrooms,
+              bathrooms: property!.bathrooms,
+              rooms: property!.rooms,
+              timezone: property!.timezone ?? null,
+              accessNotes: property!.accessNotes ?? null,
+              keyLocation: property!.keyLocation ?? null,
+              parkingNotes: property!.parkingNotes ?? null,
+              urgentNotes: property!.urgentNotes ?? null,
             },
           ] as const,
       ),
@@ -62,9 +80,29 @@ async function enrichJobs(ctx: QueryCtx, jobs: Doc<"cleaningJobs">[]) {
       ),
   );
 
+  const stayById = new Map(
+    fetchedStays
+      .filter(Boolean)
+      .map(
+        (stay) =>
+          [
+            stay!._id,
+            {
+              numberOfGuests: stay!.numberOfGuests ?? null,
+              checkInAt: stay!.checkInAt,
+              checkOutAt: stay!.checkOutAt,
+              lateCheckout: stay!.lateCheckout,
+              earlyCheckin: stay!.earlyCheckin,
+              partyRiskFlag: stay!.partyRiskFlag,
+            },
+          ] as const,
+      ),
+  );
+
   return jobs.map((job) => ({
     ...job,
     property: propertyById.get(job.propertyId) ?? null,
+    stay: job.stayId ? stayById.get(job.stayId) ?? null : null,
     cleaners: job.assignedCleanerIds
       .map((id) => cleanerById.get(id) ?? null)
       .filter(Boolean),

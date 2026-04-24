@@ -524,3 +524,306 @@ export const listTeammatesForImport = action({
     );
   },
 });
+
+interface NormalizedRoom {
+  name: string;
+  type: string;
+}
+
+interface NormalizedPropertyDetails {
+  hospitableId: string;
+  name?: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  timezone?: string;
+  rooms: NormalizedRoom[];
+}
+
+const ROOM_TYPE_LABELS: Record<string, string> = {
+  bedroom: "Bedroom",
+  full_bathroom: "Bathroom",
+  half_bathroom: "Half Bath",
+  living_room: "Living Room",
+  kitchen: "Kitchen",
+  dining_room: "Dining Room",
+  laundry_room: "Laundry Room",
+  patio: "Patio",
+  backyard: "Backyard",
+  office: "Office",
+  garage: "Garage",
+  workspace: "Workspace",
+  balcony: "Balcony",
+};
+
+// Types we skip (not cleanable rooms)
+const SKIPPED_ROOM_TYPES = new Set(["exterior"]);
+
+function extractRoomsFromProperty(property: GenericRecord): NormalizedRoom[] {
+  const rooms: NormalizedRoom[] = [];
+
+  // Hospitable API v2 returns room_details: [{type, beds}]
+  const roomDetails = property.room_details;
+  if (Array.isArray(roomDetails) && roomDetails.length > 0) {
+    // Count occurrences of each type to number them
+    const typeCounts: Record<string, number> = {};
+    const typeInstances: Array<{ type: string; index: number }> = [];
+
+    for (const entry of roomDetails) {
+      if (!isRecord(entry)) continue;
+      const type = asString(entry.type);
+      if (!type || SKIPPED_ROOM_TYPES.has(type)) continue;
+      typeCounts[type] = (typeCounts[type] ?? 0) + 1;
+      typeInstances.push({ type, index: typeCounts[type] });
+    }
+
+    for (const { type, index } of typeInstances) {
+      const total = typeCounts[type] ?? 1;
+      const baseLabel = ROOM_TYPE_LABELS[type] ?? type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      const name = total === 1 ? baseLabel : `${baseLabel} ${index}`;
+      rooms.push({ name, type });
+    }
+
+    return rooms;
+  }
+
+  // Fallback: use capacity object for counts
+  const capacity = isRecord(property.capacity) ? property.capacity : undefined;
+  const bedroomCount = asNumber(property.bedrooms) ?? asNumber(capacity?.bedrooms);
+  const bathroomCount = asNumber(property.bathrooms) ?? asNumber(capacity?.bathrooms);
+
+  if (typeof bedroomCount === "number" && bedroomCount > 0) {
+    for (let i = 1; i <= bedroomCount; i++) {
+      rooms.push({ name: bedroomCount === 1 ? "Bedroom" : `Bedroom ${i}`, type: "bedroom" });
+    }
+  }
+
+  if (typeof bathroomCount === "number" && bathroomCount > 0) {
+    const whole = Math.floor(bathroomCount);
+    const hasHalf = bathroomCount > whole;
+    for (let i = 1; i <= whole; i++) {
+      rooms.push({ name: whole === 1 && !hasHalf ? "Bathroom" : `Bathroom ${i}`, type: "bathroom" });
+    }
+    if (hasHalf) {
+      rooms.push({ name: "Half Bath", type: "bathroom" });
+    }
+  }
+
+  // Add common rooms if we have no rooms at all
+  if (rooms.length === 0) {
+    rooms.push({ name: "Living Room", type: "living_room" });
+    rooms.push({ name: "Kitchen", type: "kitchen" });
+  }
+
+  return rooms;
+}
+
+function normalizePropertyDetails(rawProperty: unknown): NormalizedPropertyDetails | null {
+  if (!isRecord(rawProperty)) return null;
+
+  const hospitableId = asString(rawProperty.id);
+  if (!hospitableId) return null;
+
+  const capacity = isRecord(rawProperty.capacity) ? rawProperty.capacity : undefined;
+  const bedroomCount = asNumber(rawProperty.bedrooms) ?? asNumber(capacity?.bedrooms);
+  const bathroomCount = asNumber(rawProperty.bathrooms) ?? asNumber(capacity?.bathrooms);
+
+  const rooms = extractRoomsFromProperty(rawProperty);
+
+  // Hospitable returns IANA timezone like "America/Chicago" on the property.
+  const address = isRecord(rawProperty.address) ? rawProperty.address : undefined;
+  const timezone =
+    asString(rawProperty.timezone) ??
+    asString(rawProperty.time_zone) ??
+    asString(address?.timezone) ??
+    asString(address?.time_zone);
+
+  return {
+    hospitableId,
+    name: asString(rawProperty.name) ?? asString(rawProperty.title),
+    bedrooms: bedroomCount,
+    bathrooms: bathroomCount,
+    timezone,
+    rooms,
+  };
+}
+
+export const syncPropertyDetails = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{
+    success: boolean;
+    propertiesSynced: number;
+    propertiesSkipped: number;
+    errors: string[];
+  }> => {
+    const apiKey = process.env.HOSPITABLE_API_KEY ?? process.env.HOSPITABLE_API_TOKEN;
+    if (!apiKey) {
+      throw new Error("Missing HOSPITABLE_API_KEY/HOSPITABLE_API_TOKEN environment variable.");
+    }
+
+    const baseUrl = process.env.HOSPITABLE_API_URL ?? DEFAULT_HOSPITABLE_BASE_URL;
+
+    const propertiesPayload = await fetchHospitableJson(apiKey, `${baseUrl}/properties`);
+    const rawProperties = getArrayFromApiPayload(propertiesPayload);
+
+    let propertiesSynced = 0;
+    let propertiesSkipped = 0;
+    const errors: string[] = [];
+
+    for (const rawProperty of rawProperties) {
+      const details = normalizePropertyDetails(rawProperty);
+      if (!details) {
+        propertiesSkipped++;
+        continue;
+      }
+
+      // Also try fetching individual property detail for richer room data
+      let enrichedRooms = details.rooms;
+      try {
+        const detailPayload = await fetchHospitableJson(apiKey, `${baseUrl}/properties/${details.hospitableId}`);
+        const detailData = isRecord(detailPayload) && isRecord(detailPayload.data) ? detailPayload.data : detailPayload;
+        if (isRecord(detailData)) {
+          // Update counts from detail endpoint capacity object
+          const detailCapacity = isRecord(detailData.capacity) ? detailData.capacity : undefined;
+          details.bedrooms = details.bedrooms ?? asNumber(detailCapacity?.bedrooms);
+          details.bathrooms = details.bathrooms ?? asNumber(detailCapacity?.bathrooms);
+
+          // Detail endpoint can carry timezone we missed in the list payload.
+          const detailAddress = isRecord(detailData.address) ? detailData.address : undefined;
+          details.timezone =
+            details.timezone ??
+            asString(detailData.timezone) ??
+            asString(detailData.time_zone) ??
+            asString(detailAddress?.timezone) ??
+            asString(detailAddress?.time_zone);
+
+          // Detail endpoint has room_details — extract rooms from it
+          const detailRooms = extractRoomsFromProperty(detailData);
+          if (detailRooms.length > enrichedRooms.length) {
+            enrichedRooms = detailRooms;
+          }
+        }
+      } catch {
+        // Individual property detail fetch failed, use list data
+      }
+
+      try {
+        await ctx.runMutation(internal.hospitable.mutations.updatePropertyDetails, {
+          hospitableId: details.hospitableId,
+          bedrooms: details.bedrooms,
+          bathrooms: details.bathrooms,
+          timezone: details.timezone,
+          rooms: enrichedRooms,
+        });
+        propertiesSynced++;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        errors.push(`Property ${details.hospitableId}: ${message}`);
+        propertiesSkipped++;
+      }
+    }
+
+    return {
+      success: errors.length === 0,
+      propertiesSynced,
+      propertiesSkipped,
+      errors,
+    };
+  },
+});
+
+/**
+ * Resync a single property's details (rooms, bedrooms, bathrooms, timezone) from
+ * Hospitable. Admin-facing alternative to the full-sweep `syncPropertyDetails` cron.
+ */
+export const resyncPropertyDetails = action({
+  args: {
+    propertyId: v.id("properties"),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    success: boolean;
+    roomsSynced: number;
+    bedrooms?: number;
+    bathrooms?: number;
+  }> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated.");
+    }
+
+    const currentUser: Doc<"users"> | null = await ctx.runQuery(
+      api.users.queries.getByClerkId,
+      { clerkId: identity.subject },
+    );
+    if (
+      !currentUser ||
+      (currentUser.role !== "admin" &&
+        currentUser.role !== "property_ops" &&
+        currentUser.role !== "manager")
+    ) {
+      throw new Error("You do not have permission to resync property details.");
+    }
+
+    const property: Doc<"properties"> | null = await ctx.runQuery(
+      api.properties.queries.getById,
+      { id: args.propertyId },
+    );
+    if (!property) {
+      throw new Error("Property not found.");
+    }
+    if (!property.hospitableId) {
+      throw new Error(
+        "This property has no Hospitable ID — nothing to resync. Set hospitableId on the property first.",
+      );
+    }
+
+    const apiKey = process.env.HOSPITABLE_API_KEY ?? process.env.HOSPITABLE_API_TOKEN;
+    if (!apiKey) {
+      throw new Error("Missing HOSPITABLE_API_KEY/HOSPITABLE_API_TOKEN environment variable.");
+    }
+
+    const baseUrl = process.env.HOSPITABLE_API_URL ?? DEFAULT_HOSPITABLE_BASE_URL;
+    const detailPayload = await fetchHospitableJson(
+      apiKey,
+      `${baseUrl}/properties/${property.hospitableId}`,
+    );
+    const detailData =
+      isRecord(detailPayload) && isRecord(detailPayload.data)
+        ? detailPayload.data
+        : detailPayload;
+    const details = normalizePropertyDetails(detailData);
+    if (!details) {
+      throw new Error("Hospitable returned no usable property details.");
+    }
+
+    if (isRecord(detailData)) {
+      const detailCapacity = isRecord(detailData.capacity) ? detailData.capacity : undefined;
+      details.bedrooms = details.bedrooms ?? asNumber(detailCapacity?.bedrooms);
+      details.bathrooms = details.bathrooms ?? asNumber(detailCapacity?.bathrooms);
+      const detailAddress = isRecord(detailData.address) ? detailData.address : undefined;
+      details.timezone =
+        details.timezone ??
+        asString(detailData.timezone) ??
+        asString(detailData.time_zone) ??
+        asString(detailAddress?.timezone) ??
+        asString(detailAddress?.time_zone);
+    }
+
+    await ctx.runMutation(internal.hospitable.mutations.updatePropertyDetails, {
+      hospitableId: details.hospitableId,
+      bedrooms: details.bedrooms,
+      bathrooms: details.bathrooms,
+      timezone: details.timezone,
+      rooms: details.rooms,
+    });
+
+    return {
+      success: true,
+      roomsSynced: details.rooms.length,
+      bedrooms: details.bedrooms,
+      bathrooms: details.bathrooms,
+    };
+  },
+});

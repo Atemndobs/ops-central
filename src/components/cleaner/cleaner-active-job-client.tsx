@@ -38,7 +38,9 @@ const STEPS: Array<{ phase: ActivePhase; labelKey: string; shortLabelKey: string
   { phase: "review", labelKey: "cleaner.active.steps.review.label", shortLabelKey: "cleaner.active.steps.review.short" },
 ];
 
-const DEFAULT_ROOM_KEYS = [
+// Fallback shown only when property.rooms has not been synced from Hospitable yet.
+// Property.rooms is the source of truth — see Docs/cleaner-rollout-and-saas/2026-04-21-property-rooms-from-hospitable-plan.md
+const FALLBACK_ROOM_KEYS = [
   "cleaner.rooms.livingRoom",
   "cleaner.rooms.kitchen",
   "cleaner.rooms.bedroom",
@@ -51,10 +53,24 @@ function readRoomName(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function buildRoomList(detail: JobDetailLike | null | undefined, defaultRooms: string[]): string[] {
-  const set = new Set<string>(defaultRooms);
-  if (!detail) return [...set];
+function buildRoomList(detail: JobDetailLike | null | undefined, fallbackRooms: string[]): string[] {
+  if (!detail) return [...fallbackRooms];
 
+  const propertyRooms = detail.property?.rooms ?? [];
+  const hasPropertyRooms = propertyRooms.length > 0;
+
+  const set = new Set<string>();
+  if (hasPropertyRooms) {
+    propertyRooms.forEach((room) => {
+      const name = readRoomName(room?.name);
+      if (name) set.add(name);
+    });
+  } else {
+    fallbackRooms.forEach((name) => set.add(name));
+  }
+
+  // Merge in any legacy rooms referenced by existing evidence so in-flight jobs
+  // keep their uploaded photos visible even if a room was renamed upstream.
   const byRoom = detail.evidence?.current?.byRoom ?? [];
   byRoom.forEach((row) => {
     const name = readRoomName((row as { roomName?: unknown }).roomName);
@@ -102,9 +118,19 @@ function getPhotoUrlsByRoom(args: {
   return [...serverUrls, ...localUrls];
 }
 
-function getPendingUploadPreviews(photoRefs: string[], pendingUploads: PendingUpload[]): Array<{ photoRef: string; url: string }> {
+function getPendingUploadPreviews(
+  photoRefs: string[],
+  pendingUploads: PendingUpload[],
+  previewCache: Record<string, string> = {},
+): Array<{ photoRef: string; url: string }> {
   return photoRefs
     .map((photoRef) => {
+      // Prefer the in-memory cache — it survives the local-id -> server-id
+      // swap. Fall back to the pending-uploads queue for backward compat.
+      const cached = previewCache[photoRef];
+      if (typeof cached === "string" && cached.length > 0) {
+        return { photoRef, url: cached };
+      }
       const url = pendingUploads.find((upload) => upload.id === photoRef)?.fileDataUrl;
       return typeof url === "string" && url.length > 0 ? { photoRef, url } : null;
     })
@@ -118,7 +144,11 @@ type JobDetailLike = {
     propertyId: Id<"properties">;
     notesForCleaner?: string;
   };
-  property?: { name?: string | null; address?: string | null } | null;
+  property?: {
+    name?: string | null;
+    address?: string | null;
+    rooms?: Array<{ name: string; type: string }> | null;
+  } | null;
   evidence: {
     current: {
       byType: {
@@ -414,6 +444,11 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
 
   // Offline / sync
   const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
+  // Preview cache — survives the pendingUploads -> server photoId swap so the
+  // thumbnail in the incident composer doesn't vanish once the upload lands.
+  // Keyed by current photoRef (starts as the local upload id, gets migrated to
+  // the server photo id on completion).
+  const [photoPreviewCache, setPhotoPreviewCache] = useState<Record<string, string>>({});
   const [isOnline, setIsOnline]             = useState(true);
   const [isSyncing, setIsSyncing]           = useState(false);
   const isSyncingRef                        = useRef(false);
@@ -431,11 +466,11 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
   const [canForceSubmit, setCanForceSubmit] = useState(false);
   const [submitSuccess, setSubmitSuccess]   = useState<string | null>(null);
 
-  const translatedDefaultRooms = useMemo(
-    () => DEFAULT_ROOM_KEYS.map((key) => t(key)),
+  const translatedFallbackRooms = useMemo(
+    () => FALLBACK_ROOM_KEYS.map((key) => t(key)),
     [t],
   );
-  const roomList  = useMemo(() => buildRoomList(detail, translatedDefaultRooms), [detail, translatedDefaultRooms]);
+  const roomList  = useMemo(() => buildRoomList(detail, translatedFallbackRooms), [detail, translatedFallbackRooms]);
   const syncState = useMemo(
     () => buildSyncState({ queue: pendingUploads, isOnline, isSyncing, lastError: syncError ?? undefined }),
     [isOnline, isSyncing, pendingUploads, syncError],
@@ -602,6 +637,17 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                 current.map((photoRef) => (photoRef === syncing.id ? String(photoId) : photoRef)),
               );
 
+              // Carry the preview blob under the new server photo id so the
+              // composer thumbnail stays visible after the upload completes.
+              setPhotoPreviewCache((current) => {
+                const blob = current[syncing.id];
+                if (!blob) return current;
+                const next = { ...current };
+                next[String(photoId)] = blob;
+                delete next[syncing.id];
+                return next;
+              });
+
               await deletePendingUpload(syncing.id);
               queue = await loadJobQueue();
               setPendingUploads(queue);
@@ -730,6 +776,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
       };
       await upsertPendingUpload(upload);
       setPendingUploads((current) => enqueueUpload(current, upload));
+      setPhotoPreviewCache((current) => ({ ...current, [upload.id]: fileDataUrl }));
       if (isOnline) void drainQueue();
       return upload.id;
     },
@@ -738,6 +785,13 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
 
   const removeIncidentPhotoRef = useCallback(
     async (photoRef: string) => {
+      setPhotoPreviewCache((current) => {
+        if (!(photoRef in current)) return current;
+        const next = { ...current };
+        delete next[photoRef];
+        return next;
+      });
+
       const pendingUpload = pendingUploads.find((upload) => upload.id === photoRef);
       if (pendingUpload) {
         await deletePendingUpload(photoRef);
@@ -997,12 +1051,18 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
               placeholder={t("cleaner.active.incidentTitlePlaceholder")}
             />
             <div className="grid grid-cols-2 gap-2">
-              <input
+              <select
                 value={newIncidentRoomName}
                 onChange={(e) => setNewIncidentRoomName(e.target.value)}
-                className="rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
-                placeholder={t("cleaner.active.incidentRoomOptional")}
-              />
+                className="rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
+              >
+                <option value="">{t("cleaner.active.incidentRoomOptional")}</option>
+                {roomList.map((roomName) => (
+                  <option key={roomName} value={roomName}>
+                    {roomName}
+                  </option>
+                ))}
+              </select>
               <select
                 value={newIncidentSeverity}
                 onChange={(e) => setNewIncidentSeverity(e.target.value as "low" | "medium" | "high" | "critical")}
@@ -1035,7 +1095,12 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                     const files = event.target.files;
                     if (!files || files.length === 0) return;
 
-                    const roomName = newIncidentRoomName.trim() || t("cleaner.incident");
+                    // Fall back to a translated "Incident" label rather than
+                    // the key "cleaner.incident" — that key resolves to an
+                    // object (nested strings), so calling t() on it returned
+                    // the literal key and leaked "cleaner.incident" as a room
+                    // name into the after-photos step.
+                    const roomName = newIncidentRoomName.trim() || t("cleaner.incidentNav");
                     const addedPhotoIds: string[] = [];
 
                     for (const file of Array.from(files)) {
@@ -1054,7 +1119,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                     {t("cleaner.active.photoCountSelected", { count: newIncidentPhotoIds.length })}
                   </p>
                   <div className="flex gap-2 overflow-x-auto pb-1">
-                    {getPendingUploadPreviews(newIncidentPhotoIds, pendingUploads).map(({ photoRef, url }, index) => {
+                    {getPendingUploadPreviews(newIncidentPhotoIds, pendingUploads, photoPreviewCache).map(({ photoRef, url }, index) => {
                       return (
                         <div key={`${photoRef}-${index}`} className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border border-[var(--border)]">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1074,7 +1139,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                       );
                     })}
                   </div>
-                  {getPendingUploadPreviews(newIncidentPhotoIds, pendingUploads).length < newIncidentPhotoIds.length && (
+                  {getPendingUploadPreviews(newIncidentPhotoIds, pendingUploads, photoPreviewCache).length < newIncidentPhotoIds.length && (
                     <p className="text-[11px] text-[var(--muted-foreground)]">
                       {t("cleaner.active.somePhotosAlreadyAttached")}
                     </p>

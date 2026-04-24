@@ -9,7 +9,7 @@ import {
   Building,
   Users,
   Package,
-  Wrench,
+  AlertTriangle,
   BarChart3,
   Settings,
 } from "lucide-react";
@@ -78,10 +78,10 @@ export const navigation: NavigationItem[] = [
     roles: ["admin"],
   },
   {
-    nameKey: "common.workOrders",
-    href: "/work-orders",
-    icon: Wrench,
-    roles: ["admin"],
+    nameKey: "common.incidents",
+    href: "/incidents",
+    icon: AlertTriangle,
+    roles: ["admin", "property_ops", "manager"],
   },
   {
     nameKey: "common.reports",

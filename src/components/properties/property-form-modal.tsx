@@ -304,12 +304,52 @@ export function PropertyFormModal({
           </div>
 
           <label className="space-y-1">
-            <span className="text-sm">Access Notes</span>
+            <span className="text-sm">Entry Instructions</span>
             <textarea
               rows={3}
               value={formValues.accessNotes ?? ""}
+              placeholder="Door code, lockbox location, how to unlock the gate, etc."
               onChange={(event) =>
                 setFormValues((current) => ({ ...current, accessNotes: event.target.value }))
+              }
+              className="w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm">Key Location</span>
+            <textarea
+              rows={2}
+              value={formValues.keyLocation ?? ""}
+              placeholder="Where to find the key (lockbox with code, under mat, keyholder contact, etc.)"
+              onChange={(event) =>
+                setFormValues((current) => ({ ...current, keyLocation: event.target.value }))
+              }
+              className="w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm">Parking Notes</span>
+            <textarea
+              rows={2}
+              value={formValues.parkingNotes ?? ""}
+              placeholder="Where cleaners should park, any permits or restrictions."
+              onChange={(event) =>
+                setFormValues((current) => ({ ...current, parkingNotes: event.target.value }))
+              }
+              className="w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm">Urgent Notes</span>
+            <textarea
+              rows={2}
+              value={formValues.urgentNotes ?? ""}
+              placeholder="Warnings or check-every-time reminders (pest follow-up, broken item, alarm tips, etc.)"
+              onChange={(event) =>
+                setFormValues((current) => ({ ...current, urgentNotes: event.target.value }))
               }
               className="w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none"
             />

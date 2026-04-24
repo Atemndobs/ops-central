@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useConvexAuth, useQuery } from "convex/react";
 import type { Id } from "@convex/_generated/dataModel";
 import { api } from "@convex/_generated/api";
-import { ArrowLeft, ChevronDown, ChevronRight } from "lucide-react";
+import { Archive, ArrowLeft, ChevronDown, ChevronRight, Home } from "lucide-react";
 import { ConversationThread } from "./conversation-thread";
 
 type MessagesInboxClientProps = {
@@ -25,6 +25,20 @@ function formatListTime(timestamp?: number) {
     month: "short",
     day: "numeric",
   });
+}
+
+function formatSchedule(timestamp: number) {
+  const date = new Date(timestamp);
+  const datePart = date.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  const timePart = date.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return `${datePart} · ${timePart}`;
 }
 
 type ConversationItem = {
@@ -55,12 +69,31 @@ type PropertyGroup = {
   propertyId: string;
   propertyName: string;
   conversations: ConversationItem[];
+  currentConversations: ConversationItem[];
+  olderConversations: ConversationItem[];
   unreadCount: number;
   latestMessageAt?: number;
   latestMessagePreview?: string;
 };
 
+function isCurrentOrUpcoming(
+  conversation: ConversationItem,
+  startOfTodayMs: number,
+): boolean {
+  // Unread always surfaces — never hide something the user hasn't read.
+  if (conversation.unread) return true;
+  // WhatsApp threads are permanent contact lanes, not tied to a specific job.
+  if (conversation.laneKind === "whatsapp_cleaner") return true;
+  const scheduledAt = conversation.linkedJob?.scheduledStartAt;
+  if (scheduledAt === undefined) return true;
+  return scheduledAt >= startOfTodayMs;
+}
+
 function groupByProperty(conversations: ConversationItem[]): PropertyGroup[] {
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfTodayMs = startOfToday.getTime();
+
   const map = new Map<string, PropertyGroup>();
 
   for (const conv of conversations) {
@@ -72,6 +105,8 @@ function groupByProperty(conversations: ConversationItem[]): PropertyGroup[] {
         propertyId: propId,
         propertyName: propName,
         conversations: [],
+        currentConversations: [],
+        olderConversations: [],
         unreadCount: 0,
         latestMessageAt: undefined,
         latestMessagePreview: undefined,
@@ -80,6 +115,11 @@ function groupByProperty(conversations: ConversationItem[]): PropertyGroup[] {
 
     const group = map.get(propId)!;
     group.conversations.push(conv);
+    if (isCurrentOrUpcoming(conv, startOfTodayMs)) {
+      group.currentConversations.push(conv);
+    } else {
+      group.olderConversations.push(conv);
+    }
     if (conv.unread) {
       group.unreadCount++;
     }
@@ -92,14 +132,32 @@ function groupByProperty(conversations: ConversationItem[]): PropertyGroup[] {
     }
   }
 
+  const sortByScheduledThenLastMessage = (a: ConversationItem, b: ConversationItem) => {
+    const aSched = a.linkedJob?.scheduledStartAt ?? 0;
+    const bSched = b.linkedJob?.scheduledStartAt ?? 0;
+    if (aSched !== bSched) return aSched - bSched; // current first, upcoming next
+    return (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0);
+  };
+  const sortByScheduledDesc = (a: ConversationItem, b: ConversationItem) => {
+    const aSched = a.linkedJob?.scheduledStartAt ?? 0;
+    const bSched = b.linkedJob?.scheduledStartAt ?? 0;
+    return bSched - aSched; // most recent older first
+  };
+
   // Sort groups: groups with unread messages first, then by most recent message
-  return Array.from(map.values()).sort((a, b) => {
-    if (a.unreadCount > 0 && b.unreadCount === 0) return -1;
-    if (a.unreadCount === 0 && b.unreadCount > 0) return 1;
-    const aLatest = Math.max(...a.conversations.map((c) => c.lastMessageAt ?? 0));
-    const bLatest = Math.max(...b.conversations.map((c) => c.lastMessageAt ?? 0));
-    return bLatest - aLatest;
-  });
+  return Array.from(map.values())
+    .map((group) => ({
+      ...group,
+      currentConversations: [...group.currentConversations].sort(sortByScheduledThenLastMessage),
+      olderConversations: [...group.olderConversations].sort(sortByScheduledDesc),
+    }))
+    .sort((a, b) => {
+      if (a.unreadCount > 0 && b.unreadCount === 0) return -1;
+      if (a.unreadCount === 0 && b.unreadCount > 0) return 1;
+      const aLatest = Math.max(...a.conversations.map((c) => c.lastMessageAt ?? 0));
+      const bLatest = Math.max(...b.conversations.map((c) => c.lastMessageAt ?? 0));
+      return bLatest - aLatest;
+    });
 }
 
 export function MessagesInboxClient({
@@ -115,6 +173,7 @@ export function MessagesInboxClient({
   const router = useRouter();
   const [expandedPropertyIds, setExpandedPropertyIds] = useState<Set<string>>(() => new Set());
   const [collapsedPropertyIds, setCollapsedPropertyIds] = useState<Set<string>>(() => new Set());
+  const [showOlderPropertyIds, setShowOlderPropertyIds] = useState<Set<string>>(() => new Set());
   const conversationList = useMemo(() => conversations ?? [], [conversations]);
   const hasLoadedConversations = conversations !== undefined;
 
@@ -215,6 +274,18 @@ export function MessagesInboxClient({
     });
   }
 
+  function toggleShowOlder(propertyId: string) {
+    setShowOlderPropertyIds((current) => {
+      const next = new Set(current);
+      if (next.has(propertyId)) {
+        next.delete(propertyId);
+      } else {
+        next.add(propertyId);
+      }
+      return next;
+    });
+  }
+
   return (
     <>
       {/* ─── DESKTOP: side-by-side ─── */}
@@ -225,8 +296,10 @@ export function MessagesInboxClient({
           onSelect={selectConversation}
           expandedPropertyIds={expandedPropertyIds}
           collapsedPropertyIds={collapsedPropertyIds}
+          showOlderPropertyIds={showOlderPropertyIds}
           activePropertyId={selectedConversation?.property?._id ?? null}
           onToggleProperty={toggleProperty}
+          onToggleShowOlder={toggleShowOlder}
           title={title}
         />
         <section>
@@ -261,8 +334,10 @@ export function MessagesInboxClient({
             onSelect={selectConversation}
             expandedPropertyIds={expandedPropertyIds}
             collapsedPropertyIds={collapsedPropertyIds}
+            showOlderPropertyIds={showOlderPropertyIds}
             activePropertyId={selectedConversation?.property?._id ?? null}
             onToggleProperty={toggleProperty}
+            onToggleShowOlder={toggleShowOlder}
             title={title}
           />
         )}
@@ -277,8 +352,10 @@ function InboxList({
   onSelect,
   expandedPropertyIds,
   collapsedPropertyIds,
+  showOlderPropertyIds,
   activePropertyId,
   onToggleProperty,
+  onToggleShowOlder,
   title,
 }: {
   groups: PropertyGroup[];
@@ -286,8 +363,10 @@ function InboxList({
   onSelect: (id: Id<"conversations">) => void;
   expandedPropertyIds: Set<string>;
   collapsedPropertyIds: Set<string>;
+  showOlderPropertyIds: Set<string>;
   activePropertyId: string | null;
   onToggleProperty: (propertyId: string) => void;
+  onToggleShowOlder: (propertyId: string) => void;
   title: string;
 }) {
   const totalUnread = groups.reduce((sum, g) => sum + g.unreadCount, 0);
@@ -320,12 +399,18 @@ function InboxList({
             <button
               type="button"
               onClick={() => onToggleProperty(group.propertyId)}
-              className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--muted)]/45"
+              className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--muted)]/45"
               aria-expanded={isPropertyExpanded(group.propertyId)}
             >
+              <span
+                aria-hidden
+                className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--primary)]/12 text-[var(--primary)]"
+              >
+                <Home className="h-4 w-4" />
+              </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <p className="truncate text-sm font-semibold text-[var(--foreground)]">
+                  <p className="truncate text-base font-bold tracking-tight text-[var(--foreground)]">
                     {group.propertyName}
                   </p>
                   <span className="rounded-full border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--cleaner-muted)]">
@@ -337,56 +422,88 @@ function InboxList({
                     </span>
                   ) : null}
                 </div>
-                <p className="mt-0.5 truncate text-xs text-[var(--cleaner-muted)]">
-                  {group.latestMessagePreview ?? "No messages yet"}
-                </p>
+                <div className="mt-0.5 flex items-baseline gap-2">
+                  <p className="min-w-0 flex-1 truncate text-xs text-[var(--cleaner-muted)]">
+                    {group.latestMessagePreview ?? "No messages yet"}
+                  </p>
+                  <span className="shrink-0 text-[11px] text-[var(--cleaner-muted)]">
+                    {formatListTime(group.latestMessageAt)}
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-2 text-[11px] text-[var(--cleaner-muted)]">
-                <span>{formatListTime(group.latestMessageAt)}</span>
-                {isPropertyExpanded(group.propertyId) ? (
-                  <ChevronDown className="h-4 w-4" />
-                ) : (
-                  <ChevronRight className="h-4 w-4" />
-                )}
-              </div>
+              {isPropertyExpanded(group.propertyId) ? (
+                <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cleaner-muted)]" />
+              ) : (
+                <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cleaner-muted)]" />
+              )}
             </button>
 
             {isPropertyExpanded(group.propertyId) ? (
-              <div className="border-t border-[var(--border)] bg-[var(--muted)]/18">
-                {group.conversations.map((conversation) => {
+              <div className="relative border-t border-[var(--border)] bg-[var(--muted)]/18 pl-10">
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute bottom-3 left-[1.6rem] top-3 w-px bg-[var(--primary)]/25"
+                />
+                {(() => {
+                  const olderVisible = showOlderPropertyIds.has(group.propertyId);
+                  const visible = olderVisible
+                    ? [...group.currentConversations, ...group.olderConversations]
+                    : group.currentConversations;
+
+                  if (visible.length === 0 && group.olderConversations.length > 0) {
+                    return (
+                      <p className="px-4 py-4 text-xs text-[var(--cleaner-muted)]">
+                        No current or upcoming jobs — {group.olderConversations.length} older thread
+                        {group.olderConversations.length === 1 ? "" : "s"} available.
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
+                {(showOlderPropertyIds.has(group.propertyId)
+                  ? [...group.currentConversations, ...group.olderConversations]
+                  : group.currentConversations
+                ).map((conversation, idx) => {
                   const selected = conversation._id === selectedId;
-                  const jobSuffix = conversation.linkedJob
-                    ? String(conversation.linkedJob._id).slice(-6)
+                  const scheduleLabel = conversation.linkedJob?.scheduledStartAt
+                    ? formatSchedule(conversation.linkedJob.scheduledStartAt)
                     : null;
+                  const isFirstOlder =
+                    showOlderPropertyIds.has(group.propertyId) &&
+                    idx === group.currentConversations.length &&
+                    group.olderConversations.length > 0;
 
                   return (
+                    <div key={conversation._id}>
+                      {isFirstOlder ? (
+                        <div className="border-b border-[var(--border)]/60 px-4 pb-1.5 pt-3 text-[10px] font-semibold uppercase tracking-wide text-[var(--cleaner-muted)]">
+                          Older
+                        </div>
+                      ) : null}
                     <button
-                      key={conversation._id}
                       type="button"
                       onClick={() => onSelect(conversation._id)}
-                      className={`block w-full border-b border-[var(--border)]/80 px-4 py-3 text-left transition-colors last:border-b-0 ${
+                      className={`block w-full border-b border-[var(--border)]/60 px-4 py-3 text-left transition-colors last:border-b-0 ${
                         selected
                           ? "bg-[var(--primary)]/10"
                           : "hover:bg-[var(--muted)]/25"
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <p
                               className={`truncate text-sm ${
                                 conversation.unread
-                                  ? "font-bold text-[var(--foreground)]"
-                                  : "font-medium text-[var(--cleaner-ink)]"
+                                  ? "font-semibold text-[var(--foreground)]"
+                                  : "font-normal text-[var(--cleaner-ink)]"
                               }`}
                             >
                               {conversation.laneKind === "whatsapp_cleaner"
                                 ? conversation.linkedCleaner?.name ??
                                   conversation.messagingEndpoint?.displayName ??
                                   "WhatsApp lane"
-                                : jobSuffix
-                                ? `Job #${jobSuffix}`
-                                : "Thread"}
+                                : scheduleLabel ?? "Thread"}
                               {conversation.linkedJob?.status
                                 ? ` · ${conversation.linkedJob.status.replace(/_/g, " ")}`
                                 : ""}
@@ -406,15 +523,20 @@ function InboxList({
                               <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--primary)]" />
                             ) : null}
                           </div>
-                          <p
-                            className={`mt-0.5 truncate text-xs ${
-                              conversation.unread
-                                ? "font-medium text-[var(--cleaner-muted)]"
-                                : "text-[var(--cleaner-muted)]"
-                            }`}
-                          >
-                            {conversation.lastMessagePreview ?? "No messages yet"}
-                          </p>
+                          <div className="mt-0.5 flex items-baseline gap-2">
+                            <p
+                              className={`min-w-0 flex-1 truncate text-xs ${
+                                conversation.unread
+                                  ? "font-medium text-[var(--cleaner-muted)]"
+                                  : "text-[var(--cleaner-muted)]"
+                              }`}
+                            >
+                              {conversation.lastMessagePreview ?? "No messages yet"}
+                            </p>
+                            <span className="shrink-0 text-[11px] text-[var(--cleaner-muted)]">
+                              {formatListTime(conversation.lastMessageAt)}
+                            </span>
+                          </div>
                           {conversation.laneKind === "whatsapp_cleaner" ? (
                             <p className="mt-1 truncate text-[11px] text-[var(--cleaner-muted)]">
                               {conversation.messagingEndpoint?.phoneNumber ??
@@ -423,13 +545,34 @@ function InboxList({
                             </p>
                           ) : null}
                         </div>
-                        <span className="shrink-0 text-[11px] text-[var(--cleaner-muted)]">
-                          {formatListTime(conversation.lastMessageAt)}
-                        </span>
+                        <ChevronRight
+                          aria-hidden
+                          className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cleaner-muted)]"
+                        />
                       </div>
                     </button>
+                    </div>
                   );
                 })}
+                {group.olderConversations.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => onToggleShowOlder(group.propertyId)}
+                    className="flex w-full items-center gap-2 border-t border-[var(--border)]/60 px-4 py-2.5 text-left text-xs font-medium text-[var(--cleaner-muted)] transition-colors hover:bg-[var(--muted)]/25"
+                  >
+                    <Archive className="h-3.5 w-3.5" />
+                    <span>
+                      {showOlderPropertyIds.has(group.propertyId)
+                        ? `Hide ${group.olderConversations.length} older`
+                        : `Show ${group.olderConversations.length} older`}
+                    </span>
+                    {showOlderPropertyIds.has(group.propertyId) ? (
+                      <ChevronDown className="ml-auto h-3.5 w-3.5" />
+                    ) : (
+                      <ChevronRight className="ml-auto h-3.5 w-3.5" />
+                    )}
+                  </button>
+                ) : null}
               </div>
             ) : null}
           </section>

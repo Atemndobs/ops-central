@@ -10,7 +10,7 @@ import type { Id } from "@convex/_generated/dataModel";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/components/ui/toast-provider";
 import { VoiceRecordButton } from "@/components/voice/voice-record-button";
-import { Image as ImageIcon, Paperclip, Send } from "lucide-react";
+import { ExternalLink, Image as ImageIcon, Languages, Loader2, Paperclip, Send } from "lucide-react";
 
 function formatMessageTime(timestamp: number) {
   const now = new Date();
@@ -36,6 +36,11 @@ type ConversationThreadProps = {
   conversationId?: Id<"conversations"> | null;
   fullHref?: string | null;
   compact?: boolean;
+  /**
+   * Fill the parent's height instead of using viewport-based max-height.
+   * Enables mobile-app style: header + composer pinned, messages scroll.
+   */
+  fillHeight?: boolean;
 };
 
 type ThreadAttachment = {
@@ -48,9 +53,13 @@ type ThreadAttachment = {
   url?: string | null;
 };
 
+type MessageLocale = "en" | "es";
+
 type ThreadMessage = {
   _id: Id<"conversationMessages">;
   body: string;
+  sourceLang?: MessageLocale | null;
+  translations?: Partial<Record<MessageLocale, string>> | null;
   createdAt: number;
   authorUserId?: Id<"users">;
   author?: { name?: string | null; email?: string | null } | null;
@@ -69,7 +78,11 @@ type ConversationDetail = {
     phoneNumber?: string | null;
     serviceWindowClosesAt?: number;
   } | null;
-  linkedJob?: { _id: Id<"cleaningJobs"> } | null;
+  linkedJob?: {
+    _id: Id<"cleaningJobs">;
+    status?: string;
+    scheduledStartAt?: number;
+  } | null;
   property?: { name?: string | null } | null;
   selfParticipant?: { userId?: Id<"users"> } | null;
   messages: ThreadMessage[];
@@ -79,6 +92,7 @@ export function ConversationThread({
   conversationId,
   fullHref,
   compact = false,
+  fillHeight = false,
 }: ConversationThreadProps) {
   const detail = useQuery(
     api.conversations.queries.getConversationById,
@@ -87,9 +101,10 @@ export function ConversationThread({
   const sendInternalMessage = useMutation(api.conversations.mutations.sendMessage);
   const sendWhatsAppReply = useAction(api.whatsapp.actions.sendReply);
   const markRead = useMutation(api.conversations.mutations.markConversationRead);
+  const translateMessage = useAction(api.translation.actions.translateMessage);
   const { showToast } = useToast();
-  const locale = useLocale();
-  const languageHint = locale === "es" ? "es" : "en";
+  const rawLocale = useLocale();
+  const myLocale: MessageLocale = rawLocale === "es" ? "es" : "en";
   // Admin-controlled flag. When off (default), the voice-to-text mic button
   // is hidden from the composer. Follow the same pattern for every new
   // user-facing feature — ship behind a flag, let admin flip it when ready.
@@ -157,17 +172,49 @@ export function ConversationThread({
     : "Internal team thread";
 
   return (
-    <div className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--card)]">
-      <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-        <div>
+    <div
+      className={`msg-thread-root flex flex-col rounded-2xl border border-[var(--msg-divider,var(--border))] bg-[var(--msg-card,var(--card))] shadow-[var(--msg-shadow-card,none)] ${
+        fillHeight ? "h-full min-h-0" : ""
+      }`}
+    >
+      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--msg-divider,var(--border))] px-4 py-3">
+        <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-[var(--foreground)]">{headerTitle}</p>
-          <p className="text-xs text-[var(--muted-foreground)]">
-            {detail.linkedJob ? `Job ${String(detail.linkedJob._id).slice(-6)}` : "Thread"}
-            {detail.property ? ` · ${detail.property.name}` : ""}
-            {detail.messagingEndpoint?.phoneNumber
-              ? ` · ${detail.messagingEndpoint.phoneNumber}`
-              : ""}
-          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--muted-foreground)]">
+            {detail.linkedJob ? (
+              <Link
+                href={`/jobs/${detail.linkedJob._id}`}
+                className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-0.5 text-[11px] font-medium text-[var(--primary)] transition-colors hover:border-[var(--primary)]/50 hover:bg-[var(--primary)]/10"
+              >
+                <ExternalLink className="h-3 w-3" />
+                <span>
+                  {detail.linkedJob.scheduledStartAt
+                    ? new Date(detail.linkedJob.scheduledStartAt).toLocaleDateString(undefined, {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                      }) +
+                      " · " +
+                      new Date(detail.linkedJob.scheduledStartAt).toLocaleTimeString(undefined, {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })
+                    : "View job"}
+                </span>
+                {detail.linkedJob.status ? (
+                  <span className="text-[var(--muted-foreground)]">
+                    · {detail.linkedJob.status.replace(/_/g, " ")}
+                  </span>
+                ) : null}
+              </Link>
+            ) : (
+              <span>Thread</span>
+            )}
+            {detail.property ? <span>· {detail.property.name}</span> : null}
+            {detail.messagingEndpoint?.phoneNumber ? (
+              <span>· {detail.messagingEndpoint.phoneNumber}</span>
+            ) : null}
+          </div>
           <p
             className={`mt-1 text-[11px] ${
               isWhatsAppLane && canReplyInApp
@@ -181,7 +228,7 @@ export function ConversationThread({
         {fullHref ? (
           <Link
             href={fullHref}
-            className="text-xs font-medium text-[var(--primary)] hover:opacity-80"
+            className="shrink-0 text-xs font-medium text-[var(--primary)] hover:opacity-80"
           >
             Open inbox
           </Link>
@@ -192,7 +239,9 @@ export function ConversationThread({
         className={
           compact
             ? "max-h-56 overflow-y-auto px-4 py-3"
-            : "min-h-[20rem] max-h-[calc(100vh-20rem)] flex-1 overflow-y-auto px-4 py-3"
+            : fillHeight
+              ? "min-h-0 flex-1 overflow-y-auto px-4 py-3"
+              : "min-h-[20rem] max-h-[calc(100vh-20rem)] flex-1 overflow-y-auto px-4 py-3"
         }
       >
         {messages.length === 0 ? (
@@ -216,24 +265,29 @@ export function ConversationThread({
                   className={`flex ${isSelf ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`max-w-[85%] rounded-2xl px-3 py-2 ${
+                    className={`max-w-[85%] rounded-[12px] px-3 py-2 text-[var(--msg-text,var(--foreground))] ${
                       isSelf
-                        ? "rounded-br-sm bg-[var(--primary)] text-[var(--primary-foreground)]"
-                        : "rounded-bl-sm border border-[var(--border)] bg-[var(--accent)]"
+                        ? "rounded-br-[4px] border border-[var(--msg-bubble-border,var(--border))] bg-[var(--msg-bubble-out,var(--card))]"
+                        : "rounded-bl-[4px] bg-[var(--msg-bubble-in,var(--accent))]"
                     }`}
                   >
                     {!isSelf ? (
                       <p
-                        className={`text-[11px] font-semibold ${
-                          isSelf
-                            ? "text-[var(--primary-foreground)]/80"
-                            : "text-[var(--primary)]"
-                        }`}
+                        className="text-[11px] font-semibold"
+                        style={{ color: "var(--msg-primary-strong, var(--primary))" }}
                       >
                         {authorName}
                       </p>
                     ) : null}
-                    <p className="whitespace-pre-wrap text-sm">{message.body}</p>
+                    <TranslatedMessageBody
+                      messageId={message._id}
+                      body={message.body}
+                      sourceLang={message.sourceLang ?? "en"}
+                      cached={message.translations ?? null}
+                      myLocale={myLocale}
+                      isSelf={isSelf}
+                      translate={translateMessage}
+                    />
 
                     {Array.isArray(message.attachments) && message.attachments.length > 0 ? (
                       <div className="mt-2 space-y-2">
@@ -291,10 +345,8 @@ export function ConversationThread({
                     ) : null}
 
                     <p
-                      className={`mt-1 text-[10px] ${
-                        isSelf
-                          ? "text-right text-[var(--primary-foreground)]/60"
-                          : "text-[var(--muted-foreground)]"
+                      className={`mt-1 text-[10px] text-[var(--msg-text-muted,var(--muted-foreground))] ${
+                        isSelf ? "text-right" : ""
                       }`}
                     >
                       {formatMessageTime(message.createdAt)}
@@ -312,7 +364,7 @@ export function ConversationThread({
       </div>
 
       <form
-        className="border-t border-[var(--border)] p-3"
+        className="shrink-0 border-t border-[var(--msg-divider,var(--border))] p-3"
         onSubmit={async (event) => {
           event.preventDefault();
           if (!body.trim()) {
@@ -330,6 +382,7 @@ export function ConversationThread({
               await sendInternalMessage({
                 conversationId,
                 body: body.trim(),
+                sourceLang: myLocale,
               });
             }
             setBody("");
@@ -361,12 +414,12 @@ export function ConversationThread({
                   : "Await cleaner reply..."
                 : "Type a message..."
             }
-            className="flex-1 resize-none rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex-1 resize-none rounded-full border border-[var(--msg-bubble-border,var(--border))] bg-[var(--msg-card,var(--background))] px-4 py-2.5 text-sm text-[var(--msg-text,var(--foreground))] outline-none placeholder:text-[var(--msg-text-muted,var(--muted-foreground))] focus:border-[var(--msg-primary,var(--primary))] focus:ring-2 focus:ring-[var(--msg-primary,var(--primary))]/20 disabled:cursor-not-allowed disabled:opacity-60"
           />
           {voiceMessagesEnabled ? (
             <VoiceRecordButton
               disabled={pending || !canReplyInApp}
-              languageHint={languageHint}
+              languageHint={myLocale}
               size={compact ? "sm" : "md"}
               onTranscript={(text) => {
                 // Append the transcript so a user who already started typing
@@ -380,12 +433,117 @@ export function ConversationThread({
           <button
             type="submit"
             disabled={pending || !body.trim() || !canReplyInApp}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] text-[var(--primary-foreground)] disabled:opacity-40"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--msg-primary,var(--primary))] text-[var(--msg-on-primary,var(--primary-foreground))] shadow-[var(--msg-shadow-float,none)] transition-transform hover:scale-105 active:scale-95 disabled:opacity-40"
           >
             <Send className="h-4 w-4" />
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+/**
+ * Renders a message body in the viewer's locale. If the message's sourceLang
+ * differs from myLocale:
+ *   - If a cached translation exists, show it with a "Show original" toggle.
+ *   - Otherwise, show the source as a placeholder and kick off the translate
+ *     action in the background; once Convex's reactive query picks up the
+ *     cached translation, the parent re-renders and we display it.
+ * Never retranslates in both directions (avoids loops); skips entirely when
+ * sender and viewer share a locale.
+ */
+function TranslatedMessageBody({
+  messageId,
+  body,
+  sourceLang,
+  cached,
+  myLocale,
+  isSelf,
+  translate,
+}: {
+  messageId: Id<"conversationMessages">;
+  body: string;
+  sourceLang: MessageLocale;
+  cached: Partial<Record<MessageLocale, string>> | null;
+  myLocale: MessageLocale;
+  isSelf: boolean;
+  translate: (args: {
+    messageId: Id<"conversationMessages">;
+    targetLang: MessageLocale;
+  }) => Promise<string | null>;
+}) {
+  const needsTranslation = sourceLang !== myLocale;
+  const translated = needsTranslation ? cached?.[myLocale] ?? null : null;
+  const [showOriginal, setShowOriginal] = useState(false);
+  const [fetching, setFetching] = useState(false);
+  const requestedRef = useRef<string | null>(null);
+
+  // Kick off the translation once per message when the cache is empty.
+  useEffect(() => {
+    if (!needsTranslation) return;
+    if (translated) return;
+    if (requestedRef.current === messageId) return;
+    requestedRef.current = messageId;
+    setFetching(true);
+    translate({ messageId, targetLang: myLocale })
+      .catch(() => {
+        /* soft-fail: parent keeps showing source */
+      })
+      .finally(() => setFetching(false));
+  }, [messageId, needsTranslation, translated, translate, myLocale]);
+
+  // Same locale — nothing to do.
+  if (!needsTranslation) {
+    return <p className="whitespace-pre-wrap text-sm">{body}</p>;
+  }
+
+  const display = showOriginal ? body : translated ?? body;
+  const canToggle = Boolean(translated);
+  const toggleClass = isSelf
+    ? "text-[var(--primary-foreground)]/70 hover:text-[var(--primary-foreground)]"
+    : "text-[var(--primary)] hover:underline";
+
+  return (
+    <div>
+      <p className="whitespace-pre-wrap text-sm">{display}</p>
+      <div
+        className={`mt-1 flex items-center gap-1.5 text-[10px] ${
+          isSelf
+            ? "text-[var(--primary-foreground)]/70"
+            : "text-[var(--muted-foreground)]"
+        }`}
+      >
+        {fetching && !translated ? (
+          <>
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span>Translating…</span>
+          </>
+        ) : translated ? (
+          <>
+            <Languages className="h-3 w-3" />
+            <span>
+              {showOriginal
+                ? `Translated from ${sourceLang.toUpperCase()}`
+                : `Translated from ${sourceLang.toUpperCase()}`}
+            </span>
+            {canToggle ? (
+              <button
+                type="button"
+                onClick={() => setShowOriginal((v) => !v)}
+                className={`font-semibold ${toggleClass}`}
+              >
+                · {showOriginal ? "Show translation" : "Show original"}
+              </button>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <Languages className="h-3 w-3" />
+            <span>Translation unavailable — showing original</span>
+          </>
+        )}
+      </div>
     </div>
   );
 }

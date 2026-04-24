@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "background": "#f8f9fa",
+                        "primary-fixed-dim": "#d8b9ff",
+                        "on-primary-container": "#fffbff",
+                        "inverse-primary": "#d8b9ff",
+                        "on-secondary-container": "#696174",
+                        "error-container": "#ffdad6",
+                        "on-surface": "#191c1d",
+                        "on-surface-variant": "#4b4452",
+                        "primary-container": "#8d5bce",
+                        "on-error-container": "#93000a",
+                        "error": "#ba1a1a",
+                        "outline": "#7c7483",
+                        "tertiary-container": "#00873b",
+                        "secondary-fixed-dim": "#cdc2d9",
+                        "on-primary-fixed": "#290054",
+                        "on-secondary": "#ffffff",
+                        "on-secondary-fixed-variant": "#4a4456",
+                        "surface-tint": "#7544b6",
+                        "surface-container-high": "#e7e8e9",
+                        "on-background": "#191c1d",
+                        "secondary": "#635b6e",
+                        "on-secondary-fixed": "#1e1929",
+                        "on-error": "#ffffff",
+                        "surface-container-lowest": "#ffffff",
+                        "surface-container": "#edeeef",
+                        "on-primary-fixed-variant": "#5d289c",
+                        "outline-variant": "#cdc3d4",
+                        "on-tertiary-fixed": "#002109",
+                        "surface-container-low": "#f3f4f5",
+                        "surface-dim": "#d9dadb",
+                        "inverse-on-surface": "#f0f1f2",
+                        "surface-container-highest": "#e1e3e4",
+                        "on-tertiary-fixed-variant": "#005321",
+                        "tertiary": "#006b2d",
+                        "surface-bright": "#f8f9fa",
+                        "primary": "#7341b3",
+                        "surface": "#f8f9fa"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "element-margin": "8px",
+                        "container-padding": "16px",
+                        "card-gap": "12px",
+                        "unit": "4px"
+                    },
+                    "fontFamily": {
+                        "label-caps": ["Manrope"],
+                        "h2": ["Manrope"],
+                        "h1": ["Manrope"],
+                        "body-md": ["Manrope"],
+                        "body-sm": ["Manrope"]
+                    },
+                    "fontSize": {
+                        "label-caps": ["10px", {"lineHeight": "12px", "letterSpacing": "0.05em", "fontWeight": "800"}],
+                        "h2": ["16px", {"lineHeight": "24px", "fontWeight": "600"}],
+                        "h1": ["20px", {"lineHeight": "28px", "fontWeight": "700"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "body-sm": ["12px", {"lineHeight": "16px", "fontWeight": "400"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body-md min-h-screen flex flex-col">
+<!-- TopAppBar -->
+<header class="fixed top-0 left-0 w-full z-50 flex items-center justify-between px-4 h-16 bg-[#F9FAFB] dark:bg-slate-950 shadow-sm border-b border-slate-200 dark:border-slate-800">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full overflow-hidden border-2 border-primary">
+<img alt="User Profile" class="w-full h-full object-cover" data-alt="Close-up headshot of a professional property manager with a friendly smile, soft natural studio lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAZYPZvOi9mRUTa6GiKLgEyovXAB0KUVjnOuk_BEupI6Z0GOejfXrJwH9zUsq3WjOPpDmBZTulRRXscUSXgOX5kMepWF6DdaaVKrcnK1Cxo3N7VNnfhH6LlCayrC9ZUl0seIoOKwu0aJzzShObGn_2dGATtdSAQ7I37FMeZL4iKGpnnjThQ7WOfuwrk_XdigdJS4gtPgO8jaoqUvqZyGLut1shLoRci0Kjin_OwxBzXbokvPCwNqZnpv9EjmxAJvRDM8RL0EV2Rwg"/>
+</div>
+<h1 class="font-['Manrope'] font-bold text-lg text-[#9C6ADE] dark:text-[#F3E8FF]">Vilbig Road - The Scandi</h1>
+</div>
+<button class="w-10 h-10 flex items-center justify-center rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-95 duration-150">
+<span class="material-symbols-outlined">settings</span>
+</button>
+</header>
+<!-- Main Content Canvas -->
+<main class="flex-1 mt-16 mb-20 overflow-y-auto">
+<!-- Property Tabs with Photo Previews -->
+<section class="bg-white border-b border-outline-variant px-container-padding py-3 sticky top-16 z-40">
+<div class="flex gap-4 overflow-x-auto hide-scrollbar">
+<!-- Tab 1 (Active) -->
+<button class="flex-shrink-0 flex flex-col items-center gap-1 group">
+<div class="relative w-16 h-16 rounded-xl overflow-hidden border-2 border-primary shadow-md">
+<img alt="Scandi Interior" class="w-full h-full object-cover" data-alt="Modern Scandinavian living room interior with light wood floors, white walls, and minimalist furniture in soft daylight" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBjM612wYDUvfmlmb2g5E56sKnaOe4iPhN4jE2f1FSp_NkuQHmfww_L9lcgdvLPpBbXI0I_kE6fJcxBgjBldPFmrQp6BL3fxfj8wHYgb_lCh6NtgatmCc_IkrpzL5cbF8LViKiWgbKEgyuLRRGTMKXaYxO3KGlhJOz9NJ_kHBGnj5KzMjsbbAwWJ1PDJVbmJLwgIFxXe5NDrh8y38CoP1V8sPnphN8DDApElCXY-nNs-51bda18eeEQr1yHK2D3coAy4lb9mVfw4A"/>
+<div class="absolute inset-0 bg-primary/10"></div>
+</div>
+<span class="font-label-caps text-label-caps text-primary">THE SCANDI</span>
+</button>
+<!-- Tab 2 -->
+<button class="flex-shrink-0 flex flex-col items-center gap-1 group opacity-60 hover:opacity-100 transition-opacity">
+<div class="w-16 h-16 rounded-xl overflow-hidden border border-outline-variant">
+<img alt="Luxury Villa" class="w-full h-full object-cover" data-alt="Contemporary luxury villa exterior with a glass facade and manicured garden under a clear blue sky" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAdhTcOR6deVXM6sbZ-C6LYQlQvAJiLCBj0xdiocI6-RNJiMfajgxTfDrfqxfRYRvTCUIMZ3leSxL0bpsljEtjW4B2A1RGi49Sh6mjuu7fRQnTHyXatBYbfVHGIuv9Ux5OGJCT62vtAGLEG6HRcbk8WOwE-XdqcqbcCqIU5Qr7uRjjVSDBPq4Hq4LR_TGRYoxzX1EhSk0RRv68s5hh_TmDZcojmT8KGY5WNDN417F6ajq6kjygIEiBJ0g5Fk58rrw3ew-C64bmpCQ"/>
+</div>
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">OAK RIDGE</span>
+</button>
+<!-- Tab 3 -->
+<button class="flex-shrink-0 flex flex-col items-center gap-1 group opacity-60 hover:opacity-100 transition-opacity">
+<div class="w-16 h-16 rounded-xl overflow-hidden border border-outline-variant">
+<img alt="Modern House" class="w-full h-full object-cover" data-alt="Sleek modern house with geometric architecture and large windows during golden hour" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDt-_hUowvdqVF8u-XI52EYY-3irp_LY9tLDQxyyEkqCRsoTFgLGMp9FyRWX__Iudv_rlMmgWqSegvICJaN7m03gjpBJ-FjMRkPqrMRUppuoAx2wukyeHi-02Z1ubC99juKSFAMGtijeOGZmkUw4xprmi3HoYXzqVDpv1irlvY8fLTuP76_J49rvba-AQJE0CuI0ejuyOCn_9brRDxS4iwB5JSvYDM0ZWgBQfE0W_XMXA7NRXgfOKejOoh6ZEiNA520zLkCUmgFYg"/>
+</div>
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">THE LOFT</span>
+</button>
+<!-- Tab 4 -->
+<button class="flex-shrink-0 flex flex-col items-center gap-1 group opacity-60 hover:opacity-100 transition-opacity">
+<div class="w-16 h-16 rounded-xl overflow-hidden border border-outline-variant">
+<img alt="Apartment View" class="w-full h-full object-cover" data-alt="Chic apartment interior with large windows overlooking a city skyline at dusk" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDQNWMdPj__So74ylHnl4ajydw53o481AB14NGtaVzt0bGONSMKVXu2RkPOM6QkiCxVRmj1FEWY6so96ksmD6wDS6_31RZeWccEfjjDEGAfo_-xqSMM8z41-N8DrB3w2eensHvSMNgLjMGAfWYC1zxcsuKhKsISDwHcBJ3cC9w2RqRHyLJK5ElPYG-LPjfA3T94qLqIo2gVYfpZiuWztxTrtWnr9okAWABVsifyMGZIntEt1NOWJuR9n1xLZNBoLZ_1P_REmVRT6Q"/>
+</div>
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">DOWNTOWN</span>
+</button>
+</div>
+</section>
+<!-- Translation Bar -->
+<div class="sticky top-[156px] z-30 bg-[#F3E8FF] px-4 py-2 flex items-center justify-between border-b border-primary/20">
+<div class="flex items-center gap-2 text-primary font-semibold text-body-sm">
+<span class="material-symbols-outlined text-[18px]">translate</span>
+<span>Translation on</span>
+</div>
+<button class="text-primary font-bold text-body-sm hover:underline">Show original</button>
+</div>
+<!-- Chat Area -->
+<div class="px-container-padding py-4 flex flex-col gap-4">
+<!-- Date Divider -->
+<div class="flex justify-center">
+<span class="bg-surface-container-high text-on-surface-variant px-3 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase">Today</span>
+</div>
+<!-- Incoming Message (Atem) -->
+<div class="flex items-start gap-2 max-w-[85%]">
+<div class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 mt-1">
+<img alt="Atem Profile" class="w-full h-full object-cover" data-alt="Portrait of a male professional, property coordinator style, clean background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAfafSW7KEAO4LPEUbHPBfh0awMV-iANPZG9xzRYwP9L5vsQj7swopujDKzmICcQiUGzl5zNYSeNv_goUz7CmmM5csPcHRMDnHxHzpiUpSWRHE9asKgIwMTtb09Bq0phVsQdgm8yXKStp-8cWpd8W2v8exv1yu4S0XsJpYftSxW5ks4aQhI_qqB7qSpXKrrG5yRYUPCoqEsoEqeSIfcvUzhl6nH8KQ1sJIckUBrN4uK3pLgq3_EPlu15QojPYsIKvtuuRnRCROCkA"/>
+</div>
+<div>
+<div class="bg-secondary-container text-on-secondary-container px-4 py-3 rounded-2xl rounded-tl-none shadow-sm">
+<p class="font-body-md">Hello! I've confirmed the cleaning service for the Scandi unit. They will arrive tomorrow at 10:00 AM.</p>
+</div>
+<span class="text-[10px] text-on-surface-variant ml-1 mt-1 block">Atem • 09:42 AM</span>
+</div>
+</div>
+<!-- Outgoing Message (User) -->
+<div class="flex flex-col items-end gap-1 max-w-[85%] self-end">
+<div class="bg-white border border-outline-variant text-on-surface px-4 py-3 rounded-2xl rounded-tr-none shadow-sm">
+<p class="font-body-md">Perfect, thank you Atem. Will they also be handling the laundry for the master suite?</p>
+</div>
+<div class="flex items-center gap-1 mr-1">
+<span class="text-[10px] text-on-surface-variant">09:45 AM</span>
+<span class="material-symbols-outlined text-[14px] text-primary" style="font-variation-settings: 'FILL' 1;">done_all</span>
+</div>
+</div>
+<!-- Incoming Message (Internal Alert/System) -->
+<div class="flex flex-col items-center my-2">
+<div class="bg-surface-container-low border border-outline-variant/30 rounded-lg px-4 py-2 max-w-[90%] text-center">
+<span class="text-label-caps text-tertiary font-bold mb-1 block">INTERNAL UPDATE</span>
+<p class="text-body-sm text-on-surface-variant">Maintenance request #442 has been marked as high priority by the field team.</p>
+</div>
+</div>
+<!-- Incoming Message (Atem) -->
+<div class="flex items-start gap-2 max-w-[85%]">
+<div class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 mt-1">
+<img alt="Atem Profile" class="w-full h-full object-cover" data-alt="Portrait of a male professional, property coordinator style, clean background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDNV6RU2yYDsfWwy9ZQa0BBt5iyYmBe1SP9-pykwQtY6FB-vPqfvI24uVoPhTo_9DcswkT347Y5NK_rw7sBZkVKNWLIjc1Pbc_21yleQtJGAnyzd60S-Vk6we1yY_jPjud-rITmp-x5UTYlwjD28QsjVYUKVIj2XbmMpeNSmKrP8zeRw1RMvALI_hXdt4zUBSF6LfCKwmo6bJJQ2fAznFlChn2V7ORe-SGa3aLcL-Q3cLP_SrWUyYSE8nYW7ukvwTW7ZCavi8kUXg"/>
+</div>
+<div>
+<div class="bg-secondary-container text-on-secondary-container px-4 py-3 rounded-2xl rounded-tl-none shadow-sm">
+<p class="font-body-md">Yes, laundry is included in the standard turnover package for this property. I'll make sure they pay extra attention to the master suite linens.</p>
+</div>
+<span class="text-[10px] text-on-surface-variant ml-1 mt-1 block">Atem • 09:48 AM</span>
+</div>
+</div>
+</div>
+</main>
+<!-- Bottom Action Bar / Chat Input -->
+<div class="fixed bottom-20 left-0 w-full px-4 py-3 bg-background/80 backdrop-blur-md z-40">
+<div class="flex items-center gap-2 bg-white rounded-full border border-outline-variant shadow-sm px-4 py-2 h-12">
+<button class="text-slate-400 hover:text-primary transition-colors">
+<span class="material-symbols-outlined">add_circle</span>
+</button>
+<input class="flex-1 bg-transparent border-none focus:ring-0 text-body-md placeholder:text-slate-400" placeholder="Type a message..." type="text"/>
+<button class="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center hover:opacity-90 transition-opacity active:scale-90 duration-200">
+<span class="material-symbols-outlined text-[18px]">send</span>
+</button>
+</div>
+</div>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-20 pb-safe px-2 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-[0px_-2px_10px_rgba(0,0,0,0.05)]">
+<!-- Messages (Active) -->
+<button class="flex flex-col items-center justify-center text-[#9C6ADE] dark:text-[#F3E8FF] font-bold hover:opacity-80 transition-opacity active:transform scale-90 duration-200">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">chat_bubble</span>
+<span class="font-['Manrope'] text-[10px] font-semibold">Messages</span>
+</button>
+<!-- Properties -->
+<button class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 hover:opacity-80 transition-opacity active:transform scale-90 duration-200">
+<span class="material-symbols-outlined">domain</span>
+<span class="font-['Manrope'] text-[10px] font-semibold">Properties</span>
+</button>
+<!-- Tasks -->
+<button class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 hover:opacity-80 transition-opacity active:transform scale-90 duration-200">
+<span class="material-symbols-outlined">assignment_turned_in</span>
+<span class="font-['Manrope'] text-[10px] font-semibold">Tasks</span>
+</button>
+<!-- Profile -->
+<button class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 hover:opacity-80 transition-opacity active:transform scale-90 duration-200">
+<span class="material-symbols-outlined">person</span>
+<span class="font-['Manrope'] text-[10px] font-semibold">Profile</span>
+</button>
+</nav>
+</body></html>

@@ -84,6 +84,7 @@ export const sendMessage = mutation({
   args: {
     conversationId: v.id("conversations"),
     body: v.string(),
+    sourceLang: v.optional(v.union(v.literal("en"), v.literal("es"))),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
@@ -133,6 +134,7 @@ export const sendMessage = mutation({
       messageKind: "user",
       channel: "internal",
       body,
+      sourceLang: args.sourceLang ?? "en",
       createdAt: now,
     });
 
