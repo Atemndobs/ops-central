@@ -63,6 +63,16 @@ crons.cron(
   {},
 );
 
+// Nightly Convex self-report — row counts per tracked table + 24h event
+// volume. Convex doesn't expose a self-billing API from inside a function
+// so this is the closest proxy we can get.
+crons.cron(
+  "service-usage-convex-snapshot-daily",
+  "0 2 * * *", // 02:00 UTC daily (staggered after Clerk)
+  internal.serviceUsage.convexSnapshot.snapshot,
+  {},
+);
+
 crons.cron(
   "archive-photos-to-minio-every-7-days",
   "0 2 */7 * *",

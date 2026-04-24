@@ -17,9 +17,11 @@
  */
 
 import { v } from "convex/values";
-import { internalMutation } from "../_generated/server";
+import { internalMutation, mutation } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
+import { internal } from "../_generated/api";
 import { logServiceUsage } from "../lib/serviceUsage";
+import { requireAdmin } from "../lib/auth";
 
 const SCAN_LIMIT = 10_000; // photos table is small; fits in one page for now.
 const B2_STORAGE_USD_PER_GB_MONTH = 0.006;
@@ -79,5 +81,29 @@ export const snapshot = internalMutation({
       totalGb,
       estimatedMonthlyCostUsd,
     };
+  },
+});
+
+/**
+ * Admin-triggered on-demand refresh. Schedules the snapshot to run
+ * immediately (runAfter 0) so the admin doesn't have to wait for the
+ * daily 01:00 UTC cron. Returns quickly — the dashboard query will pick
+ * up the fresh row on its next reactive tick.
+ */
+export const refresh = mutation({
+  args: {},
+  returns: v.object({
+    scheduledId: v.string(),
+    scheduledAt: v.number(),
+  }),
+  handler: async (ctx): Promise<{ scheduledId: string; scheduledAt: number }> => {
+    await requireAdmin(ctx);
+    const scheduledAt = Date.now();
+    const scheduledId = await ctx.scheduler.runAfter(
+      0,
+      internal.serviceUsage.b2Snapshot.snapshot,
+      {},
+    );
+    return { scheduledId: scheduledId as unknown as string, scheduledAt };
   },
 });
