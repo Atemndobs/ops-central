@@ -72,6 +72,7 @@ import type * as reviewAnnotations_mutations from "../reviewAnnotations/mutation
 import type * as reviewAnnotations_queries from "../reviewAnnotations/queries.js";
 import type * as serviceUsage_crons from "../serviceUsage/crons.js";
 import type * as serviceUsage_logger from "../serviceUsage/logger.js";
+import type * as serviceUsage_queries from "../serviceUsage/queries.js";
 import type * as translation_actions from "../translation/actions.js";
 import type * as translation_internal from "../translation/internal.js";
 import type * as users_mutations from "../users/mutations.js";
@@ -153,6 +154,7 @@ declare const fullApi: ApiFromModules<{
   "reviewAnnotations/queries": typeof reviewAnnotations_queries;
   "serviceUsage/crons": typeof serviceUsage_crons;
   "serviceUsage/logger": typeof serviceUsage_logger;
+  "serviceUsage/queries": typeof serviceUsage_queries;
   "translation/actions": typeof translation_actions;
   "translation/internal": typeof translation_internal;
   "users/mutations": typeof users_mutations;

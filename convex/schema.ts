@@ -1206,7 +1206,8 @@ const featureFlags = defineTable({
   key: v.union(
     v.literal("theme_switcher"),
     v.literal("voice_messages"),
-    v.literal("voice_audio_attachments")
+    v.literal("voice_audio_attachments"),
+    v.literal("usage_dashboard")
     // future flags go here
   ),
   enabled: v.boolean(),
