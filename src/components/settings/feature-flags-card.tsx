@@ -7,22 +7,71 @@
  * state) and lets admins flip each one via `setFeatureFlag`. Defaults to
  * all OFF so new flags ship dark until an admin explicitly enables them.
  *
+ * Each flag is its own collapsible row — the toggle is always visible in
+ * the header so on/off state can be scanned at a glance, and the full
+ * description + off-behaviour copy is tucked behind a click. Open/closed
+ * state persists per flag in localStorage.
+ *
  * Non-admin users may see the card through the existing Settings UI but
  * their save call will be rejected by the mutation's `requireAdmin` guard.
  */
 
 import { useMutation, useQuery } from "convex/react";
 import { useTranslations } from "next-intl";
-import { Flag, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/components/ui/toast-provider";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 
 type FlagKey =
   | "theme_switcher"
   | "voice_messages"
   | "voice_audio_attachments"
   | "usage_dashboard";
+
+type FlagRow = {
+  key: FlagKey;
+  label: string;
+  description: string;
+  offBehaviour: string;
+  enabled: boolean;
+  updatedAt?: number;
+};
+
+function FlagToggle({
+  enabled,
+  onToggle,
+  ariaLabel,
+}: {
+  enabled: boolean;
+  onToggle: () => void;
+  ariaLabel: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      aria-label={ariaLabel}
+      onClick={(event) => {
+        // Prevent the outer collapsible header from toggling when the
+        // user clicks the switch.
+        event.stopPropagation();
+        onToggle();
+      }}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+        enabled ? "bg-[var(--primary)]" : "bg-[var(--muted)]"
+      }`}
+    >
+      <span
+        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+          enabled ? "translate-x-5" : "translate-x-0.5"
+        }`}
+      />
+    </button>
+  );
+}
 
 export function FeatureFlagsCard() {
   const t = useTranslations();
@@ -50,69 +99,71 @@ export function FeatureFlagsCard() {
       const message = getErrorMessage(error, "Could not save flag");
       showToast(
         t("settings.featureFlags.saveFailed", { error: message }),
-        "error"
+        "error",
       );
     }
   };
 
+  const enabledCount = flags.filter((f) => f.enabled).length;
+
   return (
-    <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-5 space-y-4">
-      <div className="flex items-start gap-3">
-        <div className="rounded-md bg-[var(--primary)]/10 p-2 text-[var(--primary)]">
-          <Flag className="h-5 w-5" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="text-base font-medium text-[var(--foreground)]">
+    <div className="space-y-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <div>
+          <h3 className="text-base font-semibold text-[var(--foreground)]">
             {t("settings.featureFlags.title")}
           </h3>
           <p className="mt-0.5 text-sm text-[var(--muted-foreground)]">
             {t("settings.featureFlags.description")}
           </p>
         </div>
+        <p className="shrink-0 text-xs text-[var(--muted-foreground)]">
+          {enabledCount} / {flags.length} enabled
+        </p>
       </div>
 
-      <div className="divide-y divide-[var(--border)]">
-        {flags.map((flag) => (
-          <div
+      <div className="space-y-2">
+        {(flags as FlagRow[]).map((flag) => (
+          <CollapsibleSection
             key={flag.key}
-            className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0"
+            persistKey={`flag-${flag.key}`}
+            title={flag.label}
+            subtitle={flag.enabled ? "On" : "Off"}
+            badge={
+              <FlagToggle
+                enabled={flag.enabled}
+                onToggle={() => handleToggle(flag.key, !flag.enabled)}
+                ariaLabel={
+                  flag.enabled
+                    ? t("settings.featureFlags.disable")
+                    : t("settings.featureFlags.enable")
+                }
+              />
+            }
           >
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-[var(--foreground)]">
-                {flag.label}
-              </p>
-              <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+            <div className="space-y-2 text-sm">
+              <p className="text-[var(--muted-foreground)]">
                 {flag.description}
               </p>
-              <p className="mt-1 text-xs italic text-[var(--muted-foreground)]/70">
+              <p className="text-xs italic text-[var(--muted-foreground)]/70">
                 {t("settings.featureFlags.offBehaviour", {
                   detail: flag.offBehaviour,
                 })}
               </p>
+              {flag.updatedAt ? (
+                <p className="pt-1 text-xs text-[var(--muted-foreground)]/70">
+                  Last changed{" "}
+                  {new Date(flag.updatedAt).toLocaleString(undefined, {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
+                </p>
+              ) : null}
+              <p className="pt-1 font-mono text-[10px] uppercase tracking-wider text-[var(--muted-foreground)]/60">
+                {flag.key}
+              </p>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={flag.enabled}
-              onClick={() => handleToggle(flag.key as FlagKey, !flag.enabled)}
-              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
-                flag.enabled
-                  ? "bg-[var(--primary)]"
-                  : "bg-[var(--muted)]"
-              }`}
-            >
-              <span
-                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
-                  flag.enabled ? "translate-x-5" : "translate-x-0.5"
-                }`}
-              />
-              <span className="sr-only">
-                {flag.enabled
-                  ? t("settings.featureFlags.disable")
-                  : t("settings.featureFlags.enable")}
-              </span>
-            </button>
-          </div>
+          </CollapsibleSection>
         ))}
       </div>
     </div>
