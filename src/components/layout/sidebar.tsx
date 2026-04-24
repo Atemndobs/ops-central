@@ -79,8 +79,18 @@ function getThemeServerSnapshot(): ThemePreference {
   return "light";
 }
 
-function applyTheme(theme: ThemePreference) {
-  document.documentElement.classList.toggle("dark", theme === "dark");
+function applyTheme(_theme: ThemePreference) {
+  // Dark mode is temporarily disabled app-wide (toggle UI already removed).
+  // Force light regardless of stored preference; we also reset the
+  // localStorage key below so stale "dark" values flip back on next boot.
+  document.documentElement.classList.remove("dark");
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, "light");
+    } catch {
+      // ignore storage errors (private browsing, quota, etc.)
+    }
+  }
 }
 
 export function Sidebar() {
