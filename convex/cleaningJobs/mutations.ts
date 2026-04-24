@@ -18,6 +18,7 @@ import {
 import {
   markAcknowledgementAccepted,
   reconcileAcknowledgements,
+  schedulePendingAcknowledgementEscalation,
 } from "./acknowledgements";
 
 const qaModeValidator = v.union(v.literal("standard"), v.literal("quick"));
@@ -1163,6 +1164,10 @@ export const assign = mutation({
       acknowledgements: nextAcks,
       status: updatedStatus,
       updatedAt: now,
+    });
+    await schedulePendingAcknowledgementEscalation(ctx, {
+      jobId: args.jobId,
+      acks: nextAcks,
     });
     await syncConversationStatusForJob(ctx, {
       jobId: args.jobId,

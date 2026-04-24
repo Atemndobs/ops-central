@@ -24,6 +24,12 @@ crons.interval(
   {},
 );
 
+// BACKSTOP ONLY — event-driven escalation via ctx.scheduler.runAt is the
+// primary path (see schedulePendingAcknowledgementEscalation in
+// cleaningJobs/acknowledgements.ts). This polling sweep stays in place for
+// one deploy cycle so in-flight acks seeded before the event-driven path
+// shipped still get escalated. Delete after verifying one cycle of logs
+// shows zero escalations. Tracking: Docs/2026-04-24-cron-jobs-architecture-and-cost-reduction.md
 crons.interval(
   "escalate-pending-acknowledgements",
   { minutes: 15 },

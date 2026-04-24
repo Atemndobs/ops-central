@@ -4,6 +4,7 @@ import {
   mutation,
   type MutationCtx,
 } from "../_generated/server";
+import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { getCurrentUser } from "../lib/auth";
 import {
@@ -163,6 +164,11 @@ export const acknowledge = mutation({
       updatedAt: now,
     });
 
+    await schedulePendingAcknowledgementEscalation(ctx, {
+      jobId: args.jobId,
+      acks: nextAcks,
+    });
+
     if (args.decision === "decline") {
       const property = await ctx.db.get(job.propertyId);
       await createOpsNotifications(ctx, {
@@ -186,9 +192,125 @@ export const acknowledge = mutation({
   },
 });
 
+async function escalateExpiredAcksForJob(
+  ctx: MutationCtx,
+  job: Doc<"cleaningJobs">,
+  now: number,
+): Promise<number> {
+  const acks = job.acknowledgements;
+  if (!acks || acks.length === 0) {
+    return 0;
+  }
+  const jobExpired: Id<"users">[] = [];
+  const nextAcks = acks.map((ack) => {
+    if (
+      ack.state === "pending" &&
+      ack.expiresAt <= now &&
+      ack.notifiedOpsAt === undefined
+    ) {
+      jobExpired.push(ack.cleanerId);
+      return {
+        ...ack,
+        state: "expired" as const,
+        respondedAt: now,
+        notifiedOpsAt: now,
+      };
+    }
+    return ack;
+  });
+
+  if (jobExpired.length === 0) {
+    return 0;
+  }
+
+  await ctx.db.patch(job._id, {
+    acknowledgements: nextAcks,
+    updatedAt: now,
+  });
+
+  const property = await ctx.db.get(job.propertyId);
+  const cleanerDocs = await Promise.all(
+    jobExpired.map((cleanerId) => ctx.db.get(cleanerId)),
+  );
+  const cleanerNames = cleanerDocs
+    .filter((cleaner): cleaner is Doc<"users"> => cleaner !== null)
+    .map((cleaner) => cleaner.name ?? cleaner.email)
+    .join(", ");
+
+  const opsUserIds = await listOpsUserIds(ctx);
+  await createNotificationsForUsers(ctx, {
+    userIds: opsUserIds,
+    type: "job_at_risk",
+    title: "Assignment not acknowledged",
+    message: `${cleanerNames || "Cleaner"} has not accepted ${property?.name ?? "a job"} in time.`,
+    data: {
+      jobId: job._id,
+      propertyId: job.propertyId,
+      cleanerIds: jobExpired,
+      reason: "acknowledgement_expired",
+    },
+  });
+
+  return jobExpired.length;
+}
+
 /**
- * Cron-driven sweep: for each job whose acknowledgements are still pending
- * past their expiry, mark them expired and notify ops once.
+ * Event-driven escalation for a single job. Scheduled via ctx.scheduler.runAt
+ * at the acknowledgement's expiry time from the mutation that seeded it.
+ * Idempotent: only pending + expired + not-yet-notified acks are escalated,
+ * so redundant schedules are safe no-ops.
+ */
+export const escalateOne = internalMutation({
+  args: { jobId: v.id("cleaningJobs") },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (!job) {
+      return { escalatedAcks: 0 };
+    }
+    if (job.status !== "scheduled" && job.status !== "assigned") {
+      return { escalatedAcks: 0 };
+    }
+    const escalatedAcks = await escalateExpiredAcksForJob(ctx, job, Date.now());
+    return { escalatedAcks };
+  },
+});
+
+/**
+ * After a mutation seeds new pending acknowledgements, schedule a single
+ * escalation run at the earliest pending expiry. Replaces the polling cron.
+ */
+export async function schedulePendingAcknowledgementEscalation(
+  ctx: MutationCtx,
+  args: {
+    jobId: Id<"cleaningJobs">;
+    acks: Acknowledgement[] | undefined;
+  },
+): Promise<void> {
+  if (!args.acks || args.acks.length === 0) {
+    return;
+  }
+  let earliest: number | null = null;
+  for (const ack of args.acks) {
+    if (ack.state !== "pending") continue;
+    if (ack.notifiedOpsAt !== undefined) continue;
+    if (earliest === null || ack.expiresAt < earliest) {
+      earliest = ack.expiresAt;
+    }
+  }
+  if (earliest === null) {
+    return;
+  }
+  await ctx.scheduler.runAt(
+    earliest,
+    internal.cleaningJobs.acknowledgements.escalateOne,
+    { jobId: args.jobId },
+  );
+}
+
+/**
+ * Backstop sweep: retained for one deploy cycle as a safety net while
+ * already-in-flight acknowledgements (seeded before the event-driven path
+ * shipped) drain out. Delete after verifying logs show zero escalations.
  */
 export const escalateExpiredAcknowledgements = internalMutation({
   args: {},
@@ -210,64 +332,12 @@ export const escalateExpiredAcknowledgements = internalMutation({
 
     let escalatedJobs = 0;
     let escalatedAcks = 0;
-
     for (const job of candidateJobs) {
-      const acks = job.acknowledgements;
-      if (!acks || acks.length === 0) {
-        continue;
+      const count = await escalateExpiredAcksForJob(ctx, job, now);
+      if (count > 0) {
+        escalatedJobs += 1;
+        escalatedAcks += count;
       }
-      const jobExpired: Id<"users">[] = [];
-      const nextAcks = acks.map((ack) => {
-        if (
-          ack.state === "pending" &&
-          ack.expiresAt <= now &&
-          ack.notifiedOpsAt === undefined
-        ) {
-          jobExpired.push(ack.cleanerId);
-          return {
-            ...ack,
-            state: "expired" as const,
-            respondedAt: now,
-            notifiedOpsAt: now,
-          };
-        }
-        return ack;
-      });
-
-      if (jobExpired.length === 0) {
-        continue;
-      }
-
-      await ctx.db.patch(job._id, {
-        acknowledgements: nextAcks,
-        updatedAt: now,
-      });
-
-      const property = await ctx.db.get(job.propertyId);
-      const cleanerDocs = await Promise.all(
-        jobExpired.map((cleanerId) => ctx.db.get(cleanerId)),
-      );
-      const cleanerNames = cleanerDocs
-        .filter((cleaner): cleaner is Doc<"users"> => cleaner !== null)
-        .map((cleaner) => cleaner.name ?? cleaner.email)
-        .join(", ");
-
-      const opsUserIds = await listOpsUserIds(ctx);
-      await createNotificationsForUsers(ctx, {
-        userIds: opsUserIds,
-        type: "job_at_risk",
-        title: "Assignment not acknowledged",
-        message: `${cleanerNames || "Cleaner"} has not accepted ${property?.name ?? "a job"} in time.`,
-        data: {
-          jobId: job._id,
-          propertyId: job.propertyId,
-          cleanerIds: jobExpired,
-          reason: "acknowledgement_expired",
-        },
-      });
-
-      escalatedJobs += 1;
-      escalatedAcks += jobExpired.length;
     }
 
     return { escalatedJobs, escalatedAcks, checkedAt: now };
