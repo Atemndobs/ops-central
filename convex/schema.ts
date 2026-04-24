@@ -1007,6 +1007,41 @@ const hospitableConfig = defineTable({
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// AI PROVIDERS (admin-configurable)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Single-row-per-feature table that controls which external AI provider is
+// used for a given server-side feature (e.g. voice transcription). Admins
+// change this from the /settings page — no redeploy needed.
+//
+// The set of valid `providerKey` values is intentionally narrow and mirrored
+// in the server-side registry at `convex/ai/providers.ts`. Adding a new
+// provider requires a code change in both places (keeps the blast radius
+// small and guarantees every option has a corresponding implementation).
+
+const aiProviderSettings = defineTable({
+  // Scope: which feature this setting applies to. Kept as a literal union so
+  // new features must be declared here before use.
+  feature: v.union(
+    v.literal("voice_transcription")
+  ),
+
+  // The selected provider implementation. Must match a key in the registry.
+  providerKey: v.union(
+    v.literal("gemini-flash-free"),
+    v.literal("gemini-flash-paid"),
+    v.literal("groq-whisper-turbo"),
+    v.literal("openai-whisper")
+  ),
+
+  // Audit trail — who last changed the setting and when.
+  updatedBy: v.id("users"),
+  updatedAt: v.number(),
+  createdAt: v.number(),
+})
+  .index("by_feature", ["feature"]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // EXPORT SCHEMA
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1072,4 +1107,7 @@ export default defineSchema({
 
   // Integration
   hospitableConfig,
+
+  // AI Providers (admin-configurable)
+  aiProviderSettings,
 });
