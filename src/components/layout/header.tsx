@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslations } from "next-intl";
 import { api } from "@convex/_generated/api";
-import { Bell, LogOut, Menu, Settings, X } from "lucide-react";
+import { Bell, LogOut, Menu, Moon, Settings, Sun, X } from "lucide-react";
 import {
   canAccessPath,
   getRoleFromMetadata,
@@ -89,21 +89,11 @@ function getThemeServerSnapshot(): ThemePreference {
   return "light";
 }
 
-function applyTheme(_theme: ThemePreference) {
-  // Dark mode is temporarily disabled app-wide (toggle UI already removed).
-  // Force light regardless of stored preference; we also reset the
-  // localStorage key below so stale "dark" values flip back on next boot.
+function applyTheme(theme: ThemePreference) {
   if (typeof document === "undefined") {
     return;
   }
-  document.documentElement.classList.remove("dark");
-  if (typeof window !== "undefined") {
-    try {
-      window.localStorage.setItem(THEME_STORAGE_KEY, "light");
-    } catch {
-      // ignore storage errors (private browsing, quota, etc.)
-    }
-  }
+  document.documentElement.classList.toggle("dark", theme === "dark");
 }
 
 export function Header() {
@@ -132,6 +122,12 @@ export function Header() {
   const convexUser = useQuery(
     api.users.queries.getByClerkId,
     isLoaded && isSignedIn && userId ? { clerkId: userId } : "skip",
+  );
+  // Admin-controlled flag. When off (default), the theme toggle button is
+  // hidden — keeps the working theme code in place without exposing the UI.
+  const themeSwitcherEnabled = useQuery(
+    api.admin.featureFlags.isFeatureEnabled,
+    { key: "theme_switcher" },
   );
   const roleFromClaims = getRoleFromSessionClaimsOrNull(
     sessionClaims as Record<string, unknown> | null,
@@ -368,6 +364,22 @@ export function Header() {
           >
             {currentLocale}
           </button>
+
+          {themeSwitcherEnabled ? (
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="rounded-none p-2 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+              aria-label={isDarkMode ? t("nav.lightMode") : t("nav.darkMode")}
+              title={isDarkMode ? t("nav.lightMode") : t("nav.darkMode")}
+            >
+              {isDarkMode ? (
+                <Sun className="h-4 w-4" />
+              ) : (
+                <Moon className="h-4 w-4" />
+              )}
+            </button>
+          ) : null}
 
           {isSignedIn ? (
             <div className="flex items-center">

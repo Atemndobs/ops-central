@@ -19,6 +19,8 @@ import {
   HelpCircle,
   LogOut,
   Menu,
+  Moon,
+  Sun,
   X,
 } from "lucide-react";
 
@@ -79,18 +81,8 @@ function getThemeServerSnapshot(): ThemePreference {
   return "light";
 }
 
-function applyTheme(_theme: ThemePreference) {
-  // Dark mode is temporarily disabled app-wide (toggle UI already removed).
-  // Force light regardless of stored preference; we also reset the
-  // localStorage key below so stale "dark" values flip back on next boot.
-  document.documentElement.classList.remove("dark");
-  if (typeof window !== "undefined") {
-    try {
-      window.localStorage.setItem(THEME_STORAGE_KEY, "light");
-    } catch {
-      // ignore storage errors (private browsing, quota, etc.)
-    }
-  }
+function applyTheme(theme: ThemePreference) {
+  document.documentElement.classList.toggle("dark", theme === "dark");
 }
 
 export function Sidebar() {
@@ -103,6 +95,12 @@ export function Sidebar() {
   const themePreference = useQuery(
     api.users.queries.getThemePreference,
     isConvexAuthenticated ? {} : "skip",
+  );
+  // Admin-controlled flag. When off (default), the theme toggle button is
+  // hidden — keeps the working theme code in place without exposing the UI.
+  const themeSwitcherEnabled = useQuery(
+    api.admin.featureFlags.isFeatureEnabled,
+    { key: "theme_switcher" },
   );
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
   const setThemePreferenceRef = useRef(setThemePreference);
@@ -301,6 +299,39 @@ export function Sidebar() {
             <LogOut className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
             {!isCollapsed ? t("common.logout") : null}
           </button>
+          {themeSwitcherEnabled ? (
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className={cn(
+                "flex w-full rounded-none text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
+                isCollapsed
+                  ? "mx-auto h-11 w-11 items-center justify-center"
+                  : "items-center gap-3 px-3 py-2.5 text-sm",
+              )}
+              title={
+                isCollapsed
+                  ? isDarkMode
+                    ? t("nav.lightMode")
+                    : t("nav.darkMode")
+                  : undefined
+              }
+              aria-label={
+                isDarkMode ? t("nav.lightMode") : t("nav.darkMode")
+              }
+            >
+              {isDarkMode ? (
+                <Sun className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
+              ) : (
+                <Moon className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
+              )}
+              {!isCollapsed
+                ? isDarkMode
+                  ? t("nav.lightMode")
+                  : t("nav.darkMode")
+                : null}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => setIsCollapsed((prev) => !prev)}

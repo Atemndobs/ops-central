@@ -523,7 +523,16 @@
     "teamTab": "Equipo",
     "companySettings": "Configuración de Empresa",
     "automatedRules": "Reglas de Programación Automática",
-    "syncHealth": "Estado de Sincronización"
+    "syncHealth": "Estado de Sincronización",
+    "featureFlags": {
+      "title": "Indicadores de Funciones",
+      "description": "Activa o desactiva funciones de la interfaz en toda la aplicación sin necesidad de redesplegar. Por defecto están apagadas — actívalas aquí cuando una función esté lista.",
+      "offBehaviour": "Cuando está apagada: {detail}",
+      "enable": "Activar",
+      "disable": "Desactivar",
+      "saved": "Guardado",
+      "saveFailed": "No se pudo guardar. {error}"
+    }
   },
   "incidentsAdmin": {
     "eyebrow": "Operaciones",
