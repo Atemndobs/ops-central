@@ -23,7 +23,7 @@ import { requireAdmin } from "../lib/auth";
 import {
   SERVICE_DEFINITIONS,
   getServiceDefinition,
-  quotaWindowMs,
+  quotaBucketStart,
   type ServiceKey,
   type ServiceQuota,
 } from "../lib/serviceRegistry";
@@ -56,7 +56,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Upper bound on how many rows any single `.take()` pulls. Protects query
  *  latency regardless of traffic volume. */
-const EVENT_SCAN_LIMIT = 5000;
 const ROLLUP_SCAN_LIMIT = 5000;
 const RECENT_ERRORS_DEFAULT = 25;
 const RECENT_ERRORS_MAX = 100;
@@ -115,44 +114,27 @@ async function sumCostFromRollups(
 /** The narrower union the schema uses on `serviceUsageEvents.serviceKey`. */
 type EventServiceKey = Doc<"serviceUsageEvents">["serviceKey"];
 
-/** Quota consumption % computed from events in the last `windowMs`. Bounded
- *  scan — returns undefined if we couldn't read anything. */
+/** Quota consumption % read from `serviceQuotaCounters` — O(1) vs the old
+ *  5000-event scan. Returns `{consumed:0, pct:0}` when no counter row
+ *  exists yet (first log of the bucket hasn't happened). */
 async function computeQuotaConsumption(
   ctx: Parameters<typeof requireAdmin>[0],
   serviceKey: EventServiceKey,
   quota: ServiceQuota,
   now: number,
 ): Promise<{ consumed: number; pct: number }> {
-  const windowStart = now - quotaWindowMs(quota.window);
-  const events = await ctx.db
-    .query("serviceUsageEvents")
-    .withIndex("by_service_created", (q) =>
-      q.eq("serviceKey", serviceKey).gte("createdAt", windowStart),
+  const bucketStart = quotaBucketStart(quota.window, now);
+  const row = await ctx.db
+    .query("serviceQuotaCounters")
+    .withIndex("by_service_quota_bucket", (q) =>
+      q
+        .eq("serviceKey", serviceKey)
+        .eq("quotaId", quota.id)
+        .eq("bucketStart", bucketStart),
     )
-    .take(EVENT_SCAN_LIMIT);
+    .unique();
 
-  const scoped = quota.feature
-    ? events.filter((e) => e.feature === quota.feature)
-    : events;
-
-  let consumed = 0;
-  for (const e of scoped) {
-    switch (quota.metric) {
-      case "count":
-        consumed += 1;
-        break;
-      case "inputTokens":
-        consumed += e.inputTokens ?? 0;
-        break;
-      case "outputTokens":
-        consumed += e.outputTokens ?? 0;
-        break;
-      case "costUsd":
-        consumed += e.estimatedCostUsd ?? 0;
-        break;
-    }
-  }
-
+  const consumed = row?.consumed ?? 0;
   const pct = quota.limit > 0 ? (consumed / quota.limit) * 100 : 0;
   return { consumed, pct };
 }

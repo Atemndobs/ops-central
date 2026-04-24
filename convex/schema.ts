@@ -1207,6 +1207,35 @@ const serviceUsageRollups = defineTable({
   .index("by_service_bucket", ["serviceKey", "bucketStart"])
   .index("by_feature_bucket", ["feature", "bucketStart"]);
 
+/**
+ * Rolling-window quota counters. One row per
+ * (serviceKey, quotaId, bucketStart) — updated on every `logServiceUsage`
+ * call. Reading the counter is O(1), so the hot write path no longer has
+ * to scan serviceUsageEvents to check quota thresholds.
+ *
+ * `bucketStart` is unix ms aligned to the start of the quota window
+ * (minute/hour/day/month). Expired buckets are left in place and reclaimed
+ * by the daily retention cron (see `convex/serviceUsage/crons.ts`).
+ *
+ * `lastNotifiedPct` is the highest notifyAtPct threshold we've already
+ * fired for *this bucket*. Lets us replace the old
+ * "1-hour + dayBucket dedupe" workaround with a precise "just crossed"
+ * decision.
+ */
+const serviceQuotaCounters = defineTable({
+  serviceKey: v.string(),
+  quotaId: v.string(),
+  /** Unix ms aligned to window start. */
+  bucketStart: v.number(),
+  /** Rolling sum (count, tokens, or costUsd depending on the quota metric). */
+  consumed: v.number(),
+  /** Highest notifyAtPct that's already fired inside this bucket; -1 when none. */
+  lastNotifiedPct: v.number(),
+  updatedAt: v.number(),
+})
+  .index("by_service_quota_bucket", ["serviceKey", "quotaId", "bucketStart"])
+  .index("by_bucketStart", ["bucketStart"]);
+
 const featureFlags = defineTable({
   key: v.union(
     v.literal("theme_switcher"),
@@ -1297,4 +1326,5 @@ export default defineSchema({
   // Service Usage Tracking (Phase A)
   serviceUsageEvents,
   serviceUsageRollups,
+  serviceQuotaCounters,
 });

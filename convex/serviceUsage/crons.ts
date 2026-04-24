@@ -159,7 +159,11 @@ export const rollup = internalMutation({
 
 export const retention = internalMutation({
   args: {},
-  returns: v.object({ deleted: v.number(), rescheduled: v.boolean() }),
+  returns: v.object({
+    deleted: v.number(),
+    countersDeleted: v.number(),
+    rescheduled: v.boolean(),
+  }),
   handler: async (ctx) => {
     const cutoff = Date.now() - RETENTION_DAYS * DAY_MS;
 
@@ -197,6 +201,25 @@ export const retention = internalMutation({
       }
     }
 
+    // Also reap expired quota counters. One row per (service, quota,
+    // bucket) — for minute-windowed quotas this can add up over time.
+    // Use the `by_bucketStart` index to range-scan oldest-first.
+    let countersDeleted = 0;
+    if (!hitBatchLimit) {
+      const staleCounters = await ctx.db
+        .query("serviceQuotaCounters")
+        .withIndex("by_bucketStart", (q) => q.lt("bucketStart", cutoff))
+        .take(RETENTION_BATCH_SIZE - deleted);
+      for (const row of staleCounters) {
+        await ctx.db.delete(row._id);
+        countersDeleted += 1;
+        if (deleted + countersDeleted >= RETENTION_BATCH_SIZE) {
+          hitBatchLimit = true;
+          break;
+        }
+      }
+    }
+
     // If we filled the batch, there may be more. Reschedule ourselves.
     let rescheduled = false;
     if (hitBatchLimit) {
@@ -208,6 +231,6 @@ export const retention = internalMutation({
       rescheduled = true;
     }
 
-    return { deleted, rescheduled };
+    return { deleted, countersDeleted, rescheduled };
   },
 });

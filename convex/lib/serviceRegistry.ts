@@ -162,3 +162,25 @@ export function quotaWindowMs(window: QuotaWindow): number {
       return 30 * 24 * 60 * 60 * 1000;
   }
 }
+
+/**
+ * Align a timestamp to the start of the window it belongs to (UTC). Used
+ * as the primary key for `serviceQuotaCounters` so every call in the same
+ * window increments the same row.
+ */
+export function quotaBucketStart(window: QuotaWindow, ts: number): number {
+  switch (window) {
+    case "minute":
+      return Math.floor(ts / (60 * 1000)) * (60 * 1000);
+    case "hour":
+      return Math.floor(ts / (60 * 60 * 1000)) * (60 * 60 * 1000);
+    case "day": {
+      const d = new Date(ts);
+      return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    }
+    case "month": {
+      const d = new Date(ts);
+      return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+    }
+  }
+}
