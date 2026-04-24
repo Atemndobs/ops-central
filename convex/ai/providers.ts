@@ -31,20 +31,18 @@
  * `convex/schema.ts` → `aiProviderSettings`.
  */
 export type VoiceProviderKey =
-  | "gemini-flash-free"
-  | "gemini-flash-paid"
+  | "gemini-flash"
   | "groq-whisper-turbo"
   | "openai-whisper";
 
 export const VOICE_PROVIDER_KEYS: ReadonlyArray<VoiceProviderKey> = [
-  "gemini-flash-free",
-  "gemini-flash-paid",
+  "gemini-flash",
   "groq-whisper-turbo",
   "openai-whisper",
 ] as const;
 
 /** Default provider used on first deploy and whenever no setting row exists. */
-export const DEFAULT_VOICE_PROVIDER: VoiceProviderKey = "gemini-flash-free";
+export const DEFAULT_VOICE_PROVIDER: VoiceProviderKey = "gemini-flash";
 
 export type LanguageHint = "en" | "es";
 
@@ -248,73 +246,21 @@ async function transcribeWithOpenAI(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Shared env var name used by the existing AI ops assistant. The Voice Free
- * provider reads from this directly; Voice Paid prefers its own key but
- * transparently falls back to this one so "Paid" remains a selectable option
- * out-of-the-box even before a dedicated billed key is provisioned.
+ * Shared Gemini API key, also used by the AI ops assistant. This key is
+ * attached to a Google Cloud billing account (required by Google — there is
+ * no purely key-less free access), but the project billing is hard-capped.
+ * Our usage pattern is designed to stay within the free-tier quota anyway
+ * (~15 RPM / ~1500 RPD on gemini-2.5-flash), so no spend is expected in
+ * normal operation. The cap is a safety net, not a budget.
  */
-const GEMINI_FREE_ENV = "GOOGLE_GENERATIVE_AI_API_KEY";
-const GEMINI_PAID_ENV = "GOOGLE_GENERATIVE_AI_API_KEY_PAID";
-
-function resolveGeminiPaidKey(): string {
-  // Prefer the explicit paid key; fall back to the shared key. Either works
-  // at the API level — the tier distinction is set by Google Cloud billing
-  // on whichever key is used.
-  return (
-    process.env[GEMINI_PAID_ENV] ||
-    process.env[GEMINI_FREE_ENV] ||
-    ""
-  );
-}
+const GEMINI_ENV = "GOOGLE_GENERATIVE_AI_API_KEY";
 
 export const VOICE_PROVIDERS: Record<VoiceProviderKey, VoiceProvider> = {
-  "gemini-flash-free": {
-    key: "gemini-flash-free",
-    envVar: GEMINI_FREE_ENV,
+  "gemini-flash": {
+    key: "gemini-flash",
+    envVar: GEMINI_ENV,
     transcribe: (input) =>
-      transcribeWithGemini(input, requireEnv(GEMINI_FREE_ENV)),
-  },
-  "gemini-flash-paid": {
-    key: "gemini-flash-paid",
-    // Reported env var is the dedicated paid key — that's what admins should
-    // set when they want a separate billed key. The implementation below
-    // falls back to the free key so selection doesn't hard-fail.
-    envVar: GEMINI_PAID_ENV,
-    transcribe: async (input) => {
-      const paidKey = process.env[GEMINI_PAID_ENV];
-      const freeKey = process.env[GEMINI_FREE_ENV];
-
-      // If there's no dedicated paid key, transparently behave as "free".
-      if (!paidKey) {
-        if (!freeKey) {
-          throw new Error(
-            `Missing Gemini API key. Set "${GEMINI_PAID_ENV}" or ` +
-              `"${GEMINI_FREE_ENV}" in the Convex dashboard.`
-          );
-        }
-        return transcribeWithGemini(input, freeKey);
-      }
-
-      // Try the paid key first. If it fails with a cap / quota / billing
-      // error — very likely on a $1-capped experimentation key — retry with
-      // the free key so the user still gets their transcript.
-      try {
-        return await transcribeWithGemini(input, paidKey);
-      } catch (err) {
-        if (!freeKey) throw err;
-        const msg = String(err instanceof Error ? err.message : err);
-        const isCapError =
-          msg.includes(" 402 ") || // payment required
-          msg.includes(" 429 ") || // rate / quota exhausted
-          /quota|billing|exceeded|limit/i.test(msg);
-        if (!isCapError) throw err;
-        console.warn(
-          `[voice] Gemini paid key failed (${msg.slice(0, 120)}); ` +
-            `falling back to free key.`
-        );
-        return transcribeWithGemini(input, freeKey);
-      }
-    },
+      transcribeWithGemini(input, requireEnv(GEMINI_ENV)),
   },
   "groq-whisper-turbo": {
     key: "groq-whisper-turbo",
@@ -346,19 +292,10 @@ export function getVoiceProvider(key: VoiceProviderKey): VoiceProvider {
 }
 
 /**
- * Whether the env var(s) backing a provider are present. Used by the admin
- * UI to show which options are actually usable and by the settings mutation
+ * Whether the env var backing a provider is present. Used by the admin UI
+ * to show which options are actually usable and by the settings mutation
  * to reject selection of an unconfigured provider.
- *
- * Special case: `gemini-flash-paid` reports configured when *either* the
- * dedicated paid key OR the shared free key is set, matching the fallback
- * behaviour inside its `transcribe` implementation.
  */
 export function isVoiceProviderConfigured(key: VoiceProviderKey): boolean {
-  if (key === "gemini-flash-paid") {
-    return Boolean(
-      process.env[GEMINI_PAID_ENV] || process.env[GEMINI_FREE_ENV]
-    );
-  }
   return Boolean(process.env[VOICE_PROVIDERS[key].envVar]);
 }

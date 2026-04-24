@@ -1028,8 +1028,7 @@ const aiProviderSettings = defineTable({
 
   // The selected provider implementation. Must match a key in the registry.
   providerKey: v.union(
-    v.literal("gemini-flash-free"),
-    v.literal("gemini-flash-paid"),
+    v.literal("gemini-flash"),
     v.literal("groq-whisper-turbo"),
     v.literal("openai-whisper")
   ),

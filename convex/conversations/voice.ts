@@ -55,8 +55,7 @@ export const transcribe = action({
     text: v.string(),
     detectedLang: v.string(),
     providerKey: v.union(
-      v.literal("gemini-flash-free"),
-      v.literal("gemini-flash-paid"),
+      v.literal("gemini-flash"),
       v.literal("groq-whisper-turbo"),
       v.literal("openai-whisper")
     ),

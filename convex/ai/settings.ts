@@ -33,8 +33,7 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const voiceProviderKeyValidator = v.union(
-  v.literal("gemini-flash-free"),
-  v.literal("gemini-flash-paid"),
+  v.literal("gemini-flash"),
   v.literal("groq-whisper-turbo"),
   v.literal("openai-whisper")
 );
@@ -53,23 +52,14 @@ type ProviderMetadata = {
 };
 
 const PROVIDER_METADATA: Record<VoiceProviderKey, ProviderMetadata> = {
-  "gemini-flash-free": {
-    key: "gemini-flash-free",
-    label: "Gemini 2.5 Flash — Free tier",
-    costLabel: "$0 within rate limits",
+  "gemini-flash": {
+    key: "gemini-flash",
+    label: "Gemini 2.5 Flash",
+    costLabel: "$0 (within free-tier quota)",
     description:
-      "Default. Google free tier, ~15 req/min, ~1500 req/day. Inputs may be " +
-      "used by Google to improve products — switch to Paid for no-training guarantee.",
-  },
-  "gemini-flash-paid": {
-    key: "gemini-flash-paid",
-    label: "Gemini 2.5 Flash — Paid",
-    costLabel: "~$0.001 / min",
-    description:
-      "Same model, paid tier. Higher rate limits and no training on data. " +
-      "Uses GOOGLE_GENERATIVE_AI_API_KEY_PAID if set, otherwise falls back " +
-      "to the shared GOOGLE_GENERATIVE_AI_API_KEY. Recommended before " +
-      "onboarding outside-J&A customers.",
+      "Default. Uses the shared GOOGLE_GENERATIVE_AI_API_KEY. Billing is " +
+      "hard-capped as a safety net; our usage pattern stays within the " +
+      "free-tier quota (~15 req/min, ~1500 req/day) so no spend is expected.",
   },
   "groq-whisper-turbo": {
     key: "groq-whisper-turbo",
