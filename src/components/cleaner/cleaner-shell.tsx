@@ -6,15 +6,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   Bell,
   ClipboardList,
   MessageCircle,
   AlertTriangle,
   User,
-  Moon,
-  Sun,
 } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { localeNames, type Locale } from "@/lib/locales";
@@ -28,12 +26,66 @@ import {
   isWebPushSupported,
 } from "@/lib/web-push";
 
-const NAV_ITEMS = [
-  { href: "/cleaner", labelKey: "common.jobs", icon: ClipboardList },
-  { href: "/cleaner/messages", labelKey: "common.messages", icon: MessageCircle },
-  { href: "/cleaner/incidents/new", labelKey: "cleaner.incidentNav", icon: AlertTriangle },
-  { href: "/cleaner/more", labelKey: "cleaner.more", icon: User },
+const NAV_ITEMS: Array<{
+  href: string;
+  labelKey: string;
+  icon: typeof ClipboardList;
+  // Path prefixes this tab claims. Longest-prefix-wins, so a specific tab
+  // like Messages can beat the generic Jobs ("/cleaner") root.
+  matchPrefixes: string[];
+}> = [
+  {
+    href: "/cleaner",
+    labelKey: "common.jobs",
+    icon: ClipboardList,
+    matchPrefixes: ["/cleaner/jobs", "/cleaner/history", "/cleaner"],
+  },
+  {
+    href: "/cleaner/messages",
+    labelKey: "common.messages",
+    icon: MessageCircle,
+    matchPrefixes: ["/cleaner/messages"],
+  },
+  {
+    href: "/cleaner/incidents",
+    labelKey: "cleaner.incidentNav",
+    icon: AlertTriangle,
+    matchPrefixes: ["/cleaner/incidents"],
+  },
+  {
+    href: "/cleaner/more",
+    labelKey: "cleaner.more",
+    icon: User,
+    matchPrefixes: [
+      "/cleaner/more",
+      "/cleaner/settings",
+      "/cleaner/notifications",
+    ],
+  },
 ];
+
+function matchLength(prefixes: string[], pathname: string): number {
+  let best = 0;
+  for (const prefix of prefixes) {
+    if (pathname === prefix || pathname.startsWith(`${prefix}/`)) {
+      if (prefix.length > best) best = prefix.length;
+    }
+  }
+  return best;
+}
+
+function isNavItemActive(itemHref: string, pathname: string): boolean {
+  let winnerHref: string | null = null;
+  let winnerLength = 0;
+  for (const candidate of NAV_ITEMS) {
+    const length = matchLength(candidate.matchPrefixes, pathname);
+    if (length > winnerLength) {
+      winnerLength = length;
+      winnerHref = candidate.href;
+    }
+  }
+  return winnerHref === itemHref;
+}
 
 const THEME_STORAGE_KEY = "opscentral-theme";
 
@@ -369,18 +421,11 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     }
   }, [isConvexAuthenticated, resolvedTheme]);
 
-  const [currentLocale, setCurrentLocale] = useState<Locale>(() => {
-    if (typeof document === "undefined") {
-      return "en";
-    }
-    const cookie = document.cookie.split("; ").find((c) => c.startsWith("NEXT_LOCALE="));
-    const cookieLocale = cookie?.split("=")[1] as Locale | undefined;
-    return cookieLocale ?? "en";
-  });
+  // Source locale from next-intl so SSR and client agree on first paint.
+  const currentLocale = useLocale() as Locale;
 
   const toggleLocale = useCallback(() => {
     const nextLocale: Locale = currentLocale === "en" ? "es" : "en";
-    setCurrentLocale(nextLocale);
     document.cookie = `NEXT_LOCALE=${nextLocale}; path=/; max-age=31536000`;
 
     if (isConvexAuthenticated) {
@@ -402,8 +447,11 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     if (pathname.startsWith("/cleaner/history")) {
       return t("cleaner.history");
     }
-    if (pathname.startsWith("/cleaner/incidents")) {
+    if (pathname === "/cleaner/incidents/new") {
       return t("cleaner.incidentReport");
+    }
+    if (pathname.startsWith("/cleaner/incidents")) {
+      return t("cleaner.incidents.title");
     }
     if (pathname.startsWith("/cleaner/settings")) {
       return t("common.settings");
@@ -417,26 +465,37 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     return t("cleaner.myJobs");
   }, [pathname, t]);
 
+  const isPropertyDetail = pathname?.startsWith("/cleaner/properties/") ?? false;
+
   return (
     <div className="cleaner-theme cleaner-app-shell relative h-[100svh] overflow-hidden text-[15px] text-[var(--foreground)]">
-      <header className="fixed inset-x-0 top-0 z-40 border-b border-[var(--border)] bg-white/92 px-3 py-3 backdrop-blur">
+      <header
+        className={`fixed inset-x-0 top-0 z-40 px-3 py-3 transition-colors ${
+          isPropertyDetail
+            ? "bg-transparent"
+            : "border-b border-[var(--border)] bg-white/92 backdrop-blur"
+        }`}
+      >
         <div className="mx-auto flex w-full max-w-[402px] items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
+          <Link
+            href="/cleaner"
+            aria-label={t("cleaner.myJobs")}
+            className="flex min-w-0 items-center gap-3 rounded-lg transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cleaner-primary)]"
+          >
             <Image
               src="https://chezsoistays.com/wp-content/uploads/2026/02/cropped-chezsoi_favicon@2x.png"
               alt="ChezSoiCleaning logo"
               width={32}
               height={32}
-              className="h-8 w-8 object-contain"
+              className="h-8 w-8 shrink-0 object-contain"
               priority
             />
-            <div>
-              <p className="cleaner-meta text-[10px] text-[var(--cleaner-ink)]">{t("cleaner.myJobs")}</p>
-              <h1 className="truncate font-[var(--font-cleaner-body)] text-[13px] font-semibold text-[var(--cleaner-muted)]">
+            <div className="min-w-0">
+              <h1 className="truncate font-[var(--font-cleaner-body)] text-[22px] font-bold leading-tight tracking-tight text-[var(--cleaner-ink)]">
                 {title}
               </h1>
             </div>
-          </div>
+          </Link>
           <div className="flex items-center gap-2">
             <div className="relative" ref={notificationPanelRef}>
               <button
@@ -540,32 +599,27 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
               className="cleaner-tool-button h-8 w-8 bg-white text-[var(--cleaner-ink)]"
               aria-label={`Switch to ${localeNames[currentLocale === "en" ? "es" : "en"]}`}
               title={`Switch to ${localeNames[currentLocale === "en" ? "es" : "en"]}`}
+              suppressHydrationWarning
             >
-              <span className="font-[var(--font-cleaner-body)] text-[10px] font-bold uppercase">
+              <span
+                className="font-[var(--font-cleaner-body)] text-[10px] font-bold uppercase"
+                suppressHydrationWarning
+              >
                 {currentLocale}
               </span>
-            </button>
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="cleaner-tool-button h-8 w-8 bg-white text-[var(--cleaner-ink)]"
-              aria-label={isDarkMode ? t("cleaner.shell.switchToLight") : t("cleaner.shell.switchToDark")}
-              title={isDarkMode ? t("nav.lightMode") : t("nav.darkMode")}
-            >
-              {isDarkMode ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
             </button>
           </div>
         </div>
       </header>
 
       <main
-        className="fixed inset-x-0 overflow-y-auto px-3"
+        className="fixed inset-x-0 z-10 overflow-y-auto px-3"
         style={{
           top: "calc(env(safe-area-inset-top) + 72px)",
           bottom: "max(env(safe-area-inset-bottom), 8px)",
         }}
       >
-        <div className="mx-auto w-full max-w-[402px] pb-24 pt-4">
+        <div className="mx-auto w-full max-w-[402px] pb-24">
           <InstallPrompt />
           {updateReady ? (
             <div className="cleaner-card mt-2 border-blue-500/60 bg-blue-500/10 p-3 text-xs text-blue-100">
@@ -596,7 +650,7 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
       >
         <ul className="pointer-events-auto mx-auto grid max-w-[402px] grid-cols-4 items-center justify-items-center gap-x-3 px-9 pb-2">
           {NAV_ITEMS.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const isActive = isNavItemActive(item.href, pathname ?? "");
             const showMessageBadge =
               item.href === "/cleaner/messages" &&
               typeof unreadMessageCount === "number" &&

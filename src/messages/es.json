@@ -7,6 +7,7 @@
     "team": "Equipo",
     "inventory": "Inventario",
     "workOrders": "Órdenes de Trabajo",
+    "incidents": "Incidentes",
     "messages": "Mensajes",
     "reports": "Reportes",
     "settings": "Configuración",
@@ -139,8 +140,37 @@
     "jobDetail": "Detalle del Trabajo",
     "history": "Historial",
     "incidentReport": "Reporte de Incidente",
-    "incidentNav": "Incidente",
-    "more": "Más",
+    "incidentNav": "Incidentes",
+    "incidents": {
+      "title": "Mis Incidentes",
+      "subtitle": "Sigue los reportes que has enviado y su estado actual.",
+      "reportNew": "Reportar Nuevo",
+      "tabAll": "Todos",
+      "tabOpen": "Abiertos",
+      "tabInProgress": "En Progreso",
+      "tabResolved": "Resueltos",
+      "emptyAll": "Aún no has reportado incidentes",
+      "emptyAllHint": "Toca \"Reportar Nuevo\" para registrar un artículo faltante, daño o necesidad de mantenimiento.",
+      "emptyFiltered": "Ningún incidente en este filtro",
+      "emptyFilteredHint": "Prueba otra pestaña.",
+      "submittedBanner": "Tu incidente fue enviado. Ya aparece aquí con estado Abierto.",
+      "backToList": "Volver a Mis Incidentes",
+      "status": {
+        "open": "Abierto",
+        "in_progress": "En Progreso",
+        "resolved": "Resuelto",
+        "wont_fix": "No se Resolverá"
+      },
+      "detail": {
+        "property": "Propiedad",
+        "room": "Habitación",
+        "reported": "Reportado",
+        "linkedJob": "Trabajo vinculado",
+        "openJob": "Abrir trabajo",
+        "description": "Descripción"
+      }
+    },
+    "more": "Perfil",
     "today": "Hoy",
     "activeJobs": "trabajo(s) activo(s)",
     "submittedJobs": "trabajo(s) enviado(s) o completado(s)",
@@ -166,6 +196,19 @@
     "pushNotifications": "Notificaciones Push",
     "unknownProperty": "Propiedad desconocida",
     "noAddress": "Sin dirección",
+    "propertyType": "Tipo",
+    "propertyBedrooms": "Habitaciones",
+    "propertyBathrooms": "Baños",
+    "propertySquareFeet": "Pies²",
+    "propertyDefaultType": "Casa",
+    "propertyNotFound": "Propiedad no encontrada",
+    "propertyLoading": "Cargando propiedad...",
+    "viewOnAirbnb": "Ver en Airbnb",
+    "propertyBackLabel": "Propiedades",
+    "instructions": {
+      "eyebrow": "INSTRUCCIONES DE LA PROPIEDAD",
+      "title": "Bueno saber"
+    },
     "scheduledLabel": "Programado:",
     "statusLabel": "Estado:",
     "assignedCleanersLabel": "Limpiadores asignados:",
@@ -174,6 +217,19 @@
     "jobDetailLoading": "Cargando detalles del trabajo...",
     "jobNotFound": "Trabajo no encontrado.",
     "startJobError": "No se pudo iniciar el trabajo.",
+    "acceptAssignment": "Aceptar trabajo",
+    "declineAssignment": "Rechazar",
+    "acknowledgementAccepted": "Aceptado",
+    "acknowledgementDeclined": "Rechazado",
+    "acknowledgementExpired": "Ventana de respuesta vencida — operaciones notificadas.",
+    "acknowledgementPending": "Por favor acepta o rechaza esta asignación.",
+    "acknowledgementExpiresAt": "Responde antes de {time}",
+    "declineReasonPrompt": "Motivo del rechazo (requerido)",
+    "declineReasonPlaceholder": "ej. enfermo, conflicto de horario, muy lejos",
+    "declineReasonRequired": "Ingresa un motivo breve para rechazar.",
+    "acknowledgementError": "No se pudo enviar tu respuesta.",
+    "submitResponse": "Enviar",
+    "cancel": "Cancelar",
     "openActiveFlow": "Abrir Flujo Activo",
     "submissionGatePending": "Bloqueo de envío pendiente: {count} sesión(es) de limpiador sin resolver.",
     "loadingJobs": "Cargando trabajos asignados...",
@@ -188,11 +244,35 @@
     "recentJobs": "Trabajos recientes",
     "historyCount": "{count} trabajos ordenados por fecha programada más reciente.",
     "noCleanerNotes": "Sin notas",
+    "guestCount": "{count, plural, one {# huésped} other {# huéspedes}}",
+    "bedCount": "{count, plural, one {# Cama} other {# Camas}}",
+    "bathCount": "{count, plural, one {# Baño} other {# Baños}}",
+    "highRisk": "Alto Riesgo",
+    "note": {
+      "lateCheckout": "Se espera salida tardía.",
+      "earlyCheckin": "Se espera llegada anticipada."
+    },
+    "access": {
+      "eyebrow": "ANTES DE LLEGAR",
+      "title": "Acceso y notas de la propiedad",
+      "empty": "Aún no hay datos de acceso para esta propiedad. Confirma con operaciones antes de llegar.",
+      "entry": "Instrucciones de entrada",
+      "key": "Ubicación de la llave",
+      "parking": "Estacionamiento",
+      "urgent": "Urgente — revisar siempre"
+    },
     "rooms": {
       "livingRoom": "Sala de Estar",
       "kitchen": "Cocina",
       "bedroom": "Dormitorio",
       "bathroom": "Baño"
+    },
+    "roomsSection": {
+      "eyebrow": "HABITACIONES",
+      "title": "Habitaciones en esta propiedad",
+      "countOne": "{count} habitación",
+      "countOther": "{count} habitaciones",
+      "empty": "Lista de habitaciones aún no sincronizada — contacta a operaciones."
     },
     "shell": {
       "notifications": "Notificaciones",
@@ -482,6 +562,70 @@
       "noDevice": "No se encontró ningún micrófono en este dispositivo.",
       "uploadFailed": "No se pudo subir el audio. Verifica tu conexión e inténtalo de nuevo.",
       "transcriptionFailed": "No se pudo transcribir el audio. Inténtalo de nuevo en un momento."
+    }
+  },
+  "incidentsAdmin": {
+    "eyebrow": "Operaciones",
+    "title": "Incidentes",
+    "subtitle": "Revisa y resuelve los problemas reportados desde el terreno.",
+    "tabs": {
+      "all": "Todos",
+      "open": "Abiertos",
+      "in_progress": "En Progreso",
+      "resolved": "Resueltos",
+      "wont_fix": "No se Resolverá"
+    },
+    "searchPlaceholder": "Buscar título, propiedad, reportante...",
+    "severityLabel": "Severidad",
+    "severityAll": "Todas",
+    "stats": {
+      "open": "Abiertos",
+      "inProgress": "En Progreso",
+      "resolved": "Resueltos",
+      "criticalActive": "Críticos (Activos)"
+    },
+    "emptyFiltered": "Ningún incidente coincide con estos filtros",
+    "emptyAll": "No hay incidentes reportados",
+    "emptyFilteredHint": "Prueba a borrar los filtros o términos de búsqueda.",
+    "emptyAllHint": "Cuando los limpiadores reporten problemas, aparecerán aquí.",
+    "reportedBy": "Reportado por",
+    "detail": {
+      "close": "Cerrar",
+      "notFound": "Incidente no encontrado",
+      "property": "Propiedad",
+      "room": "Habitación",
+      "reportedByLabel": "Reportado por",
+      "reportedAt": "Reportado",
+      "linkedJob": "Trabajo vinculado",
+      "openJob": "Abrir trabajo",
+      "description": "Descripción",
+      "context": "Contexto",
+      "missingItem": "Artículo faltante / afectado",
+      "resolveFooterActive": "Actualiza el estado o marca como resuelto.",
+      "resolveFooterTerminal": "Reabre o actualiza las notas de resolución.",
+      "updateStatus": "Actualizar Estado",
+      "statusField": "Estado",
+      "notesFieldOptional": "Notas de resolución (opcional)",
+      "notesField": "Notas de resolución",
+      "notesPlaceholder": "Qué se hizo, o por qué no se atenderá...",
+      "cancel": "Cancelar",
+      "save": "Guardar",
+      "resolvedBy": "por",
+      "unknownUser": "Desconocido"
+    },
+    "severity": {
+      "low": "Baja",
+      "medium": "Media",
+      "high": "Alta",
+      "critical": "Crítica"
+    },
+    "types": {
+      "missing_item": "Artículo Faltante",
+      "damaged_item": "Artículo Dañado",
+      "maintenance_needed": "Mantenimiento",
+      "guest_issue": "Problema de Huésped",
+      "suggestion": "Sugerencia",
+      "other": "Otro"
     }
   }
 }

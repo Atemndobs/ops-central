@@ -7,6 +7,7 @@
     "team": "Team",
     "inventory": "Inventory",
     "workOrders": "Work Orders",
+    "incidents": "Incidents",
     "messages": "Messages",
     "reports": "Reports",
     "settings": "Settings",
@@ -139,8 +140,37 @@
     "jobDetail": "Job Detail",
     "history": "History",
     "incidentReport": "Incident Report",
-    "incidentNav": "Incident",
-    "more": "More",
+    "incidentNav": "Incidents",
+    "incidents": {
+      "title": "My Incidents",
+      "subtitle": "Track the reports you've filed and their current status.",
+      "reportNew": "Report New",
+      "tabAll": "All",
+      "tabOpen": "Open",
+      "tabInProgress": "In Progress",
+      "tabResolved": "Resolved",
+      "emptyAll": "No incidents reported yet",
+      "emptyAllHint": "Tap \"Report New\" to log a missing item, damage, or maintenance need.",
+      "emptyFiltered": "No incidents in this filter",
+      "emptyFilteredHint": "Try a different tab.",
+      "submittedBanner": "Your incident was submitted. It's visible here with status Open.",
+      "backToList": "Back to My Incidents",
+      "status": {
+        "open": "Open",
+        "in_progress": "In Progress",
+        "resolved": "Resolved",
+        "wont_fix": "Won't Fix"
+      },
+      "detail": {
+        "property": "Property",
+        "room": "Room",
+        "reported": "Reported",
+        "linkedJob": "Linked job",
+        "openJob": "Open job",
+        "description": "Description"
+      }
+    },
+    "more": "Profile",
     "today": "Today",
     "activeJobs": "active job(s)",
     "submittedJobs": "submitted or completed job(s)",
@@ -166,6 +196,19 @@
     "pushNotifications": "Push Notifications",
     "unknownProperty": "Unknown property",
     "noAddress": "No address",
+    "propertyType": "Type",
+    "propertyBedrooms": "Bedrooms",
+    "propertyBathrooms": "Bathrooms",
+    "propertySquareFeet": "Sq Ft",
+    "propertyDefaultType": "House",
+    "propertyNotFound": "Property not found",
+    "propertyLoading": "Loading property...",
+    "viewOnAirbnb": "View on Airbnb",
+    "propertyBackLabel": "Properties",
+    "instructions": {
+      "eyebrow": "PROPERTY INSTRUCTIONS",
+      "title": "Good to know"
+    },
     "scheduledLabel": "Scheduled:",
     "statusLabel": "Status:",
     "assignedCleanersLabel": "Assigned cleaners:",
@@ -174,6 +217,19 @@
     "jobDetailLoading": "Loading job details...",
     "jobNotFound": "Job not found.",
     "startJobError": "Unable to start job.",
+    "acceptAssignment": "Accept Job",
+    "declineAssignment": "Decline",
+    "acknowledgementAccepted": "Accepted",
+    "acknowledgementDeclined": "Declined",
+    "acknowledgementExpired": "Response window expired — ops notified.",
+    "acknowledgementPending": "Please accept or decline this assignment.",
+    "acknowledgementExpiresAt": "Respond by {time}",
+    "declineReasonPrompt": "Reason for declining (required)",
+    "declineReasonPlaceholder": "e.g. sick, schedule conflict, too far",
+    "declineReasonRequired": "Enter a short reason to decline.",
+    "acknowledgementError": "Unable to submit your response.",
+    "submitResponse": "Submit",
+    "cancel": "Cancel",
     "openActiveFlow": "Open Active Flow",
     "submissionGatePending": "Submission gate pending: {count} cleaner session(s) unresolved.",
     "loadingJobs": "Loading assigned jobs...",
@@ -188,11 +244,35 @@
     "recentJobs": "Recent jobs",
     "historyCount": "{count} jobs sorted by most recent scheduled date.",
     "noCleanerNotes": "No cleaner notes",
+    "guestCount": "{count, plural, one {# guest} other {# guests}}",
+    "bedCount": "{count, plural, one {# Bed} other {# Bed}}",
+    "bathCount": "{count, plural, one {# Bath} other {# Bath}}",
+    "highRisk": "High Risk",
+    "note": {
+      "lateCheckout": "Late checkout expected.",
+      "earlyCheckin": "Early check-in expected."
+    },
+    "access": {
+      "eyebrow": "BEFORE YOU ARRIVE",
+      "title": "Access & property notes",
+      "empty": "No access details saved for this property yet. Check with ops before arriving.",
+      "entry": "Entry instructions",
+      "key": "Key location",
+      "parking": "Parking",
+      "urgent": "Urgent — check every time"
+    },
     "rooms": {
       "livingRoom": "Living Room",
       "kitchen": "Kitchen",
       "bedroom": "Bedroom",
       "bathroom": "Bathroom"
+    },
+    "roomsSection": {
+      "eyebrow": "ROOMS",
+      "title": "Rooms in this property",
+      "countOne": "{count} room",
+      "countOther": "{count} rooms",
+      "empty": "Room list not synced yet — contact ops."
     },
     "shell": {
       "notifications": "Notifications",
@@ -482,6 +562,70 @@
       "noDevice": "No microphone was found on this device.",
       "uploadFailed": "Could not upload audio. Check your connection and try again.",
       "transcriptionFailed": "Could not transcribe audio. Try again in a moment."
+    }
+  },
+  "incidentsAdmin": {
+    "eyebrow": "Operations",
+    "title": "Incidents",
+    "subtitle": "Review and resolve issues reported from the field.",
+    "tabs": {
+      "all": "All",
+      "open": "Open",
+      "in_progress": "In Progress",
+      "resolved": "Resolved",
+      "wont_fix": "Won't Fix"
+    },
+    "searchPlaceholder": "Search title, property, reporter...",
+    "severityLabel": "Severity",
+    "severityAll": "All",
+    "stats": {
+      "open": "Open",
+      "inProgress": "In Progress",
+      "resolved": "Resolved",
+      "criticalActive": "Critical (Active)"
+    },
+    "emptyFiltered": "No incidents match these filters",
+    "emptyAll": "No incidents reported",
+    "emptyFilteredHint": "Try clearing filters or search terms.",
+    "emptyAllHint": "When cleaners report issues, they'll show up here.",
+    "reportedBy": "Reported by",
+    "detail": {
+      "close": "Close",
+      "notFound": "Incident not found",
+      "property": "Property",
+      "room": "Room",
+      "reportedByLabel": "Reported by",
+      "reportedAt": "Reported",
+      "linkedJob": "Linked job",
+      "openJob": "Open job",
+      "description": "Description",
+      "context": "Context",
+      "missingItem": "Missing / affected item",
+      "resolveFooterActive": "Update status or mark as resolved.",
+      "resolveFooterTerminal": "Reopen or update resolution notes.",
+      "updateStatus": "Update Status",
+      "statusField": "Status",
+      "notesFieldOptional": "Resolution notes (optional)",
+      "notesField": "Resolution notes",
+      "notesPlaceholder": "What was done, or why it won't be addressed...",
+      "cancel": "Cancel",
+      "save": "Save",
+      "resolvedBy": "by",
+      "unknownUser": "Unknown"
+    },
+    "severity": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "critical": "Critical"
+    },
+    "types": {
+      "missing_item": "Missing Item",
+      "damaged_item": "Damaged Item",
+      "maintenance_needed": "Maintenance",
+      "guest_issue": "Guest Issue",
+      "suggestion": "Suggestion",
+      "other": "Other"
     }
   }
 }

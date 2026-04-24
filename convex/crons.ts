@@ -11,9 +11,23 @@ crons.interval(
 );
 
 crons.interval(
+  "sync-hospitable-property-details-daily",
+  { hours: 24 },
+  internal.hospitable.actions.syncPropertyDetails,
+  {}
+);
+
+crons.interval(
   "expire-report-exports-hourly",
   { hours: 1 },
   internal.reports.mutations.expireExports,
+  {},
+);
+
+crons.interval(
+  "escalate-pending-acknowledgements",
+  { minutes: 15 },
+  internal.cleaningJobs.acknowledgements.escalateExpiredAcknowledgements,
   {},
 );
 

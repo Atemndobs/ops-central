@@ -25,6 +25,7 @@ import {
 } from "@/components/jobs/job-status";
 import { JobCountdown } from "@/components/jobs/job-countdown";
 import { CreateJobModal } from "@/components/jobs/create-job-modal";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 const workflowStatuses: JobStatus[] = [
   "scheduled",
@@ -316,39 +317,31 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
           ) : null}
 
           {mobileFilterPanel === "property" ? (
-            <select
-              value={propertyId}
-              onChange={(event) => {
-                setPropertyId(event.target.value);
+            <SearchableSelect
+              value={propertyId === "all" ? null : propertyId}
+              onChange={(id) => {
+                setPropertyId(id ?? "all");
                 setMobileFilterPanel(null);
               }}
-              className="w-full rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm"
-            >
-              <option value="all">All Properties</option>
-              {propertyOptions.map((property) => (
-                <option key={property.id} value={property.id}>
-                  {property.name}
-                </option>
-              ))}
-            </select>
+              placeholder="All Properties"
+              searchPlaceholder="Search properties…"
+              aria-label="Filter by property"
+              items={propertyOptions.map((p) => ({ id: p.id, label: p.name }))}
+            />
           ) : null}
 
           {mobileFilterPanel === "cleaner" ? (
-            <select
-              value={cleanerId}
-              onChange={(event) => {
-                setCleanerId(event.target.value);
+            <SearchableSelect
+              value={cleanerId === "all" ? null : cleanerId}
+              onChange={(id) => {
+                setCleanerId(id ?? "all");
                 setMobileFilterPanel(null);
               }}
-              className="w-full rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm"
-            >
-              <option value="all">All Cleaners</option>
-              {cleanerOptions.map((cleaner) => (
-                <option key={cleaner.id} value={cleaner.id}>
-                  {cleaner.name}
-                </option>
-              ))}
-            </select>
+              placeholder="All Cleaners"
+              searchPlaceholder="Search cleaners…"
+              aria-label="Filter by cleaner"
+              items={cleanerOptions.map((c) => ({ id: c.id, label: c.name }))}
+            />
           ) : null}
 
           {mobileFilterPanel === "date" ? (
@@ -377,31 +370,27 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
             />
           </div>
 
-          <select
-            value={propertyId}
-            onChange={(event) => setPropertyId(event.target.value)}
-            className="rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm"
-          >
-            <option value="all">All Properties</option>
-            {propertyOptions.map((property) => (
-              <option key={property.id} value={property.id}>
-                {property.name}
-              </option>
-            ))}
-          </select>
+          <div className="w-48">
+            <SearchableSelect
+              value={propertyId === "all" ? null : propertyId}
+              onChange={(id) => setPropertyId(id ?? "all")}
+              placeholder="All Properties"
+              searchPlaceholder="Search properties…"
+              aria-label="Filter by property"
+              items={propertyOptions.map((p) => ({ id: p.id, label: p.name }))}
+            />
+          </div>
 
-          <select
-            value={cleanerId}
-            onChange={(event) => setCleanerId(event.target.value)}
-            className="rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm"
-          >
-            <option value="all">All Cleaners</option>
-            {cleanerOptions.map((cleaner) => (
-              <option key={cleaner.id} value={cleaner.id}>
-                {cleaner.name}
-              </option>
-            ))}
-          </select>
+          <div className="w-44">
+            <SearchableSelect
+              value={cleanerId === "all" ? null : cleanerId}
+              onChange={(id) => setCleanerId(id ?? "all")}
+              placeholder="All Cleaners"
+              searchPlaceholder="Search cleaners…"
+              aria-label="Filter by cleaner"
+              items={cleanerOptions.map((c) => ({ id: c.id, label: c.name }))}
+            />
+          </div>
 
           <input
             type="date"

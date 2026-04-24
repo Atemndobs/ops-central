@@ -6,6 +6,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Building2, Loader2, Plus, RefreshCcw, ShieldCheck, Users } from "lucide-react";
 import { useToast } from "@/components/ui/toast-provider";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { getErrorMessage } from "@/lib/errors";
 
 type DraftAssignments = Record<string, string>;
@@ -52,12 +53,14 @@ export function CompaniesHub() {
   const [companyName, setCompanyName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
+  const [companyCity, setCompanyCity] = useState("");
   const [isCreatingCompany, setIsCreatingCompany] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editName, setEditName] = useState("");
   const [editContactEmail, setEditContactEmail] = useState("");
   const [editContactPhone, setEditContactPhone] = useState("");
   const [editLogoUrl, setEditLogoUrl] = useState("");
+  const [editCity, setEditCity] = useState("");
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [isUpdatingCompany, setIsUpdatingCompany] = useState(false);
   const [isArchivingCompany, setIsArchivingCompany] = useState(false);
@@ -183,11 +186,13 @@ export function CompaniesHub() {
         name: companyName.trim(),
         contactEmail: contactEmail.trim() || undefined,
         contactPhone: contactPhone.trim() || undefined,
+        city: companyCity.trim() || undefined,
       });
 
       setCompanyName("");
       setContactEmail("");
       setContactPhone("");
+      setCompanyCity("");
       setIsCreateOpen(false);
       setSelectedCompanyId(result.companyId);
       showToast("Cleaning company created.");
@@ -206,6 +211,7 @@ export function CompaniesHub() {
     setEditContactEmail(selectedCompany.contactEmail ?? "");
     setEditContactPhone(selectedCompany.contactPhone ?? "");
     setEditLogoUrl(selectedCompany.logoUrl ?? "");
+    setEditCity(selectedCompany.city ?? "");
     setIsEditOpen(true);
   }
 
@@ -223,6 +229,7 @@ export function CompaniesHub() {
         contactEmail: editContactEmail.trim() || undefined,
         contactPhone: editContactPhone.trim() || undefined,
         logoUrl: editLogoUrl.trim() || undefined,
+        city: editCity.trim() || undefined,
       });
       setIsEditOpen(false);
       showToast("Company updated.");
@@ -426,6 +433,18 @@ export function CompaniesHub() {
                 placeholder="+1 ..."
               />
             </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-[var(--muted-foreground)]">Service City</span>
+              <input
+                value={companyCity}
+                onChange={(event) => setCompanyCity(event.target.value)}
+                className="w-full rounded-md border bg-[var(--background)] px-3 py-2"
+                placeholder="Dallas"
+              />
+              <span className="block text-xs text-[var(--muted-foreground)]">
+                Company will only be shown when assigning properties in this city.
+              </span>
+            </label>
             <div className="md:col-span-4 flex justify-end gap-2">
               <button
                 type="button"
@@ -474,6 +493,18 @@ export function CompaniesHub() {
                 className="w-full rounded-md border bg-[var(--background)] px-3 py-2"
                 placeholder="+1 ..."
               />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-[var(--muted-foreground)]">Service City</span>
+              <input
+                value={editCity}
+                onChange={(event) => setEditCity(event.target.value)}
+                className="w-full rounded-md border bg-[var(--background)] px-3 py-2"
+                placeholder="Dallas"
+              />
+              <span className="block text-xs text-[var(--muted-foreground)]">
+                Only shown when assigning properties in this city.
+              </span>
             </label>
             <div className="space-y-1 text-sm md:col-span-4">
               <span className="text-[var(--muted-foreground)]">Logo</span>
@@ -829,6 +860,21 @@ export function CompaniesHub() {
               {assignmentRows.map((row) => {
                 const draftCompany = getDraftCompanyValue(row);
                 const isBusy = busyPropertyId === row.propertyId;
+                const propertyCityKey = (row.city ?? "").trim().toLowerCase();
+                const cityScopedCompanies = propertyCityKey
+                  ? allCompanies.filter(
+                      (c) => (c.city ?? "").trim().toLowerCase() === propertyCityKey,
+                    )
+                  : allCompanies;
+                // If strict filter yields nothing, fall back to the full list
+                // so an admin is never locked out (common while backfilling
+                // city data across existing companies).
+                const eligibleCompanies =
+                  cityScopedCompanies.length > 0 ? cityScopedCompanies : allCompanies;
+                const usingFallback =
+                  propertyCityKey &&
+                  cityScopedCompanies.length === 0 &&
+                  allCompanies.length > 0;
                 return (
                   <tr key={row.propertyId} className="border-t">
                     <td className="px-4 py-3">
@@ -858,24 +904,30 @@ export function CompaniesHub() {
                       {row.assignmentsCount} record(s)
                     </td>
                     <td className="px-4 py-3">
-                      <select
-                        value={draftCompany}
-                        onChange={(event) =>
+                      <SearchableSelect
+                        value={draftCompany || null}
+                        onChange={(id) =>
                           setDraftAssignments((current) => ({
                             ...current,
-                            [row.propertyId]: event.target.value,
+                            [row.propertyId]: id ?? "",
                           }))
                         }
-                        className="w-full rounded-md border bg-[var(--background)] px-3 py-2 text-sm"
+                        placeholder="No company"
+                        searchPlaceholder="Search companies…"
+                        aria-label="Assign company"
                         disabled={isBusy}
-                      >
-                        <option value="">No company</option>
-                        {allCompanies.map((company) => (
-                          <option key={company._id} value={company._id}>
-                            {company.name}
-                          </option>
-                        ))}
-                      </select>
+                        items={eligibleCompanies.map((company) => ({
+                          id: company._id,
+                          label: company.name,
+                          hint: company.city ?? undefined,
+                        }))}
+                      />
+                      {usingFallback ? (
+                        <p className="mt-1 text-[11px] text-amber-500">
+                          No companies set for {row.city}. Showing all — set a
+                          Service City on each company to tighten this list.
+                        </p>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">

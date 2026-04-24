@@ -32,30 +32,19 @@ function isCancelledStatus(status: string | undefined): boolean {
 }
 
 function buildCleaningNotes(
-  partyRiskFlag: boolean,
-  lateCheckout: boolean,
-  numberOfGuests: number | undefined,
+  _partyRiskFlag: boolean,
+  _lateCheckout: boolean,
+  _numberOfGuests: number | undefined,
   specialRequests: string | undefined
 ): string | undefined {
-  const notes: string[] = [];
-
-  if (partyRiskFlag) {
-    notes.push("Party risk flagged - check for extra cleaning needs.");
+  // Structured signals (party risk, late checkout, guest count) are surfaced
+  // as localized UI on the cleaner views. Only freeform ops text lives here so
+  // the stored note doesn't lock us into an English-only rendering.
+  if (specialRequests && specialRequests.trim()) {
+    return `Special requests: ${specialRequests.trim()}`;
   }
 
-  if (lateCheckout) {
-    notes.push("Late checkout expected.");
-  }
-
-  if (typeof numberOfGuests === "number" && numberOfGuests > 0) {
-    notes.push(`${numberOfGuests} guest(s)`);
-  }
-
-  if (specialRequests) {
-    notes.push(`Special requests: ${specialRequests}`);
-  }
-
-  return notes.length > 0 ? notes.join("\n") : undefined;
+  return undefined;
 }
 
 export const upsertReservations = internalMutation({
@@ -280,6 +269,44 @@ export const upsertReservations = internalMutation({
       summary,
       errors,
     };
+  },
+});
+
+export const updatePropertyDetails = internalMutation({
+  args: {
+    hospitableId: v.string(),
+    bedrooms: v.optional(v.number()),
+    bathrooms: v.optional(v.number()),
+    timezone: v.optional(v.string()),
+    rooms: v.array(v.object({ name: v.string(), type: v.string() })),
+  },
+  handler: async (ctx, args) => {
+    const property = await ctx.db
+      .query("properties")
+      .withIndex("by_hospitable", (q) => q.eq("hospitableId", args.hospitableId))
+      .first();
+
+    if (!property) {
+      throw new Error(`No property found with hospitableId ${args.hospitableId}`);
+    }
+
+    const patch: Record<string, unknown> = {
+      rooms: args.rooms,
+      updatedAt: Date.now(),
+    };
+
+    if (args.bedrooms !== undefined) {
+      patch.bedrooms = args.bedrooms;
+    }
+    if (args.bathrooms !== undefined) {
+      patch.bathrooms = args.bathrooms;
+    }
+    if (args.timezone !== undefined) {
+      patch.timezone = args.timezone;
+    }
+
+    await ctx.db.patch(property._id, patch);
+    return property._id;
   },
 });
 

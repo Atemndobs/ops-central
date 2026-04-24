@@ -52,6 +52,10 @@ const cleaningCompanies = defineTable({
   contactEmail: v.optional(v.string()),
   contactPhone: v.optional(v.string()),
   logoUrl: v.optional(v.string()),
+  // Service city — a cleaning company only covers one city (e.g. "Dallas",
+  // "Austin", "Houston"). Used to filter the company dropdown on the property
+  // assignment table so admins only see companies in the property's city.
+  city: v.optional(v.string()),
   isActive: v.boolean(),
   settings: v.optional(v.object({
     autoAssign: v.optional(v.boolean()),
@@ -116,6 +120,12 @@ const properties = defineTable({
   squareFeet: v.optional(v.number()),
   propertyType: v.optional(v.string()),
 
+  // Room list (synced from Hospitable or manually configured)
+  rooms: v.optional(v.array(v.object({
+    name: v.string(),
+    type: v.string(),
+  }))),
+
   // Links
   airbnbUrl: v.optional(v.string()),
   vrboUrl: v.optional(v.string()),
@@ -123,6 +133,50 @@ const properties = defineTable({
 
   // Media
   imageUrl: v.optional(v.string()),
+
+  // Access / field-ops context (shown to cleaners on the job detail)
+  accessNotes: v.optional(v.string()),
+  keyLocation: v.optional(v.string()),
+  parkingNotes: v.optional(v.string()),
+  urgentNotes: v.optional(v.string()),
+
+  // Extensible property instructions — admin-managed, shown to cleaners.
+  // Categories are a closed list so the cleaner UI can render a matching icon.
+  instructions: v.optional(
+    v.array(
+      v.object({
+        id: v.string(),
+        category: v.union(
+          v.literal("access"),
+          v.literal("trash"),
+          v.literal("lawn"),
+          v.literal("hot_tub"),
+          v.literal("pool"),
+          v.literal("parking"),
+          v.literal("wifi"),
+          v.literal("checkout"),
+          v.literal("pets"),
+          v.literal("other"),
+        ),
+        title: v.string(),
+        body: v.string(),
+        // Source language of the human-authored title/body (defaults to "en"
+        // for legacy rows). Auto-translations live in `translations`.
+        sourceLang: v.optional(v.union(v.literal("en"), v.literal("es"))),
+        translations: v.optional(
+          v.object({
+            en: v.optional(
+              v.object({ title: v.string(), body: v.string() }),
+            ),
+            es: v.optional(
+              v.object({ title: v.string(), body: v.string() }),
+            ),
+          }),
+        ),
+        updatedAt: v.number(),
+      }),
+    ),
+  ),
 
   // Config
   isActive: v.boolean(),
@@ -265,6 +319,22 @@ const cleaningJobs = defineTable({
     label: v.string(),
     completed: v.boolean(),
     completedAt: v.optional(v.number()),
+  }))),
+
+  // Per-cleaner assignment acknowledgements (accept/decline with expiry)
+  acknowledgements: v.optional(v.array(v.object({
+    cleanerId: v.id("users"),
+    state: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("declined"),
+      v.literal("expired"),
+    ),
+    assignedAt: v.number(),
+    expiresAt: v.number(),
+    respondedAt: v.optional(v.number()),
+    reason: v.optional(v.string()),
+    notifiedOpsAt: v.optional(v.number()),
   }))),
 
   metadata: v.optional(v.any()),
@@ -482,6 +552,17 @@ const conversationMessages = defineTable({
     v.literal("email"),
   ),
   body: v.string(),
+  // Source language of the human-authored body (sender's UI locale at send
+  // time). Rows without sourceLang are treated as "en" for backwards compat.
+  sourceLang: v.optional(v.union(v.literal("en"), v.literal("es"))),
+  // Lazy-filled cache of body translations, written by the translateMessage
+  // action on first read in a different locale.
+  translations: v.optional(
+    v.object({
+      en: v.optional(v.string()),
+      es: v.optional(v.string()),
+    }),
+  ),
   metadata: v.optional(v.any()),
   createdAt: v.number(),
 })
@@ -707,6 +788,13 @@ const incidents = defineTable({
   resolvedBy: v.optional(v.id("users")),
   resolutionNotes: v.optional(v.string()),
 
+  // Trello integration — card created on the Ops board when the incident is opened
+  trelloCardId: v.optional(v.string()),
+  trelloCardUrl: v.optional(v.string()),
+  trelloCardShortLink: v.optional(v.string()),
+  trelloSyncedAt: v.optional(v.number()),
+  trelloSyncError: v.optional(v.string()),
+
   createdAt: v.number(),
   updatedAt: v.optional(v.number()),
 })
@@ -715,7 +803,8 @@ const incidents = defineTable({
   .index("by_created_at", ["createdAt"])
   .index("by_property_and_created_at", ["propertyId", "createdAt"])
   .index("by_status", ["status"])
-  .index("by_severity", ["severity"]);
+  .index("by_severity", ["severity"])
+  .index("by_reporter_and_created_at", ["reportedBy", "createdAt"]);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // INVENTORY
