@@ -9,9 +9,12 @@
  */
 
 import type * as admin_cleanup from "../admin/cleanup.js";
+import type * as admin_featureFlags from "../admin/featureFlags.js";
 import type * as admin_mutations from "../admin/mutations.js";
 import type * as admin_queries from "../admin/queries.js";
 import type * as admin_userSync from "../admin/userSync.js";
+import type * as ai_providers from "../ai/providers.js";
+import type * as ai_settings from "../ai/settings.js";
 import type * as cleaningJobs_approve from "../cleaningJobs/approve.js";
 import type * as cleaningJobs_devResetJobs from "../cleaningJobs/devResetJobs.js";
 import type * as cleaningJobs_mutations from "../cleaningJobs/mutations.js";
@@ -21,6 +24,7 @@ import type * as clerk_actions from "../clerk/actions.js";
 import type * as conversations_lib from "../conversations/lib.js";
 import type * as conversations_mutations from "../conversations/mutations.js";
 import type * as conversations_queries from "../conversations/queries.js";
+import type * as conversations_voice from "../conversations/voice.js";
 import type * as crons from "../crons.js";
 import type * as dashboard_queries from "../dashboard/queries.js";
 import type * as files_archiveActions from "../files/archiveActions.js";
@@ -73,9 +77,12 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   "admin/cleanup": typeof admin_cleanup;
+  "admin/featureFlags": typeof admin_featureFlags;
   "admin/mutations": typeof admin_mutations;
   "admin/queries": typeof admin_queries;
   "admin/userSync": typeof admin_userSync;
+  "ai/providers": typeof ai_providers;
+  "ai/settings": typeof ai_settings;
   "cleaningJobs/approve": typeof cleaningJobs_approve;
   "cleaningJobs/devResetJobs": typeof cleaningJobs_devResetJobs;
   "cleaningJobs/mutations": typeof cleaningJobs_mutations;
@@ -85,6 +92,7 @@ declare const fullApi: ApiFromModules<{
   "conversations/lib": typeof conversations_lib;
   "conversations/mutations": typeof conversations_mutations;
   "conversations/queries": typeof conversations_queries;
+  "conversations/voice": typeof conversations_voice;
   crons: typeof crons;
   "dashboard/queries": typeof dashboard_queries;
   "files/archiveActions": typeof files_archiveActions;

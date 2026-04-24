@@ -1006,6 +1006,56 @@ const hospitableConfig = defineTable({
   updatedAt: v.optional(v.number()),
 });
 
+// AI PROVIDERS (admin-configurable)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Single-row-per-feature table that controls which external AI provider is
+// used for a given server-side feature (e.g. voice transcription). Admins
+// change this from the /settings page — no redeploy needed.
+
+const aiProviderSettings = defineTable({
+  feature: v.union(
+    v.literal("voice_transcription")
+  ),
+  providerKey: v.union(
+    v.literal("gemini-flash"),
+    v.literal("groq-whisper-turbo"),
+    v.literal("openai-whisper")
+  ),
+  updatedBy: v.id("users"),
+  updatedAt: v.number(),
+  createdAt: v.number(),
+})
+  .index("by_feature", ["feature"]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FEATURE FLAGS (admin-configurable UI gates)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Generic one-row-per-flag table for toggling UI features on/off without a
+// redeploy. Contract for the client:
+//   - If no row exists for a given key → treat as DISABLED (safe default).
+//   - If a row exists → use its `enabled` boolean.
+// This lets us ship a flag off-by-default without a seeding mutation, and
+// requires an admin to explicitly opt in before anything lights up.
+//
+// Adopt this pattern for every new user-facing feature:
+//   1. Add the feature's key to the literal union below.
+//   2. Add matching metadata in `convex/admin/featureFlags.ts`.
+//   3. Gate the client render on `api.admin.featureFlags.isFeatureEnabled`.
+
+const featureFlags = defineTable({
+  key: v.union(
+    v.literal("theme_switcher"),
+    v.literal("voice_messages")
+    // future flags go here
+  ),
+  enabled: v.boolean(),
+  updatedBy: v.id("users"),
+  updatedAt: v.number(),
+  createdAt: v.number(),
+}).index("by_key", ["key"]);
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // EXPORT SCHEMA
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1072,4 +1122,10 @@ export default defineSchema({
 
   // Integration
   hospitableConfig,
+
+  // AI Providers (admin-configurable)
+  aiProviderSettings,
+
+  // Feature Flags (admin-controlled UI gates)
+  featureFlags,
 });
