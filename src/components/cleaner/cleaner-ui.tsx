@@ -55,12 +55,32 @@ const STANDARD_CHECKOUT_MINUTES = 10 * 60; // 10:00 AM
 const STANDARD_CHECKIN_MINUTES = 16 * 60; // 4:00 PM
 
 function minutesInTimezone(ms: number, timezone?: string | null): number {
+  // Resolve the timezone argument the same way the formatters do: IANA names
+  // pass through, UTC offsets like "-0500" shift the instant so UTC rendering
+  // reflects the property's local clock, everything else uses device locale.
+  let timeZoneOpt: string | undefined;
+  let instantMs = ms;
+  if (timezone) {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: timezone });
+      timeZoneOpt = timezone;
+    } catch {
+      const match = timezone.match(/^([+-])(\d{2}):?(\d{2})$/);
+      if (match) {
+        const sign = match[1] === "+" ? 1 : -1;
+        const hours = Number.parseInt(match[2], 10);
+        const minutes = Number.parseInt(match[3], 10);
+        instantMs = ms + sign * (hours * 60 + minutes) * 60 * 1000;
+        timeZoneOpt = "UTC";
+      }
+    }
+  }
   const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone ?? undefined,
+    timeZone: timeZoneOpt,
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-  }).formatToParts(new Date(ms));
+  }).formatToParts(new Date(instantMs));
   const hour = Number.parseInt(
     parts.find((p) => p.type === "hour")?.value ?? "0",
     10,
@@ -240,12 +260,65 @@ export function formatCleanerDate(value?: number | null) {
   });
 }
 
+// Some property records store `timezone` as a UTC offset like `-0500` instead
+// of an IANA name. Intl.DateTimeFormat only accepts IANA names for the
+// timeZone option, so we normalize: IANA names pass through; `±HHMM` /
+// `±HH:MM` offsets are converted into a UTC-shifted timestamp so rendering
+// in UTC yields the property-local clock time. Unknown values fall back to
+// the device locale.
+function tryIANATimeZone(timezone: string): string | undefined {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone });
+    return timezone;
+  } catch {
+    return undefined;
+  }
+}
+
+function offsetToMinutes(timezone: string): number | null {
+  const m = timezone.match(/^([+-])(\d{2}):?(\d{2})$/);
+  if (!m) return null;
+  const sign = m[1] === "+" ? 1 : -1;
+  const hours = Number.parseInt(m[2], 10);
+  const minutes = Number.parseInt(m[3], 10);
+  return sign * (hours * 60 + minutes);
+}
+
+/**
+ * Format a timestamp in the property's local time regardless of whether the
+ * property's `timezone` field is an IANA name ("America/Chicago") or a UTC
+ * offset ("-0500" / "-05:00"). Falls back to device locale for unknown values.
+ */
+function formatInPropertyZone(
+  value: number,
+  timezone: string | null | undefined,
+  options: Intl.DateTimeFormatOptions,
+  method: "time" | "date" | "datetime",
+): string {
+  const call = (v: number, opts: Intl.DateTimeFormatOptions) => {
+    if (method === "time") return new Date(v).toLocaleTimeString([], opts);
+    if (method === "date") return new Date(v).toLocaleDateString([], opts);
+    return new Date(v).toLocaleString([], opts);
+  };
+
+  if (!timezone) return call(value, options);
+  const iana = tryIANATimeZone(timezone);
+  if (iana) return call(value, { ...options, timeZone: iana });
+  const offsetMinutes = offsetToMinutes(timezone);
+  if (offsetMinutes !== null) {
+    const shifted = value + offsetMinutes * 60 * 1000;
+    return call(shifted, { ...options, timeZone: "UTC" });
+  }
+  return call(value, options);
+}
+
 function formatCleanerTime(value: number, timezone?: string | null) {
-  return new Date(value).toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: timezone ?? undefined,
-  });
+  return formatInPropertyZone(
+    value,
+    timezone,
+    { hour: "numeric", minute: "2-digit" },
+    "time",
+  );
 }
 
 export function formatCleanerTimeRange(
@@ -262,24 +335,29 @@ export function formatCleanerDateInZone(
   value: number,
   timezone?: string | null,
 ): string {
-  return new Date(value).toLocaleString([], {
-    month: "numeric",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: timezone ?? undefined,
-  });
+  return formatInPropertyZone(
+    value,
+    timezone,
+    {
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    },
+    "datetime",
+  );
 }
 
 export function formatCleanerShortDate(
   value: number,
   timezone?: string | null,
 ): string {
-  return new Date(value).toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-    timeZone: timezone ?? undefined,
-  });
+  return formatInPropertyZone(
+    value,
+    timezone,
+    { month: "short", day: "numeric" },
+    "date",
+  );
 }
 
 // Lines that earlier versions of the Hospitable sync wrote into notesForCleaner.
@@ -634,19 +712,19 @@ export function CleanerJobCard({
 
       <div className="relative z-10 mt-2 inline-flex items-center gap-1.5 text-[var(--cleaner-muted)]">
         <Clock className="h-4 w-4" />
-        <span className="text-[13px] font-medium">
-          {formatCleanerTimeRange(scheduledAt, scheduledEndAt, timezone)}
-        </span>
         {typeof scheduledAt === "number" ? (
           <>
-            <span aria-hidden className="text-[var(--cleaner-muted)]/60">
-              ·
-            </span>
             <span className="text-[13px] font-medium">
               {formatCleanerShortDate(scheduledAt, timezone)}
             </span>
+            <span aria-hidden className="text-[var(--cleaner-muted)]/60">
+              ·
+            </span>
           </>
         ) : null}
+        <span className="text-[13px] font-medium">
+          {formatCleanerTimeRange(scheduledAt, scheduledEndAt, timezone)}
+        </span>
       </div>
 
       <div className="relative z-10 mt-3 space-y-2.5">
