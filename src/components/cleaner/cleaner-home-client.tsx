@@ -44,7 +44,14 @@ export function CleanerHomeClient() {
 
   const activeJobs = useMemo(() => {
     const source = jobs ?? [];
-    return source.filter((job) => ACTIVE_JOB_STATUSES.has(job.status));
+    const active = source.filter((job) => ACTIVE_JOB_STATUSES.has(job.status));
+    // Actionable jobs first (soonest start time), in-review jobs at the bottom
+    return active.sort((a, b) => {
+      const aReview = a.status === "awaiting_approval" ? 1 : 0;
+      const bReview = b.status === "awaiting_approval" ? 1 : 0;
+      if (aReview !== bReview) return aReview - bReview;
+      return a.scheduledStartAt - b.scheduledStartAt;
+    });
   }, [jobs]);
 
   const closedJobs = useMemo(() => {
@@ -60,7 +67,25 @@ export function CleanerHomeClient() {
     () => (notifications ?? []).filter((item) => !item.readAt && !item.dismissedAt).length,
     [notifications],
   );
+  const nextJobAt = useMemo(() => {
+    if (activeJobs.length === 0) return null;
+    const now = Date.now();
+    const upcoming = activeJobs
+      .filter((job) => job.scheduledStartAt > now)
+      .sort((a, b) => a.scheduledStartAt - b.scheduledStartAt);
+    return upcoming[0]?.scheduledStartAt ?? null;
+  }, [activeJobs]);
+  const msgCount = typeof unreadMessageCount === "number" ? unreadMessageCount : 0;
+  const summaryTotal = activeJobs.length + inReviewJobs + msgCount + updateCount;
+
   const [isSummaryVisible, setIsSummaryVisible] = useState(true);
+
+  // Emit the true summary total so the shell bell badge stays in sync
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("cleaner:summary-count", { detail: summaryTotal }),
+    );
+  }, [summaryTotal]);
 
   useEffect(() => {
     const handleToggle = () => {
@@ -87,6 +112,7 @@ export function CleanerHomeClient() {
           updates={updateCount}
           onToggle={() => setIsSummaryVisible(false)}
           userName={profile?.name}
+          nextJobAt={nextJobAt}
         />
       ) : null}
 
