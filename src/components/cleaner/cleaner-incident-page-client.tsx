@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { getErrorMessage } from "@/lib/errors";
 import { formatLabel } from "@/lib/format";
 import { buildRoomOptions } from "@/lib/rooms";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 const INCIDENT_TYPES = [
   "missing_item",
@@ -38,6 +40,7 @@ type IncidentContext = (typeof INCIDENT_CONTEXT_VALUES)[number]["value"];
 type AssignedJob = {
   _id: Id<"cleaningJobs">;
   propertyId: Id<"properties">;
+  scheduledStartAt: number;
   property?: {
     name?: string | null;
   } | null;
@@ -64,6 +67,8 @@ type ReportMode = "job" | "standalone";
 
 export function CleanerIncidentPageClient() {
   const t = useTranslations();
+  const locale = useLocale();
+  const router = useRouter();
   const { isAuthenticated, isLoading } = useConvexAuth();
 
   // --- mode selection ---
@@ -78,7 +83,7 @@ export function CleanerIncidentPageClient() {
 
   // --- standalone state ---
   const allProperties = useQuery(
-    api.properties.queries.getAll,
+    api.properties.queries.getMyAccessibleProperties,
     isAuthenticated && reportMode === "standalone" ? { limit: 500 } : "skip",
   ) as PropertyListItem[] | undefined;
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("");
@@ -379,6 +384,9 @@ export function CleanerIncidentPageClient() {
 
       setSuccess(t("cleaner.incident.incidentCreated"));
       resetAll();
+      // Route to the hub so the cleaner immediately sees their new report in
+      // the list with status "Open" alongside any prior ones.
+      router.push("/cleaner/incidents?submitted=1");
     } catch (submitError) {
       setError(getErrorMessage(submitError, t("cleaner.incident.unableToCreate")));
     } finally {
@@ -465,41 +473,51 @@ export function CleanerIncidentPageClient() {
       {reportMode === "job" ? (
         <div>
           <label className="mb-1 block text-xs text-[var(--muted-foreground)]">{t("cleaner.incident.jobLabel")}</label>
-          <select
-            value={selectedJobId}
-            onChange={(event) => {
-              setSelectedJobId(event.target.value);
+          <SearchableSelect
+            value={selectedJobId || null}
+            onChange={(id) => {
+              setSelectedJobId(id ?? "");
               resetFormFields();
             }}
-            className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-          >
-            <option value="">{t("cleaner.incident.selectJob")}</option>
-            {(jobs ?? []).map((job) => (
-              <option key={job._id} value={job._id}>
-                {job.property?.name ?? t("cleaner.unknownProperty")} ({job._id.slice(-6)})
-              </option>
-            ))}
-          </select>
+            placeholder={t("cleaner.incident.selectJob")}
+            searchPlaceholder="Search jobs…"
+            aria-label={t("cleaner.incident.jobLabel")}
+            items={(jobs ?? [])
+              .slice()
+              .sort((a, b) => b.scheduledStartAt - a.scheduledStartAt)
+              .map((job) => {
+                const propertyName =
+                  job.property?.name ?? t("cleaner.unknownProperty");
+                const dateLabel = new Date(job.scheduledStartAt).toLocaleDateString(
+                  locale,
+                  { month: "short", day: "numeric", year: "numeric" },
+                );
+                return {
+                  id: job._id,
+                  label: `${propertyName} · ${dateLabel}`,
+                };
+              })}
+          />
         </div>
       ) : (
         /* Property selector (standalone mode) */
         <div>
           <label className="mb-1 block text-xs text-[var(--muted-foreground)]">{t("cleaner.incident.propertyLabel")}</label>
-          <select
-            value={selectedPropertyId}
-            onChange={(event) => {
-              setSelectedPropertyId(event.target.value);
+          <SearchableSelect
+            value={selectedPropertyId || null}
+            onChange={(id) => {
+              setSelectedPropertyId(id ?? "");
               resetFormFields();
             }}
-            className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-          >
-            <option value="">{t("cleaner.incident.selectProperty")}</option>
-            {(allProperties ?? []).map((prop) => (
-              <option key={prop._id} value={prop._id}>
-                {prop.name}{prop.address ? ` — ${prop.address}` : ""}
-              </option>
-            ))}
-          </select>
+            placeholder={t("cleaner.incident.selectProperty")}
+            searchPlaceholder="Search properties…"
+            aria-label={t("cleaner.incident.propertyLabel")}
+            items={(allProperties ?? []).map((prop) => ({
+              id: prop._id,
+              label: prop.name,
+              hint: prop.address ?? undefined,
+            }))}
+          />
         </div>
       )}
 

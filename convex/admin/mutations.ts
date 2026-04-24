@@ -315,6 +315,7 @@ export const createCleaningCompany = mutation({
     name: v.string(),
     contactEmail: v.optional(v.string()),
     contactPhone: v.optional(v.string()),
+    city: v.optional(v.string()),
     ownerUserId: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
@@ -348,6 +349,7 @@ export const createCleaningCompany = mutation({
       ownerId: args.ownerUserId,
       contactEmail: args.contactEmail?.trim(),
       contactPhone: args.contactPhone?.trim(),
+      city: args.city?.trim() || undefined,
       isActive: true,
       createdAt: now,
       updatedAt: now,
@@ -378,6 +380,7 @@ export const updateCleaningCompany = mutation({
     contactEmail: v.optional(v.string()),
     contactPhone: v.optional(v.string()),
     logoUrl: v.optional(v.string()),
+    city: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireRole(ctx, ["admin"]);
@@ -413,6 +416,7 @@ export const updateCleaningCompany = mutation({
       contactEmail: hasValue(args.contactEmail) ? args.contactEmail.trim() : undefined,
       contactPhone: hasValue(args.contactPhone) ? args.contactPhone.trim() : undefined,
       logoUrl: hasValue(args.logoUrl) ? args.logoUrl.trim() : undefined,
+      city: hasValue(args.city) ? args.city.trim() : undefined,
       updatedAt: now,
     });
 

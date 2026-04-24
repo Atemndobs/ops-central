@@ -52,6 +52,10 @@ const cleaningCompanies = defineTable({
   contactEmail: v.optional(v.string()),
   contactPhone: v.optional(v.string()),
   logoUrl: v.optional(v.string()),
+  // Service city — a cleaning company only covers one city (e.g. "Dallas",
+  // "Austin", "Houston"). Used to filter the company dropdown on the property
+  // assignment table so admins only see companies in the property's city.
+  city: v.optional(v.string()),
   isActive: v.boolean(),
   settings: v.optional(v.object({
     autoAssign: v.optional(v.boolean()),
@@ -784,6 +788,13 @@ const incidents = defineTable({
   resolvedBy: v.optional(v.id("users")),
   resolutionNotes: v.optional(v.string()),
 
+  // Trello integration — card created on the Ops board when the incident is opened
+  trelloCardId: v.optional(v.string()),
+  trelloCardUrl: v.optional(v.string()),
+  trelloCardShortLink: v.optional(v.string()),
+  trelloSyncedAt: v.optional(v.number()),
+  trelloSyncError: v.optional(v.string()),
+
   createdAt: v.number(),
   updatedAt: v.optional(v.number()),
 })
@@ -792,7 +803,8 @@ const incidents = defineTable({
   .index("by_created_at", ["createdAt"])
   .index("by_property_and_created_at", ["propertyId", "createdAt"])
   .index("by_status", ["status"])
-  .index("by_severity", ["severity"]);
+  .index("by_severity", ["severity"])
+  .index("by_reporter_and_created_at", ["reportedBy", "createdAt"]);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // INVENTORY
@@ -1084,6 +1096,34 @@ const hospitableConfig = defineTable({
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// FEATURE FLAGS (admin-configurable UI gates)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Generic one-row-per-flag table for toggling UI features on/off without a
+// redeploy. Started with the theme switcher (we want to hide the toggle in
+// header/sidebar for now, but keep the working code so we can re-enable from
+// the admin panel later). Additional flags land here as literals on `key`.
+//
+// Behavioural contract for the client:
+//   - If no row exists for a given key → treat as DISABLED (safe default).
+//   - If a row exists → use its `enabled` boolean.
+// This lets us ship a flag off-by-default without a seeding mutation, and
+// requires an admin to explicitly opt in before anything lights up.
+
+const featureFlags = defineTable({
+  key: v.union(
+    v.literal("theme_switcher")
+    // future flags:
+    // v.literal("voice_messages"),
+    // v.literal("ai_ops_assistant"),
+  ),
+  enabled: v.boolean(),
+  updatedBy: v.id("users"),
+  updatedAt: v.number(),
+  createdAt: v.number(),
+}).index("by_key", ["key"]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // EXPORT SCHEMA
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1149,4 +1189,7 @@ export default defineSchema({
 
   // Integration
   hospitableConfig,
+
+  // Feature Flags (admin-controlled UI gates)
+  featureFlags,
 });

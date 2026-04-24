@@ -7,6 +7,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import Image from "next/image";
 import { useToast } from "@/components/ui/toast-provider";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { uploadImageFile } from "@/lib/upload-image";
 import {
   getRoleFromMetadata,
@@ -1624,24 +1625,24 @@ export default function TeamPage() {
             <form className="space-y-3" onSubmit={handleJobAssignment}>
               <label className="block text-sm">
                 <span className="mb-1 block text-[var(--muted-foreground)]">Job</span>
-                <select
-                  value={jobDraft}
-                  onChange={(event) =>
-                    setJobDraft(event.target.value as Id<"cleaningJobs"> | "")
+                <SearchableSelect
+                  value={jobDraft || null}
+                  onChange={(id) =>
+                    setJobDraft((id as Id<"cleaningJobs"> | null) ?? "")
                   }
-                  className="w-full rounded-md border bg-transparent px-3 py-2"
-                >
-                  <option value="">Select Job</option>
-                  {assignableJobs.map((job) => (
-                    <option key={job._id} value={job._id}>
-                      {(job.property?.name ?? "Unknown property") +
-                        " · " +
-                        formatRoleDate(job.scheduledStartAt) +
-                        " · " +
-                        job.status.replace("_", " ")}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Select Job"
+                  searchPlaceholder="Search jobs…"
+                  aria-label="Job"
+                  items={assignableJobs.map((job) => ({
+                    id: job._id,
+                    label:
+                      (job.property?.name ?? "Unknown property") +
+                      " · " +
+                      formatRoleDate(job.scheduledStartAt) +
+                      " · " +
+                      job.status.replace("_", " "),
+                  }))}
+                />
               </label>
 
               <button
@@ -1677,20 +1678,16 @@ export default function TeamPage() {
             <form className="space-y-3" onSubmit={handleCompanyAssignment}>
               <label className="block text-sm">
                 <span className="mb-1 block text-[var(--muted-foreground)]">Company</span>
-                <select
-                  value={companyDraft}
-                  onChange={(event) =>
-                    setCompanyDraft(event.target.value as Id<"cleaningCompanies"> | "")
+                <SearchableSelect
+                  value={companyDraft || null}
+                  onChange={(id) =>
+                    setCompanyDraft((id as Id<"cleaningCompanies"> | null) ?? "")
                   }
-                  className="w-full rounded-md border bg-transparent px-3 py-2"
-                >
-                  <option value="">No Company</option>
-                  {(companies ?? []).map((company) => (
-                    <option key={company._id} value={company._id}>
-                      {company.name}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="No Company"
+                  searchPlaceholder="Search companies…"
+                  aria-label="Company"
+                  items={(companies ?? []).map((c) => ({ id: c._id, label: c.name }))}
+                />
               </label>
 
               <label className="block text-sm">
@@ -1748,20 +1745,20 @@ export default function TeamPage() {
             <form className="space-y-3" onSubmit={handlePropertyAssignment}>
               <label className="block text-sm">
                 <span className="mb-1 block text-[var(--muted-foreground)]">Property</span>
-                <select
-                  value={propertyDraft}
-                  onChange={(event) =>
-                    setPropertyDraft(event.target.value as Id<"properties"> | "")
+                <SearchableSelect
+                  value={propertyDraft || null}
+                  onChange={(id) =>
+                    setPropertyDraft((id as Id<"properties"> | null) ?? "")
                   }
-                  className="w-full rounded-md border bg-transparent px-3 py-2"
-                >
-                  <option value="">Select Property</option>
-                  {(allProperties ?? []).map((property) => (
-                    <option key={property._id} value={property._id}>
-                      {property.name} · {property.address}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Select Property"
+                  searchPlaceholder="Search properties…"
+                  aria-label="Property"
+                  items={(allProperties ?? []).map((p) => ({
+                    id: p._id,
+                    label: p.name,
+                    hint: p.address ?? undefined,
+                  }))}
+                />
               </label>
 
               <button

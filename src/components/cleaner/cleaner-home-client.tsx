@@ -18,7 +18,6 @@ const ACTIVE_JOB_STATUSES = new Set([
   "rework_required",
   "awaiting_approval",
 ]);
-const CLOSED_JOB_STATUSES = new Set(["completed", "cancelled"]);
 
 export function CleanerHomeClient() {
   const { isAuthenticated, isLoading } = useConvexAuth();
@@ -60,27 +59,41 @@ export function CleanerHomeClient() {
     isAuthenticated ? { includeRead: false, limit: 20 } : "skip",
   ) as Array<{ dismissedAt?: number; readAt?: number }> | undefined;
 
+  // The "countdown job" = the active job whose timer is currently ticking on
+  // its card (smallest positive time-to-start). It gets pinned to the top
+  // regardless of status/urgency so the cleaner always sees what's next first.
+  const countdownJobId = useMemo(() => {
+    const source = jobs ?? [];
+    const now = Date.now();
+    const upcoming = source
+      .filter(
+        (job) =>
+          ACTIVE_JOB_STATUSES.has(job.status) && job.scheduledStartAt > now,
+      )
+      .sort((a, b) => a.scheduledStartAt - b.scheduledStartAt);
+    return upcoming[0]?._id ?? null;
+  }, [jobs]);
+
   const activeJobs = useMemo(() => {
     const source = jobs ?? [];
     const active = source.filter((job) => ACTIVE_JOB_STATUSES.has(job.status));
-    // Urgency order: rework first (must be fixed), then the next countdown job
-    // and subsequent actionable jobs by soonest start, then awaiting-approval last.
+    // Urgency order: the ticking-countdown job pins to top, then rework, then
+    // other actionable jobs by soonest start, then awaiting-approval last.
     const statusPriority = (status: string) => {
-      if (status === "rework_required") return 0;
-      if (status === "awaiting_approval") return 2;
-      return 1;
+      if (status === "rework_required") return 1;
+      if (status === "awaiting_approval") return 3;
+      return 2;
     };
     return active.sort((a, b) => {
+      if (countdownJobId) {
+        if (a._id === countdownJobId && b._id !== countdownJobId) return -1;
+        if (b._id === countdownJobId && a._id !== countdownJobId) return 1;
+      }
       const priorityDiff = statusPriority(a.status) - statusPriority(b.status);
       if (priorityDiff !== 0) return priorityDiff;
       return a.scheduledStartAt - b.scheduledStartAt;
     });
-  }, [jobs]);
-
-  const closedJobs = useMemo(() => {
-    const source = jobs ?? [];
-    return source.filter((job) => CLOSED_JOB_STATUSES.has(job.status));
-  }, [jobs]);
+  }, [jobs, countdownJobId]);
 
   const inReviewJobs = useMemo(
     () => activeJobs.filter((job) => job.status === "awaiting_approval").length,
@@ -91,13 +104,9 @@ export function CleanerHomeClient() {
     [notifications],
   );
   const nextJob = useMemo(() => {
-    if (activeJobs.length === 0) return null;
-    const now = Date.now();
-    const upcoming = activeJobs
-      .filter((job) => job.scheduledStartAt > now)
-      .sort((a, b) => a.scheduledStartAt - b.scheduledStartAt);
-    return upcoming[0] ?? null;
-  }, [activeJobs]);
+    if (!countdownJobId) return null;
+    return activeJobs.find((job) => job._id === countdownJobId) ?? null;
+  }, [activeJobs, countdownJobId]);
   const nextJobAt = nextJob?.scheduledStartAt ?? null;
   const nextJobHref = nextJob ? `/cleaner/jobs/${nextJob._id}` : null;
   const msgCount = typeof unreadMessageCount === "number" ? unreadMessageCount : 0;
@@ -141,14 +150,6 @@ export function CleanerHomeClient() {
           nextJobHref={nextJobHref}
         />
       ) : null}
-
-      <CleanerSection eyebrow={t("cleaner.today")} title={t("cleaner.myJobs")}>
-        <p className="text-sm text-[var(--cleaner-muted)]">
-          {activeJobs.length > 0
-            ? t("cleaner.activeJobsSummary", { active: activeJobs.length, closed: closedJobs.length })
-            : t("cleaner.noActiveJobs")}
-        </p>
-      </CleanerSection>
 
       {activeJobs.length === 0 ? (
         <CleanerSection title={t("cleaner.noActiveJobs")}>

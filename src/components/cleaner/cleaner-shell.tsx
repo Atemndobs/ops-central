@@ -47,7 +47,7 @@ const NAV_ITEMS: Array<{
     matchPrefixes: ["/cleaner/messages"],
   },
   {
-    href: "/cleaner/incidents/new",
+    href: "/cleaner/incidents",
     labelKey: "cleaner.incidentNav",
     icon: AlertTriangle,
     matchPrefixes: ["/cleaner/incidents"],
@@ -447,8 +447,11 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     if (pathname.startsWith("/cleaner/history")) {
       return t("cleaner.history");
     }
-    if (pathname.startsWith("/cleaner/incidents")) {
+    if (pathname === "/cleaner/incidents/new") {
       return t("cleaner.incidentReport");
+    }
+    if (pathname.startsWith("/cleaner/incidents")) {
+      return t("cleaner.incidents.title");
     }
     if (pathname.startsWith("/cleaner/settings")) {
       return t("common.settings");
@@ -467,10 +470,10 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="cleaner-theme cleaner-app-shell relative h-[100svh] overflow-hidden text-[15px] text-[var(--foreground)]">
       <header
-        className={`fixed inset-x-0 top-0 z-40 px-3 py-3 backdrop-blur transition-colors ${
+        className={`fixed inset-x-0 top-0 z-40 px-3 py-3 transition-colors ${
           isPropertyDetail
-            ? "border-b border-transparent bg-white/30 dark:bg-black/25"
-            : "border-b border-[var(--border)] bg-white/92"
+            ? "bg-transparent"
+            : "border-b border-[var(--border)] bg-white/92 backdrop-blur"
         }`}
       >
         <div className="mx-auto flex w-full max-w-[402px] items-center justify-between gap-3">
@@ -488,8 +491,7 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
               priority
             />
             <div className="min-w-0">
-              <p className="cleaner-meta text-[10px] text-[var(--cleaner-ink)]">{t("cleaner.myJobs")}</p>
-              <h1 className="truncate font-[var(--font-cleaner-body)] text-[13px] font-semibold text-[var(--cleaner-muted)]">
+              <h1 className="truncate font-[var(--font-cleaner-body)] text-[22px] font-bold leading-tight tracking-tight text-[var(--cleaner-ink)]">
                 {title}
               </h1>
             </div>
@@ -611,13 +613,13 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
       </header>
 
       <main
-        className="fixed inset-x-0 overflow-y-auto px-3"
+        className="fixed inset-x-0 z-10 overflow-y-auto px-3"
         style={{
           top: "calc(env(safe-area-inset-top) + 72px)",
           bottom: "max(env(safe-area-inset-bottom), 8px)",
         }}
       >
-        <div className="mx-auto w-full max-w-[402px] pb-24 pt-4">
+        <div className="mx-auto w-full max-w-[402px] pb-24">
           <InstallPrompt />
           {updateReady ? (
             <div className="cleaner-card mt-2 border-blue-500/60 bg-blue-500/10 p-3 text-xs text-blue-100">

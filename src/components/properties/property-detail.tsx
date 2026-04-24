@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useMemo, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
-import { ArrowLeft, Loader2, MapPin, Pencil } from "lucide-react";
+import { ArrowLeft, Loader2, MapPin, Pencil, Upload } from "lucide-react";
 import { PropertyFormModal } from "@/components/properties/property-form-modal";
 import { STATUS_LABELS } from "@/components/jobs/job-status";
 import { useToast } from "@/components/ui/toast-provider";
@@ -15,6 +15,8 @@ import { PropertyCriticalCheckpointsPanel } from "@/components/properties/proper
 import { PropertyRefillTrackingPanel } from "@/components/properties/property-refill-tracking-panel";
 import { PropertyInstructionsPanel } from "@/components/properties/property-instructions-panel";
 import { PropertyRoomsPanel } from "@/components/properties/property-rooms-panel";
+import { InventoryImportModal } from "@/components/inventory/inventory-import-modal";
+import type { Id } from "@convex/_generated/dataModel";
 
 function formatDateTime(timestamp?: number) {
   if (!timestamp) {
@@ -42,6 +44,7 @@ function toMutationInput(values: PropertyFormValues) {
 export function PropertyDetail({ id }: { id: string }) {
   const { isAuthenticated } = useConvexAuth();
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const { showToast } = useToast();
@@ -153,13 +156,22 @@ export function PropertyDetail({ id }: { id: string }) {
               {property.address}
             </p>
           </div>
-          <button
-            onClick={() => setIsEditOpen(true)}
-            className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold hover:bg-[var(--accent)]"
-          >
-            <Pencil className="h-4 w-4" />
-            Edit Property
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setIsImportOpen(true)}
+              className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold hover:bg-[var(--accent)]"
+            >
+              <Upload className="h-4 w-4" />
+              Import Inventory
+            </button>
+            <button
+              onClick={() => setIsEditOpen(true)}
+              className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold hover:bg-[var(--accent)]"
+            >
+              <Pencil className="h-4 w-4" />
+              Edit Property
+            </button>
+          </div>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
@@ -220,7 +232,7 @@ export function PropertyDetail({ id }: { id: string }) {
         hasHospitableId={Boolean(property.hospitableId)}
       />
 
-      <PropertyCriticalCheckpointsPanel propertyId={id} />
+      <PropertyCriticalCheckpointsPanel propertyId={id} propertyRooms={property.rooms ?? []} />
 
       <PropertyRefillTrackingPanel propertyId={id} />
 
@@ -294,6 +306,13 @@ export function PropertyDetail({ id }: { id: string }) {
         }}
         onClose={() => setIsEditOpen(false)}
         onSubmit={handleUpdate}
+      />
+
+      <InventoryImportModal
+        open={isImportOpen}
+        propertyId={id as Id<"properties">}
+        propertyName={property.name}
+        onClose={() => setIsImportOpen(false)}
       />
     </div>
   );

@@ -5,6 +5,7 @@ import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useToast } from "@/components/ui/toast-provider";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { getErrorMessage } from "@/lib/errors";
 
 type Option = {
@@ -143,34 +144,26 @@ export function CreateJobModal({
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="space-y-1 text-sm">
             <span className="text-[var(--muted-foreground)]">Property</span>
-            <select
-              value={propertyId}
-              onChange={(event) => setPropertyId(event.target.value)}
-              className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-            >
-              <option value="">Select property</option>
-              {propertyOptions.map((property) => (
-                <option key={property.id} value={property.id}>
-                  {property.name}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={propertyId || null}
+              onChange={(id) => setPropertyId(id ?? "")}
+              placeholder="Select property"
+              searchPlaceholder="Search properties…"
+              aria-label="Property"
+              items={propertyOptions.map((p) => ({ id: p.id, label: p.name }))}
+            />
           </label>
 
           <label className="space-y-1 text-sm">
             <span className="text-[var(--muted-foreground)]">Cleaner</span>
-            <select
-              value={cleanerId}
-              onChange={(event) => setCleanerId(event.target.value)}
-              className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-            >
-              <option value="">Unassigned</option>
-              {cleanerOptions.map((cleaner) => (
-                <option key={cleaner.id} value={cleaner.id}>
-                  {cleaner.name}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={cleanerId || null}
+              onChange={(id) => setCleanerId(id ?? "")}
+              placeholder="Unassigned"
+              searchPlaceholder="Search cleaners…"
+              aria-label="Cleaner"
+              items={cleanerOptions.map((c) => ({ id: c.id, label: c.name }))}
+            />
           </label>
         </div>
 
