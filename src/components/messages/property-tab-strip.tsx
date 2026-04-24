@@ -75,7 +75,9 @@ export function PropertyTabStrip({
         {tabs.map((group, index) => {
           const active = group.propertyId === activePropertyId;
           const prev = index > 0 ? tabs[index - 1] : null;
+          const next = index < tabs.length - 1 ? tabs[index + 1] : null;
           const prevActive = prev ? prev.propertyId === activePropertyId : false;
+          const nextActive = next ? next.propertyId === activePropertyId : false;
           // Tab right after the active, and the active tab itself, use a
           // small overlap so edges touch (no padding gap). All other
           // inactive→inactive transitions keep the stacked overlap look.
@@ -85,6 +87,15 @@ export function PropertyTabStrip({
               : prevActive || active
                 ? -TOUCH_OVERLAP
                 : -STACK_OVERLAP;
+          // The label (tiny address) sits below the thumbnail at full tab
+          // width. On stacked inactive tabs the next tab's label overlaps
+          // this one's, producing an unreadable smear (see fix/property-
+          // tab-strip-overlapping-labels). Only show the label when nothing
+          // will stack on top — the active tab itself, the last tab in the
+          // strip, and the tab right before the active one (which only has
+          // the small TOUCH_OVERLAP on its right edge).
+          const isLastTab = index === tabs.length - 1;
+          const showLabel = active || isLastTab || nextActive;
           const tile = propertyTileColor(group.propertyId);
           const initial = propertyInitial(group.propertyName);
           const shortName = shortPropertyName(group.propertyName, active ? 18 : 10);
@@ -166,12 +177,21 @@ export function PropertyTabStrip({
                       {group.propertyName}
                     </span>
                   </span>
-                ) : (
+                ) : showLabel ? (
                   <span
                     className="block w-full truncate text-center text-[10px] font-semibold leading-tight text-[var(--msg-text-dim)]"
                   >
                     {tinyAddress(group.propertyAddress) ?? shortName}
                   </span>
+                ) : (
+                  // Stacked inactive tab — suppress the label so it doesn't
+                  // collide with the next tab's label. Reserve the vertical
+                  // space so thumbnails stay vertically aligned across the
+                  // strip, otherwise the stacked tabs would shift up.
+                  <span
+                    aria-hidden
+                    className="block h-[14px] w-full"
+                  />
                 )}
               </span>
             </button>
