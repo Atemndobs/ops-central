@@ -35,6 +35,11 @@ type ConversationThreadProps = {
   conversationId?: Id<"conversations"> | null;
   fullHref?: string | null;
   compact?: boolean;
+  /**
+   * Fill the parent's height instead of using viewport-based max-height.
+   * Enables mobile-app style: header + composer pinned, messages scroll.
+   */
+  fillHeight?: boolean;
 };
 
 type ThreadAttachment = {
@@ -86,6 +91,7 @@ export function ConversationThread({
   conversationId,
   fullHref,
   compact = false,
+  fillHeight = false,
 }: ConversationThreadProps) {
   const detail = useQuery(
     api.conversations.queries.getConversationById,
@@ -158,8 +164,12 @@ export function ConversationThread({
     : "Internal team thread";
 
   return (
-    <div className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--card)]">
-      <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
+    <div
+      className={`msg-thread-root flex flex-col rounded-2xl border border-[var(--msg-divider,var(--border))] bg-[var(--msg-card,var(--card))] shadow-[var(--msg-shadow-card,none)] ${
+        fillHeight ? "h-full min-h-0" : ""
+      }`}
+    >
+      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--msg-divider,var(--border))] px-4 py-3">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-[var(--foreground)]">{headerTitle}</p>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--muted-foreground)]">
@@ -221,7 +231,9 @@ export function ConversationThread({
         className={
           compact
             ? "max-h-56 overflow-y-auto px-4 py-3"
-            : "min-h-[20rem] max-h-[calc(100vh-20rem)] flex-1 overflow-y-auto px-4 py-3"
+            : fillHeight
+              ? "min-h-0 flex-1 overflow-y-auto px-4 py-3"
+              : "min-h-[20rem] max-h-[calc(100vh-20rem)] flex-1 overflow-y-auto px-4 py-3"
         }
       >
         {messages.length === 0 ? (
@@ -245,19 +257,16 @@ export function ConversationThread({
                   className={`flex ${isSelf ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`max-w-[85%] rounded-2xl px-3 py-2 ${
+                    className={`max-w-[85%] rounded-[12px] px-3 py-2 text-[var(--msg-text,var(--foreground))] ${
                       isSelf
-                        ? "rounded-br-sm bg-[var(--primary)] text-[var(--primary-foreground)]"
-                        : "rounded-bl-sm border border-[var(--border)] bg-[var(--accent)]"
+                        ? "rounded-br-[4px] border border-[var(--msg-bubble-border,var(--border))] bg-[var(--msg-bubble-out,var(--card))]"
+                        : "rounded-bl-[4px] bg-[var(--msg-bubble-in,var(--accent))]"
                     }`}
                   >
                     {!isSelf ? (
                       <p
-                        className={`text-[11px] font-semibold ${
-                          isSelf
-                            ? "text-[var(--primary-foreground)]/80"
-                            : "text-[var(--primary)]"
-                        }`}
+                        className="text-[11px] font-semibold"
+                        style={{ color: "var(--msg-primary-strong, var(--primary))" }}
                       >
                         {authorName}
                       </p>
@@ -328,10 +337,8 @@ export function ConversationThread({
                     ) : null}
 
                     <p
-                      className={`mt-1 text-[10px] ${
-                        isSelf
-                          ? "text-right text-[var(--primary-foreground)]/60"
-                          : "text-[var(--muted-foreground)]"
+                      className={`mt-1 text-[10px] text-[var(--msg-text-muted,var(--muted-foreground))] ${
+                        isSelf ? "text-right" : ""
                       }`}
                     >
                       {formatMessageTime(message.createdAt)}
@@ -349,7 +356,7 @@ export function ConversationThread({
       </div>
 
       <form
-        className="border-t border-[var(--border)] p-3"
+        className="shrink-0 border-t border-[var(--msg-divider,var(--border))] p-3"
         onSubmit={async (event) => {
           event.preventDefault();
           if (!body.trim()) {
@@ -399,12 +406,12 @@ export function ConversationThread({
                   : "Await cleaner reply..."
                 : "Type a message..."
             }
-            className="flex-1 resize-none rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex-1 resize-none rounded-full border border-[var(--msg-bubble-border,var(--border))] bg-[var(--msg-card,var(--background))] px-4 py-2.5 text-sm text-[var(--msg-text,var(--foreground))] outline-none placeholder:text-[var(--msg-text-muted,var(--muted-foreground))] focus:border-[var(--msg-primary,var(--primary))] focus:ring-2 focus:ring-[var(--msg-primary,var(--primary))]/20 disabled:cursor-not-allowed disabled:opacity-60"
           />
           <button
             type="submit"
             disabled={pending || !body.trim() || !canReplyInApp}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] text-[var(--primary-foreground)] disabled:opacity-40"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--msg-primary,var(--primary))] text-[var(--msg-on-primary,var(--primary-foreground))] shadow-[var(--msg-shadow-float,none)] transition-transform hover:scale-105 active:scale-95 disabled:opacity-40"
           >
             <Send className="h-4 w-4" />
           </button>

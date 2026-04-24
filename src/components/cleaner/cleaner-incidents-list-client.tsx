@@ -71,8 +71,7 @@ export function CleanerIncidentsListClient() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold">{t("title")}</h1>
-          <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+          <p className="text-sm text-[var(--muted-foreground)]">
             {t("subtitle")}
           </p>
         </div>

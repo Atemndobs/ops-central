@@ -6,7 +6,6 @@ import {
   canAccessPath,
   getDefaultRouteForRole,
   getRoleFromMetadata,
-  getRoleFromSessionClaims,
   getRoleFromSessionClaimsOrNull,
   type UserRole,
 } from "@/lib/auth";
@@ -18,6 +17,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/webhooks/hospitable(.*)",
   "/api/webhooks/clerk(.*)",
   "/api/webhooks/trello(.*)",
+  ...(process.env.NODE_ENV !== "production" ? ["/playground(.*)"] : []),
 ]);
 
 function isUserRole(value: unknown): value is UserRole {
@@ -27,6 +27,9 @@ function isUserRole(value: unknown): value is UserRole {
 async function getRoleFromConvexByClerkId(clerkId: string): Promise<UserRole | null> {
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
   if (!convexUrl) {
+    console.error(
+      "[ProxyAuth] NEXT_PUBLIC_CONVEX_URL is not set — cannot resolve role from Convex",
+    );
     return null;
   }
 
@@ -42,6 +45,9 @@ async function getRoleFromConvexByClerkId(clerkId: string): Promise<UserRole | n
     });
 
     if (!response.ok) {
+      console.error(
+        `[ProxyAuth] Convex role lookup for ${clerkId} returned HTTP ${response.status}`,
+      );
       return null;
     }
 
@@ -51,13 +57,24 @@ async function getRoleFromConvexByClerkId(clerkId: string): Promise<UserRole | n
     };
 
     if (payload.status !== "success" || !payload.value || typeof payload.value !== "object") {
+      console.error(
+        `[ProxyAuth] Convex returned no user row for clerkId=${clerkId}`,
+        payload.status,
+      );
       return null;
     }
 
     const role = (payload.value as Record<string, unknown>).role;
-    return isUserRole(role) ? role : null;
+    if (!isUserRole(role)) {
+      console.error(
+        `[ProxyAuth] Convex user row for clerkId=${clerkId} has invalid/missing role`,
+        role,
+      );
+      return null;
+    }
+    return role;
   } catch (error) {
-    console.warn("[ProxyAuth] Failed to resolve role from Convex", error);
+    console.error("[ProxyAuth] Failed to resolve role from Convex", error);
     return null;
   }
 }
@@ -66,9 +83,16 @@ async function getRoleFromClerkMetadata(clerkId: string): Promise<UserRole | nul
   try {
     const clerk = await clerkClient();
     const user = await clerk.users.getUser(clerkId);
-    return getRoleFromMetadata(user.publicMetadata);
+    const role = getRoleFromMetadata(user.publicMetadata);
+    if (!role) {
+      console.error(
+        `[ProxyAuth] Clerk publicMetadata for clerkId=${clerkId} has no role`,
+        user.publicMetadata,
+      );
+    }
+    return role;
   } catch (error) {
-    console.warn("[ProxyAuth] Failed to resolve role from Clerk metadata", error);
+    console.error("[ProxyAuth] Failed to resolve role from Clerk metadata", error);
     return null;
   }
 }
@@ -106,12 +130,25 @@ export default clerkMiddleware(async (auth, req) => {
   const roleFromConvex = roleFromClaims || roleFromClerkMetadata
     ? null
     : await getRoleFromConvexByClerkId(userId);
-  const role =
-    roleFromClaims ??
-    roleFromClerkMetadata ??
-    roleFromConvex ??
-    getRoleFromSessionClaims(claims);
+  const resolvedRole =
+    roleFromClaims ?? roleFromClerkMetadata ?? roleFromConvex ?? null;
   const pathname = req.nextUrl.pathname;
+
+  // Fail closed: if we can't resolve the user's role from any source, do not
+  // fall back to a privileged role. Send them to sign-in with an error flag so
+  // they can't accidentally land on admin routes.
+  if (!resolvedRole) {
+    console.error(
+      `[ProxyAuth] Unable to resolve role for userId=${userId}; redirecting to sign-in. ` +
+        `Check: Clerk JWT template role claim, publicMetadata.role, and Convex users row for this clerkId.`,
+    );
+    const url = req.nextUrl.clone();
+    url.pathname = "/sign-in";
+    url.search = "?authError=role_unresolved";
+    return NextResponse.redirect(url);
+  }
+
+  const role: UserRole = resolvedRole;
 
   if (role === "cleaner" && (pathname === "/jobs" || pathname.startsWith("/jobs/"))) {
     const url = req.nextUrl.clone();

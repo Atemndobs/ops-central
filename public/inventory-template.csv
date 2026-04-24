@@ -1,0 +1,4 @@
+name,category,room,location_detail,quantity_purchased,vendor,url,unit_price,order_status,notes
+Toilet paper (30 rolls),Consumables,All Bathrooms,Bathroom - Storage,1,Amazon,https://a.co/d/89NcAsV,20.00,ordered,Presto Brand
+Bath towels (4-pack),Smallware,All Bathrooms,Bathroom + Bedroom Closet,3,Amazon,https://a.co/d/5kzVU0j,29.00,received,Grandeur Hospitality
+Queen Bed Frame,Furniture,All Bedrooms,Queen Bed 1-2,2,Amazon,https://www.amazon.com/dp/B0GL5ZJGZ8,225.00,ordered,dark brown

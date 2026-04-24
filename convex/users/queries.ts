@@ -346,3 +346,46 @@ export const getOpsDashboard = query({
     };
   },
 });
+
+/**
+ * Diagnostic: list every Convex user with clerkId + role, and a summary of
+ * counts per role. Cross-reference the returned clerkIds against the Clerk
+ * dashboard to find Clerk users who have never created a Convex row, or who
+ * have stale/incorrect publicMetadata.role compared with Convex.
+ *
+ * Restricted to admin + property_ops. Run from CLI:
+ *   npx convex run users/queries:auditRoles '{}'
+ */
+export const auditRoles = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireRole(ctx, ["admin", "property_ops"]);
+
+    const users = await ctx.db.query("users").collect();
+    const byRole: Record<string, number> = {};
+    for (const user of users) {
+      byRole[user.role] = (byRole[user.role] ?? 0) + 1;
+    }
+
+    const rows = users
+      .map((user) => ({
+        userId: user._id,
+        clerkId: user.clerkId,
+        email: user.email,
+        name: user.name ?? null,
+        role: user.role,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt ?? null,
+      }))
+      .sort((a, b) => {
+        if (a.role !== b.role) return a.role.localeCompare(b.role);
+        return (a.name ?? a.email).localeCompare(b.name ?? b.email);
+      });
+
+    return {
+      totalUsers: users.length,
+      countsByRole: byRole,
+      users: rows,
+    };
+  },
+});

@@ -9,6 +9,7 @@ import type { Id } from "@convex/_generated/dataModel";
 import { getErrorMessage } from "@/lib/errors";
 import { formatLabel } from "@/lib/format";
 import { buildRoomOptions } from "@/lib/rooms";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 const INCIDENT_TYPES = [
   "missing_item",
@@ -472,16 +473,16 @@ export function CleanerIncidentPageClient() {
       {reportMode === "job" ? (
         <div>
           <label className="mb-1 block text-xs text-[var(--muted-foreground)]">{t("cleaner.incident.jobLabel")}</label>
-          <select
-            value={selectedJobId}
-            onChange={(event) => {
-              setSelectedJobId(event.target.value);
+          <SearchableSelect
+            value={selectedJobId || null}
+            onChange={(id) => {
+              setSelectedJobId(id ?? "");
               resetFormFields();
             }}
-            className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-          >
-            <option value="">{t("cleaner.incident.selectJob")}</option>
-            {(jobs ?? [])
+            placeholder={t("cleaner.incident.selectJob")}
+            searchPlaceholder="Search jobs…"
+            aria-label={t("cleaner.incident.jobLabel")}
+            items={(jobs ?? [])
               .slice()
               .sort((a, b) => b.scheduledStartAt - a.scheduledStartAt)
               .map((job) => {
@@ -491,33 +492,32 @@ export function CleanerIncidentPageClient() {
                   locale,
                   { month: "short", day: "numeric", year: "numeric" },
                 );
-                return (
-                  <option key={job._id} value={job._id}>
-                    {propertyName} · {dateLabel}
-                  </option>
-                );
+                return {
+                  id: job._id,
+                  label: `${propertyName} · ${dateLabel}`,
+                };
               })}
-          </select>
+          />
         </div>
       ) : (
         /* Property selector (standalone mode) */
         <div>
           <label className="mb-1 block text-xs text-[var(--muted-foreground)]">{t("cleaner.incident.propertyLabel")}</label>
-          <select
-            value={selectedPropertyId}
-            onChange={(event) => {
-              setSelectedPropertyId(event.target.value);
+          <SearchableSelect
+            value={selectedPropertyId || null}
+            onChange={(id) => {
+              setSelectedPropertyId(id ?? "");
               resetFormFields();
             }}
-            className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-          >
-            <option value="">{t("cleaner.incident.selectProperty")}</option>
-            {(allProperties ?? []).map((prop) => (
-              <option key={prop._id} value={prop._id}>
-                {prop.name}{prop.address ? ` — ${prop.address}` : ""}
-              </option>
-            ))}
-          </select>
+            placeholder={t("cleaner.incident.selectProperty")}
+            searchPlaceholder="Search properties…"
+            aria-label={t("cleaner.incident.propertyLabel")}
+            items={(allProperties ?? []).map((prop) => ({
+              id: prop._id,
+              label: prop.name,
+              hint: prop.address ?? undefined,
+            }))}
+          />
         </div>
       )}
 

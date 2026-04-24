@@ -6,6 +6,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Building2, Loader2, Plus, RefreshCcw, ShieldCheck, Users } from "lucide-react";
 import { useToast } from "@/components/ui/toast-provider";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { getErrorMessage } from "@/lib/errors";
 
 type DraftAssignments = Record<string, string>;
@@ -903,25 +904,24 @@ export function CompaniesHub() {
                       {row.assignmentsCount} record(s)
                     </td>
                     <td className="px-4 py-3">
-                      <select
-                        value={draftCompany}
-                        onChange={(event) =>
+                      <SearchableSelect
+                        value={draftCompany || null}
+                        onChange={(id) =>
                           setDraftAssignments((current) => ({
                             ...current,
-                            [row.propertyId]: event.target.value,
+                            [row.propertyId]: id ?? "",
                           }))
                         }
-                        className="w-full rounded-md border bg-[var(--background)] px-3 py-2 text-sm"
+                        placeholder="No company"
+                        searchPlaceholder="Search companies…"
+                        aria-label="Assign company"
                         disabled={isBusy}
-                      >
-                        <option value="">No company</option>
-                        {eligibleCompanies.map((company) => (
-                          <option key={company._id} value={company._id}>
-                            {company.name}
-                            {company.city ? ` · ${company.city}` : ""}
-                          </option>
-                        ))}
-                      </select>
+                        items={eligibleCompanies.map((company) => ({
+                          id: company._id,
+                          label: company.name,
+                          hint: company.city ?? undefined,
+                        }))}
+                      />
                       {usingFallback ? (
                         <p className="mt-1 text-[11px] text-amber-500">
                           No companies set for {row.city}. Showing all — set a
