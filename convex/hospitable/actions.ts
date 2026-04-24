@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { action, internalAction } from "../_generated/server";
+import type { ActionCtx } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 
@@ -346,20 +347,124 @@ function normalizeReservation(
   };
 }
 
-async function fetchHospitableJson(apiKey: string, url: string): Promise<unknown> {
-  const response = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-  });
+type HospitableStatus =
+  | "success"
+  | "rate_limited"
+  | "quota_exceeded"
+  | "auth_error"
+  | "client_error"
+  | "server_error"
+  | "timeout"
+  | "unknown_error";
+
+function classifyHttpStatus(status: number): HospitableStatus {
+  if (status === 401 || status === 403) return "auth_error";
+  if (status === 429) return "rate_limited";
+  if (status === 402) return "quota_exceeded";
+  if (status >= 400 && status < 500) return "client_error";
+  if (status >= 500) return "server_error";
+  return "unknown_error";
+}
+
+/**
+ * Minimal Convex-context subset we need for usage logging. Typed structurally
+ * so unit tests (and the few paths that don't carry a real ActionCtx) can
+ * pass `undefined` and skip logging entirely.
+ */
+type UsageLogCtx = Pick<ActionCtx, "runMutation">;
+
+/**
+ * Fetch a Hospitable v2 JSON endpoint. When `ctx` is provided, one
+ * `serviceUsageEvents` row is written per request (success or error). Logging
+ * is fire-and-forget — a logger failure never affects the sync result.
+ */
+async function fetchHospitableJson(
+  apiKey: string,
+  url: string,
+  ctx?: UsageLogCtx,
+  feature: string = "hospitable_sync",
+): Promise<unknown> {
+  const startedAt = Date.now();
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : String(error ?? "unknown");
+    if (ctx) {
+      try {
+        await ctx.runMutation(internal.serviceUsage.logger.log, {
+          serviceKey: "hospitable",
+          feature,
+          status: "timeout",
+          durationMs: Date.now() - startedAt,
+          errorMessage: errorMessage.slice(0, 500),
+          metadata: { url: stripUrlSecrets(url) },
+        });
+      } catch {
+        // best-effort
+      }
+    }
+    throw error;
+  }
+
+  const durationMs = Date.now() - startedAt;
 
   if (!response.ok) {
     const errorBody = await response.text();
+    if (ctx) {
+      try {
+        await ctx.runMutation(internal.serviceUsage.logger.log, {
+          serviceKey: "hospitable",
+          feature,
+          status: classifyHttpStatus(response.status),
+          durationMs,
+          errorCode: String(response.status),
+          errorMessage: errorBody.slice(0, 500),
+          metadata: { url: stripUrlSecrets(url) },
+        });
+      } catch {
+        // best-effort
+      }
+    }
     throw new Error(`Hospitable request failed (${response.status}): ${errorBody}`);
   }
 
-  return await response.json();
+  const json = await response.json();
+
+  if (ctx) {
+    try {
+      const byteLength = JSON.stringify(json).length;
+      await ctx.runMutation(internal.serviceUsage.logger.log, {
+        serviceKey: "hospitable",
+        feature,
+        status: "success",
+        durationMs,
+        responseBytes: byteLength,
+        metadata: { url: stripUrlSecrets(url) },
+      });
+    } catch {
+      // best-effort
+    }
+  }
+
+  return json;
+}
+
+/** Remove query-string api keys from metadata before persisting. */
+function stripUrlSecrets(url: string): string {
+  try {
+    const u = new URL(url);
+    u.search = "";
+    return u.toString();
+  } catch {
+    return url;
+  }
 }
 
 export const syncReservations = internalAction({
@@ -392,7 +497,12 @@ export const syncReservations = internalAction({
       const checkOutFrom = windowStart.toISOString().split("T")[0];
       const checkOutTo = windowEnd.toISOString().split("T")[0];
 
-      const propertiesPayload = await fetchHospitableJson(apiKey, `${baseUrl}/properties`);
+      const propertiesPayload = await fetchHospitableJson(
+        apiKey,
+        `${baseUrl}/properties`,
+        ctx,
+        "hospitable_reservations_sync",
+      );
       const properties = getArrayFromApiPayload(propertiesPayload);
 
       const reservations: NormalizedReservation[] = [];
@@ -415,7 +525,9 @@ export const syncReservations = internalAction({
 
         const reservationPayload = await fetchHospitableJson(
           apiKey,
-          `${baseUrl}/reservations?${params.toString()}`
+          `${baseUrl}/reservations?${params.toString()}`,
+          ctx,
+          "hospitable_reservations_sync",
         );
 
         const propertyReservations = getArrayFromApiPayload(reservationPayload);
@@ -500,7 +612,12 @@ export const listTeammatesForImport = action({
         ? candidate
         : `${baseUrl}${candidate.startsWith("/") ? candidate : `/${candidate}`}`;
       try {
-        const payload = await fetchHospitableJson(apiKey, endpoint);
+        const payload = await fetchHospitableJson(
+          apiKey,
+          endpoint,
+          ctx,
+          "hospitable_teammates_import",
+        );
         const rawRows = getArrayFromApiPayload(payload);
         const normalizedRows = rawRows
           .map(normalizeTeammateForImport)
@@ -662,7 +779,12 @@ export const syncPropertyDetails = internalAction({
 
     const baseUrl = process.env.HOSPITABLE_API_URL ?? DEFAULT_HOSPITABLE_BASE_URL;
 
-    const propertiesPayload = await fetchHospitableJson(apiKey, `${baseUrl}/properties`);
+    const propertiesPayload = await fetchHospitableJson(
+      apiKey,
+      `${baseUrl}/properties`,
+      ctx,
+      "hospitable_properties_sync",
+    );
     const rawProperties = getArrayFromApiPayload(propertiesPayload);
 
     let propertiesSynced = 0;
@@ -679,7 +801,12 @@ export const syncPropertyDetails = internalAction({
       // Also try fetching individual property detail for richer room data
       let enrichedRooms = details.rooms;
       try {
-        const detailPayload = await fetchHospitableJson(apiKey, `${baseUrl}/properties/${details.hospitableId}`);
+        const detailPayload = await fetchHospitableJson(
+          apiKey,
+          `${baseUrl}/properties/${details.hospitableId}`,
+          ctx,
+          "hospitable_properties_sync",
+        );
         const detailData = isRecord(detailPayload) && isRecord(detailPayload.data) ? detailPayload.data : detailPayload;
         if (isRecord(detailData)) {
           // Update counts from detail endpoint capacity object
@@ -788,6 +915,8 @@ export const resyncPropertyDetails = action({
     const detailPayload = await fetchHospitableJson(
       apiKey,
       `${baseUrl}/properties/${property.hospitableId}`,
+      ctx,
+      "hospitable_property_resync",
     );
     const detailData =
       isRecord(detailPayload) && isRecord(detailPayload.data)
