@@ -18,13 +18,61 @@
 
 import { v } from "convex/values";
 import { action, mutation } from "../_generated/server";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import { getCurrentUser } from "../lib/auth";
 import {
   getVoiceProvider,
   type TranscribeOutput,
   type VoiceProviderKey,
 } from "../ai/providers";
+import type { Id } from "../_generated/dataModel";
+
+// Map VoiceProviderKey → canonical serviceKey in the usage registry.
+// Today all three literal keys map to the same vendor (gemini/groq/openai)
+// based on their prefix.
+function serviceKeyForProvider(
+  providerKey: VoiceProviderKey,
+): "gemini" | "groq" | "openai" {
+  if (providerKey.startsWith("gemini")) return "gemini";
+  if (providerKey.startsWith("groq")) return "groq";
+  return "openai";
+}
+
+// Normalize any error thrown by the provider into a serviceUsageEvents status.
+function classifyError(err: unknown): {
+  status:
+    | "rate_limited"
+    | "quota_exceeded"
+    | "auth_error"
+    | "client_error"
+    | "server_error"
+    | "timeout"
+    | "unknown_error";
+  errorCode?: string;
+  errorMessage?: string;
+} {
+  const msg = err instanceof Error ? err.message : String(err);
+  const lower = msg.toLowerCase();
+  if (lower.includes("429") || lower.includes("rate limit")) {
+    return { status: "rate_limited", errorMessage: msg };
+  }
+  if (lower.includes("quota") || lower.includes("402")) {
+    return { status: "quota_exceeded", errorMessage: msg };
+  }
+  if (lower.includes("401") || lower.includes("403") || lower.includes("auth")) {
+    return { status: "auth_error", errorMessage: msg };
+  }
+  if (lower.includes("timeout")) {
+    return { status: "timeout", errorMessage: msg };
+  }
+  if (lower.includes("400")) {
+    return { status: "client_error", errorMessage: msg };
+  }
+  if (/5\d{2}/.test(lower)) {
+    return { status: "server_error", errorMessage: msg };
+  }
+  return { status: "unknown_error", errorMessage: msg };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Upload URL — client uploads the recorded audio blob here before transcribing.
@@ -98,13 +146,32 @@ export const transcribe = action({
     }
 
     const provider = getVoiceProvider(setting.providerKey);
+    const serviceKey = serviceKeyForProvider(setting.providerKey);
 
+    // Resolve a userId from identity for usage attribution (best-effort).
+    let attributedUserId: Id<"users"> | undefined;
+    try {
+      const userRow = await ctx.runQuery(api.users.queries.getMyProfile, {});
+      if (userRow && typeof userRow === "object" && "_id" in userRow) {
+        attributedUserId = (userRow as { _id: Id<"users"> })._id;
+      }
+    } catch {
+      // Usage attribution is best-effort; never let it break transcription.
+    }
+
+    const startedAt = Date.now();
     let result: TranscribeOutput;
+    let succeeded = false;
+    let caughtError: unknown;
     try {
       result = await provider.transcribe({
         audio: blob,
         languageHint: args.languageHint,
       });
+      succeeded = true;
+    } catch (err) {
+      caughtError = err;
+      throw err;
     } finally {
       // Always clean up — success OR failure. Transcripts are the product;
       // raw audio has no value beyond this action. A storage leak here
@@ -115,11 +182,50 @@ export const transcribe = action({
         // Swallow — if delete fails we'd rather the caller see the real
         // transcription error (if any) than a secondary cleanup error.
       }
+
+      // Log the service usage event. This is best-effort — failures here
+      // must not mask the original transcription outcome.
+      try {
+        const durationMs = Date.now() - startedAt;
+        // NOTE: registry currently only has "gemini". Groq/OpenAI providers
+        // are logged under "gemini" with the real providerKey preserved in
+        // metadata until Phase C extends the registry. This keeps the logger
+        // schema narrow without losing provider attribution.
+        void serviceKey;
+        if (succeeded) {
+          await ctx.runMutation(internal.serviceUsage.logger.log, {
+            serviceKey: "gemini",
+            feature: "voice_transcription",
+            status: "success",
+            userId: attributedUserId,
+            durationMs,
+            metadata: {
+              providerKey: setting.providerKey,
+            },
+          });
+        } else {
+          const classified = classifyError(caughtError);
+          await ctx.runMutation(internal.serviceUsage.logger.log, {
+            serviceKey: "gemini",
+            feature: "voice_transcription",
+            status: classified.status,
+            userId: attributedUserId,
+            durationMs,
+            errorCode: classified.errorCode,
+            errorMessage: classified.errorMessage,
+            metadata: {
+              providerKey: setting.providerKey,
+            },
+          });
+        }
+      } catch {
+        // swallow — usage logging is best-effort
+      }
     }
 
     return {
-      text: result.text,
-      detectedLang: result.detectedLang,
+      text: result!.text,
+      detectedLang: result!.detectedLang,
       providerKey: setting.providerKey,
     };
   },
