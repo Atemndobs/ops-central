@@ -1,4 +1,5 @@
 import { mutation } from "../_generated/server";
+import type { MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { getCurrentUser } from "../lib/auth";
 import {
@@ -8,6 +9,43 @@ import {
   requireExternalStorageConfig,
 } from "../lib/externalStorage";
 import { normalizeRoomName } from "../lib/rooms";
+import { logServiceUsage } from "../lib/serviceUsage";
+import type { Id } from "../_generated/dataModel";
+
+/**
+ * Fire-and-forget B2 op logger. Runs in the current mutation transaction —
+ * if the outer mutation rolls back, the log rolls back too (desirable: we
+ * only record events for ops that committed). Never throws.
+ */
+async function logB2Op(
+  ctx: MutationCtx,
+  input: {
+    feature: string;
+    status: Parameters<typeof logServiceUsage>[1]["status"];
+    durationMs: number;
+    userId?: Id<"users">;
+    requestBytes?: number;
+    errorCode?: string;
+    errorMessage?: string;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<void> {
+  try {
+    await logServiceUsage(ctx, {
+      serviceKey: "b2",
+      feature: input.feature,
+      status: input.status,
+      durationMs: input.durationMs,
+      userId: input.userId,
+      requestBytes: input.requestBytes,
+      errorCode: input.errorCode,
+      errorMessage: input.errorMessage,
+      metadata: input.metadata,
+    });
+  } catch {
+    // best-effort
+  }
+}
 
 const photoTypeValidator = v.union(
   v.literal("before"),
@@ -74,7 +112,7 @@ export const getExternalUploadUrl = mutation({
     byteSize: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await getCurrentUser(ctx);
+    const user = await getCurrentUser(ctx);
     const job = await ctx.db.get(args.jobId);
     if (!job) {
       throw new Error("Cleaning job not found");
@@ -87,10 +125,25 @@ export const getExternalUploadUrl = mutation({
       fileName: args.fileName,
     });
 
+    const startedAt = Date.now();
     const { url, expiresAt } = await createExternalUploadUrl({
       bucket: config.bucket,
       objectKey,
       contentType: args.contentType,
+    });
+
+    await logB2Op(ctx, {
+      feature: "b2_upload_url",
+      status: "success",
+      durationMs: Date.now() - startedAt,
+      userId: user._id,
+      requestBytes: args.byteSize,
+      metadata: {
+        bucket: config.bucket,
+        provider: config.provider,
+        jobId: args.jobId,
+        photoType: args.photoType,
+      },
     });
 
     return {
@@ -143,17 +196,38 @@ export const completeExternalUpload = mutation({
       bucket: args.bucket,
       objectKey: args.objectKey,
       objectVersion: args.objectVersion,
+      byteSize: args.byteSize,
       archivedTier: "hot",
     });
 
     let accessUrl: string | null = null;
+    const readStartedAt = Date.now();
     try {
       accessUrl = await createExternalReadUrl({
         bucket: args.bucket,
         objectKey: args.objectKey,
       });
-    } catch {
+      await logB2Op(ctx, {
+        feature: "b2_read_url",
+        status: "success",
+        durationMs: Date.now() - readStartedAt,
+        userId: user._id,
+        metadata: { bucket: args.bucket, provider: args.provider },
+      });
+    } catch (error) {
       accessUrl = null;
+      await logB2Op(ctx, {
+        feature: "b2_read_url",
+        status: "unknown_error",
+        durationMs: Date.now() - readStartedAt,
+        userId: user._id,
+        errorMessage:
+          (error instanceof Error ? error.message : String(error ?? "")).slice(
+            0,
+            500,
+          ),
+        metadata: { bucket: args.bucket, provider: args.provider },
+      });
     }
 
     return {
@@ -168,7 +242,7 @@ export const deleteJobPhoto = mutation({
     photoId: v.id("photos"),
   },
   handler: async (ctx, args) => {
-    await getCurrentUser(ctx);
+    const user = await getCurrentUser(ctx);
 
     const photo = await ctx.db.get(args.photoId);
     if (!photo) {
@@ -178,13 +252,41 @@ export const deleteJobPhoto = mutation({
     if (photo.storageId) {
       await ctx.storage.delete(photo.storageId);
     } else if (photo.objectKey) {
+      const startedAt = Date.now();
       try {
         await deleteExternalObject({
           bucket: photo.bucket,
           objectKey: photo.objectKey,
         });
+        await logB2Op(ctx, {
+          feature: "b2_delete",
+          status: "success",
+          durationMs: Date.now() - startedAt,
+          userId: user._id,
+          metadata: {
+            bucket: photo.bucket,
+            provider: photo.provider,
+            photoId: args.photoId,
+          },
+        });
       } catch (error) {
         console.warn("[files/deleteJobPhoto] Failed to delete external object", error);
+        await logB2Op(ctx, {
+          feature: "b2_delete",
+          status: "unknown_error",
+          durationMs: Date.now() - startedAt,
+          userId: user._id,
+          errorMessage:
+            (error instanceof Error ? error.message : String(error ?? "")).slice(
+              0,
+              500,
+            ),
+          metadata: {
+            bucket: photo.bucket,
+            provider: photo.provider,
+            photoId: args.photoId,
+          },
+        });
       }
     }
 

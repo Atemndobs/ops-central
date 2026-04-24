@@ -16,7 +16,8 @@ export type ServiceKey =
   | "clerk"
   | "hospitable"
   | "resend"
-  | "convex";
+  | "convex"
+  | "b2";
 
 /**
  * Metrics the logger surfaces to `computeCost`. Matches the optional fields
@@ -119,6 +120,23 @@ export const SERVICE_DEFINITIONS: Record<ServiceKey, ServiceDefinition> = {
     displayName: "Convex",
     docsUrl: "https://www.convex.dev/pricing",
     computeCost: () => 0,
+    quotas: [],
+  },
+
+  b2: {
+    key: "b2",
+    displayName: "Backblaze B2",
+    docsUrl: "https://www.backblaze.com/cloud-storage/pricing",
+    // B2 pricing (as of Apr 2026): $0.006/GB-month storage, $0.01/GB download,
+    // Class B (read) $0.004 / 10,000, Class C (list/delete) $0.004 / 1,000.
+    // Inline we only price bandwidth when the caller reports bytes; storage
+    // cost is surfaced by the nightly snapshot event which carries
+    // `requestBytes` = total stored bytes + computed cost in metadata.
+    computeCost: (m) => {
+      if (!m.responseBytes) return 0;
+      const gb = m.responseBytes / 1_000_000_000;
+      return gb * 0.01; // download price (worst case)
+    },
     quotas: [],
   },
 };

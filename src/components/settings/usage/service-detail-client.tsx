@@ -48,7 +48,8 @@ export type ServiceKey =
   | "clerk"
   | "hospitable"
   | "resend"
-  | "convex";
+  | "convex"
+  | "b2";
 
 export function ServiceDetailClient({
   serviceKey,

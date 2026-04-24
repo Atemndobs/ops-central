@@ -10,6 +10,7 @@ const VALID_SERVICE_KEYS: readonly ServiceKey[] = [
   "hospitable",
   "resend",
   "convex",
+  "b2",
 ] as const;
 
 function parseServiceKey(raw: string): ServiceKey | null {

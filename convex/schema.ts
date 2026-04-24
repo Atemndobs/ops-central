@@ -705,6 +705,10 @@ const photos = defineTable({
   bucket: v.optional(v.string()),
   objectKey: v.optional(v.string()),
   objectVersion: v.optional(v.string()),
+  /** Byte size of the stored object, if known. Populated by
+   *  `completeExternalUpload` for B2/MinIO-backed photos. Enables accurate
+   *  storage-cost snapshots — see `convex/serviceUsage/b2Snapshot.ts`. */
+  byteSize: v.optional(v.number()),
   archivedTier: v.optional(v.string()),
   archivedAt: v.optional(v.number()),
 
@@ -1156,6 +1160,7 @@ const serviceUsageEvents = defineTable({
     v.literal("sentry"),
     v.literal("posthog"),
     v.literal("convex"),
+    v.literal("b2"),
   ),
   feature: v.string(),
   status: v.union(

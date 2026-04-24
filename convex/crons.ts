@@ -45,6 +45,15 @@ crons.interval(
   {},
 );
 
+// Nightly B2 storage snapshot — sums photo byteSize and records one event
+// so the Backblaze card surfaces current GB stored + estimated monthly cost.
+crons.cron(
+  "service-usage-b2-storage-snapshot-daily",
+  "0 1 * * *", // 01:00 UTC daily
+  internal.serviceUsage.b2Snapshot.snapshot,
+  {},
+);
+
 crons.cron(
   "archive-photos-to-minio-every-7-days",
   "0 2 */7 * *",
