@@ -72,6 +72,8 @@ import type * as reviewAnnotations_mutations from "../reviewAnnotations/mutation
 import type * as reviewAnnotations_queries from "../reviewAnnotations/queries.js";
 import type * as serviceUsage_b2Snapshot from "../serviceUsage/b2Snapshot.js";
 import type * as serviceUsage_clerkSnapshot from "../serviceUsage/clerkSnapshot.js";
+import type * as serviceUsage_convexSnapshot from "../serviceUsage/convexSnapshot.js";
+import type * as serviceUsage_counterBackfill from "../serviceUsage/counterBackfill.js";
 import type * as serviceUsage_crons from "../serviceUsage/crons.js";
 import type * as serviceUsage_logger from "../serviceUsage/logger.js";
 import type * as serviceUsage_queries from "../serviceUsage/queries.js";
@@ -156,6 +158,8 @@ declare const fullApi: ApiFromModules<{
   "reviewAnnotations/queries": typeof reviewAnnotations_queries;
   "serviceUsage/b2Snapshot": typeof serviceUsage_b2Snapshot;
   "serviceUsage/clerkSnapshot": typeof serviceUsage_clerkSnapshot;
+  "serviceUsage/convexSnapshot": typeof serviceUsage_convexSnapshot;
+  "serviceUsage/counterBackfill": typeof serviceUsage_counterBackfill;
   "serviceUsage/crons": typeof serviceUsage_crons;
   "serviceUsage/logger": typeof serviceUsage_logger;
   "serviceUsage/queries": typeof serviceUsage_queries;
