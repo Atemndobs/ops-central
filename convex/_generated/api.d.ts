@@ -71,6 +71,7 @@ import type * as reports_queries from "../reports/queries.js";
 import type * as reviewAnnotations_mutations from "../reviewAnnotations/mutations.js";
 import type * as reviewAnnotations_queries from "../reviewAnnotations/queries.js";
 import type * as serviceUsage_b2Snapshot from "../serviceUsage/b2Snapshot.js";
+import type * as serviceUsage_clerkSnapshot from "../serviceUsage/clerkSnapshot.js";
 import type * as serviceUsage_crons from "../serviceUsage/crons.js";
 import type * as serviceUsage_logger from "../serviceUsage/logger.js";
 import type * as serviceUsage_queries from "../serviceUsage/queries.js";
@@ -154,6 +155,7 @@ declare const fullApi: ApiFromModules<{
   "reviewAnnotations/mutations": typeof reviewAnnotations_mutations;
   "reviewAnnotations/queries": typeof reviewAnnotations_queries;
   "serviceUsage/b2Snapshot": typeof serviceUsage_b2Snapshot;
+  "serviceUsage/clerkSnapshot": typeof serviceUsage_clerkSnapshot;
   "serviceUsage/crons": typeof serviceUsage_crons;
   "serviceUsage/logger": typeof serviceUsage_logger;
   "serviceUsage/queries": typeof serviceUsage_queries;
