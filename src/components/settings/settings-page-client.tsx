@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useTranslations } from "next-intl";
-import { Bell, Building2, CheckCheck, ExternalLink, Globe, Settings, Trash2, Users, Zap } from "lucide-react";
+import { Bell, Building2, CheckCheck, ExternalLink, Flag, Gauge, Globe, Settings, Sparkles, Trash2, Users, Zap } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { navigation } from "@/components/layout/navigation";
 import { LanguageSwitcher } from "@/components/cleaner/language-switcher";
@@ -13,6 +13,7 @@ import { useToast } from "@/components/ui/toast-provider";
 import { AIProviderCard } from "@/components/settings/ai-provider-card";
 import { FeatureFlagsCard } from "@/components/settings/feature-flags-card";
 import { UsageDashboardCard } from "@/components/settings/usage/usage-dashboard-card";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import {
   getRoleFromMetadata,
   getRoleFromSessionClaimsOrNull,
@@ -807,11 +808,43 @@ export function SettingsPageClient({ initialTab }: { initialTab: SettingsTab }) 
       {activeTab === "team" ? <TeamSettingsPanel /> : null}
       {activeTab === "notifications" ? <NotificationsSettingsPanel /> : null}
       {activeTab === "integrations" ? (
-        <div className="space-y-6">
-          <FeatureFlagsCard />
-          <UsageDashboardCard />
-          <AIProviderCard />
-          <PlaceholderTab sections={placeholderSections.integrations} />
+        <div className="space-y-3">
+          <CollapsibleSection
+            persistKey="integrations-feature-flags"
+            icon={<Flag className="h-4 w-4" />}
+            title="Feature flags"
+            subtitle="Turn individual features on or off for the whole team. New features ship OFF by default."
+            defaultOpen
+          >
+            <FeatureFlagsCard />
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            persistKey="integrations-usage-dashboard"
+            icon={<Gauge className="h-4 w-4" />}
+            title="Service usage & cost"
+            subtitle="Month-to-date spend, quota consumption, and error health across tracked services. Requires the usage_dashboard flag."
+          >
+            <UsageDashboardCard />
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            persistKey="integrations-ai-provider"
+            icon={<Sparkles className="h-4 w-4" />}
+            title="AI provider (voice transcription)"
+            subtitle="Pick the model used for voice-message transcription."
+          >
+            <AIProviderCard />
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            persistKey="integrations-placeholders"
+            icon={<Building2 className="h-4 w-4" />}
+            title="Connected services"
+            subtitle="Hospitable sync health and messaging integrations (coming soon)."
+          >
+            <PlaceholderTab sections={placeholderSections.integrations} />
+          </CollapsibleSection>
         </div>
       ) : null}
     </div>
