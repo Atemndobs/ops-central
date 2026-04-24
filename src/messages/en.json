@@ -443,6 +443,36 @@
     "teamTab": "Team",
     "companySettings": "Company Settings",
     "automatedRules": "Automated Scheduling Rules",
-    "syncHealth": "Sync Health"
+    "syncHealth": "Sync Health",
+    "aiProviders": {
+      "title": "AI Providers",
+      "voiceTitle": "Voice Transcription",
+      "voiceDescription": "Selects which external service converts cleaner voice messages to text. Changing this takes effect on the next recording.",
+      "active": "Active",
+      "currentlySelected": "Currently selected",
+      "lastUpdated": "Last updated {when}",
+      "notConfigured": "API key not set on the server",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "saveFailed": "Could not save. {error}"
+    }
+  },
+  "voice": {
+    "startRecording": "Record voice message",
+    "stop": "Stop recording",
+    "cancel": "Cancel recording",
+    "requestingPermission": "Requesting microphone access…",
+    "uploading": "Uploading audio…",
+    "transcribing": "Transcribing…",
+    "nearLimit": "{remaining}s left",
+    "errors": {
+      "generic": "Could not record voice message. Please try again.",
+      "permissionDenied": "Microphone access was denied. Enable it in your browser settings.",
+      "notSupported": "Your browser does not support voice recording.",
+      "noDevice": "No microphone was found on this device.",
+      "uploadFailed": "Could not upload audio. Check your connection and try again.",
+      "transcriptionFailed": "Could not transcribe audio. Try again in a moment."
+    }
   }
 }
