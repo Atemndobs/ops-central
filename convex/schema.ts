@@ -613,7 +613,15 @@ const conversationMessageAttachments = defineTable({
   conversationId: v.id("conversations"),
   messageId: v.id("conversationMessages"),
   storageId: v.optional(v.id("_storage")),
-  attachmentKind: v.union(v.literal("image"), v.literal("document")),
+  attachmentKind: v.union(
+    v.literal("image"),
+    v.literal("document"),
+    v.literal("audio"),
+  ),
+  // Audio-specific metadata (populated only when attachmentKind === "audio").
+  // The recorded length in milliseconds — used for the player UI and for
+  // later aggregate cost analysis (seconds-of-audio-retained × storage rate).
+  audioDurationMs: v.optional(v.number()),
   channel: v.union(
     v.literal("internal"),
     v.literal("sms"),
@@ -1197,7 +1205,8 @@ const serviceUsageRollups = defineTable({
 const featureFlags = defineTable({
   key: v.union(
     v.literal("theme_switcher"),
-    v.literal("voice_messages")
+    v.literal("voice_messages"),
+    v.literal("voice_audio_attachments")
     // future flags go here
   ),
   enabled: v.boolean(),

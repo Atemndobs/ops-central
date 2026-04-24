@@ -4,13 +4,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/components/ui/toast-provider";
 import { VoiceRecordButton } from "@/components/voice/voice-record-button";
-import { ExternalLink, Image as ImageIcon, Languages, Loader2, Paperclip, Send } from "lucide-react";
+import { ExternalLink, Image as ImageIcon, Languages, Loader2, Mic, Paperclip, Send, X as XIcon } from "lucide-react";
 
 function formatMessageTime(timestamp: number) {
   const now = new Date();
@@ -45,12 +45,14 @@ type ConversationThreadProps = {
 
 type ThreadAttachment = {
   _id: string;
-  attachmentKind: "image" | "document";
+  attachmentKind: "image" | "document" | "audio";
   mimeType: string;
   fileName: string;
   byteSize: number;
   caption?: string | null;
   url?: string | null;
+  /** Only populated when attachmentKind === "audio". */
+  audioDurationMs?: number | null;
 };
 
 type MessageLocale = "en" | "es";
@@ -103,6 +105,7 @@ export function ConversationThread({
   const markRead = useMutation(api.conversations.mutations.markConversationRead);
   const translateMessage = useAction(api.translation.actions.translateMessage);
   const { showToast } = useToast();
+  const t = useTranslations();
   const rawLocale = useLocale();
   const myLocale: MessageLocale = rawLocale === "es" ? "es" : "en";
   // Admin-controlled flag. When off (default), the voice-to-text mic button
@@ -114,6 +117,17 @@ export function ConversationThread({
   );
   const [body, setBody] = useState("");
   const [pending, setPending] = useState(false);
+  // Holds the retained-audio metadata returned by the transcribe action
+  // when the `voice_audio_attachments` flag is ON. When populated, the
+  // composer shows a "voice message attached" chip and the submit handler
+  // passes the audio along to sendMessage so the playback bubble lands on
+  // the posted message. Cleared after send/cancel/restart.
+  const [pendingAudio, setPendingAudio] = useState<{
+    storageId: string;
+    mimeType: string;
+    byteSize: number;
+    durationMs: number;
+  } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -317,13 +331,40 @@ export function ConversationThread({
                                 />
                               </a>
                             ) : null}
+                            {attachment.attachmentKind === "audio" && attachment.url ? (
+                              <audio
+                                controls
+                                preload="metadata"
+                                src={attachment.url}
+                                className="w-full max-w-[280px]"
+                              >
+                                {/* Fallback for browsers without <audio> */}
+                                <a
+                                  href={attachment.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  {attachment.fileName}
+                                </a>
+                              </audio>
+                            ) : null}
                             <div className="mt-2 flex items-center gap-2 text-xs">
                               {attachment.attachmentKind === "image" ? (
                                 <ImageIcon className="h-3.5 w-3.5" />
+                              ) : attachment.attachmentKind === "audio" ? (
+                                <Mic className="h-3.5 w-3.5" />
                               ) : (
                                 <Paperclip className="h-3.5 w-3.5" />
                               )}
-                              {attachment.url ? (
+                              {attachment.attachmentKind === "audio" ? (
+                                <span className="font-medium">
+                                  {attachment.audioDurationMs
+                                    ? t("voice.attachmentLabel", {
+                                        duration: `${Math.floor(attachment.audioDurationMs / 60000)}:${String(Math.floor((attachment.audioDurationMs % 60000) / 1000)).padStart(2, "0")}`,
+                                      })
+                                    : t("voice.attachmentLabelNoDuration")}
+                                </span>
+                              ) : attachment.url ? (
                                 <a
                                   href={attachment.url}
                                   target="_blank"
@@ -383,9 +424,21 @@ export function ConversationThread({
                 conversationId,
                 body: body.trim(),
                 sourceLang: myLocale,
+                // storageId is a branded Id<"_storage"> on the server side;
+                // the client has it as a plain string from Convex storage.
+                // The server re-validates, so a localized cast is safe.
+                audioAttachment: pendingAudio
+                  ? {
+                      storageId: pendingAudio.storageId as Id<"_storage">,
+                      mimeType: pendingAudio.mimeType,
+                      byteSize: pendingAudio.byteSize,
+                      durationMs: pendingAudio.durationMs,
+                    }
+                  : undefined,
               });
             }
             setBody("");
+            setPendingAudio(null);
           } catch (error) {
             showToast(getErrorMessage(error, "Unable to send message."), "error");
           } finally {
@@ -393,6 +446,29 @@ export function ConversationThread({
           }
         }}
       >
+        {pendingAudio ? (
+          <div className="mb-2 flex items-center gap-2 rounded-full border border-[var(--msg-primary,var(--primary))]/30 bg-[var(--msg-primary,var(--primary))]/10 px-3 py-1.5 text-xs font-medium text-[var(--msg-primary,var(--primary))]">
+            <Mic className="h-3.5 w-3.5" />
+            <span>
+              {/* e.g. "Voice · 0:08" — concise indicator; full player only
+                  renders once the message is actually posted. */}
+              {t("voice.attachmentLabel", {
+                duration: `${Math.floor(pendingAudio.durationMs / 60000)}:${String(
+                  Math.floor((pendingAudio.durationMs % 60000) / 1000),
+                ).padStart(2, "0")}`,
+              })}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPendingAudio(null)}
+              className="ml-auto rounded-full p-0.5 hover:bg-[var(--msg-primary,var(--primary))]/20"
+              aria-label={t("voice.removeAttachment")}
+            >
+              <XIcon className="h-3 w-3" />
+            </button>
+          </div>
+        ) : null}
+
         <div className="flex items-end gap-2">
           <textarea
             value={body}
@@ -421,11 +497,14 @@ export function ConversationThread({
               disabled={pending || !canReplyInApp}
               languageHint={myLocale}
               size={compact ? "sm" : "md"}
-              onTranscript={(text) => {
+              onTranscript={(text, retainedAudio) => {
                 // Append the transcript so a user who already started typing
                 // doesn't lose their draft. Trim so we don't prepend leading
                 // whitespace when appending to an empty composer.
                 setBody((prev) => (prev ? `${prev} ${text}`.trim() : text));
+                // When the admin has audio-retention ON, hold the blob
+                // metadata so it ships with the next send() call.
+                setPendingAudio(retainedAudio);
               }}
               onError={(message) => showToast(message, "error")}
             />

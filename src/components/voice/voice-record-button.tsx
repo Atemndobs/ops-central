@@ -19,6 +19,7 @@ import { useTranslations } from "next-intl";
 import { Loader2, Mic, Square, X } from "lucide-react";
 import {
   useVoiceRecorder,
+  type RetainedAudio,
   type VoiceRecorderError,
 } from "@/hooks/use-voice-recorder";
 
@@ -28,10 +29,15 @@ import {
 
 export interface VoiceRecordButtonProps {
   /**
-   * Called with the transcript text when recording + transcription succeed.
-   * The parent is responsible for inserting it into the composer state.
+   * Called when recording + transcription succeed. The parent is responsible
+   * for inserting the text into the composer state.
+   *
+   * The second argument `retainedAudio` is populated only when the admin has
+   * enabled the `voice_audio_attachments` feature flag; when present, the
+   * parent should forward it to `sendMessage` so the audio is attached to
+   * the posted message as a playable bubble.
    */
-  onTranscript: (text: string) => void;
+  onTranscript: (text: string, retainedAudio: RetainedAudio | null) => void;
 
   /**
    * Called with a human-readable error message when something fails
@@ -78,10 +84,16 @@ export function VoiceRecordButton({
   //    another recording without leaving stale state behind.
   useEffect(() => {
     if (recorder.state === "ready" && recorder.transcript) {
-      onTranscript(recorder.transcript);
+      onTranscript(recorder.transcript, recorder.retainedAudio);
       recorder.reset();
     }
-  }, [recorder.state, recorder.transcript, recorder, onTranscript]);
+  }, [
+    recorder.state,
+    recorder.transcript,
+    recorder.retainedAudio,
+    recorder,
+    onTranscript,
+  ]);
 
   useEffect(() => {
     if (recorder.state === "error" && recorder.error) {

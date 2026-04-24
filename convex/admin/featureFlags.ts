@@ -22,11 +22,15 @@ import { requireAdmin } from "../lib/auth";
 
 const flagKeyValidator = v.union(
   v.literal("theme_switcher"),
-  v.literal("voice_messages")
+  v.literal("voice_messages"),
+  v.literal("voice_audio_attachments")
   // future flags go here
 );
 
-export type FeatureFlagKey = "theme_switcher" | "voice_messages";
+export type FeatureFlagKey =
+  | "theme_switcher"
+  | "voice_messages"
+  | "voice_audio_attachments";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UI metadata — single source of truth for the admin Feature Flags card.
@@ -60,6 +64,17 @@ const FLAG_METADATA: Record<FeatureFlagKey, FlagMetadata> = {
       "text into the message draft.",
     offBehaviour:
       "Mic button is hidden. Users can still type messages normally.",
+  },
+  voice_audio_attachments: {
+    key: "voice_audio_attachments",
+    label: "Retain voice recordings as playable attachments",
+    description:
+      "When a voice message is sent, keep the original audio clip and attach " +
+      "it to the message as a playable bubble alongside the transcript. " +
+      "Useful when tone matters or the transcript fails.",
+    offBehaviour:
+      "Audio is discarded immediately after transcription (privacy- and " +
+      "cost-minimising default). Only the transcript text is sent.",
   },
 };
 
