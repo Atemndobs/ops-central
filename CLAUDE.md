@@ -136,16 +136,24 @@ src/app/
 
 ## Design System
 
+**Canonical tokens and specs: [design-system/](design-system/)** — source of truth for both this web app and the mobile cleaner app. Import tokens via `@/design-system/tokens` (or relative path).
+
+### Admin dashboard (ops-facing)
 - **Dark mode by default** (operations dashboard aesthetic)
 - **Geist Sans** for UI text, **Geist Mono** for IDs/timestamps
-- **Colors:**
-  - Primary: Blue (actions)
-  - Success: Green (completed)
-  - Warning: Yellow (in-progress)
-  - Destructive: Red (issues/rework)
-  - Muted: Gray (scheduled/neutral)
-- **Job status colors:** Gray → Blue → Yellow → Green → Red
+- **Colors:** oklch-based shadcn palette (see [design-system/tokens/colors.ts](design-system/tokens/colors.ts) `adminColors`)
 - **Sidebar navigation** always visible on desktop
+- **Job status colors on admin views:** Gray → Blue → Yellow → Green → Red (internal convention)
+
+### Cleaner PWA (`/cleaner` routes)
+- **Light mode default**, mobile-first, max-width `402px`
+- **Fonts:** Spectral (display), Montserrat (body), Atkinson Hyperlegible (meta/mono)
+- **Primary:** purple `#9b51e0` (light) / `#bd77ff` (dark)
+- **Status pill appearances:** `open` · `in_review` · `completed` · `rework` — see [design-system/specs/StatusPill.md](design-system/specs/StatusPill.md)
+- **Countdown tiers:** `calm` → `soon` → `urgent` — see [design-system/specs/CountdownBadge.md](design-system/specs/CountdownBadge.md)
+- **Full component specs:** [design-system/specs/](design-system/specs/)
+
+> **Note:** the workspace-level `CLAUDE.md` cites Navy `#1a237e` + Gold `#ffd700` as brand colors. Neither app currently uses those — the design-system tokens reflect actual current state. Brand-color consolidation is a separate effort.
 
 ---
 

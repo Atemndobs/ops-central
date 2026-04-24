@@ -12,6 +12,8 @@
     "check:convex-owner": "node ./scripts/check-convex-owner.mjs",
     "check:mobile-compat": "bash ./scripts/verify-mobile-api-compat.sh",
     "check:searchable-select-contract": "bash ./scripts/verify-searchable-select-contract.sh",
+    "sync-tokens": "node --experimental-strip-types ./scripts/sync-tokens.mjs",
+    "sync-tokens:check": "node --experimental-strip-types ./scripts/sync-tokens.mjs --check",
     "predeploy": "bash ./scripts/verify-mobile-api-compat.sh && bash ./scripts/verify-searchable-select-contract.sh"
   },
   "dependencies": {
