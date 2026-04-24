@@ -490,14 +490,74 @@ export async function POST(req: Request) {
     console.log("[OpsBot] Calling Gemini model:", modelId);
     console.log("[OpsBot] API key present:", !!process.env.GOOGLE_GENERATIVE_AI_API_KEY);
 
+    const startedAt = Date.now();
+
     const result = streamText({
       model: google(modelId),
       system: buildSystemPrompt(),
       messages: modelMessages,
       tools: buildTools(convex),
       stopWhen: stepCountIs(5),
-      onError: (error) => {
+      onError: (errorContainer) => {
+        const error = (errorContainer as { error?: unknown })?.error ?? errorContainer;
         console.error("[OpsBot] streamText error:", error);
+        // Fire-and-forget usage log for failures. `ConvexHttpClient` keeps
+        // the auth token set earlier in this function.
+        const message =
+          error instanceof Error ? error.message : String(error ?? "unknown");
+        void convex
+          .mutation(api.serviceUsage.logger.logFromClient, {
+            serviceKey: "gemini",
+            feature: "admin_ai_chat",
+            status: "unknown_error",
+            durationMs: Date.now() - startedAt,
+            errorMessage: message.slice(0, 500),
+            metadata: { model: modelId },
+          })
+          .catch((logError) => {
+            console.warn("[OpsBot] failed to log usage failure:", logError);
+          });
+      },
+      onFinish: async (finish) => {
+        // AI SDK v5+ exposes totalUsage on the finish payload. Different
+        // model providers populate different field names, so we defensively
+        // read the two common shapes.
+        const usage = (finish as {
+          totalUsage?: {
+            inputTokens?: number;
+            outputTokens?: number;
+            promptTokens?: number;
+            completionTokens?: number;
+          };
+          usage?: {
+            inputTokens?: number;
+            outputTokens?: number;
+            promptTokens?: number;
+            completionTokens?: number;
+          };
+        }).totalUsage ?? (finish as { usage?: unknown }).usage ?? {};
+        const u = usage as {
+          inputTokens?: number;
+          outputTokens?: number;
+          promptTokens?: number;
+          completionTokens?: number;
+        };
+        const inputTokens = u.inputTokens ?? u.promptTokens;
+        const outputTokens = u.outputTokens ?? u.completionTokens;
+
+        try {
+          await convex.mutation(api.serviceUsage.logger.logFromClient, {
+            serviceKey: "gemini",
+            feature: "admin_ai_chat",
+            status: "success",
+            durationMs: Date.now() - startedAt,
+            inputTokens,
+            outputTokens,
+            metadata: { model: modelId, messages: modelMessages.length },
+          });
+        } catch (logError) {
+          console.warn("[OpsBot] failed to log usage:", logError);
+        }
       },
     });
 
