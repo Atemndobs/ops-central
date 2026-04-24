@@ -10,6 +10,7 @@ import { api } from "@convex/_generated/api";
 import { navigation } from "@/components/layout/navigation";
 import { LanguageSwitcher } from "@/components/cleaner/language-switcher";
 import { useToast } from "@/components/ui/toast-provider";
+import { AIProviderCard } from "@/components/settings/ai-provider-card";
 import {
   getRoleFromMetadata,
   getRoleFromSessionClaimsOrNull,
@@ -804,7 +805,10 @@ export function SettingsPageClient({ initialTab }: { initialTab: SettingsTab }) 
       {activeTab === "team" ? <TeamSettingsPanel /> : null}
       {activeTab === "notifications" ? <NotificationsSettingsPanel /> : null}
       {activeTab === "integrations" ? (
-        <PlaceholderTab sections={placeholderSections.integrations} />
+        <div className="space-y-6">
+          <AIProviderCard />
+          <PlaceholderTab sections={placeholderSections.integrations} />
+        </div>
       ) : null}
     </div>
   );
