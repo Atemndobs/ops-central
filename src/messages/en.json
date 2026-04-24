@@ -555,6 +555,9 @@
     "uploading": "Uploading audio…",
     "transcribing": "Transcribing…",
     "nearLimit": "{remaining}s left",
+    "attachmentLabel": "Voice · {duration}",
+    "attachmentLabelNoDuration": "Voice",
+    "removeAttachment": "Remove voice attachment",
     "errors": {
       "generic": "Could not record voice message. Please try again.",
       "permissionDenied": "Microphone access was denied. Enable it in your browser settings.",

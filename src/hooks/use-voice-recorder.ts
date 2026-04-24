@@ -57,6 +57,23 @@ export interface UseVoiceRecorderOptions {
   languageHint?: "en" | "es";
 }
 
+/**
+ * Audio metadata surfaced when the server kept the recording (i.e. the
+ * `voice_audio_attachments` feature flag was ON at transcription time).
+ * The caller should forward these fields to `sendMessage` so the audio
+ * is attached to the posted message as a playable bubble.
+ */
+export interface RetainedAudio {
+  /** Convex storage ID of the kept blob. Passed to sendMessage unchanged. */
+  storageId: string;
+  /** MIME type the recorder used (e.g. "audio/webm;codecs=opus"). */
+  mimeType: string;
+  /** Blob size in bytes. */
+  byteSize: number;
+  /** Client-measured recording length in milliseconds. */
+  durationMs: number;
+}
+
 export interface UseVoiceRecorderReturn {
   state: VoiceRecorderState;
   /** Seconds elapsed in the current recording. 0 when idle. */
@@ -67,6 +84,12 @@ export interface UseVoiceRecorderReturn {
   transcript: string;
   /** Detected language from the last transcription. */
   detectedLang: string | null;
+  /**
+   * When the admin has enabled the `voice_audio_attachments` flag, this
+   * carries the kept-audio metadata after a successful transcription. When
+   * the flag is OFF (default) this stays null and the audio was discarded.
+   */
+  retainedAudio: RetainedAudio | null;
   /** Error code from the most recent failure, if any. */
   error: VoiceRecorderError | null;
   /** Free-form error message for debugging / toasts. */
@@ -113,6 +136,9 @@ export function useVoiceRecorder(
   const [elapsedSec, setElapsedSec] = useState(0);
   const [transcript, setTranscript] = useState("");
   const [detectedLang, setDetectedLang] = useState<string | null>(null);
+  const [retainedAudio, setRetainedAudio] = useState<RetainedAudio | null>(
+    null,
+  );
   const [error, setError] = useState<VoiceRecorderError | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -167,6 +193,7 @@ export function useVoiceRecorder(
     setElapsedSec(0);
     setTranscript("");
     setDetectedLang(null);
+    setRetainedAudio(null);
     setError(null);
     setErrorMessage(null);
     abortRef.current = false;
@@ -204,6 +231,7 @@ export function useVoiceRecorder(
     setErrorMessage(null);
     setTranscript("");
     setDetectedLang(null);
+    setRetainedAudio(null);
     abortRef.current = false;
     setState("requesting-permission");
 
@@ -258,6 +286,12 @@ export function useVoiceRecorder(
       const chunks = chunksRef.current;
       const effectiveMime = mimeType || recorder.mimeType || "audio/webm";
       const blob = new Blob(chunks, { type: effectiveMime });
+      // Freeze the client-measured recording duration at the moment the
+      // recorder stopped. Used for the audio attachment metadata when the
+      // server retains the blob (voice_audio_attachments flag).
+      const recordedDurationMs = startedAtRef.current
+        ? Date.now() - startedAtRef.current
+        : 0;
 
       // Release the mic stream now — we don't need it during upload/transcribe.
       if (streamRef.current) {
@@ -320,6 +354,16 @@ export function useVoiceRecorder(
         if (abortRef.current) return;
         setTranscript(result.text);
         setDetectedLang(result.detectedLang);
+        if (result.retainedAudio) {
+          setRetainedAudio({
+            storageId: result.retainedAudio.storageId,
+            mimeType: result.retainedAudio.mimeType,
+            byteSize: result.retainedAudio.byteSize,
+            durationMs: recordedDurationMs,
+          });
+        } else {
+          setRetainedAudio(null);
+        }
         setState("ready");
       } catch (err) {
         if (abortRef.current) return;
@@ -391,6 +435,7 @@ export function useVoiceRecorder(
     nearLimit,
     transcript,
     detectedLang,
+    retainedAudio,
     error,
     errorMessage,
     start,

@@ -555,6 +555,9 @@
     "uploading": "Subiendo audio…",
     "transcribing": "Transcribiendo…",
     "nearLimit": "{remaining}s restantes",
+    "attachmentLabel": "Voz · {duration}",
+    "attachmentLabelNoDuration": "Voz",
+    "removeAttachment": "Quitar mensaje de voz",
     "errors": {
       "generic": "No se pudo grabar el mensaje de voz. Inténtalo de nuevo.",
       "permissionDenied": "Se denegó el acceso al micrófono. Habilítalo en la configuración del navegador.",

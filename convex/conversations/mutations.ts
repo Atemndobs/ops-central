@@ -85,6 +85,19 @@ export const sendMessage = mutation({
     conversationId: v.id("conversations"),
     body: v.string(),
     sourceLang: v.optional(v.union(v.literal("en"), v.literal("es"))),
+    // Optional audio attachment — populated by the voice composer when the
+    // `voice_audio_attachments` feature flag is ON. The storageId must come
+    // from the `transcribe` action's `retainedAudio` response (the action
+    // skips its own delete when retention is on, handing ownership to the
+    // message this mutation creates).
+    audioAttachment: v.optional(
+      v.object({
+        storageId: v.id("_storage"),
+        mimeType: v.string(),
+        byteSize: v.number(),
+        durationMs: v.optional(v.number()),
+      }),
+    ),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
@@ -137,6 +150,32 @@ export const sendMessage = mutation({
       sourceLang: args.sourceLang ?? "en",
       createdAt: now,
     });
+
+    // If this is a voice message with retained audio, attach the blob as a
+    // playable "audio" attachment. The storageId was handed over to us by
+    // the `transcribe` action; ownership now belongs to this attachment row.
+    if (args.audioAttachment) {
+      const audio = args.audioAttachment;
+      // Derive a filename from timestamp + extension for download UX. Opus
+      // in webm is the common case; mp4/aac on Safari.
+      const ext = audio.mimeType.includes("mp4")
+        ? "m4a"
+        : audio.mimeType.includes("ogg")
+          ? "ogg"
+          : "webm";
+      await ctx.db.insert("conversationMessageAttachments", {
+        conversationId: conversation._id,
+        messageId,
+        storageId: audio.storageId,
+        attachmentKind: "audio",
+        channel: "internal",
+        mimeType: audio.mimeType,
+        fileName: `voice-${now}.${ext}`,
+        byteSize: audio.byteSize,
+        audioDurationMs: audio.durationMs,
+        createdAt: now,
+      });
+    }
 
     await ctx.db.patch(conversation._id, {
       status: "open",

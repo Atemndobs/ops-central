@@ -8,8 +8,13 @@
  *   4. Client calls `transcribe` with the storageId → returns `{ text, detectedLang }`.
  *   5. Client populates the composer textarea and the user reviews & sends.
  *
- * The audio blob is deleted from Convex storage immediately after successful
- * transcription. No raw audio is retained in v1 (by design — see PLAN.md §10).
+ * Audio retention (Phase 3):
+ *   By default, the audio blob is deleted from storage immediately after
+ *   transcription — transcripts are the product, audio is ephemeral. If the
+ *   admin has enabled the `voice_audio_attachments` feature flag, the action
+ *   retains the blob and returns its storageId + metadata in `retainedAudio`.
+ *   The client then passes those fields to `sendMessage` so the audio is
+ *   attached to the posted message as a playable bubble alongside the text.
  *
  * Provider selection is driven by the admin setting in `aiProviderSettings`.
  * The action is a thin router; all provider-specific code lives in
@@ -107,8 +112,28 @@ export const transcribe = action({
       v.literal("groq-whisper-turbo"),
       v.literal("openai-whisper")
     ),
+    // Populated when the `voice_audio_attachments` feature flag is ON.
+    // Client forwards these fields to `sendMessage` to attach the audio
+    // bubble alongside the transcript. When undefined, the blob was
+    // deleted and only the transcript text should be sent.
+    retainedAudio: v.optional(
+      v.object({
+        storageId: v.id("_storage"),
+        mimeType: v.string(),
+        byteSize: v.number(),
+      }),
+    ),
   }),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{
+    text: string;
+    detectedLang: string;
+    providerKey: VoiceProviderKey;
+    retainedAudio?: {
+      storageId: Id<"_storage">;
+      mimeType: string;
+      byteSize: number;
+    };
+  }> => {
     // Auth — identity only, no db lookup needed here since the upload URL
     // was already gated and the mutation-level audit trail isn't useful
     // for ephemeral transcription calls.
@@ -125,6 +150,13 @@ export const transcribe = action({
       updatedAt: number | undefined;
       isDefault: boolean;
     } = await ctx.runQuery(api.ai.settings.getVoiceProvider, {});
+
+    // Read the audio-retention feature flag once at the start of the
+    // transcription so we have a consistent decision throughout.
+    const retainAudio: boolean = await ctx.runQuery(
+      api.admin.featureFlags.isFeatureEnabled,
+      { key: "voice_audio_attachments" },
+    );
 
     // Fetch the audio blob that the client just uploaded.
     const blob = await ctx.storage.get(args.storageId);
@@ -144,6 +176,12 @@ export const transcribe = action({
         `Audio clip too large (${blob.size} bytes). Maximum is ${MAX_BYTES} bytes.`
       );
     }
+
+    // Capture blob metadata BEFORE we hand it to the provider — the provider
+    // may consume the stream, and we want consistent values to return to the
+    // client when audio is retained.
+    const audioMimeType = blob.type || "audio/webm";
+    const audioByteSize = blob.size;
 
     const provider = getVoiceProvider(setting.providerKey);
     const serviceKey = serviceKeyForProvider(setting.providerKey);
@@ -173,14 +211,21 @@ export const transcribe = action({
       caughtError = err;
       throw err;
     } finally {
-      // Always clean up — success OR failure. Transcripts are the product;
-      // raw audio has no value beyond this action. A storage leak here
-      // would silently balloon our bill.
-      try {
-        await ctx.storage.delete(args.storageId);
-      } catch {
-        // Swallow — if delete fails we'd rather the caller see the real
-        // transcription error (if any) than a secondary cleanup error.
+      // Cleanup rule:
+      //   - On FAILURE: always delete. A failed transcription has no use for
+      //     the audio, and leaving it would leak storage on every retry.
+      //   - On SUCCESS with retention OFF: delete (default behaviour — audio
+      //     is ephemeral).
+      //   - On SUCCESS with retention ON: keep the blob. The client will
+      //     attach it to the outgoing message via `sendMessage`.
+      const shouldDelete = !succeeded || !retainAudio;
+      if (shouldDelete) {
+        try {
+          await ctx.storage.delete(args.storageId);
+        } catch {
+          // Swallow — if delete fails we'd rather the caller see the real
+          // transcription error (if any) than a secondary cleanup error.
+        }
       }
 
       // Log the service usage event. This is best-effort — failures here
@@ -227,6 +272,13 @@ export const transcribe = action({
       text: result!.text,
       detectedLang: result!.detectedLang,
       providerKey: setting.providerKey,
+      retainedAudio: retainAudio
+        ? {
+            storageId: args.storageId,
+            mimeType: audioMimeType,
+            byteSize: audioByteSize,
+          }
+        : undefined,
     };
   },
 });

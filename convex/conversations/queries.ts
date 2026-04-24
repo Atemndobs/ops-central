@@ -76,6 +76,7 @@ async function getMessageAttachmentMap(
       fileName: attachment.fileName,
       byteSize: attachment.byteSize,
       caption: attachment.caption,
+      audioDurationMs: attachment.audioDurationMs,
       url,
     });
     attachmentMap.set(attachment.messageId, nextEntry);
