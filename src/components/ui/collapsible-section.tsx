@@ -10,8 +10,11 @@
  * Looks: matches the existing card visual (`bg-[var(--card)]` border)
  * so sections drop into place without theme work.
  *
- * Accessibility: the header is a real `<button>` with `aria-expanded`
- * and the body lives in a region controlled by `aria-controls` /`id`.
+ * Accessibility: the expand/collapse control is a real `<button>` with
+ * `aria-expanded`, and the body lives in a region controlled by
+ * `aria-controls` /`id`. The optional `badge` is rendered as a sibling of
+ * the button (NOT inside it) so callers can place interactive elements
+ * like toggles in that slot without producing invalid nested buttons.
  */
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
@@ -100,31 +103,41 @@ export function CollapsibleSection({
         className ?? ""
       }`}
     >
-      <button
-        type="button"
-        onClick={toggle}
-        aria-expanded={open}
-        aria-controls={bodyId}
-        className="flex w-full items-center gap-3 px-5 py-4 text-left transition hover:bg-[var(--accent)]/40"
-      >
-        {icon ? <span className="shrink-0 text-[var(--primary)]">{icon}</span> : null}
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold text-[var(--foreground)]">
-            {title}
-          </span>
-          {subtitle ? (
-            <span className="mt-0.5 block text-xs text-[var(--muted-foreground)]">
-              {subtitle}
-            </span>
+      {/* Header row: the expand/collapse <button> + the badge slot live
+          side-by-side, NOT nested — so callers can put interactive
+          elements (toggles, links) in `badge` without producing invalid
+          nested <button> HTML. */}
+      <div className="flex w-full items-stretch gap-2">
+        <button
+          type="button"
+          onClick={toggle}
+          aria-expanded={open}
+          aria-controls={bodyId}
+          className="flex flex-1 items-center gap-3 rounded-lg px-5 py-4 text-left transition hover:bg-[var(--accent)]/40"
+        >
+          {icon ? (
+            <span className="shrink-0 text-[var(--primary)]">{icon}</span>
           ) : null}
-        </span>
-        {badge ? <span className="shrink-0">{badge}</span> : null}
-        <ChevronDown
-          className={`h-4 w-4 shrink-0 text-[var(--muted-foreground)] transition-transform duration-200 ${
-            open ? "rotate-180" : ""
-          }`}
-        />
-      </button>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-[var(--foreground)]">
+              {title}
+            </span>
+            {subtitle ? (
+              <span className="mt-0.5 block text-xs text-[var(--muted-foreground)]">
+                {subtitle}
+              </span>
+            ) : null}
+          </span>
+          <ChevronDown
+            className={`h-4 w-4 shrink-0 text-[var(--muted-foreground)] transition-transform duration-200 ${
+              open ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+        {badge ? (
+          <div className="flex shrink-0 items-center pr-5">{badge}</div>
+        ) : null}
+      </div>
       {everOpened ? (
         <div
           id={bodyId}
