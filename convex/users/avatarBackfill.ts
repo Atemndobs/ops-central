@@ -32,10 +32,8 @@ import {
   internalAction,
   internalMutation,
   internalQuery,
-  mutation,
 } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { requireRole } from "../lib/auth";
 import { readProfileOverrides } from "../lib/profileMetadata";
 
 const CLERK_API_URL = "https://api.clerk.com/v1";
@@ -47,12 +45,17 @@ type ClerkUserResponse = {
 };
 
 /**
- * Public admin entry point. Schedules the backfill action and returns the
- * scheduled job id. Pass `force: true` to overwrite avatarUrls that are
- * already populated (e.g. when Clerk avatars have been rotated since the
- * last sync).
+ * Internal entry point — schedules the backfill action and returns the
+ * scheduled job id. Marked `internalMutation` so it cannot be invoked from
+ * the client API: only callable from the Convex dashboard ("Act as a user"
+ * NOT required) or from other Convex functions. The dashboard already gates
+ * access to deployment owners, so explicit auth is unnecessary here and
+ * would only block legitimate one-off invocations.
+ *
+ * Pass `force: true` to overwrite avatarUrls that are already populated
+ * (e.g. when Clerk avatars have been rotated since the last sync).
  */
-export const runBackfill = mutation({
+export const runBackfill = internalMutation({
   args: {
     force: v.optional(v.boolean()),
   },
@@ -60,7 +63,6 @@ export const runBackfill = mutation({
     ctx,
     args,
   ): Promise<{ scheduledId: string }> => {
-    await requireRole(ctx, ["admin"]);
     const scheduledId = await ctx.scheduler.runAfter(
       0,
       internal.users.avatarBackfill.backfillAll,
