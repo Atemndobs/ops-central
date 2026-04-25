@@ -64,7 +64,11 @@ type ThreadMessage = {
   translations?: Partial<Record<MessageLocale, string>> | null;
   createdAt: number;
   authorUserId?: Id<"users">;
-  author?: { name?: string | null; email?: string | null } | null;
+  author?: {
+    name?: string | null;
+    email?: string | null;
+    avatarUrl?: string | null;
+  } | null;
   authorEndpoint?: { displayName?: string | null; phoneNumber: string } | null;
   attachments: ThreadAttachment[];
   transportStatus?: { currentStatus: string } | null;
@@ -272,12 +276,54 @@ export function ConversationThread({
                 message.authorEndpoint?.phoneNumber ??
                 message.author?.email ??
                 "System";
+              // Sender avatar — only rendered for non-self messages, sits to
+              // the left of the bubble. Falls back to initials chip when the
+              // backend doesn't have an avatarUrl yet (mirror of the mobile
+              // JobConversationCard fallback so both surfaces stay consistent).
+              const avatarUrl = message.author?.avatarUrl ?? null;
+              const avatarInitials = (() => {
+                const source = (
+                  message.author?.name ??
+                  message.author?.email ??
+                  message.authorEndpoint?.displayName ??
+                  message.authorEndpoint?.phoneNumber ??
+                  "?"
+                ).trim();
+                const parts = source.split(/\s+/).filter(Boolean);
+                if (parts.length === 0) return source.slice(0, 1).toUpperCase();
+                if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+                return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
+              })();
 
               return (
                 <div
                   key={message._id}
-                  className={`flex ${isSelf ? "justify-end" : "justify-start"}`}
+                  className={`flex items-end gap-2 ${isSelf ? "justify-end" : "justify-start"}`}
                 >
+                  {!isSelf ? (
+                    avatarUrl ? (
+                      <span
+                        aria-hidden
+                        className="relative h-7 w-7 shrink-0 overflow-hidden rounded-full"
+                      >
+                        <Image
+                          src={avatarUrl}
+                          alt=""
+                          fill
+                          sizes="28px"
+                          unoptimized
+                          className="object-cover"
+                        />
+                      </span>
+                    ) : (
+                      <span
+                        aria-hidden
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--msg-primary,var(--primary))] text-[10px] font-bold text-white"
+                      >
+                        {avatarInitials}
+                      </span>
+                    )
+                  ) : null}
                   <div
                     className={`max-w-[85%] rounded-[12px] px-3 py-2 text-[var(--msg-text,var(--foreground))] ${
                       isSelf
