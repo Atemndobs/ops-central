@@ -79,6 +79,18 @@ crons.cron(
   {},
 );
 
+// Hourly real-quota sync — fetches actual usage numbers from each
+// provider's billing API (Convex, Clerk, B2) and upserts them into
+// serviceQuotaCounters with source: "provider". Surfaces "you're at
+// 90%" alerts on the usage dashboard. See
+// docs/service-usage-monitoring/.
+crons.interval(
+  "service-usage-provider-sync-hourly",
+  { hours: 1 },
+  internal.serviceUsage.providerSync.fetchAll,
+  {},
+);
+
 crons.cron(
   "archive-photos-to-minio-every-7-days",
   "0 2 */7 * *",

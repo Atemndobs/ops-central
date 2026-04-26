@@ -5,6 +5,11 @@ import { auth } from "@clerk/nextjs/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@convex/_generated/api";
 import { z } from "zod";
+import {
+  ADAPTERS,
+  getAdapter,
+  type ProviderKey,
+} from "@convex/serviceUsage/providers";
 
 export const maxDuration = 30;
 
@@ -42,7 +47,39 @@ function buildSystemPrompt(): string {
     "- You can call multiple tools in sequence to build a complete answer.",
     "- Be concise. Use bullet points for lists. Flag urgent items.",
     "- You are read-only — you cannot make changes. If asked to modify something, suggest the user navigate to the relevant page.",
+    "- For platform usage, quotas, billing limits, or 'are we running out of X' questions, call getServiceUsage. It hits each provider's API directly — never answer from memory; numbers change constantly.",
   ].join("\n");
+}
+
+const SERVICE_KEY_SCHEMA = z.enum(["convex", "clerk", "b2"]);
+
+function summarizeQuotas(
+  snapshots: Array<{
+    serviceKey: string;
+    quotaKey: string;
+    used: number;
+    limit: number;
+    unit: string;
+    fetchedAt: number;
+  }>,
+): string {
+  if (snapshots.length === 0) return "No quota data available.";
+  const critical: string[] = [];
+  const warning: string[] = [];
+  const ok: string[] = [];
+  for (const s of snapshots) {
+    const pct = s.limit > 0 ? (s.used / s.limit) * 100 : 0;
+    const line = `${s.serviceKey}/${s.quotaKey}: ${pct.toFixed(1)}% (${s.used} / ${s.limit} ${s.unit})`;
+    if (pct >= 90) critical.push(line);
+    else if (pct >= 80) warning.push(line);
+    else ok.push(line);
+  }
+  const parts: string[] = [];
+  if (critical.length) parts.push(`CRITICAL (≥90%): ${critical.join("; ")}`);
+  if (warning.length) parts.push(`WARNING (≥80%): ${warning.join("; ")}`);
+  if (ok.length && parts.length === 0)
+    parts.push(`All clear (<80%): ${ok.join("; ")}`);
+  return parts.join(" | ");
 }
 
 function buildTools(convex: ConvexHttpClient) {
@@ -405,6 +442,74 @@ function buildTools(convex: ConvexHttpClient) {
           role: u.role,
           phone: u.phone,
         }));
+      },
+    }),
+
+    getServiceUsage: tool({
+      description:
+        "Check live quota usage for the paid platforms we depend on (Convex, Clerk, Backblaze B2). Calls each provider's billing API directly and returns current usage vs. plan limit, plus a percentage. Use whenever the user asks about quotas, usage, limits, billing pressure, or 'are we running out of X'. Always call this — never answer from cached memory.",
+      inputSchema: z.object({
+        serviceKey: SERVICE_KEY_SCHEMA.optional().describe(
+          "Which platform to check. Omit to check ALL providers (recommended when the user just asks 'how is our usage?').",
+        ),
+      }),
+      execute: async ({ serviceKey }) => {
+        const targets: Array<[ProviderKey, () => Promise<unknown>]> = serviceKey
+          ? [[serviceKey, getAdapter(serviceKey)!]]
+          : (Object.entries(ADAPTERS) as Array<[ProviderKey, () => Promise<unknown>]>);
+
+        const results = await Promise.allSettled(
+          targets.map(async ([key, adapter]) => ({
+            key,
+            snapshots: (await adapter()) as Array<{
+              serviceKey: string;
+              quotaKey: string;
+              used: number;
+              limit: number;
+              unit: string;
+              fetchedAt: number;
+            }>,
+          })),
+        );
+
+        const flat: Array<{
+          serviceKey: string;
+          quotaKey: string;
+          used: number;
+          limit: number;
+          unit: string;
+          pct: number;
+          fetchedAt: number;
+        }> = [];
+        const errors: Array<{ serviceKey: string; error: string }> = [];
+
+        for (let i = 0; i < results.length; i++) {
+          const r = results[i];
+          const [key] = targets[i];
+          if (r.status === "fulfilled") {
+            for (const s of r.value.snapshots) {
+              flat.push({
+                ...s,
+                pct: s.limit > 0 ? (s.used / s.limit) * 100 : 0,
+              });
+            }
+          } else {
+            errors.push({
+              serviceKey: key,
+              error:
+                r.reason instanceof Error
+                  ? r.reason.message
+                  : String(r.reason),
+            });
+          }
+        }
+
+        return {
+          summary: summarizeQuotas(flat),
+          quotas: flat,
+          errors,
+          fetchedAt: new Date().toISOString(),
+        };
       },
     }),
 

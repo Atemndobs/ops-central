@@ -63,6 +63,36 @@ export function quotaColor(pct: number): string {
   return "#10b981";
 }
 
+/**
+ * Render a quota's "consumed / limit" pair with the right unit. Bytes
+ * collapse to KB/MB/GB/TB, USD shows two decimals, everything else uses
+ * the compact-number formatter.
+ */
+export function formatQuotaValue(value: number, unit?: string): string {
+  if (!Number.isFinite(value)) return "—";
+  switch (unit) {
+    case "bytes": {
+      if (value < 1024) return `${value} B`;
+      const units = ["KB", "MB", "GB", "TB", "PB"];
+      let v = value / 1024;
+      let i = 0;
+      while (v >= 1024 && i < units.length - 1) {
+        v /= 1024;
+        i += 1;
+      }
+      return `${v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2)} ${units[i]}`;
+    }
+    case "usd":
+      return `$${value.toFixed(value >= 100 ? 0 : 2)}`;
+    case "seconds":
+      if (value < 60) return `${Math.round(value)}s`;
+      if (value < 3600) return `${(value / 60).toFixed(1)}m`;
+      return `${(value / 3600).toFixed(1)}h`;
+    default:
+      return formatCompactNumber(value);
+  }
+}
+
 /** Percentage delta formatted as "+12%", "-3%", or "\u2014" when undefined. */
 export function formatDelta(
   current: number,

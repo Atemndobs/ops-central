@@ -196,6 +196,12 @@ export const getOverview = query({
               v.literal("outputTokens"),
               v.literal("costUsd"),
             ),
+            /** "self" = derived from our instrumentation, "provider" = ground truth from billing API. */
+            source: v.optional(v.union(v.literal("self"), v.literal("provider"))),
+            /** Render unit when "provider" — overrides metric for display. */
+            unit: v.optional(v.string()),
+            /** ms epoch — when the provider was last polled (only set for provider rows). */
+            fetchedAt: v.optional(v.number()),
           }),
         ),
         lastError: v.union(
@@ -268,6 +274,9 @@ export const getOverview = query({
         consumed: number;
         pct: number;
         metric: "count" | "inputTokens" | "outputTokens" | "costUsd";
+        source?: "self" | "provider";
+        unit?: string;
+        fetchedAt?: number;
       }> = [];
       for (const quota of def.quotas ?? []) {
         const { consumed, pct } = await computeQuotaConsumption(
@@ -284,6 +293,43 @@ export const getOverview = query({
           metric: quota.metric,
           consumed,
           pct,
+          source: "self",
+        });
+      }
+
+      // Merge in provider-fetched quota rows for this service. These are
+      // upserted hourly by serviceUsage.providerSync.fetchAll and represent
+      // ground truth from each provider's billing API. Plan limits live on
+      // the row itself (not the registry), so a registry entry isn't needed.
+      const registryIds = new Set((def.quotas ?? []).map((q) => q.id));
+      const providerRows = await ctx.db
+        .query("serviceQuotaCounters")
+        .withIndex("by_service_quota_bucket", (q) => q.eq("serviceKey", key))
+        .order("desc")
+        .take(50);
+      const seenProviderIds = new Set<string>();
+      for (const row of providerRows) {
+        if (row.source !== "provider") continue;
+        if (registryIds.has(row.quotaId)) continue;
+        if (seenProviderIds.has(row.quotaId)) continue;
+        seenProviderIds.add(row.quotaId);
+        const limit = row.limit ?? 0;
+        const pct = limit > 0 ? (row.consumed / limit) * 100 : 0;
+        quotas.push({
+          id: row.quotaId,
+          label: row.quotaId
+            .replace(/_/g, " ")
+            .replace(/\b\w/g, (c) => c.toUpperCase()),
+          // Provider quotas are typically monthly windows; the field is
+          // cosmetic for the UI when source="provider".
+          window: "month",
+          limit,
+          metric: "count",
+          consumed: row.consumed,
+          pct,
+          source: "provider",
+          unit: row.unit,
+          fetchedAt: row.fetchedAt,
         });
       }
 

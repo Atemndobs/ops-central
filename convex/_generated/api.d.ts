@@ -76,6 +76,13 @@ import type * as serviceUsage_convexSnapshot from "../serviceUsage/convexSnapsho
 import type * as serviceUsage_counterBackfill from "../serviceUsage/counterBackfill.js";
 import type * as serviceUsage_crons from "../serviceUsage/crons.js";
 import type * as serviceUsage_logger from "../serviceUsage/logger.js";
+import type * as serviceUsage_providerSync from "../serviceUsage/providerSync.js";
+import type * as serviceUsage_providerSyncWriter from "../serviceUsage/providerSyncWriter.js";
+import type * as serviceUsage_providers_b2 from "../serviceUsage/providers/b2.js";
+import type * as serviceUsage_providers_clerk from "../serviceUsage/providers/clerk.js";
+import type * as serviceUsage_providers_convex from "../serviceUsage/providers/convex.js";
+import type * as serviceUsage_providers_index from "../serviceUsage/providers/index.js";
+import type * as serviceUsage_providers_types from "../serviceUsage/providers/types.js";
 import type * as serviceUsage_queries from "../serviceUsage/queries.js";
 import type * as translation_actions from "../translation/actions.js";
 import type * as translation_internal from "../translation/internal.js";
@@ -163,6 +170,13 @@ declare const fullApi: ApiFromModules<{
   "serviceUsage/counterBackfill": typeof serviceUsage_counterBackfill;
   "serviceUsage/crons": typeof serviceUsage_crons;
   "serviceUsage/logger": typeof serviceUsage_logger;
+  "serviceUsage/providerSync": typeof serviceUsage_providerSync;
+  "serviceUsage/providerSyncWriter": typeof serviceUsage_providerSyncWriter;
+  "serviceUsage/providers/b2": typeof serviceUsage_providers_b2;
+  "serviceUsage/providers/clerk": typeof serviceUsage_providers_clerk;
+  "serviceUsage/providers/convex": typeof serviceUsage_providers_convex;
+  "serviceUsage/providers/index": typeof serviceUsage_providers_index;
+  "serviceUsage/providers/types": typeof serviceUsage_providers_types;
   "serviceUsage/queries": typeof serviceUsage_queries;
   "translation/actions": typeof translation_actions;
   "translation/internal": typeof translation_internal;

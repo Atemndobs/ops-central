@@ -5,6 +5,7 @@ import { AlertTriangle, ChevronRight, ExternalLink } from "lucide-react";
 import {
   formatCompactNumber,
   formatPercent,
+  formatQuotaValue,
   formatQuotaWindow,
   formatRelativeTime,
   formatUsd,
@@ -19,6 +20,9 @@ export type ServiceCardQuota = {
   consumed: number;
   pct: number;
   metric: "count" | "inputTokens" | "outputTokens" | "costUsd";
+  source?: "self" | "provider";
+  unit?: string;
+  fetchedAt?: number;
 };
 
 export type ServiceCardProps = {
@@ -42,6 +46,7 @@ export type ServiceCardProps = {
 
 function QuotaBar({ quota }: { quota: ServiceCardQuota }) {
   const clamped = Math.min(100, Math.max(0, quota.pct));
+  const isProvider = quota.source === "provider";
   return (
     <div className="space-y-1">
       <div className="flex items-baseline justify-between gap-2 text-xs">
@@ -50,11 +55,25 @@ function QuotaBar({ quota }: { quota: ServiceCardQuota }) {
           <span className="text-[var(--muted-foreground)]/70">
             ({formatQuotaWindow(quota.window)})
           </span>
+          {isProvider ? (
+            <span
+              className="ml-1 rounded bg-emerald-500/15 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-emerald-300"
+              title="Fetched directly from the provider's billing API"
+            >
+              live
+            </span>
+          ) : null}
         </span>
         <span className="font-medium text-[var(--foreground)]">
-          {formatCompactNumber(quota.consumed)}
+          {isProvider
+            ? formatQuotaValue(quota.consumed, quota.unit)
+            : formatCompactNumber(quota.consumed)}
           <span className="text-[var(--muted-foreground)]">
-            {" "}/ {formatCompactNumber(quota.limit)}
+            {" "}
+            /{" "}
+            {isProvider
+              ? formatQuotaValue(quota.limit, quota.unit)
+              : formatCompactNumber(quota.limit)}
           </span>
           <span className="ml-2 font-mono text-[10px] text-[var(--muted-foreground)]">
             {formatPercent(quota.pct)}
@@ -70,6 +89,11 @@ function QuotaBar({ quota }: { quota: ServiceCardQuota }) {
           }}
         />
       </div>
+      {isProvider && quota.fetchedAt ? (
+        <p className="text-[10px] text-[var(--muted-foreground)]/70">
+          synced {formatRelativeTime(quota.fetchedAt)}
+        </p>
+      ) : null}
     </div>
   );
 }

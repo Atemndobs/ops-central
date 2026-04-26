@@ -1232,6 +1232,28 @@ const serviceQuotaCounters = defineTable({
   /** Highest notifyAtPct that's already fired inside this bucket; -1 when none. */
   lastNotifiedPct: v.number(),
   updatedAt: v.number(),
+  /**
+   * Origin of this row. "self" = derived from our own serviceUsageEvents
+   * (estimate). "provider" = fetched directly from the provider's billing
+   * API (ground truth). UI prefers "provider" when both exist for the same
+   * (serviceKey, quotaId, bucketStart).
+   */
+  source: v.optional(v.union(v.literal("self"), v.literal("provider"))),
+  /**
+   * Hard limit for this quota inside this bucket (e.g. plan ceiling).
+   * Optional because pre-existing self-rows didn't track it; provider
+   * adapters always populate it.
+   */
+  limit: v.optional(v.number()),
+  /**
+   * Render unit: "calls" | "bytes" | "users" | "events" | "usd" | "seconds".
+   */
+  unit: v.optional(v.string()),
+  /**
+   * When the provider was last polled for this row. Distinct from
+   * updatedAt (which moves on every write, including notification fires).
+   */
+  fetchedAt: v.optional(v.number()),
 })
   .index("by_service_quota_bucket", ["serviceKey", "quotaId", "bucketStart"])
   .index("by_bucketStart", ["bucketStart"]);
