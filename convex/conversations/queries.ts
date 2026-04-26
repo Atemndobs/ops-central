@@ -494,6 +494,9 @@ export const getConversationById = query({
                   name: author.name,
                   email: author.email,
                   role: author.role,
+                  // Mobile JobConversationCard uses this to render the
+                  // sender's avatar in the message preview chip.
+                  avatarUrl: author.avatarUrl ?? null,
                 }
               : null,
             authorEndpoint: authorEndpoint

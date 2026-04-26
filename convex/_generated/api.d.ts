@@ -79,6 +79,7 @@ import type * as serviceUsage_logger from "../serviceUsage/logger.js";
 import type * as serviceUsage_queries from "../serviceUsage/queries.js";
 import type * as translation_actions from "../translation/actions.js";
 import type * as translation_internal from "../translation/internal.js";
+import type * as users_avatarBackfill from "../users/avatarBackfill.js";
 import type * as users_mutations from "../users/mutations.js";
 import type * as users_queries from "../users/queries.js";
 import type * as whatsapp_actions from "../whatsapp/actions.js";
@@ -165,6 +166,7 @@ declare const fullApi: ApiFromModules<{
   "serviceUsage/queries": typeof serviceUsage_queries;
   "translation/actions": typeof translation_actions;
   "translation/internal": typeof translation_internal;
+  "users/avatarBackfill": typeof users_avatarBackfill;
   "users/mutations": typeof users_mutations;
   "users/queries": typeof users_queries;
   "whatsapp/actions": typeof whatsapp_actions;
