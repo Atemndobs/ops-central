@@ -200,11 +200,11 @@ export function Sidebar() {
       <div className={cn("pb-4 pt-6", isCollapsed ? "px-2" : "px-6")}>
         <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3")}>
           <Image
-            src="https://chezsoistays.com/wp-content/uploads/2026/02/cropped-chezsoi_favicon@2x.png"
+            src="/icons/chezsoi-icon-192.png"
             alt="ChezSoi logo"
             width={44}
             height={44}
-            className="h-11 w-11 bg-[var(--primary)] p-2 object-contain"
+            className="h-11 w-11 rounded-md object-contain"
             priority
           />
           {!isCollapsed ? <p className="text-3xl font-black tracking-tighter">ChezSoi</p> : null}
