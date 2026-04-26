@@ -483,11 +483,11 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
             className="flex min-w-0 items-center gap-3 rounded-lg transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cleaner-primary)]"
           >
             <Image
-              src="https://chezsoistays.com/wp-content/uploads/2026/02/cropped-chezsoi_favicon@2x.png"
+              src="/icons/chezsoi-icon-192.png"
               alt="ChezSoiCleaning logo"
               width={32}
               height={32}
-              className="h-8 w-8 shrink-0 object-contain"
+              className="h-8 w-8 shrink-0 rounded-md object-contain"
               priority
             />
             <div className="min-w-0">
