@@ -115,6 +115,52 @@ export const adminColors = {
   },
 } as const;
 
+/**
+ * Feedback colors — pass / skip / fail / info semantic states used inside
+ * job-execution flows (checkpoint badges, room rows, incident callouts,
+ * progress dots). All tiers derive from the canonical cleaner palette so
+ * the brand stays cohesive — no separate green/amber:
+ *
+ *  - success / info → primary (purple) at low alpha for bg, primary for fg
+ *  - warning        → ink/muted at low alpha (a "skipped"-looking neutral)
+ *  - danger         → the same destructive red used by the StatusPill `rework`
+ *                     and the web `--destructive` button variant
+ */
+export const feedbackColors = {
+  light: {
+    success: { bg: "rgba(155,81,224,0.1)", border: "rgba(155,81,224,0.35)", fg: cleanerColors.light.primary },
+    warning: { bg: "rgba(51,51,51,0.06)", border: "rgba(51,51,51,0.18)", fg: cleanerColors.light.muted },
+    danger: { bg: "rgba(225,29,72,0.08)", border: "rgba(225,29,72,0.35)", fg: "#e11d48" },
+    info: { bg: "rgba(155,81,224,0.1)", border: "rgba(155,81,224,0.35)", fg: cleanerColors.light.primary },
+  },
+  dark: {
+    success: { bg: "rgba(189,119,255,0.18)", border: "rgba(189,119,255,0.45)", fg: cleanerColors.dark.primary },
+    warning: { bg: "rgba(247,243,255,0.08)", border: "rgba(247,243,255,0.18)", fg: cleanerColors.dark.muted },
+    danger: { bg: "rgba(244,63,94,0.18)", border: "rgba(244,63,94,0.45)", fg: "#f43f5e" },
+    info: { bg: "rgba(189,119,255,0.18)", border: "rgba(189,119,255,0.45)", fg: cleanerColors.dark.primary },
+  },
+} as const;
+
+/**
+ * Subtle border + overlay colors derived from each mode's ink, used for
+ * dividers, hairlines, and translucent fills inside cleaner surfaces.
+ */
+export const cleanerBorders = {
+  light: {
+    subtle: "rgba(0,0,0,0.06)",
+    strong: "rgba(0,0,0,0.12)",
+    overlayWeak: "rgba(0,0,0,0.04)",
+    overlayStrong: "rgba(0,0,0,0.08)",
+  },
+  dark: {
+    subtle: "rgba(255,255,255,0.08)",
+    strong: "rgba(255,255,255,0.18)",
+    overlayWeak: "rgba(255,255,255,0.05)",
+    overlayStrong: "rgba(255,255,255,0.1)",
+  },
+} as const;
+
 export type CleanerMode = keyof typeof cleanerColors;
 export type StatusAppearance = keyof typeof statusPillColors.light;
 export type CountdownTier = keyof typeof countdownTierColors.light;
+export type FeedbackTier = keyof typeof feedbackColors.light;
