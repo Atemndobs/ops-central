@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
 import { mutation, type MutationCtx } from "../_generated/server";
+import { onPhotoDeleted } from "../lib/photoStorageAggregate";
 
 async function cascadeDeleteJob(
   ctx: MutationCtx,
@@ -11,6 +12,7 @@ async function cascadeDeleteJob(
     .withIndex("by_job", (q) => q.eq("cleaningJobId", job._id))
     .collect();
   for (const photo of photos) {
+    await onPhotoDeleted(ctx, photo);
     await ctx.db.delete(photo._id);
   }
 

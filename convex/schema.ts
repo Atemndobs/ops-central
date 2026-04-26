@@ -755,6 +755,17 @@ const photoArchives = defineTable({
   .index("by_status", ["status"])
   .index("by_archived_at", ["archivedAt"]);
 
+// Single-row running aggregate of B2/MinIO-backed photo storage.
+// Maintained incrementally on photo insert/delete so the nightly snapshot
+// can read one row instead of scanning the whole photos table.
+// Seeded by internal.serviceUsage.b2Snapshot.backfillPhotoStorageAggregate.
+const photoStorageAggregate = defineTable({
+  totalBytes: v.number(),
+  photoCount: v.number(),
+  photosWithSize: v.number(),
+  updatedAt: v.number(),
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // INCIDENTS
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1312,6 +1323,7 @@ export default defineSchema({
   // Photos
   photos,
   photoArchives,
+  photoStorageAggregate,
 
   // Incidents
   incidents,
