@@ -20,7 +20,11 @@ import {
   Gauge,
   Loader2,
 } from "lucide-react";
-import { ServiceCard, type ServiceCardProps } from "./service-card";
+import {
+  ServiceCard,
+  type ServiceCardProps,
+  type ServiceCardQuota,
+} from "./service-card";
 import { formatDelta, formatUsd } from "./format";
 
 function StatTile({
@@ -122,6 +126,23 @@ export function UsageOverviewClient() {
     (s) => s.lastError !== null,
   ).length;
 
+  // Quota-pressure aggregate. A service counts as "under pressure" when
+  // any of its quotas is at ≥80%; "critical" at ≥90%. We only consider
+  // provider-sourced quotas (ground truth) to avoid noisy self-rows.
+  // Convex's validator-to-type inference doesn't lift v.optional fields
+  // nested inside v.array(v.object(...)) on this Convex version, so we
+  // cast through the canonical ServiceCardQuota type.
+  const pressuredServices = overview.services.filter((s) =>
+    (s.quotas as ServiceCardQuota[]).some(
+      (q) => q.source === "provider" && q.pct >= 80,
+    ),
+  );
+  const criticalServices = overview.services.filter((s) =>
+    (s.quotas as ServiceCardQuota[]).some(
+      (q) => q.source === "provider" && q.pct >= 90,
+    ),
+  );
+
   return (
     <div className="space-y-6">
       <section>
@@ -142,7 +163,7 @@ export function UsageOverviewClient() {
           </div>
         </div>
 
-        <div className="mt-4 grid gap-4 md:grid-cols-3">
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatTile
             label="Estimated spend"
             value={formatUsd(overview.thisMonthCostUsd)}
@@ -160,6 +181,17 @@ export function UsageOverviewClient() {
             }`}
           />
           <StatTile
+            label="Quota pressure"
+            value={`${pressuredServices.length} / ${overview.services.length}`}
+            caption={
+              criticalServices.length > 0
+                ? `${criticalServices.length} critical (≥90%)`
+                : pressuredServices.length > 0
+                  ? "≥80% on at least one quota"
+                  : "All services below 80%"
+            }
+          />
+          <StatTile
             label="Services with recent errors"
             value={`${servicesWithErrors} / ${overview.services.length}`}
             caption={
@@ -170,6 +202,62 @@ export function UsageOverviewClient() {
           />
         </div>
       </section>
+
+      {criticalServices.length > 0 ? (
+        <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-400" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-red-300">
+                Quota critical on {criticalServices.length} service
+                {criticalServices.length === 1 ? "" : "s"} — react now to
+                avoid service interruption.
+              </p>
+              <ul className="mt-1.5 space-y-0.5 text-sm text-red-200/90">
+                {criticalServices.map((s) => {
+                  const worst = (s.quotas as ServiceCardQuota[])
+                    .filter((q) => q.source === "provider")
+                    .reduce(
+                      (max, q) => (q.pct > max.pct ? q : max),
+                      { pct: 0, label: "" } as { pct: number; label: string },
+                    );
+                  return (
+                    <li key={s.serviceKey}>
+                      <Link
+                        href={`/settings/usage/${s.serviceKey}`}
+                        className="font-semibold hover:underline"
+                      >
+                        {s.displayName}
+                      </Link>{" "}
+                      — {worst.label} at{" "}
+                      <span className="font-mono">
+                        {worst.pct.toFixed(worst.pct >= 100 ? 0 : 1)}%
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </div>
+        </div>
+      ) : pressuredServices.length > 0 ? (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-amber-300">
+                Quota pressure on {pressuredServices.length} service
+                {pressuredServices.length === 1 ? "" : "s"} (≥80%).
+              </p>
+              <p className="mt-0.5 text-sm text-amber-200/90">
+                {pressuredServices.map((s) => s.displayName).join(", ")} —
+                consider upgrading or reducing usage before the window
+                resets.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {totalRequests === 0 ? (
         <div className="rounded-lg border border-dashed border-[var(--border)] bg-[var(--card)] p-6">
@@ -206,7 +294,7 @@ export function UsageOverviewClient() {
               thisMonthCostUsd: service.thisMonthCostUsd,
               thisMonthSuccessCount: service.thisMonthSuccessCount,
               thisMonthErrorCount: service.thisMonthErrorCount,
-              quotas: service.quotas,
+              quotas: service.quotas as ServiceCardQuota[],
               lastError: service.lastError,
             };
             return <ServiceCard key={service.serviceKey} {...props} />;
