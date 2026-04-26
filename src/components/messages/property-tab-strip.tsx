@@ -65,6 +65,13 @@ export function PropertyTabStrip({
       tabs = groups.slice(0, MAX_VISIBLE_TABS);
     }
   }
+
+  // Index of the active tab inside the rendered slice; -1 if the user has
+  // no active selection. Used below to make the tab nearest to active sit
+  // on top of the stack, so its full thumbnail + label stay visible.
+  const activeTabIndex = tabs.findIndex(
+    (t) => t.propertyId === activePropertyId,
+  );
   return (
     <div className="flex items-start gap-2 border-b border-[var(--msg-divider)] bg-[var(--msg-card)] px-3 py-2 lg:rounded-t-2xl">
       <div
@@ -75,7 +82,9 @@ export function PropertyTabStrip({
         {tabs.map((group, index) => {
           const active = group.propertyId === activePropertyId;
           const prev = index > 0 ? tabs[index - 1] : null;
+          const next = index < tabs.length - 1 ? tabs[index + 1] : null;
           const prevActive = prev ? prev.propertyId === activePropertyId : false;
+          const nextActive = next ? next.propertyId === activePropertyId : false;
           // Tab right after the active, and the active tab itself, use a
           // small overlap so edges touch (no padding gap). All other
           // inactive→inactive transitions keep the stacked overlap look.
@@ -85,6 +94,29 @@ export function PropertyTabStrip({
               : prevActive || active
                 ? -TOUCH_OVERLAP
                 : -STACK_OVERLAP;
+          // The label (tiny address) sits below the thumbnail at full tab
+          // width. Among stacked inactive tabs, only the one whose
+          // thumbnail and label are fully visible should render text —
+          // otherwise adjacent labels collide. We elevate the tab nearest
+          // the active selection via zIndex (see below), so the label
+          // rules are:
+          //   • the active tab itself always shows its label
+          //   • the tab immediately before or after the active tab (its
+          //     "neighbour") is on top of the deck and shows its label
+          //   • every other inactive tab is stacked behind — hide its
+          //     label to avoid collisions, and fall back to the native
+          //     tooltip (title/aria-label) for identification
+          const showLabel = active || prevActive || nextActive;
+          // Layer order. Active sits on top. Inactive tabs closer to the
+          // active selection take precedence over further ones so the
+          // "nearest unseen conversation" is fully visible — users almost
+          // always want to see *what's next to where they are*, not the
+          // furthest tab in the deck.
+          const distanceFromActive =
+            activeTabIndex >= 0 ? Math.abs(index - activeTabIndex) : index;
+          const zIndex = active
+            ? 50
+            : Math.max(1, 40 - distanceFromActive);
           const tile = propertyTileColor(group.propertyId);
           const initial = propertyInitial(group.propertyName);
           const shortName = shortPropertyName(group.propertyName, active ? 18 : 10);
@@ -108,7 +140,7 @@ export function PropertyTabStrip({
                 marginLeft,
                 borderColor: active ? "var(--msg-primary)" : undefined,
                 boxShadow: active ? "var(--msg-shadow-float)" : undefined,
-                zIndex: active ? 50 : 10 + index,
+                zIndex,
               }}
             >
               <span
@@ -166,12 +198,21 @@ export function PropertyTabStrip({
                       {group.propertyName}
                     </span>
                   </span>
-                ) : (
+                ) : showLabel ? (
                   <span
                     className="block w-full truncate text-center text-[10px] font-semibold leading-tight text-[var(--msg-text-dim)]"
                   >
                     {tinyAddress(group.propertyAddress) ?? shortName}
                   </span>
+                ) : (
+                  // Stacked inactive tab — suppress the label so it doesn't
+                  // collide with the next tab's label. Reserve the vertical
+                  // space so thumbnails stay vertically aligned across the
+                  // strip, otherwise the stacked tabs would shift up.
+                  <span
+                    aria-hidden
+                    className="block h-[14px] w-full"
+                  />
                 )}
               </span>
             </button>
