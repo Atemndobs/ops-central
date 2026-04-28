@@ -421,6 +421,13 @@ async function sealSubmission(
     type: photo.type,
     uploadedAt: photo.uploadedAt,
     uploadedBy: photo.uploadedBy,
+    // Phase 4a of video-support — sealed submissions need to know whether
+    // each entry was an image or a video so the immutable approval record
+    // renders correctly in the lightbox even after the live `photos` row
+    // is deleted/archived. `undefined` ≡ "image" for backward compat with
+    // snapshots sealed before this writer was extended.
+    // See Docs/video-support/ ADR-0001.
+    mediaKind: photo.mediaKind,
   }));
 
   const incidentSnapshot = incidents.map((incident) => ({
