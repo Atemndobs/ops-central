@@ -133,6 +133,7 @@ export function ScheduleClient() {
   // --- Filters ---
   const [search, setSearch] = useState("");
   const [propertyFilter, setPropertyFilter] = useState("all");
+  const [cityFilter, setCityFilter] = useState("all");
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
 
@@ -173,6 +174,21 @@ export function ScheduleClient() {
   const rangeStartTime = startOfDay(rangeStart).getTime();
   const rangeEndExclusiveTime = addDays(startOfDay(rangeEnd), 1).getTime();
 
+  // --- Computed: city options (from properties) ---
+  const cityOptions = useMemo(() => {
+    const seen = new Map<string, { value: string; label: string }>();
+    for (const p of properties ?? []) {
+      const city = (p.city ?? "").trim();
+      if (!city) continue;
+      const state = (p.state ?? "").trim();
+      const value = state ? `${city}|${state}` : city;
+      if (!seen.has(value)) {
+        seen.set(value, { value, label: state ? `${city}, ${state}` : city });
+      }
+    }
+    return Array.from(seen.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [properties]);
+
   // --- Computed: filtered properties ---
   const filteredProperties = useMemo(() => {
     const source = properties ?? [];
@@ -180,9 +196,16 @@ export function ScheduleClient() {
     return source.filter((property) => {
       const propertyMatches = propertyFilter === "all" || property._id === propertyFilter;
       const textMatches = !q || property.name.toLowerCase().includes(q) || property.address.toLowerCase().includes(q);
-      return propertyMatches && textMatches;
+      let cityMatches = true;
+      if (cityFilter !== "all") {
+        const city = (property.city ?? "").trim();
+        const state = (property.state ?? "").trim();
+        const propValue = state ? `${city}|${state}` : city;
+        cityMatches = propValue === cityFilter;
+      }
+      return propertyMatches && textMatches && cityMatches;
     });
-  }, [properties, propertyFilter, search]);
+  }, [properties, propertyFilter, search, cityFilter]);
 
   const filteredPropertyIds = useMemo(
     () => filteredProperties.map((property) => property._id),
@@ -360,22 +383,30 @@ export function ScheduleClient() {
 
     if (propertyLabelMode === "initials") {
       return (
-        <div className="sticky left-0 z-10 flex items-center justify-center border-r bg-[var(--card)] p-1" title={property.name}>
+        <Link
+          href={`/properties/${property._id}`}
+          className="sticky left-0 z-10 flex items-center justify-center border-r bg-[var(--card)] p-1 hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
+          title={property.name}
+        >
           <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${readinessDotClass[pStatus]}`} />
           <span className="text-[10px] font-bold">{propertyInitials(property.name)}</span>
-        </div>
+        </Link>
       );
     }
 
     return (
-      <div className="sticky left-0 z-10 border-r bg-[var(--card)] p-2 sm:p-3">
-        <p className="truncate text-xs font-bold sm:text-sm">{property.name}</p>
+      <Link
+        href={`/properties/${property._id}`}
+        className="sticky left-0 z-10 block border-r bg-[var(--card)] p-2 hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] sm:p-3"
+        title={`Open ${property.name}`}
+      >
+        <p className="truncate text-xs font-bold underline-offset-2 hover:underline sm:text-sm">{property.name}</p>
         <p className="hidden truncate text-xs text-[var(--muted-foreground)] sm:block">{property.address}</p>
         <div className="mt-1 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] sm:mt-2 sm:px-2 sm:text-xs">
           <span className={`h-1.5 w-1.5 rounded-full sm:h-2 sm:w-2 ${readinessDotClass[pStatus]}`} />
           <span className="hidden sm:inline">{pStatus.replace("_", " ")}</span>
         </div>
-      </div>
+      </Link>
     );
   };
 
@@ -688,6 +719,21 @@ export function ScheduleClient() {
               />
             </div>
 
+            {/* City filter (desktop) */}
+            <select
+              value={cityFilter}
+              onChange={(event) => setCityFilter(event.target.value)}
+              className="hidden h-8 rounded-md border bg-[var(--card)] px-2 text-xs outline-none md:inline-flex"
+              aria-label="Filter by city"
+            >
+              <option value="all">All Cities</option>
+              {cityOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+
             {/* Property filter (desktop) */}
             <div className="hidden w-48 md:block">
               <SearchableSelect
@@ -808,6 +854,20 @@ export function ScheduleClient() {
                 <Search className="h-3 w-3" />
               </button>
             )}
+
+            <select
+              value={cityFilter}
+              onChange={(event) => setCityFilter(event.target.value)}
+              className="h-7 max-w-[120px] rounded-md border bg-[var(--card)] px-1.5 text-[11px] outline-none"
+              aria-label="Filter by city"
+            >
+              <option value="all">All Cities</option>
+              {cityOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
 
             <div className="max-w-[160px]">
               <SearchableSelect
