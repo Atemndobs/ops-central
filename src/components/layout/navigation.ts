@@ -10,6 +10,7 @@ import {
   Users,
   Package,
   AlertTriangle,
+  Wrench,
   BarChart3,
   Settings,
 } from "lucide-react";
@@ -81,6 +82,12 @@ export const navigation: NavigationItem[] = [
     nameKey: "common.incidents",
     href: "/incidents",
     icon: AlertTriangle,
+    roles: ["admin", "property_ops", "manager"],
+  },
+  {
+    nameKey: "common.maintenance",
+    href: "/maintenance",
+    icon: Wrench,
     roles: ["admin", "property_ops", "manager"],
   },
   {
