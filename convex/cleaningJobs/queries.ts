@@ -539,10 +539,17 @@ async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
       .query("photos")
       .withIndex("by_job", (q) => q.eq("cleaningJobId", jobId))
       .collect(),
+    // Bandwidth: jobSubmissions docs carry heavy snapshots (photoSnapshot,
+    // checklistSnapshot, incidentSnapshot, roomReviewSnapshot). Reading every
+    // submission for a job has been the #1 bandwidth source. Cap at the 10
+    // most-recent revisions — UI only renders thin metadata for history and
+    // the latest sealed submission is always within the recent window in
+    // practice.
     ctx.db
       .query("jobSubmissions")
-      .withIndex("by_job", (q) => q.eq("jobId", jobId))
-      .collect(),
+      .withIndex("by_job_and_revision", (q) => q.eq("jobId", jobId))
+      .order("desc")
+      .take(10),
   ]);
 
   const cleanerIdsInSessions = [...new Set(sessions.map((session) => session.cleanerId))];

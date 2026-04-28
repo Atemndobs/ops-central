@@ -611,41 +611,58 @@ export const pingActiveSession = mutation({
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
+    const now = Date.now();
+
+    // Bandwidth: heartbeats fire every ~30s per active cleaner. Reading the
+    // full cleaningJob doc just to compute `revision` was costing ~10 KB per
+    // ping. Fast path: find the latest session for this (jobId, cleanerId)
+    // pair via the existing by_job_and_cleaner_and_revision index using a
+    // prefix query — no job read needed when a session already exists. Most
+    // pings hit this path. See Docs/2026-04-28-convex-bandwidth-optimization-plan.md
+    const existingSession = await ctx.db
+      .query("jobExecutionSessions")
+      .withIndex("by_job_and_cleaner_and_revision", (q) =>
+        q.eq("jobId", args.jobId).eq("cleanerId", user._id),
+      )
+      .order("desc")
+      .first();
+
+    if (existingSession) {
+      await ctx.db.patch(existingSession._id, {
+        lastHeartbeatAt: now,
+        updatedAt: now,
+      });
+      return {
+        jobId: args.jobId,
+        revision: existingSession.revision,
+        lastHeartbeatAt: now,
+        status: existingSession.status,
+      };
+    }
+
+    // Slow path: no session exists yet. Read the job to determine the current
+    // revision and create a fresh session. Only fires once per (job, cleaner).
     const job = await ctx.db.get(args.jobId);
     if (!job) {
       throw new ConvexError("Job not found.");
     }
     const revision = getCurrentRevision(job);
-    const now = Date.now();
-    const session = await findSession(ctx, {
+    await ctx.db.insert("jobExecutionSessions", {
       jobId: args.jobId,
-      cleanerId: user._id,
       revision,
+      cleanerId: user._id,
+      status: "started",
+      startedAtServer: job.actualStartAt ?? now,
+      lastHeartbeatAt: now,
+      createdAt: now,
+      updatedAt: now,
     });
-
-    if (!session) {
-      await ctx.db.insert("jobExecutionSessions", {
-        jobId: args.jobId,
-        revision,
-        cleanerId: user._id,
-        status: "started",
-        startedAtServer: job.actualStartAt ?? now,
-        lastHeartbeatAt: now,
-        createdAt: now,
-        updatedAt: now,
-      });
-    } else {
-      await ctx.db.patch(session._id, {
-        lastHeartbeatAt: now,
-        updatedAt: now,
-      });
-    }
 
     return {
       jobId: args.jobId,
       revision,
       lastHeartbeatAt: now,
-      status: session?.status ?? "started",
+      status: "started" as const,
     };
   },
 });

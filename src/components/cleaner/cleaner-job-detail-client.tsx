@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { JobConversationPanel } from "@/components/conversations/job-conversation-panel";
@@ -23,10 +23,7 @@ import {
   ChevronDown,
   ChevronUp,
   ExternalLink,
-  Eye,
-  Loader2,
   MapPin,
-  Play,
 } from "lucide-react";
 
 type Acknowledgement = {
@@ -76,7 +73,14 @@ export function CleanerJobDetailClient({ id }: { id: string }) {
   const jobId = id as Id<"cleaningJobs">;
   const { isAuthenticated, isLoading } = useConvexAuth();
   const t = useTranslations();
-  const router = useRouter();
+  const tr = (key: string, fallback: string) => {
+    try {
+      const value = t(key);
+      return value === key ? fallback : value;
+    } catch {
+      return fallback;
+    }
+  };
 
   const detail = useQuery(
     api.cleaningJobs.queries.getMyJobDetail,
@@ -136,31 +140,6 @@ export function CleanerJobDetailClient({ id }: { id: string }) {
     }
   };
 
-  const handlePrimaryAction = async () => {
-    if (!detail) return;
-    setPending(true);
-    setError(null);
-    try {
-      if (canOpenExistingFlow) {
-        router.push(`/cleaner/jobs/${detail.job._id}/active`);
-        return;
-      }
-      if (!canStart) {
-        return;
-      }
-      await startJob({
-        jobId,
-        startedAtDevice: Date.now(),
-        offlineStartToken: `${jobId}-${Date.now()}`,
-      });
-      router.push(`/cleaner/jobs/${detail.job._id}/active`);
-    } catch (mutationError) {
-      setError(getErrorMessage(mutationError, t("cleaner.startJobError")));
-    } finally {
-      setPending(false);
-    }
-  };
-
   const getStatusLabel = (status: string) => {
     try {
       return t(`jobStatus.${status}`);
@@ -192,17 +171,18 @@ export function CleanerJobDetailClient({ id }: { id: string }) {
   );
 
   const partyRiskFlag = detail.job.stay?.partyRiskFlag ?? false;
-  const showActionFooter =
-    detail.job.status !== "completed" && detail.job.status !== "cancelled";
 
   const primaryActionLabel =
-    detail.job.status === "awaiting_approval"
-      ? t("cleaner.viewSubmission")
-      : detail.job.status === "in_progress"
-        ? t("cleaner.resumeJob")
+    detail.job.status === "in_progress"
+      ? tr("cleaner.resume", "Resume")
+      : detail.job.status === "awaiting_approval"
+        ? tr("cleaner.openActiveFlow", "Open Active Flow")
         : t("cleaner.start");
-
-  const canTriggerPrimaryAction = canOpenExistingFlow || canStart;
+  const showActionFooter =
+    detail.job.status !== "completed" && detail.job.status !== "cancelled";
+  const showResumeAction = canOpenExistingFlow;
+  const showStartAction = !showResumeAction && canStart;
+  const showActionRow = showActionFooter && (showResumeAction || showStartAction);
 
   const mapAddress = [detail.property?.address, detail.property?.city]
     .filter(Boolean)
@@ -225,7 +205,7 @@ export function CleanerJobDetailClient({ id }: { id: string }) {
         <div className="mt-5 flex items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="cleaner-meta text-[10px] text-[var(--cleaner-muted)]">
-              {t("cleaner.scheduleLabel")}
+              {tr("cleaner.scheduleLabel", "SCHEDULE")}
             </p>
             {scheduledDate ? (
               <p className="mt-1 text-[44px] font-bold leading-[0.95] tracking-[-0.04em] text-[var(--cleaner-ink)] cleaner-display">
@@ -243,59 +223,36 @@ export function CleanerJobDetailClient({ id }: { id: string }) {
 
         <div className="mt-4 space-y-2 text-sm">
           <p className="text-[var(--cleaner-ink)]">
-            <span className="text-[var(--cleaner-muted)]">{t("cleaner.assignedCleanersLine")} </span>
+            <span className="text-[var(--cleaner-muted)]">{tr("cleaner.assignedCleanersLabel", "Assigned cleaners:")} </span>
             {detail.cleaners.length
               ? detail.cleaners.map((cleaner) => cleaner.name ?? cleaner.email ?? cleaner._id).join(", ")
               : t("cleaner.unassigned")}
           </p>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
-          <div className="flex items-center gap-2 rounded-[16px] border border-[var(--border)] bg-[var(--muted)]/35 px-3 py-2">
+        <div className="mt-4 flex items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-[16px] border border-[var(--border)] bg-[var(--muted)]/35 px-3 py-2">
             <Camera className="h-4 w-4 text-[var(--cleaner-muted)]" />
-            <span className="text-[14px] text-[var(--cleaner-muted)]">{t("cleaner.before")}</span>
-            <span className="ml-auto text-[20px] font-semibold leading-none text-[var(--cleaner-ink)]">
+            <span className="truncate text-[12px] font-medium text-[var(--cleaner-muted)]">{tr("cleaner.before", "Before")}</span>
+            <span className="ml-auto text-[14px] font-semibold leading-none text-[var(--cleaner-ink)]">
               {detail.evidence.current.byType.before.length}
             </span>
           </div>
-          <div className="flex items-center gap-2 rounded-[16px] border border-[var(--border)] bg-[var(--muted)]/35 px-3 py-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-[16px] border border-[var(--border)] bg-[var(--muted)]/35 px-3 py-2">
             <Camera className="h-4 w-4 text-[var(--cleaner-muted)]" />
-            <span className="text-[14px] text-[var(--cleaner-muted)]">{t("cleaner.after")}</span>
-            <span className="ml-auto text-[20px] font-semibold leading-none text-[var(--cleaner-ink)]">
+            <span className="truncate text-[12px] font-medium text-[var(--cleaner-muted)]">{tr("cleaner.after", "After")}</span>
+            <span className="ml-auto text-[14px] font-semibold leading-none text-[var(--cleaner-ink)]">
               {detail.evidence.current.byType.after.length}
             </span>
           </div>
-          <div className="flex items-center gap-2 rounded-[16px] border border-[var(--border)] bg-[var(--muted)]/35 px-3 py-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-[16px] border border-[var(--border)] bg-[var(--muted)]/35 px-3 py-2">
             <Camera className="h-4 w-4 text-[var(--cleaner-muted)]" />
-            <span className="text-[14px] text-[var(--cleaner-muted)]">{t("cleaner.incidentsLabel")}</span>
-            <span className="ml-auto text-[20px] font-semibold leading-none text-[var(--cleaner-ink)]">
+            <span className="truncate text-[12px] font-medium text-[var(--cleaner-muted)]">{tr("cleaner.incidentsLabel", "Incidents")}</span>
+            <span className="ml-auto text-[14px] font-semibold leading-none text-[var(--cleaner-ink)]">
               {detail.evidence.current.byType.incident.length}
             </span>
           </div>
         </div>
-
-        {partyRiskFlag ? (
-          <button
-            type="button"
-            onClick={() => setPartyRiskExpanded((value) => !value)}
-            className="mt-4 w-full rounded-[16px] border border-[#e11d4850] bg-[#e11d480f] p-4 text-left"
-          >
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-[#e11d48]" />
-              <p className="flex-1 text-[26px] font-semibold tracking-[-0.02em] text-[#e11d48] cleaner-display">
-                {t("cleaner.partyRiskFlagShort")}
-              </p>
-              {partyRiskExpanded ? (
-                <ChevronUp className="h-4 w-4 text-[#e11d48]" />
-              ) : (
-                <ChevronDown className="h-4 w-4 text-[#e11d48]" />
-              )}
-            </div>
-            <p className="mt-1 pl-7 text-sm text-[#9f1239]">
-              {partyRiskExpanded ? t("cleaner.partyRiskMessage") : t("cleaner.tapForDetails")}
-            </p>
-          </button>
-        ) : null}
 
         {myAck?.state === "pending" ? (
           <div className="mt-4 rounded-[16px] border border-[var(--border)] bg-[var(--muted)]/25 p-3">
@@ -379,19 +336,59 @@ export function CleanerJobDetailClient({ id }: { id: string }) {
 
         {myAck?.state === "accepted" ? (
           <p className="mt-3 text-xs font-medium text-[var(--cleaner-ink)]">
-            ✓ {t("cleaner.ackAccepted")}
+            ✓ {tr("cleaner.ackAccepted", tr("cleaner.acknowledgementAccepted", "Accepted"))}
           </p>
         ) : null}
         {myAck?.state === "declined" ? (
           <p className="mt-3 text-xs font-medium text-[var(--destructive)]">
-            {t("cleaner.ackDeclined")}
+            {tr("cleaner.ackDeclined", tr("cleaner.acknowledgementDeclined", "Declined"))}
             {myAck.reason ? ` — ${myAck.reason}` : null}
           </p>
         ) : null}
         {myAck?.state === "expired" ? (
           <p className="mt-3 text-xs font-medium text-[var(--destructive)]">
-            {t("cleaner.ackExpired")}
+            {tr("cleaner.ackExpired", tr("cleaner.acknowledgementExpired", "Acknowledgement expired"))}
           </p>
+        ) : null}
+
+        {error ? <p className="mt-2 text-xs text-[var(--destructive)]">{error}</p> : null}
+
+        {showActionRow ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {showStartAction ? (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={async () => {
+                  setPending(true);
+                  setError(null);
+                  try {
+                    await startJob({
+                      jobId,
+                      startedAtDevice: Date.now(),
+                      offlineStartToken: `${jobId}-${Date.now()}`,
+                    });
+                  } catch (mutationError) {
+                    setError(getErrorMessage(mutationError, t("cleaner.startJobError")));
+                  } finally {
+                    setPending(false);
+                  }
+                }}
+                className="cleaner-outline-button text-xs disabled:opacity-50"
+              >
+                {t("cleaner.start")}
+              </button>
+            ) : null}
+
+            {showResumeAction ? (
+              <Link
+                href={`/cleaner/jobs/${detail.job._id}/active`}
+                className="cleaner-primary-button text-xs"
+              >
+                {primaryActionLabel}
+              </Link>
+            ) : null}
+          </div>
         ) : null}
 
         {detail.execution.unresolvedCleanerIds.length > 0 ? (
@@ -400,7 +397,30 @@ export function CleanerJobDetailClient({ id }: { id: string }) {
           </p>
         ) : null}
 
-        {error ? <p className="mt-2 text-xs text-[var(--destructive)]">{error}</p> : null}
+        {partyRiskFlag ? (
+          <button
+            type="button"
+            onClick={() => setPartyRiskExpanded((value) => !value)}
+            className="mt-4 w-full rounded-[16px] border border-[#e11d4850] bg-[#e11d480f] p-4 text-left"
+          >
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-[#e11d48]" />
+              <p className="flex-1 text-[14px] font-semibold text-[#e11d48]">
+                {tr("cleaner.partyRiskFlagShort", "Party risk flagged")}
+              </p>
+              {partyRiskExpanded ? (
+                <ChevronUp className="h-4 w-4 text-[#e11d48]" />
+              ) : (
+                <ChevronDown className="h-4 w-4 text-[#e11d48]" />
+              )}
+            </div>
+            <p className="mt-1 pl-7 text-[13px] text-[#9f1239]">
+              {partyRiskExpanded
+                ? tr("cleaner.partyRiskMessage", "This booking has been flagged for potential party risk. Please be extra vigilant during inspection.")
+                : tr("cleaner.tapForDetails", "Tap for details")}
+            </p>
+          </button>
+        ) : null}
       </CleanerSection>
 
       <JobConversationPanel
@@ -410,7 +430,7 @@ export function CleanerJobDetailClient({ id }: { id: string }) {
       />
 
       {mapsHref ? (
-        <CleanerSection eyebrow={t("cleaner.addressLabel")}>
+        <CleanerSection eyebrow={tr("cleaner.addressLabel", "ADDRESS")}>
           <a
             href={mapsHref}
             target="_blank"
@@ -424,24 +444,6 @@ export function CleanerJobDetailClient({ id }: { id: string }) {
             <ExternalLink className="h-4 w-4 text-[var(--cleaner-muted)]" />
           </a>
         </CleanerSection>
-      ) : null}
-
-      {showActionFooter ? (
-        <button
-          type="button"
-          disabled={!canTriggerPrimaryAction || pending}
-          onClick={() => void handlePrimaryAction()}
-          className="flex w-full items-center justify-center gap-2 rounded-[16px] bg-[var(--cleaner-primary)] px-4 py-4 text-[30px] font-semibold tracking-[-0.02em] text-white cleaner-display disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {pending ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
-          ) : detail.job.status === "awaiting_approval" ? (
-            <Eye className="h-5 w-5" />
-          ) : (
-            <Play className="h-5 w-5" />
-          )}
-          <span>{primaryActionLabel}</span>
-        </button>
       ) : null}
 
       {detail.job.notesForCleaner ? (

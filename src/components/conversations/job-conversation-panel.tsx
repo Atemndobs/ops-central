@@ -67,6 +67,14 @@ export function JobConversationPanel({
   fullHrefBase,
 }: JobConversationPanelProps) {
   const t = useTranslations();
+  const tr = (key: string, fallback: string) => {
+    try {
+      const value = t(key);
+      return value === key ? fallback : value;
+    } catch {
+      return fallback;
+    }
+  };
   const summary = useQuery(api.conversations.queries.getConversationForJob, { jobId });
   const ensureConversation = useMutation(api.conversations.mutations.ensureJobConversation);
   const ensureAttemptedRef = useRef(false);
@@ -92,16 +100,16 @@ export function JobConversationPanel({
     ensureAttemptedRef.current = true;
     void ensureConversation({ jobId }).catch((error) => {
       ensureAttemptedRef.current = false;
-      showToast(getErrorMessage(error, t("cleaner.unableToOpenConversation")), "error");
+      showToast(getErrorMessage(error, "Unable to open conversation."), "error");
     });
-  }, [ensureConversation, jobId, showToast, summary, t]);
+  }, [ensureConversation, jobId, showToast, summary]);
 
   if (summary === undefined) {
     return (
       <div className="rounded-[12px] border border-[var(--border)] bg-[var(--card)] p-3">
         <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
           <MessageSquare className="h-4 w-4" />
-          {t("cleaner.loadingMessages")}
+          {tr("cleaner.loadingMessages", "Loading messages...")}
         </div>
       </div>
     );
@@ -115,12 +123,12 @@ export function JobConversationPanel({
   const isSelfAuthor = myUserId !== null && latest?.author?._id === myUserId;
 
   const senderName = isSelfAuthor
-    ? t("cleaner.youSender")
+    ? tr("cleaner.youSender", "You")
     : latest?.author?.name ??
       latest?.author?.email ??
       latest?.authorEndpoint?.displayName ??
       latest?.authorEndpoint?.phoneNumber ??
-      (latest?.authorKind === "system" ? t("cleaner.system") : null);
+      (latest?.authorKind === "system" ? tr("cleaner.system", "System") : null);
 
   const avatarUrl = latest?.author?.avatarUrl ?? (isSelfAuthor ? profile?.avatarUrl ?? null : null);
   const previewBody =
@@ -132,10 +140,10 @@ export function JobConversationPanel({
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-[var(--foreground)]">{t("cleaner.messagesHeading")}</h3>
+          <h3 className="text-sm font-semibold text-[var(--foreground)]">{tr("cleaner.messagesHeading", tr("common.messages", "Messages"))}</h3>
           {summary?.unread ? (
             <span className="inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-[var(--destructive)] px-1.5 text-[10px] font-bold text-white">
-              {t("cleaner.newBadge")}
+              {tr("cleaner.newBadge", "New")}
             </span>
           ) : null}
         </div>
@@ -144,7 +152,9 @@ export function JobConversationPanel({
           href={fullHref}
           className="flex items-center gap-1 text-xs font-medium text-[var(--primary)] hover:opacity-80"
         >
-          {hasMessages ? t("cleaner.openConversation") : t("cleaner.startConversation")}
+          {hasMessages
+            ? tr("cleaner.openConversation", "Open conversation")
+            : tr("cleaner.startConversation", "Start conversation")}
           <ArrowRight className="h-3 w-3" />
         </Link>
       </div>
@@ -158,7 +168,7 @@ export function JobConversationPanel({
             {avatarUrl ? (
               <Image
                 src={avatarUrl}
-                alt={senderName ?? t("cleaner.system")}
+                alt={senderName ?? tr("cleaner.system", "System")}
                 width={36}
                 height={36}
                 className="h-9 w-9 rounded-full object-cover"
@@ -172,7 +182,7 @@ export function JobConversationPanel({
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <p className="truncate text-sm font-semibold text-[var(--foreground)]">
-                  {senderName ?? t("cleaner.system")}
+                  {senderName ?? tr("cleaner.system", "System")}
                 </p>
                 <span className="shrink-0 text-[11px] text-[var(--muted-foreground)]">
                   {formatPreviewTime(latest?.createdAt ?? summary?.lastMessageAt)}
@@ -189,7 +199,7 @@ export function JobConversationPanel({
       ) : (
         <div className="rounded-[12px] border border-dashed border-[var(--border)] bg-[var(--card)] p-3">
           <p className="text-xs text-[var(--muted-foreground)]">
-            {t("cleaner.noMessagesForJob")}
+            {tr("cleaner.noMessagesForJob", "No messages yet for this job.")}
           </p>
         </div>
       )}
