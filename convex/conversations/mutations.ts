@@ -98,6 +98,21 @@ export const sendMessage = mutation({
         durationMs: v.optional(v.number()),
       }),
     ),
+    // Phase 4a video-support — outbound video attachment uploaded via
+    // Convex `_storage` two-step. Composer hands ownership of the
+    // storageId to this attachment row.
+    videoAttachment: v.optional(
+      v.object({
+        storageId: v.id("_storage"),
+        mimeType: v.string(),
+        byteSize: v.number(),
+        fileName: v.optional(v.string()),
+        durationMs: v.optional(v.number()),
+        width: v.optional(v.number()),
+        height: v.optional(v.number()),
+        posterStorageId: v.optional(v.id("_storage")),
+      }),
+    ),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
@@ -115,7 +130,9 @@ export const sendMessage = mutation({
     }
 
     const body = args.body.trim();
-    if (!body) {
+    // Allow empty body when a video attachment is present (a clip alone
+    // is a valid message). Audio still requires the transcript body.
+    if (!body && !args.videoAttachment) {
       throw new ConvexError("Message body cannot be empty.");
     }
     if (body.length > 4000) {
@@ -177,10 +194,42 @@ export const sendMessage = mutation({
       });
     }
 
+    // Phase 4a — video attachment writer. Mirrors the audio block.
+    if (args.videoAttachment) {
+      const video = args.videoAttachment;
+      const ext = video.mimeType.includes("mp4")
+        ? "mp4"
+        : video.mimeType.includes("webm")
+          ? "webm"
+          : video.mimeType.includes("quicktime") ||
+              video.mimeType.includes("mov")
+            ? "mov"
+            : "mp4";
+      await ctx.db.insert("conversationMessageAttachments", {
+        conversationId: conversation._id,
+        messageId,
+        storageId: video.storageId,
+        attachmentKind: "video",
+        channel: "internal",
+        mimeType: video.mimeType,
+        fileName: video.fileName ?? `video-${now}.${ext}`,
+        byteSize: video.byteSize,
+        videoDurationMs: video.durationMs,
+        width: video.width,
+        height: video.height,
+        posterStorageId: video.posterStorageId,
+        createdAt: now,
+      });
+    }
+
+    // Phase 4a: video-only messages need a non-empty preview so the
+    // inbox row reads "📹 Video" rather than going blank.
+    const previewSource =
+      body || (args.videoAttachment ? "📹 Video" : "");
     await ctx.db.patch(conversation._id, {
       status: "open",
       lastMessageAt: now,
-      lastMessagePreview: buildConversationPreview(body),
+      lastMessagePreview: buildConversationPreview(previewSource),
       updatedAt: now,
     });
 
@@ -219,7 +268,7 @@ export const sendMessage = mutation({
         title: property?.name
           ? `New message for ${property.name}`
           : "New job message",
-        message: `${user.name ?? user.email}: ${buildConversationPreview(body)}`,
+        message: `${user.name ?? user.email}: ${buildConversationPreview(previewSource)}`,
         data: {
           conversationId: conversation._id,
           jobId: linkedJob?._id ?? conversation.linkedJobId,
