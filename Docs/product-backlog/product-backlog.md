@@ -6,10 +6,10 @@ Create Github Project Issues and include the above in product roadmap
   - [ ] Hostaway
   - [ ] hostfully
 - [ ] Linking the propeties form Schedule page
-- [ ] Addint Tasks to schedule (task per day per property)
 - [ ] Update reports tio inlcude Cleaning financials (costs ???)
 - [ ] Geolocation for both cleaners and maintenance (all users)
 - [ ] Cost of cleaning ??
-- [ ] Recurring Tasks (example Trash) add this to Schedule. Have a template that can then be schedule into the properties automatically through out the year
-- [ ] --> Handoff for Ops?? (as a sumarry of last shift ?)
-  Could this be linked to tasks??
+
+## Extracted into dedicated planning folders
+
+- **Ops Tasks (per day per property), Recurring Tasks, and Ops Shift Handover** → see [`../ops-tasks-and-handover/`](../ops-tasks-and-handover/README.md). Originally three separate backlog items; consolidated because they share the same underlying data model and UI surfaces.
