@@ -10,7 +10,9 @@ import type { Id } from "@convex/_generated/dataModel";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/components/ui/toast-provider";
 import { VoiceRecordButton } from "@/components/voice/voice-record-button";
-import { ExternalLink, Image as ImageIcon, Languages, Loader2, Mic, Paperclip, Send, X as XIcon } from "lucide-react";
+import { VideoPlayer } from "@/components/media/VideoPlayer";
+import { useIsVideoEnabled } from "@/hooks/use-is-video-enabled";
+import { ExternalLink, Image as ImageIcon, Languages, Loader2, Mic, Paperclip, Send, Video as VideoIcon, X as XIcon } from "lucide-react";
 
 function formatMessageTime(timestamp: number) {
   const now = new Date();
@@ -45,7 +47,10 @@ type ConversationThreadProps = {
 
 type ThreadAttachment = {
   _id: string;
-  attachmentKind: "image" | "document" | "audio";
+  /** "video" added in Phase 4a of video-support — covers both outbound
+   *  cleaner/admin-recorded video AND inbound WhatsApp/SMS video stored
+   *  as-is per ADR-0003. */
+  attachmentKind: "image" | "document" | "audio" | "video";
   mimeType: string;
   fileName: string;
   byteSize: number;
@@ -53,6 +58,13 @@ type ThreadAttachment = {
   url?: string | null;
   /** Only populated when attachmentKind === "audio". */
   audioDurationMs?: number | null;
+  /** Phase 4a: video-only metadata. Posters may be absent on inbound
+   *  WhatsApp video (we don't extract one client-side), in which case
+   *  the player falls back to a generic frame from the video itself. */
+  videoDurationMs?: number | null;
+  posterUrl?: string | null;
+  width?: number | null;
+  height?: number | null;
 };
 
 type MessageLocale = "en" | "es";
@@ -104,6 +116,10 @@ export function ConversationThread({
     api.conversations.queries.getConversationById,
     conversationId ? { conversationId } : "skip",
   ) as ConversationDetail | null | undefined;
+  // Phase 4a video-support — gates inline video playback on conversation
+  // attachments. When off, video attachments fall through to the
+  // "Download" / external-link affordance like documents do.
+  const videoEnabled = useIsVideoEnabled();
   const sendInternalMessage = useMutation(api.conversations.mutations.sendMessage);
   const sendWhatsAppReply = useAction(api.whatsapp.actions.sendReply);
   const markRead = useMutation(api.conversations.mutations.markConversationRead);
@@ -394,11 +410,30 @@ export function ConversationThread({
                                 </a>
                               </audio>
                             ) : null}
+                            {/* Phase 4a video-support — inline player when
+                                the master flag is on. Inbound WhatsApp video
+                                may carry a non-canonical MIME (HEVC, 3GPP);
+                                the browser handles it natively where it can,
+                                otherwise the "Download" link below acts as
+                                the universal fallback. */}
+                            {attachment.attachmentKind === "video" &&
+                            attachment.url &&
+                            videoEnabled ? (
+                              <VideoPlayer
+                                src={attachment.url}
+                                poster={attachment.posterUrl ?? null}
+                                durationMs={attachment.videoDurationMs ?? undefined}
+                                ariaLabel={attachment.caption ?? attachment.fileName}
+                                className="max-h-72 w-full max-w-[480px] rounded-md object-contain"
+                              />
+                            ) : null}
                             <div className="mt-2 flex items-center gap-2 text-xs">
                               {attachment.attachmentKind === "image" ? (
                                 <ImageIcon className="h-3.5 w-3.5" />
                               ) : attachment.attachmentKind === "audio" ? (
                                 <Mic className="h-3.5 w-3.5" />
+                              ) : attachment.attachmentKind === "video" ? (
+                                <VideoIcon className="h-3.5 w-3.5" />
                               ) : (
                                 <Paperclip className="h-3.5 w-3.5" />
                               )}

@@ -64,10 +64,24 @@ async function getMessageAttachmentMap(
       continue;
     }
 
+    // Phase 4a: video attachments may have their URL in `sourceUrl`
+    // (inbound WhatsApp / Twilio CDN) instead of Convex `_storage`.
+    // Fall back to it when no `storageId` is set so video plays inline.
     const url =
       attachment.storageId !== undefined
         ? await ctx.storage.getUrl(attachment.storageId)
-        : null;
+        : attachment.sourceUrl ?? null;
+
+    // Phase 4a: poster URL resolution for `attachmentKind === "video"`.
+    // Outbound video records the poster via `posterStorageId` (Convex
+    // storage) — inbound WhatsApp video has no poster (we don't extract
+    // one server-side in v1, see ADR-0007 deferral). `posterUrl` is
+    // null in that case and the player falls back to a generic frame.
+    let posterUrl: string | null = null;
+    if (attachment.attachmentKind === "video" && attachment.posterStorageId) {
+      posterUrl = await ctx.storage.getUrl(attachment.posterStorageId);
+    }
+
     const nextEntry = attachmentMap.get(attachment.messageId) ?? [];
     nextEntry.push({
       _id: attachment._id,
@@ -77,6 +91,11 @@ async function getMessageAttachmentMap(
       byteSize: attachment.byteSize,
       caption: attachment.caption,
       audioDurationMs: attachment.audioDurationMs,
+      // Phase 4a video metadata — null/undefined for non-video rows.
+      videoDurationMs: attachment.videoDurationMs ?? null,
+      width: attachment.width ?? null,
+      height: attachment.height ?? null,
+      posterUrl,
       url,
     });
     attachmentMap.set(attachment.messageId, nextEntry);
