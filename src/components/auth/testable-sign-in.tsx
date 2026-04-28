@@ -1,9 +1,9 @@
 "use client";
 
-import { useSignIn } from "@clerk/nextjs";
+import { useAuth, useSignIn } from "@clerk/nextjs";
 import { Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { TestAuthPreset, TestAuthRole } from "@/lib/test-auth-presets";
 
 type TestableSignInProps = {
@@ -46,8 +46,31 @@ export function TestableSignIn({
   showTestPresets,
 }: TestableSignInProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { isLoaded: isAuthLoaded, isSignedIn } = useAuth();
   const { signIn, fetchStatus } = useSignIn();
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (!isAuthLoaded || !isSignedIn) {
+      return;
+    }
+    const rawRedirect = searchParams?.get("redirect_url") ?? null;
+    let target = "/";
+    if (rawRedirect) {
+      try {
+        const parsed = new URL(rawRedirect, window.location.origin);
+        if (parsed.origin === window.location.origin) {
+          target = `${parsed.pathname}${parsed.search}${parsed.hash}` || "/";
+        }
+      } catch {
+        if (rawRedirect.startsWith("/")) {
+          target = rawRedirect;
+        }
+      }
+    }
+    router.replace(target);
+  }, [isAuthLoaded, isSignedIn, router, searchParams]);
   const availablePresets = useMemo(
     () => presets.filter((preset) => preset.email && preset.password),
     [presets],

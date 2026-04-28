@@ -6,10 +6,18 @@ import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useTranslations } from "next-intl";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import type { LucideIcon } from "lucide-react";
 import {
+  AlertCircle,
   AlertTriangle,
+  Ban,
   Check,
+  CheckCircle2,
+  ClipboardList,
+  Clock,
   Loader2,
+  Play,
+  ShieldAlert,
   UserPlus,
 } from "lucide-react";
 import {
@@ -23,17 +31,36 @@ import { isPropertyStatus, type PropertyStatus } from "@/types/property";
 
 const dayMs = 24 * 60 * 60 * 1000;
 
-const funnelStages = [
+const primaryFunnelStages = [
   { status: "scheduled", labelKey: "dashboard.scheduled", href: "/jobs?status=scheduled" },
   { status: "assigned", labelKey: "dashboard.assigned", href: "/jobs?status=assigned" },
-  { status: "in_progress", labelKey: "dashboard.inProgress", href: "/jobs?status=in_progress" },
+] as const;
+
+const inFlightStages: ReadonlyArray<{
+  status: string;
+  labelKey: string;
+  href: string;
+  icon: LucideIcon;
+}> = [
+  {
+    status: "in_progress",
+    labelKey: "dashboard.inProgress",
+    href: "/jobs?status=in_progress",
+    icon: Play,
+  },
   {
     status: "awaiting_approval",
     labelKey: "dashboard.awaitingApproval",
     href: "/jobs?status=awaiting_approval",
+    icon: Clock,
   },
-  { status: "completed", labelKey: "dashboard.completed", href: "/jobs?status=completed" },
-] as const;
+  {
+    status: "completed",
+    labelKey: "dashboard.completed",
+    href: "/jobs?status=completed",
+    icon: CheckCircle2,
+  },
+];
 
 const readinessLabelKey: Record<PropertyStatus, string> = {
   ready: "dashboard.ready",
@@ -91,6 +118,10 @@ export function DashboardClient() {
   const properties = useQuery(
     api.properties.queries.getAll,
     isAuthenticated ? { limit: 500 } : "skip",
+  );
+  const incidentCounts = useQuery(
+    api.incidents.queries.getOpenIncidentCounts,
+    isAuthenticated ? {} : "skip",
   );
   const assignJob = useMutation(api.cleaningJobs.mutations.assign);
 
@@ -161,20 +192,24 @@ export function DashboardClient() {
       return job.scheduledStartAt < referenceTime;
     };
 
-    return funnelStages.map((stage) => {
+    const buildStage = <T extends { status: string }>(stage: T) => {
       const stageJobs = dashboardJobs.filter((job) => job.status === stage.status);
       const overdueNow = stageJobs.filter((job) => isOverdueAt(job, currentNow)).length;
       const overduePrevious = stageJobs.filter((job) =>
         isOverdueAt(job, previousNow),
       ).length;
-
       return {
         ...stage,
         count: stageJobs.length,
         overdueNow,
         overdueDelta: overdueNow - overduePrevious,
       };
-    });
+    };
+
+    return {
+      primary: primaryFunnelStages.map(buildStage),
+      inFlight: inFlightStages.map(buildStage),
+    };
   }, [dashboardJobs, now]);
 
   const readiness = useMemo(() => {
@@ -372,8 +407,8 @@ export function DashboardClient() {
             {t("dashboard.loadingFunnel")}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
-            {opsFunnel.map((stage) => {
+          <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+            {opsFunnel.primary.map((stage) => {
               const deltaLabel =
                 stage.overdueDelta > 0
                   ? `+${stage.overdueDelta}`
@@ -402,12 +437,116 @@ export function DashboardClient() {
                 </Link>
               );
             })}
+
+            <Link
+              href="/jobs"
+              className="rounded-xl border bg-[var(--card)] px-3 py-2.5 transition hover:border-[var(--primary)]/40 hover:bg-[var(--accent)]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
+            >
+              <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--muted-foreground)]">
+                {t("dashboard.jobsInFlight")}
+              </p>
+              <p className="mt-1 text-2xl font-extrabold leading-none">
+                {opsFunnel.inFlight.reduce((sum, stage) => sum + stage.count, 0)}
+              </p>
+              <div className="mt-1.5 flex flex-nowrap items-center gap-x-2 text-[10px] font-semibold text-[var(--muted-foreground)]">
+                {opsFunnel.inFlight.map((stage) => {
+                  const Icon = stage.icon;
+                  return (
+                    <span
+                      key={stage.status}
+                      className="inline-flex items-center gap-1 whitespace-nowrap"
+                      title={t(stage.labelKey)}
+                    >
+                      <Icon className="h-3 w-3" aria-hidden="true" />
+                      <span className="hidden sm:inline">{t(stage.labelKey)}</span>
+                      <span>{stage.count}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </Link>
+
+            <Link
+              href="/incidents"
+              className={`relative rounded-xl border px-3 py-2.5 transition focus-visible:outline-none focus-visible:ring-2 ${
+                (incidentCounts?.open ?? 0) > 0
+                  ? "border-rose-200 bg-rose-50/40 hover:border-rose-300 hover:bg-rose-50 focus-visible:ring-rose-300"
+                  : "border-emerald-200 bg-emerald-50/40 hover:border-emerald-300 hover:bg-emerald-50 focus-visible:ring-emerald-300"
+              }`}
+            >
+              {incidentCounts && (incidentCounts.open ?? 0) === 0 ? (
+                <span
+                  className="absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white"
+                  title={t("dashboard.allClear")}
+                  aria-label={t("dashboard.allClear")}
+                >
+                  <Check className="h-3 w-3" aria-hidden="true" />
+                </span>
+              ) : null}
+              <div className="flex items-center gap-1.5">
+                <ShieldAlert
+                  className={`h-3.5 w-3.5 ${
+                    (incidentCounts?.open ?? 0) > 0
+                      ? "text-rose-600"
+                      : "text-emerald-600"
+                  }`}
+                />
+                <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--muted-foreground)]">
+                  {t("dashboard.incidents")}
+                </p>
+              </div>
+              <p className="mt-1 text-2xl font-extrabold leading-none">
+                {incidentCounts?.total ?? 0}
+              </p>
+              {incidentCounts && incidentCounts.total > 0 ? (
+                <div className="mt-1.5 flex flex-nowrap items-center gap-x-2 text-[10px] font-semibold">
+                  <span
+                    className="inline-flex items-center gap-1 whitespace-nowrap text-rose-700"
+                    title={t("dashboard.incidentOpen")}
+                  >
+                    <AlertCircle className="h-3 w-3" aria-hidden="true" />
+                    <span className="hidden sm:inline">{t("dashboard.incidentOpen")}</span>
+                    <span>{incidentCounts.open}</span>
+                  </span>
+                  <span
+                    className="inline-flex items-center gap-1 whitespace-nowrap text-amber-700"
+                    title={t("dashboard.incidentInProgress")}
+                  >
+                    <Play className="h-3 w-3" aria-hidden="true" />
+                    <span className="hidden sm:inline">{t("dashboard.incidentInProgress")}</span>
+                    <span>{incidentCounts.inProgress}</span>
+                  </span>
+                  <span
+                    className="inline-flex items-center gap-1 whitespace-nowrap text-emerald-700"
+                    title={t("dashboard.incidentResolved")}
+                  >
+                    <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                    <span className="hidden sm:inline">{t("dashboard.incidentResolved")}</span>
+                    <span>{incidentCounts.resolved}</span>
+                  </span>
+                  {incidentCounts.wontFix > 0 ? (
+                    <span
+                      className="inline-flex items-center gap-1 whitespace-nowrap text-[var(--muted-foreground)]"
+                      title={t("dashboard.incidentWontFix")}
+                    >
+                      <Ban className="h-3 w-3" aria-hidden="true" />
+                      <span className="hidden sm:inline">{t("dashboard.incidentWontFix")}</span>
+                      <span>{incidentCounts.wontFix}</span>
+                    </span>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="mt-1 text-[11px] font-semibold text-[var(--muted-foreground)]">
+                  {t("dashboard.noIncidents")}
+                </p>
+              )}
+            </Link>
           </div>
         )}
       </section>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5 xl:col-span-5">
+        <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5 xl:col-span-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-base font-bold sm:text-lg">{t("dashboard.blockers")}</h2>
             <Link
@@ -450,7 +589,7 @@ export function DashboardClient() {
           )}
         </section>
 
-        <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5 xl:col-span-7">
+        <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5 xl:col-span-4">
           <div className="mb-3 flex items-center justify-between sm:mb-4">
             <div className="flex items-center gap-2">
               <h2 className="text-base font-bold sm:text-lg">{t("dashboard.criticalAlerts")}</h2>
@@ -576,6 +715,28 @@ export function DashboardClient() {
               ))}
             </div>
           )}
+        </section>
+
+        <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5 xl:col-span-4">
+          <div className="mb-3 flex items-center justify-between sm:mb-4">
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold sm:text-lg">{t("dashboard.tasks")}</h2>
+              <span className="rounded-full bg-[var(--accent)]/60 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-[var(--accent-foreground)]">
+                {t("dashboard.tasksComingSoon")}
+              </span>
+            </div>
+          </div>
+          <div className="flex min-h-36 flex-col items-start gap-3 rounded-xl border border-dashed border-[var(--border)] bg-[var(--muted)]/15 p-4">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--primary)]/10 text-[var(--primary)]">
+              <ClipboardList className="h-4 w-4" />
+            </div>
+            <p className="text-sm font-semibold leading-snug">
+              {t("dashboard.tasksDescription")}
+            </p>
+            <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">
+              {t("dashboard.tasksPreview")}
+            </p>
+          </div>
         </section>
       </div>
 

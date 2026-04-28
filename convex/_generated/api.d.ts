@@ -48,6 +48,7 @@ import type * as lib_auth from "../lib/auth.js";
 import type * as lib_externalStorage from "../lib/externalStorage.js";
 import type * as lib_notificationLifecycle from "../lib/notificationLifecycle.js";
 import type * as lib_opsNotifications from "../lib/opsNotifications.js";
+import type * as lib_photoStorageAggregate from "../lib/photoStorageAggregate.js";
 import type * as lib_photoUrls from "../lib/photoUrls.js";
 import type * as lib_profileMetadata from "../lib/profileMetadata.js";
 import type * as lib_rooms from "../lib/rooms.js";
@@ -142,6 +143,7 @@ declare const fullApi: ApiFromModules<{
   "lib/externalStorage": typeof lib_externalStorage;
   "lib/notificationLifecycle": typeof lib_notificationLifecycle;
   "lib/opsNotifications": typeof lib_opsNotifications;
+  "lib/photoStorageAggregate": typeof lib_photoStorageAggregate;
   "lib/photoUrls": typeof lib_photoUrls;
   "lib/profileMetadata": typeof lib_profileMetadata;
   "lib/rooms": typeof lib_rooms;
