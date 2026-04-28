@@ -31,6 +31,40 @@ Add video as a first-class media type everywhere photos exist today — job befo
 - Long-form video (> 60 s default cap, see [ADR-0003](adr/0003-format-codec-and-size-limits.md)).
 - Avatars and company logos (photo-only forever).
 
+## Feature flags (rollout kill-switches)
+
+Two env-based flags gate the entire feature. Both default to off — the
+feature can ship to production code without becoming visible to users
+until both are flipped together.
+
+| Flag | Surface | File | Default | Effect when `true` |
+|---|---|---|---|---|
+| `NEXT_PUBLIC_ENABLE_VIDEO` | Admin web (Next.js) | `src/lib/feature-flags.ts` | `false` | `MediaThumbnail` / `VideoPlayer` render; galleries (incident drawer, job photos review lightbox) include video rows; without it, video rows are filtered out of every gallery and the player shows a "Video disabled" placeholder. |
+| `EXPO_PUBLIC_ENABLE_VIDEO_CAPTURE` | Mobile cleaner (Expo) | `components/VideoCapture.tsx` | `false` | The "Record Video" button appears on the incident form; without it, the component renders nothing and incidents are photo-only. |
+
+**Rollout sequence:**
+
+1. Phase 0 schema deployed to Convex (`mediaKind`, `pendingMediaUploads`, etc.).
+2. Admin Next.js build with new components shipped to Vercel — flag still `false`, no behaviour change.
+3. Mobile EAS rebuild with `react-native-compressor`, `expo-video-thumbnails`, `expo-video` installed — flag still `false`, no behaviour change.
+4. Internal tenant: set both flags to `true` in respective env settings, smoke-test with one cleaner + one admin.
+5. Broader rollout: flip flags per tenant in Vercel/EAS env, redeploy/release.
+6. Once stable for the soak window described in [IMPLEMENTATION-PLAN](IMPLEMENTATION-PLAN.md) Phase 6: defaults change to `true` in code; envs no longer needed.
+
+**To turn on locally:**
+
+```bash
+# Admin (.env.local)
+NEXT_PUBLIC_ENABLE_VIDEO=true
+
+# Mobile (jna-cleaners-app/.env)
+EXPO_PUBLIC_ENABLE_VIDEO_CAPTURE=true
+```
+
+**To turn on in production:** flip the flag in Vercel project env (admin) and EAS build env (mobile), then redeploy / rebuild.
+
+These flags do **not** gate the backend — `getExternalUploadUrl({ mediaKind: "video" })` and the `pendingMediaUploads` cleanup cron run regardless. They only gate the **client UI**. If you need to block video uploads server-side (e.g. emergency rollback), revert the Convex deploy.
+
 ## Documents
 
 | Doc | Purpose |

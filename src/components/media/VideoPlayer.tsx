@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ENABLE_VIDEO } from "@/lib/feature-flags";
 
 /**
  * Web admin video player (Phase 3 of video-support).
@@ -81,6 +82,26 @@ export function VideoPlayer({
       })
       .finally(() => setRefetching(false));
   }, [onRefetchUrl, refetching]);
+
+  // Master kill-switch (`NEXT_PUBLIC_ENABLE_VIDEO`). When off, render a
+  // disabled placeholder rather than an empty box — most callers shouldn't
+  // be reaching this branch because their parent gallery already filtered
+  // video out, but the guard catches direct mounts (e.g. an inline player
+  // in the incident drawer that ignored its own filter).
+  if (!ENABLE_VIDEO) {
+    return (
+      <div
+        className={
+          "flex items-center justify-center bg-muted text-muted-foreground text-sm " +
+          (className ?? "")
+        }
+        role="img"
+        aria-label="Video playback disabled"
+      >
+        Video disabled
+      </div>
+    );
+  }
 
   if (!resolvedSrc) {
     return (

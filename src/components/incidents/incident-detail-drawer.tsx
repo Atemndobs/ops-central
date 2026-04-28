@@ -31,6 +31,7 @@ import {
 } from "@/components/incidents/incident-status";
 import { MediaThumbnail } from "@/components/media/MediaThumbnail";
 import { VideoPlayer } from "@/components/media/VideoPlayer";
+import { ENABLE_VIDEO } from "@/lib/feature-flags";
 
 type Props = {
   incidentId: Id<"incidents"> | null;
@@ -487,9 +488,16 @@ type IncidentMediaItem = {
 
 function IncidentMediaGrid({ photos }: { photos: IncidentMediaItem[] }) {
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
-  const activeVideo = activeVideoId
-    ? photos.find((p) => p.id === activeVideoId)
-    : null;
+  // Master kill-switch — drop video tiles entirely when the flag is off.
+  // Mirrors the mobile `EXPO_PUBLIC_ENABLE_VIDEO_CAPTURE` behaviour
+  // (no video UI when disabled). See `src/lib/feature-flags.ts`.
+  const visiblePhotos = ENABLE_VIDEO
+    ? photos
+    : photos.filter((p) => (p.mediaKind ?? "image") !== "video");
+  const activeVideo =
+    ENABLE_VIDEO && activeVideoId
+      ? visiblePhotos.find((p) => p.id === activeVideoId)
+      : null;
 
   return (
     <div>
@@ -506,7 +514,7 @@ function IncidentMediaGrid({ photos }: { photos: IncidentMediaItem[] }) {
       ) : null}
 
       <div className="grid grid-cols-2 gap-1 p-1 sm:grid-cols-3">
-        {photos.map((p) =>
+        {visiblePhotos.map((p) =>
           p.url ? (
             (p.mediaKind ?? "image") === "video" ? (
               <button

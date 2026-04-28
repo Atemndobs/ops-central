@@ -20,6 +20,7 @@ import { useToast } from "@/components/ui/toast-provider";
 import { MediaThumbnail } from "@/components/media/MediaThumbnail";
 import { VideoPlayer } from "@/components/media/VideoPlayer";
 import { getErrorMessage } from "@/lib/errors";
+import { ENABLE_VIDEO } from "@/lib/feature-flags";
 import { STATUS_CLASSNAMES, STATUS_LABELS } from "@/components/jobs/job-status";
 
 type ReviewVerdict = "pass" | "rework" | null;
@@ -251,6 +252,12 @@ function buildViewerSlides(photos: EvidencePhoto[]): ViewerSlide[] {
     if (!photo.url) {
       return [];
     }
+    // Master kill-switch: when video is disabled, skip video slides so they
+    // don't appear in the lightbox carousel. Mirrors the parent gallery
+    // filter — see `src/lib/feature-flags.ts`.
+    if (!ENABLE_VIDEO && photo.mediaKind === "video") {
+      return [];
+    }
     return [
       {
         key: `${photo.photoId}-${index}`,
@@ -331,8 +338,19 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const [draftShape, setDraftShape] = useState<DraftShape | null>(null);
   const viewerCanvasRef = useRef<HTMLDivElement | null>(null);
 
-  const currentPhotosAll = detail?.evidence.current.byType.all ?? [];
-  const latestSubmissionPhotos = detail?.evidence.latestSubmission?.photos ?? [];
+  const rawCurrentPhotos = detail?.evidence.current.byType.all ?? [];
+  const rawLatestSubmissionPhotos = detail?.evidence.latestSubmission?.photos ?? [];
+  // Master kill-switch — drop video rows at the source so every gallery,
+  // grid, and the lightbox carousel see only images. Mirrors the mobile
+  // `EXPO_PUBLIC_ENABLE_VIDEO_CAPTURE` flag. See `src/lib/feature-flags.ts`.
+  const currentPhotosAll = ENABLE_VIDEO
+    ? rawCurrentPhotos
+    : rawCurrentPhotos.filter((p) => (p.mediaKind ?? "image") !== "video");
+  const latestSubmissionPhotos = ENABLE_VIDEO
+    ? rawLatestSubmissionPhotos
+    : rawLatestSubmissionPhotos.filter(
+        (p) => (p.mediaKind ?? "image") !== "video",
+      );
   const evidencePhotos = currentPhotosAll.length
     ? (currentPhotosAll as EvidencePhoto[])
     : (latestSubmissionPhotos as EvidencePhoto[]);

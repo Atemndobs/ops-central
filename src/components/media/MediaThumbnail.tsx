@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { Play } from "lucide-react";
 import type { ComponentProps } from "react";
+import { ENABLE_VIDEO } from "@/lib/feature-flags";
 
 /**
  * Polymorphic thumbnail tile (Phase 3 of video-support).
@@ -56,6 +57,13 @@ export function MediaThumbnail({
 }: MediaThumbnailProps) {
   const kind = mediaKind ?? "image";
   const isVideo = kind === "video";
+
+  // Master kill-switch. Galleries should also filter at the parent level so
+  // a hidden tile doesn't leave a layout gap; this is a defensive fallback.
+  if (isVideo && !ENABLE_VIDEO) {
+    return null;
+  }
+
   // For video tiles the poster IS the visible image; if the poster is
   // missing (legacy / partial row) we fall through to the primary URL —
   // most browsers render a still frame from the video on poster
