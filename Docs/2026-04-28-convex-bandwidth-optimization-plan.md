@@ -173,8 +173,8 @@ Each wave that lands in production gets logged in [project_temp_convex_db_rollba
 | 0 — `.take(10)` on jobSubmissions | ✅ Shipped | 2026-04-27 | Modest impact |
 | 1.1 — pingActiveSession prefix-index lookup | ✅ Shipped | 2026-04-28 | PR #27 (~95% saving on heartbeat) |
 | 1.2 — photos `.take(200)` defensive cap | ✅ Shipped | 2026-04-28 | PR #28 (defensive only) |
-| 2.a — jobSubmissionsMeta schema + writes + backfill mutation | ✅ Shipped | 2026-04-28 | This branch — additive only, reads still use old path |
-| 2.b — Switch reads in getJobDetailInternal to use jobSubmissionsMeta | 🔜 Next | TBD | After backfill runs on old DB at consolidation |
+| 2.a — jobSubmissionsMeta schema + writes + backfill mutation | ✅ Shipped | 2026-04-28 | PR #30 — additive only |
+| 2.b — Switch reads in getJobDetailInternal to use jobSubmissionsMeta | ✅ Shipped | 2026-04-28 | This branch — stacked on 2.a. Reads thin meta for history; uses latestSubmissionId pointer to fetch one heavy doc. |
 | 3 — Subscription audit | 📋 Planned | TBD | |
 | 4 — start mutation audit | 📋 Planned | TBD | |
 
