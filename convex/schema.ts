@@ -404,6 +404,12 @@ const jobSubmissions = defineTable({
       ),
       uploadedAt: v.number(),
       uploadedBy: v.optional(v.id("users")),
+      // Phase 0 of video-support: snapshot the mediaKind so the immutable
+      // approval record knows whether each entry is an image or a video.
+      // Undefined ≡ "image" for any snapshot written before this change.
+      mediaKind: v.optional(
+        v.union(v.literal("image"), v.literal("video")),
+      ),
     }),
   ),
   checklistSnapshot: v.optional(
@@ -617,11 +623,31 @@ const conversationMessageAttachments = defineTable({
     v.literal("image"),
     v.literal("document"),
     v.literal("audio"),
+    // Phase 0 of video-support: outbound video attached as `video`. Inbound
+    // WhatsApp/SMS video is also stored as `video` with its original MIME
+    // (no transcode in v1, see Docs/video-support/adr/0003-…).
+    v.literal("video"),
   ),
   // Audio-specific metadata (populated only when attachmentKind === "audio").
   // The recorded length in milliseconds — used for the player UI and for
   // later aggregate cost analysis (seconds-of-audio-retained × storage rate).
   audioDurationMs: v.optional(v.number()),
+  // ─── Video support (Phase 0) ───────────────────────────────────────────────
+  /** Duration of the video in milliseconds. Set on outbound video; may be
+   *  undefined on inbound until we probe the file (left undefined-tolerant
+   *  in v1). */
+  videoDurationMs: v.optional(v.number()),
+  /** Pixel dimensions of the video. Optional on inbound. */
+  width: v.optional(v.number()),
+  height: v.optional(v.number()),
+  /** Poster reference for video attachments. Outbound: extracted client-side
+   *  before upload (Phase 4a). Inbound: typically absent in v1 — UI shows
+   *  a generic "video" tile. */
+  posterStorageId: v.optional(v.id("_storage")),
+  posterProvider: v.optional(v.string()),
+  posterBucket: v.optional(v.string()),
+  posterObjectKey: v.optional(v.string()),
+  // ───────────────────────────────────────────────────────────────────────────
   channel: v.union(
     v.literal("internal"),
     v.literal("sms"),
@@ -724,6 +750,31 @@ const photos = defineTable({
     v.literal("manual")
   ),
 
+  // ─── Video support (Phase 0, see Docs/video-support/) ──────────────────────
+  /** Discriminator added in the video-support feature. `undefined` is treated
+   *  as `"image"` everywhere — every existing row reads as an image without
+   *  migration. See Docs/video-support/adr/0001-extend-photos-table-with-media-kind.md. */
+  mediaKind: v.optional(
+    v.union(v.literal("image"), v.literal("video"))
+  ),
+  /** Duration of the stored video in milliseconds. Only set when
+   *  `mediaKind === "video"`. */
+  durationMs: v.optional(v.number()),
+  /** Pixel width / height of the stored media. Captured for video to enable
+   *  correct aspect-ratio rendering before the player has loaded metadata.
+   *  May also be set for images opportunistically. */
+  width: v.optional(v.number()),
+  height: v.optional(v.number()),
+  /** Poster (first-frame JPEG) for video rows. For Convex `_storage`-backed
+   *  posters use `posterStorageId`; for B2/MinIO-backed posters use the
+   *  external triple. Per ADR-0002 video MUST use external storage, so
+   *  `posterStorageId` is reserved for completeness only. */
+  posterStorageId: v.optional(v.id("_storage")),
+  posterProvider: v.optional(v.string()),
+  posterBucket: v.optional(v.string()),
+  posterObjectKey: v.optional(v.string()),
+  // ───────────────────────────────────────────────────────────────────────────
+
   annotations: v.optional(v.any()),
   notes: v.optional(v.string()),
   uploadedBy: v.optional(v.id("users")),
@@ -732,6 +783,8 @@ const photos = defineTable({
   .index("by_job", ["cleaningJobId"])
   .index("by_job_room", ["cleaningJobId", "roomName"])
   .index("by_job_type", ["cleaningJobId", "type"])
+  // Lets a gallery query "videos only on this job" without scanning every photo.
+  .index("by_job_kind", ["cleaningJobId", "mediaKind"])
   .index("by_uploaded_at", ["uploadedAt"]);
 
 const photoArchives = defineTable({
