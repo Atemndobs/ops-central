@@ -88,16 +88,15 @@ This avoids split-brain memory: all work happens on whimsical, then ships home a
 
 ---
 
-#### #2 — `photos.collect()` cap to current revision
+#### #2 — `photos.collect()` defensive cap (Wave 1.2 as actually shipped)
 
 **Problem:** [convex/cleaningJobs/queries.ts:538-541](../convex/cleaningJobs/queries.ts#L538) reads every photo ever attached to a job. With historical revisions, this can be 50+ photos × ~500 B = 25 KB just for photo metadata.
 
-**Fix:**
-- Use existing `by_job_room` or add a `by_job_revision` index on `photos` table (check schema first)
-- Filter to current revision only in `getJobDetailInternal`
-- For "show all revisions" UI, expose a separate paginated query
+**Investigated, not shipped:** original plan was to filter to "current revision only." On inspection the `photos` schema has no `revision` field — photos are scoped to `cleaningJobId` only. Proper revision-scoping would require a schema change + backfill, deferred to Wave 2.
 
-**Expected saving:** ~5-10% per `getById` call.
+**Shipped instead:** defensive `.take(200)` cap with `order("desc")`. Bounds the worst case for pathological jobs (many revisions, incident-heavy) without changing UI semantics for normal jobs (which have <10 photos). Does not solve the structural issue but stops a future runaway.
+
+**Expected saving:** ~5-10% per `getById` call only on outlier jobs; near-zero on typical jobs. The bigger structural win is Wave 2.
 
 ---
 
@@ -161,8 +160,8 @@ Each wave that lands in production gets logged in [project_temp_convex_db_rollba
 | Wave | Status | Date | Notes |
 |---|---|---|---|
 | 0 — `.take(10)` on jobSubmissions | ✅ Shipped | 2026-04-27 | Modest impact |
-| 1.1 — pingActiveSession `sessionId` | 🚧 In progress | 2026-04-28 | This patch |
-| 1.2 — photos cap | 🔜 Planned | 2026-04-28 | Same day |
+| 1.1 — pingActiveSession prefix-index lookup | ✅ Shipped | 2026-04-28 | PR #27 (~95% saving on heartbeat) |
+| 1.2 — photos `.take(200)` defensive cap | ✅ Shipped | 2026-04-28 | This branch (defensive only — schema lacks revision field, real fix in Wave 2) |
 | 2 — jobSubmissions schema split | 📋 Planned | TBD | Requires migration |
 | 3 — Subscription audit | 📋 Planned | TBD | |
 | 4 — start mutation audit | 📋 Planned | TBD | |
