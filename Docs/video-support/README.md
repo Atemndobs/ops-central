@@ -33,37 +33,46 @@ Add video as a first-class media type everywhere photos exist today — job befo
 
 ## Feature flags (rollout kill-switches)
 
-Two env-based flags gate the entire feature. Both default to off — the
-feature can ship to production code without becoming visible to users
-until both are flipped together.
+Three flags gate the feature. All default to **off**; everyday rollout uses the runtime admin toggle.
 
-| Flag | Surface | File | Default | Effect when `true` |
-|---|---|---|---|---|
-| `NEXT_PUBLIC_ENABLE_VIDEO` | Admin web (Next.js) | `src/lib/feature-flags.ts` | `false` | `MediaThumbnail` / `VideoPlayer` render; galleries (incident drawer, job photos review lightbox) include video rows; without it, video rows are filtered out of every gallery and the player shows a "Video disabled" placeholder. |
-| `EXPO_PUBLIC_ENABLE_VIDEO_CAPTURE` | Mobile cleaner (Expo) | `components/VideoCapture.tsx` | `false` | The "Record Video" button appears on the incident form; without it, the component renders nothing and incidents are photo-only. |
+| # | Flag | Type | Surface | Where to flip | Effect when `true` |
+|---|---|---|---|---|---|
+| 1 | `NEXT_PUBLIC_ENABLE_VIDEO` | Build-time env | Admin web | Vercel project env → redeploy | Bundle includes video paths. Required for #2 to do anything. |
+| 2 | `featureFlags.video_support` | Runtime (Convex) | Admin web | Settings → Feature flags (admin UI toggle) | Galleries render video tiles, lightbox uses `<VideoPlayer>`, incident drawer plays inline. **This is the everyday on/off switch.** |
+| 3 | `EXPO_PUBLIC_ENABLE_VIDEO_CAPTURE` | Build-time env | Mobile cleaner | EAS build env → new build | "Record Video" button appears on the incident form. |
+
+The admin web reads (#1) AND (#2) via the `useIsVideoEnabled()` hook (`src/hooks/use-is-video-enabled.ts`). Either being `false` hides all video UI. The mobile app reads (#3) standalone.
+
+**Why three flags:**
+
+- **#1 (env)** is the build-time **kill-switch** — when `false` the bundle short-circuits and never even queries the runtime flag. Use it to revert the entire feature without a DB write, or to ship a build for a tenant that should never see video.
+- **#2 (Convex)** is the **everyday admin toggle** — same Settings page where `theme_switcher`, `voice_messages`, etc. live. Default off; admin flips it when ready. Mirror the existing pattern.
+- **#3 (mobile env)** gates the **cleaner-side capture** binary independently of the admin web.
 
 **Rollout sequence:**
 
-1. Phase 0 schema deployed to Convex (`mediaKind`, `pendingMediaUploads`, etc.).
-2. Admin Next.js build with new components shipped to Vercel — flag still `false`, no behaviour change.
-3. Mobile EAS rebuild with `react-native-compressor`, `expo-video-thumbnails`, `expo-video` installed — flag still `false`, no behaviour change.
-4. Internal tenant: set both flags to `true` in respective env settings, smoke-test with one cleaner + one admin.
-5. Broader rollout: flip flags per tenant in Vercel/EAS env, redeploy/release.
-6. Once stable for the soak window described in [IMPLEMENTATION-PLAN](IMPLEMENTATION-PLAN.md) Phase 6: defaults change to `true` in code; envs no longer needed.
+1. Phase 0 schema deployed to Convex (`mediaKind`, `pendingMediaUploads`, etc.). ✅
+2. Admin Next.js build with new components shipped to Vercel — `NEXT_PUBLIC_ENABLE_VIDEO=true` lit, runtime flag still off → no behaviour change.
+3. Mobile EAS rebuild with `react-native-compressor`, `expo-video-thumbnails`, `expo-video` installed — `EXPO_PUBLIC_ENABLE_VIDEO_CAPTURE` still `false` → no behaviour change.
+4. Internal soak: open admin Settings → Feature flags → flip **Video support** on. Set `EXPO_PUBLIC_ENABLE_VIDEO_CAPTURE=true` on the next mobile build. Smoke-test with one cleaner + one admin.
+5. Broader rollout: keep the runtime flag on, ship mobile builds with the env on for all tenants.
+6. Once stable for the soak window in [IMPLEMENTATION-PLAN](IMPLEMENTATION-PLAN.md) Phase 6: env defaults change to `true` in code; the runtime flag becomes the only ongoing gate.
 
 **To turn on locally:**
 
 ```bash
-# Admin (.env.local)
+# 1. Admin build env (.env.local)
 NEXT_PUBLIC_ENABLE_VIDEO=true
 
-# Mobile (jna-cleaners-app/.env)
+# 2. Admin runtime flag — sign in as admin → Settings → Feature flags → "Video support" → on
+
+# 3. Mobile build env (jna-cleaners-app/.env)
 EXPO_PUBLIC_ENABLE_VIDEO_CAPTURE=true
 ```
 
-**To turn on in production:** flip the flag in Vercel project env (admin) and EAS build env (mobile), then redeploy / rebuild.
+**To turn on in production:** set `NEXT_PUBLIC_ENABLE_VIDEO=true` in Vercel and redeploy admin (one-time); then flip the runtime flag in Settings → Feature flags whenever you want video on/off — no redeploy needed. For mobile, set `EXPO_PUBLIC_ENABLE_VIDEO_CAPTURE=true` in EAS and ship a new build.
 
-These flags do **not** gate the backend — `getExternalUploadUrl({ mediaKind: "video" })` and the `pendingMediaUploads` cleanup cron run regardless. They only gate the **client UI**. If you need to block video uploads server-side (e.g. emergency rollback), revert the Convex deploy.
+These flags do **not** gate the backend — `getExternalUploadUrl({ mediaKind: "video" })` and the `pendingMediaUploads` cleanup cron run regardless. They only gate the **client UI**. To block uploads server-side, revert the Convex deploy.
 
 ## Documents
 

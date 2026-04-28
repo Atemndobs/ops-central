@@ -1396,7 +1396,8 @@ const featureFlags = defineTable({
     v.literal("theme_switcher"),
     v.literal("voice_messages"),
     v.literal("voice_audio_attachments"),
-    v.literal("usage_dashboard")
+    v.literal("usage_dashboard"),
+    v.literal("video_support")
     // future flags go here
   ),
   enabled: v.boolean(),

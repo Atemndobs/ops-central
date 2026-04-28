@@ -20,7 +20,7 @@ import { useToast } from "@/components/ui/toast-provider";
 import { MediaThumbnail } from "@/components/media/MediaThumbnail";
 import { VideoPlayer } from "@/components/media/VideoPlayer";
 import { getErrorMessage } from "@/lib/errors";
-import { ENABLE_VIDEO } from "@/lib/feature-flags";
+import { useIsVideoEnabled } from "@/hooks/use-is-video-enabled";
 import { STATUS_CLASSNAMES, STATUS_LABELS } from "@/components/jobs/job-status";
 
 type ReviewVerdict = "pass" | "rework" | null;
@@ -248,14 +248,14 @@ function buildRoomReviewSnapshot(
 }
 
 function buildViewerSlides(photos: EvidencePhoto[]): ViewerSlide[] {
+  // Note on the kill-switch: callers in this file always pass photos that
+  // were already filtered by `useIsVideoEnabled()` at the source-of-truth
+  // arrays (`currentPhotosAll` / `latestSubmissionPhotos`), so video rows
+  // never reach this helper when the flag is off. If they did somehow,
+  // `VideoPlayer` would render its "Video disabled" placeholder — graceful
+  // degradation rather than a broken slide.
   return photos.flatMap((photo, index) => {
     if (!photo.url) {
-      return [];
-    }
-    // Master kill-switch: when video is disabled, skip video slides so they
-    // don't appear in the lightbox carousel. Mirrors the parent gallery
-    // filter — see `src/lib/feature-flags.ts`.
-    if (!ENABLE_VIDEO && photo.mediaKind === "video") {
       return [];
     }
     return [
@@ -338,15 +338,17 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const [draftShape, setDraftShape] = useState<DraftShape | null>(null);
   const viewerCanvasRef = useRef<HTMLDivElement | null>(null);
 
+  const videoEnabled = useIsVideoEnabled();
   const rawCurrentPhotos = detail?.evidence.current.byType.all ?? [];
   const rawLatestSubmissionPhotos = detail?.evidence.latestSubmission?.photos ?? [];
   // Master kill-switch — drop video rows at the source so every gallery,
-  // grid, and the lightbox carousel see only images. Mirrors the mobile
-  // `EXPO_PUBLIC_ENABLE_VIDEO_CAPTURE` flag. See `src/lib/feature-flags.ts`.
-  const currentPhotosAll = ENABLE_VIDEO
+  // grid, and the lightbox carousel see only images. AND of build-time env
+  // (`NEXT_PUBLIC_ENABLE_VIDEO`) and admin runtime flag
+  // (`featureFlags.video_support`). See `src/hooks/use-is-video-enabled.ts`.
+  const currentPhotosAll = videoEnabled
     ? rawCurrentPhotos
     : rawCurrentPhotos.filter((p) => (p.mediaKind ?? "image") !== "video");
-  const latestSubmissionPhotos = ENABLE_VIDEO
+  const latestSubmissionPhotos = videoEnabled
     ? rawLatestSubmissionPhotos
     : rawLatestSubmissionPhotos.filter(
         (p) => (p.mediaKind ?? "image") !== "video",

@@ -28,7 +28,8 @@ type FlagKey =
   | "theme_switcher"
   | "voice_messages"
   | "voice_audio_attachments"
-  | "usage_dashboard";
+  | "usage_dashboard"
+  | "video_support";
 
 type FlagRow = {
   key: FlagKey;
