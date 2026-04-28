@@ -24,7 +24,8 @@ const flagKeyValidator = v.union(
   v.literal("theme_switcher"),
   v.literal("voice_messages"),
   v.literal("voice_audio_attachments"),
-  v.literal("usage_dashboard")
+  v.literal("usage_dashboard"),
+  v.literal("video_support")
   // future flags go here
 );
 
@@ -32,7 +33,8 @@ export type FeatureFlagKey =
   | "theme_switcher"
   | "voice_messages"
   | "voice_audio_attachments"
-  | "usage_dashboard";
+  | "usage_dashboard"
+  | "video_support";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UI metadata — single source of truth for the admin Feature Flags card.
@@ -88,6 +90,23 @@ const FLAG_METADATA: Record<FeatureFlagKey, FlagMetadata> = {
     offBehaviour:
       "The Usage tab and all service detail pages are hidden. Usage data " +
       "keeps recording in the background; only the admin UI disappears.",
+  },
+  video_support: {
+    key: "video_support",
+    label: "Video support (record & playback)",
+    description:
+      "Enables the cleaner-side \u201cRecord Video\u201d button on incident " +
+      "reports and renders video tiles in admin galleries (incident drawer, " +
+      "job photos review lightbox). Requires both this flag AND the " +
+      "build-time `NEXT_PUBLIC_ENABLE_VIDEO` env-var to be on \u2014 the env " +
+      "var is the hard kill-switch for the bundle, this flag is the runtime " +
+      "toggle. See Docs/video-support/ for full design.",
+    offBehaviour:
+      "Video tiles are filtered out of every gallery, the inline video " +
+      "player shows a \u201cVideo disabled\u201d placeholder, and the " +
+      "mobile cleaner app hides the \u201cRecord Video\u201d button. " +
+      "Existing video rows in the database stay intact \u2014 turning the " +
+      "flag back on makes them visible again.",
   },
 };
 

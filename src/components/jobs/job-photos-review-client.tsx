@@ -17,7 +17,10 @@ import { ArrowDownAZ, Filter, Search } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useToast } from "@/components/ui/toast-provider";
+import { MediaThumbnail } from "@/components/media/MediaThumbnail";
+import { VideoPlayer } from "@/components/media/VideoPlayer";
 import { getErrorMessage } from "@/lib/errors";
+import { useIsVideoEnabled } from "@/hooks/use-is-video-enabled";
 import { STATUS_CLASSNAMES, STATUS_LABELS } from "@/components/jobs/job-status";
 
 type ReviewVerdict = "pass" | "rework" | null;
@@ -35,6 +38,12 @@ type EvidencePhoto = {
   type: "before" | "after" | "incident";
   url: string | null;
   uploadedAt?: number | null;
+  // Phase 3 of video-support — present on backend rows after the
+  // `cleaningJobs/queries.ts` extension. Undefined ≡ "image" so legacy
+  // rows still render unchanged.
+  mediaKind?: "image" | "video";
+  posterUrl?: string | null;
+  durationMs?: number;
 };
 
 type RoomRow = {
@@ -57,6 +66,10 @@ type ViewerSlide = {
   type: "before" | "after" | "incident";
   url: string;
   uploadedAt?: number | null;
+  // Phase 3 of video-support. Image slides ignore these.
+  mediaKind?: "image" | "video";
+  posterUrl?: string | null;
+  durationMs?: number;
 };
 
 type ViewerState = {
@@ -235,6 +248,12 @@ function buildRoomReviewSnapshot(
 }
 
 function buildViewerSlides(photos: EvidencePhoto[]): ViewerSlide[] {
+  // Note on the kill-switch: callers in this file always pass photos that
+  // were already filtered by `useIsVideoEnabled()` at the source-of-truth
+  // arrays (`currentPhotosAll` / `latestSubmissionPhotos`), so video rows
+  // never reach this helper when the flag is off. If they did somehow,
+  // `VideoPlayer` would render its "Video disabled" placeholder — graceful
+  // degradation rather than a broken slide.
   return photos.flatMap((photo, index) => {
     if (!photo.url) {
       return [];
@@ -248,6 +267,9 @@ function buildViewerSlides(photos: EvidencePhoto[]): ViewerSlide[] {
         type: photo.type,
         url: photo.url,
         uploadedAt: photo.uploadedAt,
+        mediaKind: photo.mediaKind,
+        posterUrl: photo.posterUrl,
+        durationMs: photo.durationMs,
       },
     ];
   });
@@ -316,8 +338,21 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const [draftShape, setDraftShape] = useState<DraftShape | null>(null);
   const viewerCanvasRef = useRef<HTMLDivElement | null>(null);
 
-  const currentPhotosAll = detail?.evidence.current.byType.all ?? [];
-  const latestSubmissionPhotos = detail?.evidence.latestSubmission?.photos ?? [];
+  const videoEnabled = useIsVideoEnabled();
+  const rawCurrentPhotos = detail?.evidence.current.byType.all ?? [];
+  const rawLatestSubmissionPhotos = detail?.evidence.latestSubmission?.photos ?? [];
+  // Master kill-switch — drop video rows at the source so every gallery,
+  // grid, and the lightbox carousel see only images. AND of build-time env
+  // (`NEXT_PUBLIC_ENABLE_VIDEO`) and admin runtime flag
+  // (`featureFlags.video_support`). See `src/hooks/use-is-video-enabled.ts`.
+  const currentPhotosAll = videoEnabled
+    ? rawCurrentPhotos
+    : rawCurrentPhotos.filter((p) => (p.mediaKind ?? "image") !== "video");
+  const latestSubmissionPhotos = videoEnabled
+    ? rawLatestSubmissionPhotos
+    : rawLatestSubmissionPhotos.filter(
+        (p) => (p.mediaKind ?? "image") !== "video",
+      );
   const evidencePhotos = currentPhotosAll.length
     ? (currentPhotosAll as EvidencePhoto[])
     : (latestSubmissionPhotos as EvidencePhoto[]);
@@ -726,6 +761,11 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
 
   function onViewerPointerDown(event: PointerEvent<HTMLDivElement>) {
     if (!annotateEnabled || !currentSlide) {
+      return;
+    }
+    // Phase 3 of video-support: video slides do not accept drawing
+    // input. Annotations on a moving frame are deferred — ADR-0006.
+    if (currentSlide.mediaKind === "video") {
       return;
     }
     const point = getNormalizedPointer(event);
@@ -1877,29 +1917,48 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                   onPointerUp={onViewerPointerUp}
                   onPointerCancel={onViewerPointerUp}
                   className={`relative h-[64vh] rounded-md border border-[var(--border)] bg-black/40 ${
-                    annotateEnabled ? "cursor-crosshair" : "cursor-default"
+                    annotateEnabled && currentSlide.mediaKind !== "video"
+                      ? "cursor-crosshair"
+                      : "cursor-default"
                   }`}
                 >
-                  <Image
-                    src={currentSlide.url}
-                    alt={`${currentSlide.roomName} ${currentSlide.type}`}
-                    fill
-                    sizes="100vw"
-                    className="pointer-events-none select-none object-contain"
-                  />
+                  {currentSlide.mediaKind === "video" ? (
+                    /* Phase 3 of video-support: render the player instead
+                       of an Image. Annotations are intentionally hidden —
+                       per ADR-0006 video annotation is deferred. */
+                    <VideoPlayer
+                      src={currentSlide.url}
+                      poster={currentSlide.posterUrl ?? null}
+                      durationMs={currentSlide.durationMs}
+                      ariaLabel={`${currentSlide.roomName} ${currentSlide.type}`}
+                      className="absolute inset-0 h-full w-full object-contain"
+                    />
+                  ) : (
+                    <>
+                      <Image
+                        src={currentSlide.url}
+                        alt={`${currentSlide.roomName} ${currentSlide.type}`}
+                        fill
+                        sizes="100vw"
+                        className="pointer-events-none select-none object-contain"
+                      />
 
-                  <svg
-                    viewBox="0 0 100 100"
-                    preserveAspectRatio="none"
-                    className="pointer-events-none absolute inset-0 h-full w-full"
-                  >
-                    {currentAnnotations.map((shape, index) => (
-                      <g key={`${currentSlide.photoKey}-${index}`}>
-                        {renderAnnotationShape(shape, false)}
-                      </g>
-                    ))}
-                    {draftShape ? renderDraftShape(draftShape, annotationColor) : null}
-                  </svg>
+                      <svg
+                        viewBox="0 0 100 100"
+                        preserveAspectRatio="none"
+                        className="pointer-events-none absolute inset-0 h-full w-full"
+                      >
+                        {currentAnnotations.map((shape, index) => (
+                          <g key={`${currentSlide.photoKey}-${index}`}>
+                            {renderAnnotationShape(shape, false)}
+                          </g>
+                        ))}
+                        {draftShape
+                          ? renderDraftShape(draftShape, annotationColor)
+                          : null}
+                      </svg>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -2201,6 +2260,9 @@ function PhotoColumn({
         <ReviewPhotoTile
           key={`${photo.photoId}-${index}`}
           url={photo.url}
+          posterUrl={photo.posterUrl}
+          mediaKind={photo.mediaKind}
+          durationMs={photo.durationMs}
           label={photo.roomName}
           uploadedAt={photo.uploadedAt}
           onOpen={() => onOpenPhoto?.(photo)}
@@ -2212,11 +2274,17 @@ function PhotoColumn({
 
 function ReviewPhotoTile({
   url,
+  posterUrl,
+  mediaKind,
+  durationMs,
   label,
   uploadedAt,
   onOpen,
 }: {
   url: string | null;
+  posterUrl?: string | null;
+  mediaKind?: "image" | "video";
+  durationMs?: number;
   label: string;
   uploadedAt?: number | null;
   onOpen?: () => void;
@@ -2235,20 +2303,20 @@ function ReviewPhotoTile({
       onClick={onOpen}
       className="group overflow-hidden rounded-md border border-[var(--border)] text-left"
     >
-      <div className="relative h-24">
-        <Image
-          src={url}
-          alt={label}
-          width={320}
-          height={160}
-          className="h-24 w-full object-cover transition-transform group-hover:scale-105"
-        />
-        {uploadedAt ? (
-          <span className="absolute bottom-0 left-0 right-0 bg-black/60 px-1.5 py-0.5 font-mono text-[9px] text-white/90">
-            {formatPhotoTimestamp(uploadedAt)}
-          </span>
-        ) : null}
-      </div>
+      <MediaThumbnail
+        url={url}
+        posterUrl={posterUrl ?? null}
+        mediaKind={mediaKind ?? "image"}
+        durationMs={durationMs}
+        alt={label}
+        sizes="(max-width: 768px) 50vw, 320px"
+        className="relative block h-24 w-full overflow-hidden transition-transform group-hover:scale-105"
+      />
+      {uploadedAt ? (
+        <span className="block bg-black/60 px-1.5 py-0.5 font-mono text-[9px] text-white/90">
+          {formatPhotoTimestamp(uploadedAt)}
+        </span>
+      ) : null}
       <p className="truncate border-t border-[var(--border)] px-2 py-1 text-[10px] text-[var(--muted-foreground)]">
         {cleanRoomName(label)}
       </p>

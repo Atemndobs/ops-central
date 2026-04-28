@@ -29,6 +29,9 @@ import {
   type IncidentStatus,
   type IncidentType,
 } from "@/components/incidents/incident-status";
+import { MediaThumbnail } from "@/components/media/MediaThumbnail";
+import { VideoPlayer } from "@/components/media/VideoPlayer";
+import { useIsVideoEnabled } from "@/hooks/use-is-video-enabled";
 
 type Props = {
   incidentId: Id<"incidents"> | null;
@@ -210,26 +213,7 @@ function DrawerBody({
 
       <div className="flex-1 overflow-y-auto">
         {incident.photos.length > 0 ? (
-          <div className="grid grid-cols-2 gap-1 p-1 sm:grid-cols-3">
-            {incident.photos.map((p) =>
-              p.url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <a
-                  key={p.id}
-                  href={p.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="relative block aspect-square overflow-hidden border border-[var(--border)]"
-                >
-                  <img
-                    src={p.url}
-                    alt=""
-                    className="h-full w-full object-cover transition-transform hover:scale-105"
-                  />
-                </a>
-              ) : null,
-            )}
-          </div>
+          <IncidentMediaGrid photos={incident.photos} />
         ) : null}
 
         <dl className="grid grid-cols-2 gap-0 border-t">
@@ -479,6 +463,99 @@ function InfoCell({
       <div className="min-w-0">
         <p className="text-micro text-[var(--muted-foreground)]">{label}</p>
         <p className="mt-0.5 truncate font-medium">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Phase 3 of video-support — incident media grid. Renders a tile per
+ * `incident.photos` entry (image OR video thumbnail). Tapping a video
+ * tile expands an inline `<VideoPlayer>` above the grid; tapping an
+ * image tile opens the original in a new tab (legacy behaviour).
+ *
+ * Backend payload shape comes from `convex/incidents/queries.ts ::
+ * getIncidentsForJob` — each photo carries `url`, `posterUrl`,
+ * `mediaKind`, and optional `durationMs`.
+ */
+type IncidentMediaItem = {
+  id: string;
+  url: string | null;
+  posterUrl?: string | null;
+  mediaKind?: "image" | "video";
+  durationMs?: number;
+};
+
+function IncidentMediaGrid({ photos }: { photos: IncidentMediaItem[] }) {
+  const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
+  const videoEnabled = useIsVideoEnabled();
+  // Master kill-switch — drop video tiles entirely when video support is
+  // off (build env + admin runtime flag). Mirrors the mobile
+  // `EXPO_PUBLIC_ENABLE_VIDEO_CAPTURE` behaviour. See
+  // `src/hooks/use-is-video-enabled.ts`.
+  const visiblePhotos = videoEnabled
+    ? photos
+    : photos.filter((p) => (p.mediaKind ?? "image") !== "video");
+  const activeVideo =
+    videoEnabled && activeVideoId
+      ? visiblePhotos.find((p) => p.id === activeVideoId)
+      : null;
+
+  return (
+    <div>
+      {activeVideo?.url ? (
+        <div className="border-b border-[var(--border)] bg-black/5 p-2">
+          <VideoPlayer
+            src={activeVideo.url}
+            poster={activeVideo.posterUrl ?? null}
+            durationMs={activeVideo.durationMs}
+            ariaLabel="Incident video"
+            className="w-full max-h-[60vh] rounded"
+          />
+        </div>
+      ) : null}
+
+      <div className="grid grid-cols-2 gap-1 p-1 sm:grid-cols-3">
+        {visiblePhotos.map((p) =>
+          p.url ? (
+            (p.mediaKind ?? "image") === "video" ? (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() =>
+                  setActiveVideoId(activeVideoId === p.id ? null : p.id)
+                }
+                className="relative aspect-square overflow-hidden border border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
+              >
+                <MediaThumbnail
+                  url={p.url}
+                  posterUrl={p.posterUrl ?? null}
+                  mediaKind="video"
+                  durationMs={p.durationMs}
+                  alt="Incident video"
+                  className="h-full w-full"
+                />
+              </button>
+            ) : (
+              // Images: keep the existing "open original in new tab"
+              // affordance — image-mode admins are familiar with it.
+              <a
+                key={p.id}
+                href={p.url}
+                target="_blank"
+                rel="noreferrer"
+                className="relative aspect-square overflow-hidden border border-[var(--border)]"
+              >
+                <MediaThumbnail
+                  url={p.url}
+                  mediaKind="image"
+                  alt="Incident photo"
+                  className="h-full w-full"
+                />
+              </a>
+            )
+          ) : null,
+        )}
       </div>
     </div>
   );

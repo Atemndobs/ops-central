@@ -215,6 +215,15 @@ export function CleanerIncidentPageClient() {
           fileName: file.name || `incident-${Date.now()}.jpg`,
           byteSize: file.size,
         });
+        // Phase 1 video-support change made the response a discriminated
+        // union. We don't pass `mediaKind` here so we get the image
+        // branch; narrow explicitly so TS sees `url` / `objectKey` as
+        // defined.
+        if (ticket.mediaKind !== "image") {
+          throw new Error(
+            "Unexpected video upload ticket on the incident image path",
+          );
+        }
 
         const putRes = await fetch(ticket.url, {
           method: "PUT",

@@ -102,4 +102,19 @@ crons.cron(
   },
 );
 
+// Daily sweep of orphaned external upload tickets — bucket objects whose
+// PUT succeeded but whose `completeExternalUpload` callback never landed.
+// Runs at 03:00 UTC, after the B2 storage snapshot (01:00) and Clerk MAU
+// snapshot (01:30). See Phase 1 of Docs/video-support/.
+crons.cron(
+  "sweep-orphaned-media-uploads-daily",
+  "0 3 * * *",
+  internal.files.orphanCleanup.sweepOrphans,
+  {
+    graceHours: 24,
+    batchSize: 100,
+    dryRun: false,
+  },
+);
+
 export default crons;

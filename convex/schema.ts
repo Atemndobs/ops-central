@@ -404,6 +404,12 @@ const jobSubmissions = defineTable({
       ),
       uploadedAt: v.number(),
       uploadedBy: v.optional(v.id("users")),
+      // Phase 0 of video-support: snapshot the mediaKind so the immutable
+      // approval record knows whether each entry is an image or a video.
+      // Undefined ≡ "image" for any snapshot written before this change.
+      mediaKind: v.optional(
+        v.union(v.literal("image"), v.literal("video")),
+      ),
     }),
   ),
   checklistSnapshot: v.optional(
@@ -456,6 +462,38 @@ const jobSubmissions = defineTable({
   supersededAt: v.optional(v.number()),
   createdAt: v.number(),
 })
+  .index("by_job", ["jobId"])
+  .index("by_job_and_revision", ["jobId", "revision"])
+  .index("by_job_and_created", ["jobId", "createdAt"]);
+
+// Thin parallel index for jobSubmissions. Populated alongside every
+// jobSubmissions insert/patch. Carries metadata + denormalized counts only —
+// no heavy snapshots. `getJobDetailInternal` reads from here for the history
+// list (cheap), and uses `cleaningJobs.latestSubmissionId` to fetch the one
+// full `jobSubmissions` doc actually needed for current-submission rendering.
+//
+// Bandwidth motivation: a single heavy `jobSubmissions` doc carries
+// photoSnapshot + checklistSnapshot + incidentSnapshot + roomReviewSnapshot,
+// often 50 KB+ each. Reading 5 submissions per job = 250 KB. Reading 5 rows
+// from this thin table = ~1 KB. See
+// Docs/2026-04-28-convex-bandwidth-optimization-plan.md (Wave 2).
+const jobSubmissionsMeta = defineTable({
+  submissionId: v.id("jobSubmissions"),
+  jobId: v.id("cleaningJobs"),
+  revision: v.number(),
+  status: v.union(v.literal("sealed"), v.literal("superseded")),
+  submittedBy: v.optional(v.id("users")),
+  submittedAtServer: v.number(),
+  submittedAtDevice: v.optional(v.number()),
+  supersededAt: v.optional(v.number()),
+  // Denormalized counts derived from the corresponding heavy snapshots.
+  photoCount: v.number(),
+  beforeCount: v.number(),
+  afterCount: v.number(),
+  incidentCount: v.number(),
+  createdAt: v.number(),
+})
+  .index("by_submission", ["submissionId"])
   .index("by_job", ["jobId"])
   .index("by_job_and_revision", ["jobId", "revision"])
   .index("by_job_and_created", ["jobId", "createdAt"]);
@@ -617,11 +655,31 @@ const conversationMessageAttachments = defineTable({
     v.literal("image"),
     v.literal("document"),
     v.literal("audio"),
+    // Phase 0 of video-support: outbound video attached as `video`. Inbound
+    // WhatsApp/SMS video is also stored as `video` with its original MIME
+    // (no transcode in v1, see Docs/video-support/adr/0003-…).
+    v.literal("video"),
   ),
   // Audio-specific metadata (populated only when attachmentKind === "audio").
   // The recorded length in milliseconds — used for the player UI and for
   // later aggregate cost analysis (seconds-of-audio-retained × storage rate).
   audioDurationMs: v.optional(v.number()),
+  // ─── Video support (Phase 0) ───────────────────────────────────────────────
+  /** Duration of the video in milliseconds. Set on outbound video; may be
+   *  undefined on inbound until we probe the file (left undefined-tolerant
+   *  in v1). */
+  videoDurationMs: v.optional(v.number()),
+  /** Pixel dimensions of the video. Optional on inbound. */
+  width: v.optional(v.number()),
+  height: v.optional(v.number()),
+  /** Poster reference for video attachments. Outbound: extracted client-side
+   *  before upload (Phase 4a). Inbound: typically absent in v1 — UI shows
+   *  a generic "video" tile. */
+  posterStorageId: v.optional(v.id("_storage")),
+  posterProvider: v.optional(v.string()),
+  posterBucket: v.optional(v.string()),
+  posterObjectKey: v.optional(v.string()),
+  // ───────────────────────────────────────────────────────────────────────────
   channel: v.union(
     v.literal("internal"),
     v.literal("sms"),
@@ -724,6 +782,31 @@ const photos = defineTable({
     v.literal("manual")
   ),
 
+  // ─── Video support (Phase 0, see Docs/video-support/) ──────────────────────
+  /** Discriminator added in the video-support feature. `undefined` is treated
+   *  as `"image"` everywhere — every existing row reads as an image without
+   *  migration. See Docs/video-support/adr/0001-extend-photos-table-with-media-kind.md. */
+  mediaKind: v.optional(
+    v.union(v.literal("image"), v.literal("video"))
+  ),
+  /** Duration of the stored video in milliseconds. Only set when
+   *  `mediaKind === "video"`. */
+  durationMs: v.optional(v.number()),
+  /** Pixel width / height of the stored media. Captured for video to enable
+   *  correct aspect-ratio rendering before the player has loaded metadata.
+   *  May also be set for images opportunistically. */
+  width: v.optional(v.number()),
+  height: v.optional(v.number()),
+  /** Poster (first-frame JPEG) for video rows. For Convex `_storage`-backed
+   *  posters use `posterStorageId`; for B2/MinIO-backed posters use the
+   *  external triple. Per ADR-0002 video MUST use external storage, so
+   *  `posterStorageId` is reserved for completeness only. */
+  posterStorageId: v.optional(v.id("_storage")),
+  posterProvider: v.optional(v.string()),
+  posterBucket: v.optional(v.string()),
+  posterObjectKey: v.optional(v.string()),
+  // ───────────────────────────────────────────────────────────────────────────
+
   annotations: v.optional(v.any()),
   notes: v.optional(v.string()),
   uploadedBy: v.optional(v.id("users")),
@@ -732,6 +815,8 @@ const photos = defineTable({
   .index("by_job", ["cleaningJobId"])
   .index("by_job_room", ["cleaningJobId", "roomName"])
   .index("by_job_type", ["cleaningJobId", "type"])
+  // Lets a gallery query "videos only on this job" without scanning every photo.
+  .index("by_job_kind", ["cleaningJobId", "mediaKind"])
   .index("by_uploaded_at", ["uploadedAt"]);
 
 const photoArchives = defineTable({
@@ -765,6 +850,43 @@ const photoStorageAggregate = defineTable({
   photosWithSize: v.number(),
   updatedAt: v.number(),
 });
+
+// Tracks every external upload ticket we hand out so the orphan-cleanup cron
+// can sweep bucket objects whose upload completed at the storage layer but
+// whose `completeExternalUpload` callback never landed (network drop, app
+// crash mid-upload, tab close). Rows are inserted by `getExternalUploadUrl`
+// and marked "completed" by `completeExternalUpload`. The cron runs daily,
+// finds rows still "pending" past `expiresAt + grace`, and deletes the
+// bucket objects (best-effort). See Phase 1 of Docs/video-support/.
+const pendingMediaUploads = defineTable({
+  /** Job the upload is for (matches the photo row that would be inserted). */
+  cleaningJobId: v.id("cleaningJobs"),
+  /** Discriminator. Posters are tracked alongside their parent video row, so
+   *  this is the *primary* media kind. */
+  mediaKind: v.union(v.literal("image"), v.literal("video")),
+  provider: v.string(),
+  bucket: v.string(),
+  /** Primary object key (the image or the video). */
+  objectKey: v.string(),
+  /** Poster object key when `mediaKind === "video"`. */
+  posterObjectKey: v.optional(v.string()),
+  /** Wall-clock when the upload ticket expires; orphan sweep waits an
+   *  additional grace period beyond this before deleting. */
+  expiresAt: v.number(),
+  /** Lifecycle of the ticket. */
+  status: v.union(
+    v.literal("pending"),
+    v.literal("completed"),
+    v.literal("abandoned"),
+  ),
+  /** Set when the cleanup cron decides this ticket is orphaned. */
+  abandonedAt: v.optional(v.number()),
+  /** Last error from the cleanup attempt, for debugging. */
+  lastCleanupError: v.optional(v.string()),
+  createdAt: v.number(),
+})
+  .index("by_status_and_expiry", ["status", "expiresAt"])
+  .index("by_object_key", ["objectKey"]);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // INCIDENTS
@@ -1274,7 +1396,8 @@ const featureFlags = defineTable({
     v.literal("theme_switcher"),
     v.literal("voice_messages"),
     v.literal("voice_audio_attachments"),
-    v.literal("usage_dashboard")
+    v.literal("usage_dashboard"),
+    v.literal("video_support")
     // future flags go here
   ),
   enabled: v.boolean(),
@@ -1311,6 +1434,7 @@ export default defineSchema({
   jobTemplates,
   jobExecutionSessions,
   jobSubmissions,
+  jobSubmissionsMeta,
   jobAssignmentAuditEvents,
   conversations,
   conversationParticipants,
@@ -1324,6 +1448,7 @@ export default defineSchema({
   photos,
   photoArchives,
   photoStorageAggregate,
+  pendingMediaUploads,
 
   // Incidents
   incidents,

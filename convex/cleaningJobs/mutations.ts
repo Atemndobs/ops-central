@@ -421,6 +421,13 @@ async function sealSubmission(
     type: photo.type,
     uploadedAt: photo.uploadedAt,
     uploadedBy: photo.uploadedBy,
+    // Phase 4a of video-support — sealed submissions need to know whether
+    // each entry was an image or a video so the immutable approval record
+    // renders correctly in the lightbox even after the live `photos` row
+    // is deleted/archived. `undefined` ≡ "image" for backward compat with
+    // snapshots sealed before this writer was extended.
+    // See Docs/video-support/ ADR-0001.
+    mediaKind: photo.mediaKind,
   }));
 
   const incidentSnapshot = incidents.map((incident) => ({
@@ -455,6 +462,26 @@ async function sealSubmission(
     incidentSnapshot,
     validationResult: args.validationResult,
     sealedHash: fnv1aHash(sealedPayload),
+    createdAt: args.submittedAtServer,
+  });
+
+  // Mirror thin metadata into jobSubmissionsMeta for cheap history reads.
+  // See Docs/2026-04-28-convex-bandwidth-optimization-plan.md (Wave 2).
+  const beforeCount = photoSnapshot.filter((p) => p.type === "before").length;
+  const afterCount = photoSnapshot.filter((p) => p.type === "after").length;
+  const incidentCount = photoSnapshot.filter((p) => p.type === "incident").length;
+  await ctx.db.insert("jobSubmissionsMeta", {
+    submissionId,
+    jobId: args.job._id,
+    revision: args.revision,
+    status: "sealed",
+    submittedBy: args.submittedBy,
+    submittedAtServer: args.submittedAtServer,
+    submittedAtDevice: args.submittedAtDevice,
+    photoCount: photoSnapshot.length,
+    beforeCount,
+    afterCount,
+    incidentCount,
     createdAt: args.submittedAtServer,
   });
 
@@ -818,24 +845,30 @@ async function submitForApprovalInternal(
     validationResult,
   });
 
-  const priorSubmissions = await ctx.db
-    .query("jobSubmissions")
+  // Query priorSubmissions via the thin meta index — heavy snapshot fields
+  // would otherwise be dragged through this read. See Wave 2 in
+  // Docs/2026-04-28-convex-bandwidth-optimization-plan.md
+  const priorMeta = await ctx.db
+    .query("jobSubmissionsMeta")
     .withIndex("by_job", (q) => q.eq("jobId", args.jobId))
     .collect();
+  const toSupersede = priorMeta.filter(
+    (meta) =>
+      meta.revision < revision &&
+      meta.status === "sealed" &&
+      meta.supersededAt === undefined,
+  );
   await Promise.all(
-    priorSubmissions
-      .filter(
-        (submission) =>
-          submission.revision < revision &&
-          submission.status === "sealed" &&
-          submission.supersededAt === undefined,
-      )
-      .map((submission) =>
-        ctx.db.patch(submission._id, {
-          status: "superseded",
-          supersededAt: now,
-        }),
-      ),
+    toSupersede.flatMap((meta) => [
+      ctx.db.patch(meta.submissionId, {
+        status: "superseded" as const,
+        supersededAt: now,
+      }),
+      ctx.db.patch(meta._id, {
+        status: "superseded" as const,
+        supersededAt: now,
+      }),
+    ]),
   );
 
   await ctx.db.patch(args.jobId, {
@@ -1028,6 +1061,19 @@ export const reopenForRework = mutation({
         status: "superseded",
         supersededAt: now,
       });
+      // Mirror to jobSubmissionsMeta — see Wave 2.
+      const meta = await ctx.db
+        .query("jobSubmissionsMeta")
+        .withIndex("by_submission", (q) =>
+          q.eq("submissionId", job.latestSubmissionId!),
+        )
+        .first();
+      if (meta) {
+        await ctx.db.patch(meta._id, {
+          status: "superseded" as const,
+          supersededAt: now,
+        });
+      }
     }
 
     await ctx.db.patch(args.jobId, {

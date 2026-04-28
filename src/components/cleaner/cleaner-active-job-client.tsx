@@ -572,7 +572,11 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
 
               let photoId: Id<"photos">;
               try {
-                // Try B2 external storage first
+                // Try B2 external storage first.
+                // Note: getExternalUploadUrl returns a discriminated union
+                // since the Phase 1 video-support change. We don't pass
+                // `mediaKind` here so we get the image branch; narrow
+                // explicitly so TS sees `url` / `objectKey` as defined.
                 const ticket = await getExternalUploadUrlRef.current({
                   jobId,
                   roomName: syncing.roomName,
@@ -582,6 +586,11 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                   fileName: `${syncing.photoType}-${Date.now()}.jpg`,
                   byteSize: blob.size,
                 });
+                if (ticket.mediaKind !== "image") {
+                  throw new Error(
+                    "Unexpected video upload ticket on the image upload path",
+                  );
+                }
 
                 const putRes = await fetch(ticket.url, {
                   method: "PUT",

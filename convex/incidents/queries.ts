@@ -52,6 +52,64 @@ async function resolvePhotoIdToUrl(
   }
 }
 
+/**
+ * Phase 3 of video-support — richer variant of `resolvePhotoIdToUrl` that
+ * also returns the poster URL and the kind/duration/dimensions for video
+ * rows. The web admin uses this to decide whether to render `<img>` or
+ * `<video>` per attachment in the incident detail drawer.
+ *
+ * For legacy `_storage` IDs (no canonical `photos` row), every value
+ * except `url` returns null/"image" — the caller treats those as images.
+ */
+async function resolvePhotoIdToMedia(
+  ctx: QueryCtx,
+  rawId: string,
+): Promise<{
+  url: string | null;
+  posterUrl: string | null;
+  mediaKind: "image" | "video";
+  durationMs: number | undefined;
+  width: number | undefined;
+  height: number | undefined;
+}> {
+  const photoTableId = ctx.db.normalizeId("photos", rawId);
+  if (photoTableId) {
+    const photoDoc = await ctx.db.get(photoTableId);
+    if (photoDoc) {
+      const mediaKind = (photoDoc.mediaKind ?? "image") as "image" | "video";
+      const [url, posterUrl] = await Promise.all([
+        resolvePhotoAccessUrl(ctx, photoDoc),
+        mediaKind === "video"
+          ? resolvePhotoAccessUrl(ctx, photoDoc, "poster")
+          : Promise.resolve(null),
+      ]);
+      return {
+        url,
+        posterUrl,
+        mediaKind,
+        durationMs: photoDoc.durationMs,
+        width: photoDoc.width,
+        height: photoDoc.height,
+      };
+    }
+  }
+  // Legacy `_storage` ID — image only, no poster, no metadata.
+  let url: string | null = null;
+  try {
+    url = await ctx.storage.getUrl(rawId as Id<"_storage">);
+  } catch {
+    url = null;
+  }
+  return {
+    url,
+    posterUrl: null,
+    mediaKind: "image",
+    durationMs: undefined,
+    width: undefined,
+    height: undefined,
+  };
+}
+
 const incidentStatusValidator = v.union(
   v.literal("open"),
   v.literal("in_progress"),
@@ -80,11 +138,30 @@ export const getIncidentsForJob = query({
 
     const results = await Promise.all(
       incidents.map(async (incident) => {
-        const photoUrls: Array<{ id: string; url: string | null }> = [];
+        // Phase 3 of video-support: each photo row carries enough metadata
+        // for the web admin to render `<img>` for images and `<video>` (with
+        // poster) for video rows.
+        const photoUrls: Array<{
+          id: string;
+          url: string | null;
+          posterUrl: string | null;
+          mediaKind: "image" | "video";
+          durationMs?: number;
+          width?: number;
+          height?: number;
+        }> = [];
 
         for (const photoId of incident.photoIds) {
-          const url = await resolvePhotoIdToUrl(ctx, photoId);
-          photoUrls.push({ id: photoId, url });
+          const media = await resolvePhotoIdToMedia(ctx, photoId);
+          photoUrls.push({
+            id: photoId,
+            url: media.url,
+            posterUrl: media.posterUrl,
+            mediaKind: media.mediaKind,
+            durationMs: media.durationMs,
+            width: media.width,
+            height: media.height,
+          });
         }
 
         const reporter = incident.reportedBy
