@@ -535,10 +535,19 @@ async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
         q.eq("jobId", jobId).eq("revision", revision),
       )
       .collect(),
+    // Bandwidth: photos for a job have no `revision` field, so we can't
+    // narrow the read to just the current revision without a schema change.
+    // As a defensive cap, take the 200 most-recent rows by creation time.
+    // Real-world jobs have well under that; this only protects against a
+    // pathological job (incident-heavy, many revisions) from running
+    // unbounded reads on every getJobDetail subscription tick. Proper
+    // revision-scoping is tracked as a follow-up in
+    // Docs/2026-04-28-convex-bandwidth-optimization-plan.md (Wave 2).
     ctx.db
       .query("photos")
       .withIndex("by_job", (q) => q.eq("cleaningJobId", jobId))
-      .collect(),
+      .order("desc")
+      .take(200),
     // Bandwidth: jobSubmissions docs carry heavy snapshots (photoSnapshot,
     // checklistSnapshot, incidentSnapshot, roomReviewSnapshot). Reading every
     // submission for a job has been the #1 bandwidth source. Cap at the 10
