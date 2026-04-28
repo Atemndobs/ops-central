@@ -574,6 +574,16 @@ async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
   const currentPhotoUrls = await Promise.all(
     photos.map((photo) => resolvePhotoAccessUrl(ctx, photo)),
   );
+  // Phase 3 of video-support: also resolve poster URLs for video rows.
+  // For image rows the resolver falls through to the primary URL, so the
+  // result is harmless to ship as `posterUrl` regardless of mediaKind.
+  const currentPosterUrls = await Promise.all(
+    photos.map((photo) =>
+      photo.mediaKind === "video"
+        ? resolvePhotoAccessUrl(ctx, photo, "poster")
+        : Promise.resolve(null),
+    ),
+  );
   const currentPhotos = photos.map((photo, index) => ({
     photoId: photo._id,
     storageId: photo.storageId,
@@ -588,6 +598,13 @@ async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
     uploadedAt: photo.uploadedAt,
     uploadedBy: photo.uploadedBy,
     url: currentPhotoUrls[index] ?? null,
+    // Phase 3 of video-support — surface enough metadata for the web
+    // admin to decide whether to render <img> or <video>:
+    mediaKind: photo.mediaKind ?? "image",
+    durationMs: photo.durationMs,
+    width: photo.width,
+    height: photo.height,
+    posterUrl: currentPosterUrls[index] ?? null,
   }));
 
   const currentByRoomMap = new Map<
@@ -631,16 +648,49 @@ async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
     uploadedAt: number;
     uploadedBy?: Id<"users">;
     url: string | null;
+    // Phase 3 of video-support — same shape as `currentPhotos`.
+    mediaKind: "image" | "video";
+    durationMs?: number;
+    width?: number;
+    height?: number;
+    posterUrl: string | null;
   }> = [];
 
   if (latestSubmission) {
     const latestUrls = await Promise.all(
       latestSubmission.photoSnapshot.map((photo) => resolveSnapshotPhotoUrl(ctx, photo)),
     );
-    latestSubmissionEvidence = latestSubmission.photoSnapshot.map((photo, index) => ({
-      ...photo,
-      url: latestUrls[index] ?? null,
-    }));
+    // Snapshot rows carry an immutable `mediaKind` (Phase 0 schema). For
+    // video entries we hydrate the poster URL via the live `photos` row
+    // (snapshots don't carry the poster reference).
+    const latestPosterUrls = await Promise.all(
+      latestSubmission.photoSnapshot.map(async (photo) => {
+        if ((photo.mediaKind ?? "image") !== "video") return null;
+        const live = await ctx.db.get(photo.photoId);
+        if (!live) return null;
+        return resolvePhotoAccessUrl(ctx, live, "poster");
+      }),
+    );
+    // Live media metadata (durationMs / width / height) lives on the
+    // `photos` row, not the snapshot. Hydrate the same way as poster.
+    const latestLivePhotos = await Promise.all(
+      latestSubmission.photoSnapshot.map((photo) => ctx.db.get(photo.photoId)),
+    );
+    latestSubmissionEvidence = latestSubmission.photoSnapshot.map((photo, index) => {
+      const live = latestLivePhotos[index];
+      const mediaKind = (photo.mediaKind ?? live?.mediaKind ?? "image") as
+        | "image"
+        | "video";
+      return {
+        ...photo,
+        mediaKind,
+        durationMs: live?.durationMs,
+        width: live?.width,
+        height: live?.height,
+        url: latestUrls[index] ?? null,
+        posterUrl: latestPosterUrls[index] ?? null,
+      };
+    });
   }
 
   const sessionsByCleaner = new Map(

@@ -17,6 +17,7 @@ import type * as ai_providers from "../ai/providers.js";
 import type * as ai_settings from "../ai/settings.js";
 import type * as cleaningJobs_acknowledgements from "../cleaningJobs/acknowledgements.js";
 import type * as cleaningJobs_approve from "../cleaningJobs/approve.js";
+import type * as cleaningJobs_backfillMeta from "../cleaningJobs/backfillMeta.js";
 import type * as cleaningJobs_devResetJobs from "../cleaningJobs/devResetJobs.js";
 import type * as cleaningJobs_mutations from "../cleaningJobs/mutations.js";
 import type * as cleaningJobs_queries from "../cleaningJobs/queries.js";
@@ -115,6 +116,7 @@ declare const fullApi: ApiFromModules<{
   "ai/settings": typeof ai_settings;
   "cleaningJobs/acknowledgements": typeof cleaningJobs_acknowledgements;
   "cleaningJobs/approve": typeof cleaningJobs_approve;
+  "cleaningJobs/backfillMeta": typeof cleaningJobs_backfillMeta;
   "cleaningJobs/devResetJobs": typeof cleaningJobs_devResetJobs;
   "cleaningJobs/mutations": typeof cleaningJobs_mutations;
   "cleaningJobs/queries": typeof cleaningJobs_queries;
