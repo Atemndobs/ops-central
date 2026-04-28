@@ -106,15 +106,26 @@ This avoids split-brain memory: all work happens on whimsical, then ships home a
 
 **Problem:** Every `jobSubmissions` doc carries 4 heavy snapshot fields (photoSnapshot, checklistSnapshot, incidentSnapshot, roomReviewSnapshot). Convex has no field-level projection — any read pulls the full doc. With 10 submissions per job × 20 KB each, a single `getJobDetail` reads 200 KB just for submission history that the UI renders as counts.
 
-**Fix:**
-- New table `jobSubmissionMeta`: `_id, submissionId, jobId, revision, status, photoCount, beforeCount, afterCount, incidentCount, submittedAtServer, submittedAtDevice, submittedBy, supersededAt`
-- Existing `jobSubmissions` retains snapshots only
-- Mutation that creates a submission writes to BOTH (transactional within Convex mutation)
-- `getJobDetailInternal`:
-  - History list: read `jobSubmissionMeta` (thin)
-  - Current submission: read one `jobSubmissions` doc by ID (heavy, but only one)
-- New separate query `submissionDetail(submissionId)` for "view full evidence" UI
-- Migration: backfill `jobSubmissionMeta` from existing `jobSubmissions` rows
+**Approach:** ship in two waves (2.a additive writes, 2.b switch reads) so production stays correct between deploys.
+
+#### Wave 2.a — Additive: schema + writes + backfill mutation (✅ shipped 2026-04-28)
+
+- New table `jobSubmissionsMeta`: `submissionId, jobId, revision, status, submittedBy, submittedAtServer, submittedAtDevice, supersededAt, photoCount, beforeCount, afterCount, incidentCount, createdAt`
+- Existing `jobSubmissions` schema unchanged
+- `sealSubmission` (mutation creating new submissions) now inserts into BOTH tables transactionally
+- Supersede patches now patch BOTH tables (jobSubmissions + matching meta row)
+- `submitForApproval`'s prior-submission filter switched from heavy `.collect()` on jobSubmissions to thin `.collect()` on jobSubmissionsMeta — bonus bandwidth saving on the supersede path
+- One-shot backfill mutation `convex/cleaningJobs/backfillMeta.ts:run` — paginated, idempotent (skips submissions that already have meta)
+- **Reads in `getJobDetailInternal` still use the old jobSubmissions path** until backfill runs on the target deployment. This keeps production correct for existing data.
+
+#### Wave 2.b — Switch reads in `getJobDetailInternal` (next)
+
+- Use `cleaningJobs.latestSubmissionId` to fetch ONE heavy `jobSubmissions` doc for current-submission rendering
+- Read `jobSubmissionsMeta` (cheap) for the history list
+- Drop the `.take(10)` `jobSubmissions` read entirely
+- New separate query `getSubmissionEvidence({ submissionId })` for any "view full evidence on a historical submission" UI flow (none today, but cheap to add)
+
+**Pre-requisite for 2.b:** backfill must have run on the target deployment so existing submissions have meta rows. On `whimsical-narwhal-849` the backfill is a no-op (no historical submissions imported). On `usable-anaconda-394` the backfill runs at consolidation time when the deployment is unpaused.
 
 **Expected saving:** ~70% on `getJobDetailInternal` (31 KB → ~10 KB per call) — saves ~70 MB/day on whimsical at current load.
 
@@ -161,8 +172,9 @@ Each wave that lands in production gets logged in [project_temp_convex_db_rollba
 |---|---|---|---|
 | 0 — `.take(10)` on jobSubmissions | ✅ Shipped | 2026-04-27 | Modest impact |
 | 1.1 — pingActiveSession prefix-index lookup | ✅ Shipped | 2026-04-28 | PR #27 (~95% saving on heartbeat) |
-| 1.2 — photos `.take(200)` defensive cap | ✅ Shipped | 2026-04-28 | This branch (defensive only — schema lacks revision field, real fix in Wave 2) |
-| 2 — jobSubmissions schema split | 📋 Planned | TBD | Requires migration |
+| 1.2 — photos `.take(200)` defensive cap | ✅ Shipped | 2026-04-28 | PR #28 (defensive only) |
+| 2.a — jobSubmissionsMeta schema + writes + backfill mutation | ✅ Shipped | 2026-04-28 | This branch — additive only, reads still use old path |
+| 2.b — Switch reads in getJobDetailInternal to use jobSubmissionsMeta | 🔜 Next | TBD | After backfill runs on old DB at consolidation |
 | 3 — Subscription audit | 📋 Planned | TBD | |
 | 4 — start mutation audit | 📋 Planned | TBD | |
 

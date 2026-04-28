@@ -466,6 +466,38 @@ const jobSubmissions = defineTable({
   .index("by_job_and_revision", ["jobId", "revision"])
   .index("by_job_and_created", ["jobId", "createdAt"]);
 
+// Thin parallel index for jobSubmissions. Populated alongside every
+// jobSubmissions insert/patch. Carries metadata + denormalized counts only —
+// no heavy snapshots. `getJobDetailInternal` reads from here for the history
+// list (cheap), and uses `cleaningJobs.latestSubmissionId` to fetch the one
+// full `jobSubmissions` doc actually needed for current-submission rendering.
+//
+// Bandwidth motivation: a single heavy `jobSubmissions` doc carries
+// photoSnapshot + checklistSnapshot + incidentSnapshot + roomReviewSnapshot,
+// often 50 KB+ each. Reading 5 submissions per job = 250 KB. Reading 5 rows
+// from this thin table = ~1 KB. See
+// Docs/2026-04-28-convex-bandwidth-optimization-plan.md (Wave 2).
+const jobSubmissionsMeta = defineTable({
+  submissionId: v.id("jobSubmissions"),
+  jobId: v.id("cleaningJobs"),
+  revision: v.number(),
+  status: v.union(v.literal("sealed"), v.literal("superseded")),
+  submittedBy: v.optional(v.id("users")),
+  submittedAtServer: v.number(),
+  submittedAtDevice: v.optional(v.number()),
+  supersededAt: v.optional(v.number()),
+  // Denormalized counts derived from the corresponding heavy snapshots.
+  photoCount: v.number(),
+  beforeCount: v.number(),
+  afterCount: v.number(),
+  incidentCount: v.number(),
+  createdAt: v.number(),
+})
+  .index("by_submission", ["submissionId"])
+  .index("by_job", ["jobId"])
+  .index("by_job_and_revision", ["jobId", "revision"])
+  .index("by_job_and_created", ["jobId", "createdAt"]);
+
 const jobAssignmentAuditEvents = defineTable({
   jobId: v.id("cleaningJobs"),
   propertyId: v.id("properties"),
@@ -1401,6 +1433,7 @@ export default defineSchema({
   jobTemplates,
   jobExecutionSessions,
   jobSubmissions,
+  jobSubmissionsMeta,
   jobAssignmentAuditEvents,
   conversations,
   conversationParticipants,
