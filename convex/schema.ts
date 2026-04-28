@@ -819,6 +819,43 @@ const photoStorageAggregate = defineTable({
   updatedAt: v.number(),
 });
 
+// Tracks every external upload ticket we hand out so the orphan-cleanup cron
+// can sweep bucket objects whose upload completed at the storage layer but
+// whose `completeExternalUpload` callback never landed (network drop, app
+// crash mid-upload, tab close). Rows are inserted by `getExternalUploadUrl`
+// and marked "completed" by `completeExternalUpload`. The cron runs daily,
+// finds rows still "pending" past `expiresAt + grace`, and deletes the
+// bucket objects (best-effort). See Phase 1 of Docs/video-support/.
+const pendingMediaUploads = defineTable({
+  /** Job the upload is for (matches the photo row that would be inserted). */
+  cleaningJobId: v.id("cleaningJobs"),
+  /** Discriminator. Posters are tracked alongside their parent video row, so
+   *  this is the *primary* media kind. */
+  mediaKind: v.union(v.literal("image"), v.literal("video")),
+  provider: v.string(),
+  bucket: v.string(),
+  /** Primary object key (the image or the video). */
+  objectKey: v.string(),
+  /** Poster object key when `mediaKind === "video"`. */
+  posterObjectKey: v.optional(v.string()),
+  /** Wall-clock when the upload ticket expires; orphan sweep waits an
+   *  additional grace period beyond this before deleting. */
+  expiresAt: v.number(),
+  /** Lifecycle of the ticket. */
+  status: v.union(
+    v.literal("pending"),
+    v.literal("completed"),
+    v.literal("abandoned"),
+  ),
+  /** Set when the cleanup cron decides this ticket is orphaned. */
+  abandonedAt: v.optional(v.number()),
+  /** Last error from the cleanup attempt, for debugging. */
+  lastCleanupError: v.optional(v.string()),
+  createdAt: v.number(),
+})
+  .index("by_status_and_expiry", ["status", "expiresAt"])
+  .index("by_object_key", ["objectKey"]);
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // INCIDENTS
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1377,6 +1414,7 @@ export default defineSchema({
   photos,
   photoArchives,
   photoStorageAggregate,
+  pendingMediaUploads,
 
   // Incidents
   incidents,
