@@ -114,6 +114,54 @@ export const getIncidentsForJob = query({
   },
 });
 
+export const getOpenIncidentCounts = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireRole(ctx, ["admin", "property_ops", "manager"]);
+
+    const [openIncidents, inProgressIncidents, resolvedIncidents, wontFixIncidents] =
+      await Promise.all([
+        ctx.db
+          .query("incidents")
+          .withIndex("by_status", (q) => q.eq("status", "open"))
+          .take(500),
+        ctx.db
+          .query("incidents")
+          .withIndex("by_status", (q) => q.eq("status", "in_progress"))
+          .take(500),
+        ctx.db
+          .query("incidents")
+          .withIndex("by_status", (q) => q.eq("status", "resolved"))
+          .take(500),
+        ctx.db
+          .query("incidents")
+          .withIndex("by_status", (q) => q.eq("status", "wont_fix"))
+          .take(500),
+      ]);
+
+    let critical = 0;
+    let high = 0;
+    for (const incident of openIncidents) {
+      if (incident.severity === "critical") critical += 1;
+      else if (incident.severity === "high") high += 1;
+    }
+
+    return {
+      total:
+        openIncidents.length +
+        inProgressIncidents.length +
+        resolvedIncidents.length +
+        wontFixIncidents.length,
+      open: openIncidents.length,
+      inProgress: inProgressIncidents.length,
+      resolved: resolvedIncidents.length,
+      wontFix: wontFixIncidents.length,
+      critical,
+      high,
+    };
+  },
+});
+
 export const listIncidents = query({
   args: {
     status: v.optional(incidentStatusValidator),
