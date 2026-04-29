@@ -108,24 +108,58 @@ export function CleanerIncidentDetailClient({ incidentId }: Props) {
         <div className="grid grid-cols-3 gap-1.5">
           {incident.photos
             .filter((p) => p.url)
-            .map((p) =>
-              p.url ? (
+            .map((p) => {
+              if (!p.url) return null;
+              const isVideo =
+                (p as { mediaKind?: "image" | "video" }).mediaKind === "video";
+              const posterUrl =
+                (p as { posterUrl?: string | null }).posterUrl ?? null;
+              const durationMs = (p as { durationMs?: number }).durationMs;
+              return (
                 // eslint-disable-next-line @next/next/no-img-element
                 <a
                   key={p.id}
                   href={p.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="aspect-square overflow-hidden rounded border border-[var(--border)]"
+                  className="relative aspect-square overflow-hidden rounded border border-[var(--border)]"
                 >
-                  <img
-                    src={p.url}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
+                  {isVideo ? (
+                    <>
+                      {posterUrl ? (
+                        <img
+                          src={posterUrl}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-black/5 text-2xl">
+                          🎬
+                        </div>
+                      )}
+                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                        <span className="rounded-full bg-black/55 px-1.5 py-0.5 text-xs text-white">
+                          ▶
+                        </span>
+                      </div>
+                      {durationMs && durationMs > 0 ? (
+                        <span className="pointer-events-none absolute bottom-0.5 right-0.5 rounded bg-black/70 px-1 text-[9px] font-medium text-white tabular-nums">
+                          {`${Math.floor(durationMs / 60000)}:${String(
+                            Math.floor((durationMs % 60000) / 1000),
+                          ).padStart(2, "0")}`}
+                        </span>
+                      ) : null}
+                    </>
+                  ) : (
+                    <img
+                      src={p.url}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  )}
                 </a>
-              ) : null,
-            )}
+              );
+            })}
         </div>
       ) : null}
 
