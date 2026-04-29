@@ -37,9 +37,19 @@ export async function dismissNotificationsForJob(ctx: MutationCtx, args: {
     return { count: 0, notificationIds: [] as Id<"notifications">[] };
   }
 
+  // Bandwidth: scope to undismissed only via `by_user_and_dismissed`. A
+  // cleaner with months of history can have hundreds of dismissed
+  // notifications; without this scoping, every job-status change reads them
+  // all just to find the few still-active ones to dismiss. Wave 4 — see
+  // Docs/2026-04-28-convex-bandwidth-optimization-plan.md.
   const notificationsByUser = await Promise.all(
     targetUserIds.map((userId) =>
-      ctx.db.query("notifications").withIndex("by_user", (q) => q.eq("userId", userId)).collect(),
+      ctx.db
+        .query("notifications")
+        .withIndex("by_user_and_dismissed", (q) =>
+          q.eq("userId", userId).eq("dismissedAt", undefined),
+        )
+        .collect(),
     ),
   );
 
@@ -47,7 +57,6 @@ export async function dismissNotificationsForJob(ctx: MutationCtx, args: {
     .flat()
     .filter(
       (notification) =>
-        notification.dismissedAt === undefined &&
         targetTypes.has(notification.type) &&
         getNotificationJobId(notification) === args.jobId,
     );
