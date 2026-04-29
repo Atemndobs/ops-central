@@ -27,6 +27,7 @@ import {
 import type { DraftIncident, DraftProgress, PendingUpload } from "@/features/cleaner/offline/types";
 import { JobConversationPanel } from "@/components/conversations/job-conversation-panel";
 import { getErrorMessage } from "@/lib/errors";
+import { useIsVideoEnabled } from "@/hooks/use-is-video-enabled";
 
 // Steps: cleaning step removed — skip is merged into before_photos
 type ActivePhase = "before_photos" | "after_photos" | "incidents" | "review";
@@ -86,6 +87,13 @@ function buildRoomList(detail: JobDetailLike | null | undefined, fallbackRooms: 
   return [...set];
 }
 
+// Phase 4a: photo helpers now exclude video rows so the photo count
+// stays photo-only (video has its own per-room count + thumbnail strip).
+// `mediaKind === undefined` is treated as image for legacy rows.
+function isImageRow(p: unknown): boolean {
+  return (p as { mediaKind?: "image" | "video" }).mediaKind !== "video";
+}
+
 function getCountByRoom(args: {
   roomName: string;
   type: "before" | "after" | "incident";
@@ -93,7 +101,9 @@ function getCountByRoom(args: {
   pendingUploads: PendingUpload[];
 }) {
   const serverCount = (args.detail?.evidence?.current?.byType?.[args.type] ?? []).filter(
-    (p) => readRoomName((p as { roomName?: unknown }).roomName) === args.roomName,
+    (p) =>
+      readRoomName((p as { roomName?: unknown }).roomName) === args.roomName &&
+      isImageRow(p),
   ).length;
   const localCount = args.pendingUploads.filter(
     (u) => u.roomName === args.roomName && u.photoType === args.type,
@@ -108,7 +118,11 @@ function getPhotoUrlsByRoom(args: {
   pendingUploads: PendingUpload[];
 }): string[] {
   const serverUrls = (args.detail?.evidence?.current?.byType?.[args.type] ?? [])
-    .filter((p) => readRoomName((p as { roomName?: unknown }).roomName) === args.roomName)
+    .filter(
+      (p) =>
+        readRoomName((p as { roomName?: unknown }).roomName) === args.roomName &&
+        isImageRow(p),
+    )
     .map((p) => (p as { url?: string | null }).url)
     .filter((u): u is string => typeof u === "string" && u.length > 0);
   const localUrls = args.pendingUploads
@@ -116,6 +130,38 @@ function getPhotoUrlsByRoom(args: {
     .map((u) => u.fileDataUrl)
     .filter((u) => u.length > 0);
   return [...serverUrls, ...localUrls];
+}
+
+// Phase 4a: video-only helpers. Returns server-side rows where
+// `mediaKind === "video"` for the given (room, type).
+function getVideoCountByRoom(args: {
+  roomName: string;
+  type: "before" | "after" | "incident";
+  detail: JobDetailLike | null | undefined;
+}): number {
+  return (args.detail?.evidence?.current?.byType?.[args.type] ?? []).filter(
+    (p) =>
+      readRoomName((p as { roomName?: unknown }).roomName) === args.roomName &&
+      (p as { mediaKind?: "image" | "video" }).mediaKind === "video",
+  ).length;
+}
+
+function getVideoPostersByRoom(args: {
+  roomName: string;
+  type: "before" | "after";
+  detail: JobDetailLike | null | undefined;
+}): Array<{ posterUrl: string | null; url: string | null; durationMs?: number }> {
+  return (args.detail?.evidence?.current?.byType?.[args.type] ?? [])
+    .filter(
+      (p) =>
+        readRoomName((p as { roomName?: unknown }).roomName) === args.roomName &&
+        (p as { mediaKind?: "image" | "video" }).mediaKind === "video",
+    )
+    .map((p) => ({
+      posterUrl: (p as { posterUrl?: string | null }).posterUrl ?? null,
+      url: (p as { url?: string | null }).url ?? null,
+      durationMs: (p as { durationMs?: number }).durationMs,
+    }));
 }
 
 function getPendingUploadPreviews(
@@ -239,6 +285,12 @@ function RoomPhotoCard({
   onSkip,
   onUnskip,
   onPreview,
+  // Phase 4a video-support — optional video affordance.
+  videoEnabled,
+  videoCount,
+  videoPosters,
+  videoUploading,
+  onAddVideoFile,
 }: {
   t: ReturnType<typeof useTranslations>;
   roomName: string;
@@ -249,6 +301,11 @@ function RoomPhotoCard({
   onSkip: (reason: string) => void;
   onUnskip: () => void;
   onPreview: (url: string) => void;
+  videoEnabled?: boolean;
+  videoCount?: number;
+  videoPosters?: Array<{ posterUrl: string | null; url: string | null; durationMs?: number }>;
+  videoUploading?: boolean;
+  onAddVideoFile?: (file: File) => Promise<void>;
 }) {
   const [showSkipInput, setShowSkipInput] = useState(false);
   const [skipReason, setSkipReason] = useState("");
@@ -331,6 +388,81 @@ function RoomPhotoCard({
           }}
         />
       </label>
+
+      {/* Phase 4a video-support — optional video affordance. Sits below
+          the photo input; gated by `videoEnabled` (env + admin runtime
+          flag). Strict-add: photo count above stays photo-only. */}
+      {videoEnabled && onAddVideoFile ? (
+        <>
+          {/* Video poster strip — server-side rendered when uploads land. */}
+          {videoPosters && videoPosters.length > 0 ? (
+            <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+              {videoPosters.map((video, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => video.url && onPreview(video.url)}
+                  className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-[var(--border)] active:opacity-70"
+                  aria-label="Preview video"
+                >
+                  {video.posterUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={video.posterUrl}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-black/20">
+                      <span className="text-lg">🎬</span>
+                    </div>
+                  )}
+                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                    <span className="rounded-full bg-black/55 px-1.5 py-0.5 text-[10px] text-white">
+                      ▶
+                    </span>
+                  </div>
+                  {video.durationMs && video.durationMs > 0 ? (
+                    <span className="pointer-events-none absolute bottom-0.5 right-0.5 rounded bg-black/70 px-1 text-[9px] font-medium text-white tabular-nums">
+                      {`${Math.floor(video.durationMs / 60000)}:${String(
+                        Math.floor((video.durationMs % 60000) / 1000),
+                      ).padStart(2, "0")}`}
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          <label
+            className={`mt-2 flex cursor-pointer items-center justify-center gap-2 rounded-[12px] border border-dashed border-[var(--border)] py-2.5 text-xs text-[var(--muted-foreground)] transition-colors hover:border-[var(--primary)] hover:text-[var(--primary)] active:opacity-70 ${
+              videoUploading ? "pointer-events-none opacity-50" : ""
+            }`}
+          >
+            <span>
+              {videoUploading
+                ? "Uploading video…"
+                : (videoCount ?? 0) > 0
+                  ? `+ Record video (${videoCount})`
+                  : "+ Record video"}
+            </span>
+            <input
+              type="file"
+              accept="video/mp4,video/webm,video/quicktime"
+              capture="environment"
+              className="sr-only"
+              disabled={videoUploading}
+              onChange={async (event) => {
+                const file = event.target.files?.[0];
+                event.currentTarget.value = "";
+                if (file) {
+                  await onAddVideoFile(file);
+                }
+              }}
+            />
+          </label>
+        </>
+      ) : null}
 
       {/* Skip toggle */}
       {!showSkipInput && (
@@ -415,6 +547,10 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
   completeExternalUploadRef.current = completeExternalUpload;
   const deleteJobPhoto             = useMutation(api.files.mutations.deleteJobPhoto);
   const deleteJobPhotoRef          = useRef(deleteJobPhoto);
+  // Phase 4a — video-support flag (env + admin runtime). Drives the
+  // per-room "Record video" affordance below the photo input.
+  const videoEnabled               = useIsVideoEnabled();
+  const [videoUploadingRoom, setVideoUploadingRoom] = useState<string | null>(null);
   deleteJobPhotoRef.current        = deleteJobPhoto;
 
   // Stepper
@@ -980,7 +1116,164 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
               const photoType = phase === "before_photos" ? "before" : "after";
               const count = getCountByRoom({ roomName, type: photoType, detail, pendingUploads });
               const urls = getPhotoUrlsByRoom({ roomName, type: photoType, detail, pendingUploads });
+              // Phase 4a — per-room video data + upload handler.
+              const videoCount = getVideoCountByRoom({ roomName, type: photoType, detail });
+              const videoPosters = getVideoPostersByRoom({ roomName, type: photoType, detail });
+              const videoUploading = videoUploadingRoom === `${photoType}:${roomName}`;
               const skippedEntry = skippedRooms.find((r) => r.roomName === roomName);
+
+              const handleAddVideoFile = async (file: File) => {
+                if (videoUploadingRoom) return;
+                if (file.size > 25 * 1024 * 1024) {
+                  window.alert("Video too large. Max 25 MB.");
+                  return;
+                }
+                setVideoUploadingRoom(`${photoType}:${roomName}`);
+                try {
+                  // Probe duration via a hidden <video> element so we can
+                  // reject overlong clips before burning bandwidth.
+                  const probedDurationMs = await new Promise<number | null>(
+                    (resolve) => {
+                      const url = URL.createObjectURL(file);
+                      const v = document.createElement("video");
+                      v.preload = "metadata";
+                      const cleanup = () => {
+                        URL.revokeObjectURL(url);
+                        v.src = "";
+                      };
+                      v.onloadedmetadata = () => {
+                        const ms = Number.isFinite(v.duration)
+                          ? Math.round(v.duration * 1000)
+                          : null;
+                        cleanup();
+                        resolve(ms);
+                      };
+                      v.onerror = () => {
+                        cleanup();
+                        resolve(null);
+                      };
+                      v.src = url;
+                    },
+                  );
+                  if (probedDurationMs != null && probedDurationMs > 60_000) {
+                    window.alert("Video too long. Max 60s.");
+                    return;
+                  }
+
+                  // Extract a poster as a JPEG blob via canvas.
+                  const posterBlob = await new Promise<Blob | null>(
+                    (resolve) => {
+                      const url = URL.createObjectURL(file);
+                      const v = document.createElement("video");
+                      v.preload = "metadata";
+                      v.muted = true;
+                      const cleanup = () => {
+                        URL.revokeObjectURL(url);
+                        v.src = "";
+                      };
+                      v.onloadedmetadata = () => {
+                        v.currentTime = 0.1;
+                      };
+                      v.onseeked = () => {
+                        const canvas = document.createElement("canvas");
+                        canvas.width = v.videoWidth || 320;
+                        canvas.height = v.videoHeight || 180;
+                        const ctx = canvas.getContext("2d");
+                        if (!ctx) {
+                          cleanup();
+                          resolve(null);
+                          return;
+                        }
+                        ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+                        canvas.toBlob(
+                          (blob) => {
+                            cleanup();
+                            resolve(blob);
+                          },
+                          "image/jpeg",
+                          0.8,
+                        );
+                      };
+                      v.onerror = () => {
+                        cleanup();
+                        resolve(null);
+                      };
+                      v.src = url;
+                    },
+                  );
+
+                  // Dual-ticket upload (B2 / external). Server validates
+                  // and writes a `photos` row with mediaKind: "video".
+                  const ticket = (await getExternalUploadUrlRef.current({
+                    jobId: detail.job._id,
+                    roomName,
+                    photoType,
+                    source: "app",
+                    contentType: file.type || "video/mp4",
+                    fileName: file.name || `video-${Date.now()}.mp4`,
+                    byteSize: file.size,
+                    mediaKind: "video",
+                    posterContentType: "image/jpeg",
+                  })) as {
+                    mediaKind: "video";
+                    videoUploadUrl: string;
+                    videoObjectKey: string;
+                    posterUploadUrl: string;
+                    posterObjectKey: string;
+                    bucket: string;
+                    provider: string;
+                  };
+                  if (ticket.mediaKind !== "video") {
+                    throw new Error("Expected video upload ticket");
+                  }
+
+                  const [videoRes, posterRes] = await Promise.all([
+                    fetch(ticket.videoUploadUrl, {
+                      method: "PUT",
+                      headers: { "Content-Type": file.type || "video/mp4" },
+                      body: file,
+                    }),
+                    posterBlob
+                      ? fetch(ticket.posterUploadUrl, {
+                          method: "PUT",
+                          headers: { "Content-Type": "image/jpeg" },
+                          body: posterBlob,
+                        })
+                      : Promise.resolve(new Response(null, { status: 200 })),
+                  ]);
+                  if (!videoRes.ok || !posterRes.ok) {
+                    throw new Error(
+                      `Upload failed (video=${videoRes.status} poster=${posterRes.status}).`,
+                    );
+                  }
+
+                  await completeExternalUploadRef.current({
+                    jobId: detail.job._id,
+                    roomName,
+                    photoType,
+                    source: "app",
+                    provider: ticket.provider,
+                    bucket: ticket.bucket,
+                    objectKey: ticket.videoObjectKey,
+                    contentType: file.type || "video/mp4",
+                    byteSize: file.size,
+                    mediaKind: "video",
+                    durationMs: probedDurationMs ?? undefined,
+                    posterObjectKey: ticket.posterObjectKey,
+                    posterBucket: ticket.bucket,
+                    posterProvider: ticket.provider,
+                    posterByteSize: posterBlob?.size,
+                    posterContentType: "image/jpeg",
+                  });
+                  // Convex reactive query will surface the new row in
+                  // detail.evidence.current.byType.[type] on next tick.
+                } catch (error) {
+                  console.warn("[active] video upload failed", error);
+                  window.alert(getErrorMessage(error, "Video upload failed."));
+                } finally {
+                  setVideoUploadingRoom(null);
+                }
+              };
 
               return (
                 <RoomPhotoCard
@@ -1003,6 +1296,11 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                     setSkippedRooms((current) => current.filter((r) => r.roomName !== roomName));
                   }}
                   onPreview={setLightboxUrl}
+                  videoEnabled={videoEnabled}
+                  videoCount={videoCount}
+                  videoPosters={videoPosters}
+                  videoUploading={videoUploading}
+                  onAddVideoFile={handleAddVideoFile}
                 />
               );
             })}
