@@ -528,7 +528,7 @@ async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
     : null;
 
   const revision = getCurrentRevision(job);
-  const [sessions, photos, submissions] = await Promise.all([
+  const [sessions, photos, submissionHistoryMeta] = await Promise.all([
     ctx.db
       .query("jobExecutionSessions")
       .withIndex("by_job_and_revision", (q) =>
@@ -538,28 +538,44 @@ async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
     // Bandwidth: photos for a job have no `revision` field, so we can't
     // narrow the read to just the current revision without a schema change.
     // As a defensive cap, take the 200 most-recent rows by creation time.
-    // Real-world jobs have well under that; this only protects against a
-    // pathological job (incident-heavy, many revisions) from running
-    // unbounded reads on every getJobDetail subscription tick. Proper
-    // revision-scoping is tracked as a follow-up in
-    // Docs/2026-04-28-convex-bandwidth-optimization-plan.md (Wave 2).
+    // See Docs/2026-04-28-convex-bandwidth-optimization-plan.md (Wave 1.2).
     ctx.db
       .query("photos")
       .withIndex("by_job", (q) => q.eq("cleaningJobId", jobId))
       .order("desc")
       .take(200),
-    // Bandwidth: jobSubmissions docs carry heavy snapshots (photoSnapshot,
-    // checklistSnapshot, incidentSnapshot, roomReviewSnapshot). Reading every
-    // submission for a job has been the #1 bandwidth source. Cap at the 10
-    // most-recent revisions — UI only renders thin metadata for history and
-    // the latest sealed submission is always within the recent window in
-    // practice.
+    // Bandwidth: read submission history from the thin `jobSubmissionsMeta`
+    // table (counts only) instead of the heavy `jobSubmissions` table
+    // (which carries 50 KB+ of snapshot data per row). The full latest
+    // submission is fetched separately below via cleaningJob.latestSubmissionId.
+    // Wave 2.b — see Docs/2026-04-28-convex-bandwidth-optimization-plan.md.
     ctx.db
-      .query("jobSubmissions")
+      .query("jobSubmissionsMeta")
       .withIndex("by_job_and_revision", (q) => q.eq("jobId", jobId))
       .order("desc")
-      .take(10),
+      .take(20),
   ]);
+
+  // Fetch the one heavy submission doc that the UI actually renders in full
+  // (latestSubmission card with photoSnapshot, checklistSnapshot, etc.).
+  // Strategy:
+  //   - Prefer the submission referenced by job.latestSubmissionId — denormalized
+  //     pointer maintained by sealSubmission / supersede paths.
+  //   - Fall back to scanning meta for the most recent sealed submission, then
+  //     loading just that one doc. Covers edge cases where latestSubmissionId
+  //     was cleared (e.g., reopenForRework) but a sealed snapshot still exists.
+  let latestSubmission: Doc<"jobSubmissions"> | null = null;
+  if (job.latestSubmissionId) {
+    latestSubmission = await ctx.db.get(job.latestSubmissionId);
+  } else {
+    const latestSealedMeta =
+      submissionHistoryMeta.find((meta) => meta.status === "sealed") ??
+      submissionHistoryMeta[0] ??
+      null;
+    if (latestSealedMeta) {
+      latestSubmission = await ctx.db.get(latestSealedMeta.submissionId);
+    }
+  }
 
   const cleanerIdsInSessions = [...new Set(sessions.map((session) => session.cleanerId))];
   const cleanerDocs = await Promise.all(
@@ -629,12 +645,6 @@ async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
     if (photo.type === "incident") current.incident += 1;
     currentByRoomMap.set(roomName, current);
   });
-
-  const sortedSubmissions = submissions.sort((a, b) => b.revision - a.revision);
-  const latestSubmission =
-    sortedSubmissions.find((submission) => submission.status === "sealed") ??
-    sortedSubmissions[0] ??
-    null;
 
   let latestSubmissionEvidence: Array<{
     photoId: Id<"photos">;
@@ -775,21 +785,21 @@ async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
             incidentSnapshot: latestSubmission.incidentSnapshot,
           }
         : null,
-      submissionHistory: sortedSubmissions.map((submission) => ({
-        _id: submission._id,
-        revision: submission.revision,
-        status: submission.status,
-        submittedBy: submission.submittedBy,
-        submittedAtServer: submission.submittedAtServer,
-        supersededAt: submission.supersededAt,
-        photoCount: submission.photoSnapshot.length,
-        beforeCount: submission.photoSnapshot.filter((photo) => photo.type === "before")
-          .length,
-        afterCount: submission.photoSnapshot.filter((photo) => photo.type === "after")
-          .length,
-        incidentCount: submission.photoSnapshot.filter(
-          (photo) => photo.type === "incident",
-        ).length,
+      // History reads counts directly from `jobSubmissionsMeta` — no heavy
+      // snapshot data is fetched. Wave 2.b. Note: `_id` here is the *submission*
+      // id (not the meta row id), so the UI key remains stable across the
+      // schema split.
+      submissionHistory: submissionHistoryMeta.map((meta) => ({
+        _id: meta.submissionId,
+        revision: meta.revision,
+        status: meta.status,
+        submittedBy: meta.submittedBy,
+        submittedAtServer: meta.submittedAtServer,
+        supersededAt: meta.supersededAt,
+        photoCount: meta.photoCount,
+        beforeCount: meta.beforeCount,
+        afterCount: meta.afterCount,
+        incidentCount: meta.incidentCount,
       })),
     },
   };
