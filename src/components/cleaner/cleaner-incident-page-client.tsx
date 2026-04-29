@@ -10,6 +10,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { formatLabel } from "@/lib/format";
 import { buildRoomOptions } from "@/lib/rooms";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { useIsVideoEnabled } from "@/hooks/use-is-video-enabled";
 
 const INCIDENT_TYPES = [
   "missing_item",
@@ -95,6 +96,8 @@ export function CleanerIncidentPageClient() {
   const uploadJobPhoto = useMutation(api.files.mutations.uploadJobPhoto);
   const getExternalUploadUrl = useMutation(api.files.mutations.getExternalUploadUrl);
   const completeExternalUpload = useMutation(api.files.mutations.completeExternalUpload);
+  // Phase 4a — video-support master gate (env + admin runtime flag).
+  const videoEnabled = useIsVideoEnabled();
 
   // --- shared form state ---
   const [incidentType, setIncidentType] = useState<(typeof INCIDENT_TYPES)[number]>("missing_item");
@@ -108,6 +111,10 @@ export function CleanerIncidentPageClient() {
   const [customItemDescription, setCustomItemDescription] = useState("");
   const [quantityMissing, setQuantityMissing] = useState("1");
   const [files, setFiles] = useState<File[]>([]);
+  // Phase 4a — separate video file array. Photos and videos take different
+  // upload paths (single-ticket vs dual-ticket), so we track them
+  // separately rather than co-mingling in `files`.
+  const [videoFiles, setVideoFiles] = useState<File[]>([]);
   const [activeStep, setActiveStep] = useState(0);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -116,12 +123,22 @@ export function CleanerIncidentPageClient() {
     () => files.map((file) => URL.createObjectURL(file)),
     [files],
   );
+  const videoPreviewUrls = useMemo(
+    () => videoFiles.map((file) => URL.createObjectURL(file)),
+    [videoFiles],
+  );
 
   useEffect(() => {
     return () => {
       photoPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
     };
   }, [photoPreviewUrls]);
+
+  useEffect(() => {
+    return () => {
+      videoPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [videoPreviewUrls]);
 
   // --- derived values ---
   const selectedJob = useMemo(
@@ -189,8 +206,164 @@ export function CleanerIncidentPageClient() {
     setTitle("");
     setDescription("");
     setFiles([]);
+    setVideoFiles([]);
     resetFormFields();
     setActiveStep(0);
+  }
+
+  /**
+   * Phase 4a — upload pending video files for an incident attached to a
+   * cleaning job. Mirrors `uploadIncidentPhotos` but uses the dual-ticket
+   * mediaKind:"video" path; client-side probes duration + extracts a
+   * poster JPEG so admin renders the tile correctly. Returns the
+   * resulting `photoId`s in the same shape as photos so they merge into
+   * `incident.photoIds`.
+   */
+  async function uploadIncidentVideos(
+    jobId: Id<"cleaningJobs">,
+  ): Promise<Id<"photos">[]> {
+    if (videoFiles.length === 0) return [];
+
+    const ids: Id<"photos">[] = [];
+    for (const file of videoFiles) {
+      // Pre-flight size check (matches ADR-0003 ceiling).
+      if (file.size > 25 * 1024 * 1024) {
+        throw new Error(`Video '${file.name}' is too large. Max 25 MB.`);
+      }
+
+      // Probe duration via a hidden <video> element.
+      const durationMs = await new Promise<number | null>((resolve) => {
+        const url = URL.createObjectURL(file);
+        const v = document.createElement("video");
+        v.preload = "metadata";
+        const cleanup = () => {
+          URL.revokeObjectURL(url);
+          v.src = "";
+        };
+        v.onloadedmetadata = () => {
+          const ms = Number.isFinite(v.duration)
+            ? Math.round(v.duration * 1000)
+            : null;
+          cleanup();
+          resolve(ms);
+        };
+        v.onerror = () => {
+          cleanup();
+          resolve(null);
+        };
+        v.src = url;
+      });
+      if (durationMs != null && durationMs > 60_000) {
+        throw new Error(`Video '${file.name}' is too long. Max 60s.`);
+      }
+
+      // Extract first-frame poster as JPEG.
+      const posterBlob = await new Promise<Blob | null>((resolve) => {
+        const url = URL.createObjectURL(file);
+        const v = document.createElement("video");
+        v.preload = "metadata";
+        v.muted = true;
+        const cleanup = () => {
+          URL.revokeObjectURL(url);
+          v.src = "";
+        };
+        v.onloadedmetadata = () => {
+          v.currentTime = 0.1;
+        };
+        v.onseeked = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = v.videoWidth || 320;
+          canvas.height = v.videoHeight || 180;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            cleanup();
+            resolve(null);
+            return;
+          }
+          ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob(
+            (blob) => {
+              cleanup();
+              resolve(blob);
+            },
+            "image/jpeg",
+            0.8,
+          );
+        };
+        v.onerror = () => {
+          cleanup();
+          resolve(null);
+        };
+        v.src = url;
+      });
+
+      const ticket = (await getExternalUploadUrl({
+        jobId,
+        roomName: roomName.trim() || "Incident",
+        photoType: "incident",
+        source: "app",
+        notes: title.trim() || description.trim() || undefined,
+        contentType: file.type || "video/mp4",
+        fileName: file.name || `incident-video-${Date.now()}.mp4`,
+        byteSize: file.size,
+        mediaKind: "video",
+        posterContentType: "image/jpeg",
+      })) as {
+        mediaKind: "video";
+        videoUploadUrl: string;
+        videoObjectKey: string;
+        posterUploadUrl: string;
+        posterObjectKey: string;
+        bucket: string;
+        provider: string;
+      };
+      if (ticket.mediaKind !== "video") {
+        throw new Error("Expected video upload ticket");
+      }
+
+      const [vRes, pRes] = await Promise.all([
+        fetch(ticket.videoUploadUrl, {
+          method: "PUT",
+          headers: { "Content-Type": file.type || "video/mp4" },
+          body: file,
+        }),
+        posterBlob
+          ? fetch(ticket.posterUploadUrl, {
+              method: "PUT",
+              headers: { "Content-Type": "image/jpeg" },
+              body: posterBlob,
+            })
+          : Promise.resolve(new Response(null, { status: 200 })),
+      ]);
+      if (!vRes.ok || !pRes.ok) {
+        throw new Error(
+          `Video upload failed (video=${vRes.status} poster=${pRes.status}).`,
+        );
+      }
+
+      const completion = await completeExternalUpload({
+        jobId,
+        roomName: roomName.trim() || "Incident",
+        photoType: "incident",
+        source: "app",
+        notes: title.trim() || description.trim() || undefined,
+        provider: ticket.provider,
+        bucket: ticket.bucket,
+        objectKey: ticket.videoObjectKey,
+        contentType: file.type || "video/mp4",
+        byteSize: file.size,
+        mediaKind: "video",
+        durationMs: durationMs ?? undefined,
+        posterObjectKey: ticket.posterObjectKey,
+        posterBucket: ticket.bucket,
+        posterProvider: ticket.provider,
+        posterByteSize: posterBlob?.size,
+        posterContentType: "image/jpeg",
+      });
+      ids.push(completion.photoId);
+    }
+
+    return ids;
   }
 
   async function uploadIncidentPhotos(jobId: Id<"cleaningJobs">): Promise<Id<"photos">[]> {
@@ -358,6 +531,14 @@ export function CleanerIncidentPageClient() {
 
       if (reportMode === "job" && selectedJob) {
         photoIds = await uploadIncidentPhotos(selectedJob._id as Id<"cleaningJobs">);
+        // Phase 4a — upload incident videos (job mode only; videos require
+        // a job context so the canonical `photos` row anchors correctly).
+        if (videoEnabled && videoFiles.length > 0) {
+          const videoIds = await uploadIncidentVideos(
+            selectedJob._id as Id<"cleaningJobs">,
+          );
+          photoIds = [...photoIds, ...videoIds];
+        }
       } else {
         photoStorageIds = await uploadStandalonePhotos();
       }
@@ -784,6 +965,60 @@ export function CleanerIncidentPageClient() {
                     </div>
                   ))}
                 </div>
+              </>
+            ) : null}
+
+            {/* Phase 4a — video attachments. Only available when reporting
+                against a specific job (videos require a job anchor for the
+                canonical `photos` row). Single 60s / 25 MiB clip per
+                attachment, dual-ticket B2 upload at submit time. */}
+            {videoEnabled && reportMode === "job" ? (
+              <>
+                <label className="mt-2 flex min-h-20 cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--muted-foreground)] transition hover:border-[var(--primary)] hover:text-[var(--primary)]">
+                  <span className="text-base font-medium">+ Add video</span>
+                  <span className="text-xs">≤ 60s, ≤ 25 MB</span>
+                  <input
+                    type="file"
+                    multiple
+                    accept="video/mp4,video/webm,video/quicktime"
+                    onChange={(event) => {
+                      const next = Array.from(event.target.files ?? []);
+                      if (next.length === 0) return;
+                      setVideoFiles((current) => [...current, ...next]);
+                      event.currentTarget.value = "";
+                    }}
+                    className="sr-only"
+                  />
+                </label>
+                {videoFiles.length > 0 ? (
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {videoFiles.map((file, index) => (
+                      <div
+                        key={`${file.name}-${index}`}
+                        className="relative flex h-20 w-20 shrink-0 flex-col items-center justify-center gap-1 rounded-md border border-[var(--border)] bg-black/5 text-xs"
+                      >
+                        <span className="text-lg">🎬</span>
+                        <span className="px-1 text-center text-[10px] leading-tight text-[var(--muted-foreground)] line-clamp-2">
+                          {file.name.length > 16
+                            ? `${file.name.slice(0, 13)}...`
+                            : file.name}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVideoFiles((current) =>
+                              current.filter((_, i) => i !== index),
+                            );
+                          }}
+                          className="absolute right-1 top-1 rounded bg-black/65 px-1 text-[10px] text-white"
+                          aria-label="Remove video"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </>
             ) : null}
           </div>

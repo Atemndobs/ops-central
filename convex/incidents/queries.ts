@@ -333,10 +333,29 @@ export const getIncidentById = query({
       incident.resolvedBy ? ctx.db.get(incident.resolvedBy) : null,
     ]);
 
-    const photoUrls: Array<{ id: string; url: string | null }> = [];
+    // Phase 4a — return rich media metadata so cleaner / admin detail
+    // pages can render `<img>` for images and `<video>`-style tiles for
+    // videos.
+    const photoUrls: Array<{
+      id: string;
+      url: string | null;
+      posterUrl: string | null;
+      mediaKind: "image" | "video";
+      durationMs?: number;
+      width?: number;
+      height?: number;
+    }> = [];
     for (const photoId of incident.photoIds) {
-      const url = await resolvePhotoIdToUrl(ctx, photoId);
-      photoUrls.push({ id: photoId, url });
+      const media = await resolvePhotoIdToMedia(ctx, photoId);
+      photoUrls.push({
+        id: photoId,
+        url: media.url,
+        posterUrl: media.posterUrl,
+        mediaKind: media.mediaKind,
+        durationMs: media.durationMs,
+        width: media.width,
+        height: media.height,
+      });
     }
 
     return {
