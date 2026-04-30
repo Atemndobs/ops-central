@@ -184,7 +184,8 @@ Each wave that lands in production gets logged in [project_temp_convex_db_rollba
 | 3.a — Hard cap on `cleaningJobs.queries.getAll` reads | ✅ Shipped | 2026-04-30 | This branch (stacked on Wave 4) — bounds unfiltered case to most-recent 500 via `by_scheduled.order("desc").take(500)`. 10+ subscription mount points were doing unbounded `.collect()` then memory-slicing. |
 | 3.b — Audit and narrow individual subscription mount points | 📋 Planned | TBD | Component-level work — replace many `getAll` subscriptions with narrower queries, or convert to one-shot fetches where reactive isn't needed. |
 | 5.a — `userJobAssignments` reverse-index: schema + writes + backfill | ✅ Shipped | 2026-04-30 | This branch — additive only. Reads still use old path. Backfill ran on whimsical (52 rows); will run on old DB at consolidation. |
-| 5.b — Switch `getMyAssigned` read to `userJobAssignments` | 📋 Planned | After backfill on target DB | Mobile-app subscription, currently the dominant cost on mobile bandwidth. |
+| 5.b — Switch `getMyAssigned` read to `userJobAssignments` | ✅ Shipped | 2026-04-30 | PR #43 — read uses index lookup + targeted `ctx.db.get`. Verified backfill on whimsical. |
+| 6 — `getMyAccessibleProperties` reuses `userJobAssignments` index | ✅ Shipped | 2026-04-30 | This branch — same fix as Wave 5.b but for the property picker on cleaner UI. Eliminates the second `cleaningJobs.collect()` on a hot path. |
 
 ---
 
