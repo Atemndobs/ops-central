@@ -264,13 +264,30 @@ export const getMyAssigned = query({
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
 
-    // Wave 5.a (this PR) only ships the schema + write hooks + backfill for
-    // `userJobAssignments`. The read here still scans cleaningJobs until the
-    // backfill has populated meta rows on this deployment. After backfill,
-    // Wave 5.b will switch this read to use `userJobAssignments` indexed by
-    // user. See Docs/2026-04-28-convex-bandwidth-optimization-plan.md.
-    const allJobs = await ctx.db.query("cleaningJobs").collect();
-    let jobs = allJobs.filter((job) => job.assignedCleanerIds.includes(user._id));
+    // Wave 5.b — read from the `userJobAssignments` reverse-index then fetch
+    // only the jobs we actually need. Previously did
+    // `ctx.db.query("cleaningJobs").collect()` and filtered in memory by
+    // `assignedCleanerIds.includes(user._id)`, which read the entire jobs
+    // table on every call. With the reverse-index in place (Wave 5.a, +
+    // backfill complete), we read only the assignment rows for this user
+    // (~10 rows × 200 B) and then `ctx.db.get(jobId)` for the few jobs.
+    //
+    // Pre-requisite: `cleaningJobs/backfillUserJobAssignments:run` must have
+    // populated assignment rows for all existing cleaningJobs on the target
+    // deployment. Verified on whimsical-narwhal-849 (52 rows). Pending on
+    // usable-anaconda-394 (paused; runs at consolidation time).
+    //
+    // See Docs/2026-04-28-convex-bandwidth-optimization-plan.md.
+    const assignments = await ctx.db
+      .query("userJobAssignments")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .collect();
+    const jobDocs = await Promise.all(
+      assignments.map((row) => ctx.db.get(row.jobId)),
+    );
+    let jobs: Doc<"cleaningJobs">[] = jobDocs.filter(
+      (job): job is Doc<"cleaningJobs"> => job !== null,
+    );
 
     if (args.status) {
       jobs = jobs.filter((job) => job.status === args.status);
