@@ -175,6 +175,21 @@ async function getLatestActiveCompanyMembership(
   return active ?? null;
 }
 
+// Hard cap on `getAll` reads. Subscribed reactively across 10+ mount points
+// in admin web (jobs page, dashboard, schedule, settings, team, properties,
+// inventory, companies, review-queue, etc.). Most callers pass `limit: 1000`,
+// but the prior implementation `.collect()`-ed without an index ordering and
+// then sliced in memory — so the read was always unbounded. We also pay for
+// `enrichJobs` which fetches full property docs (including the heavy
+// `instructions` array) for every job in the result set.
+//
+// 500 is a defensive ceiling, not a product-driven number. Real list pages
+// should not be subscribing to this many jobs reactively — that's a
+// follow-up component-level audit. This cap stops the worst case today.
+//
+// Wave 3 — see Docs/2026-04-28-convex-bandwidth-optimization-plan.md.
+const GET_ALL_HARD_CAP = 500;
+
 export const getAll = query({
   args: {
     status: v.optional(JOB_STATUS_FILTER),
@@ -182,6 +197,10 @@ export const getAll = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const requestedLimit = Math.min(
+      args.limit ?? GET_ALL_HARD_CAP,
+      GET_ALL_HARD_CAP,
+    );
     let jobs;
 
     if (args.status && args.propertyId) {
@@ -202,14 +221,17 @@ export const getAll = query({
         .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId!))
         .collect();
     } else {
+      // Unfiltered case: most-recent-N via index ordering. Avoids reading
+      // the entire jobs table just to slice in memory.
       jobs = await ctx.db
         .query("cleaningJobs")
         .withIndex("by_scheduled")
-        .collect();
+        .order("desc")
+        .take(requestedLimit);
     }
 
     const sorted = jobs.sort((a, b) => b.scheduledStartAt - a.scheduledStartAt);
-    const limited = args.limit != null ? sorted.slice(0, args.limit) : sorted;
+    const limited = sorted.slice(0, requestedLimit);
     return await enrichJobs(ctx, limited);
   },
 });
