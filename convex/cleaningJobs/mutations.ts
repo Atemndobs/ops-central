@@ -1,19 +1,16 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, type MutationCtx } from "../_generated/server";
+import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { getCurrentUser } from "../lib/auth";
 import {
   createNotificationsForUsers,
   createOpsNotifications,
 } from "../lib/opsNotifications";
-import {
-  dismissNotificationsForJob,
-  listOpsUserIds,
-} from "../lib/notificationLifecycle";
+import { listOpsUserIds } from "../lib/notificationLifecycle";
 import {
   getJobConversationByJobId,
   seedJobConversationParticipants,
-  syncConversationStatusForJob,
 } from "../conversations/lib";
 import {
   markAcknowledgementAccepted,
@@ -598,17 +595,16 @@ export const start = mutation({
           })
         : job.acknowledgements;
 
-    if (job.status !== "in_progress" || job.actualStartAt === undefined) {
+    const transitionedToInProgress =
+      job.status !== "in_progress" || job.actualStartAt === undefined;
+
+    if (transitionedToInProgress) {
       await ctx.db.patch(args.jobId, {
         status: "in_progress",
         actualStartAt: job.actualStartAt ?? now,
         currentRevision: revision,
         acknowledgements: nextAcks,
         updatedAt: now,
-      });
-      await syncConversationStatusForJob(ctx, {
-        jobId: args.jobId,
-        nextStatus: "in_progress",
       });
     } else if (nextAcks !== job.acknowledgements) {
       await ctx.db.patch(args.jobId, {
@@ -617,11 +613,25 @@ export const start = mutation({
       });
     }
 
-    await dismissNotificationsForJob(ctx, {
-      jobId: String(job._id),
-      userIds: [user._id],
-      types: ["job_assigned", "rework_required"],
-    });
+    // Wave 4: defer non-critical side effects (conversation-status sync +
+    // notification dismissal) to a scheduled internal mutation so they
+    // don't add latency or bandwidth to the synchronous start call.
+    // Runs in a separate transaction once this one commits; if this
+    // mutation rolls back, the side effects never fire.
+    await ctx.scheduler.runAfter(
+      0,
+      internal.cleaningJobs.sideEffects.applyTransitionSideEffects,
+      {
+        jobId: args.jobId,
+        syncToStatus: transitionedToInProgress ? "in_progress" : undefined,
+        dismissals: [
+          {
+            userIds: [user._id],
+            types: ["job_assigned", "rework_required"],
+          },
+        ],
+      },
+    );
 
     return {
       jobId: args.jobId,
@@ -887,16 +897,23 @@ async function submitForApprovalInternal(
       completedRefillCount: coverage.completedRefillCount,
     },
   });
-  await syncConversationStatusForJob(ctx, {
-    jobId: args.jobId,
-    nextStatus: "awaiting_approval",
-  });
-
-  await dismissNotificationsForJob(ctx, {
-    jobId: String(job._id),
-    userIds: job.assignedCleanerIds,
-    types: ["job_assigned", "rework_required"],
-  });
+  // Wave 4: defer convo sync + cleaner-side dismissal. The
+  // createOpsNotifications below stays synchronous because admins
+  // expect to see the new "awaiting approval" notification immediately.
+  await ctx.scheduler.runAfter(
+    0,
+    internal.cleaningJobs.sideEffects.applyTransitionSideEffects,
+    {
+      jobId: args.jobId,
+      syncToStatus: "awaiting_approval",
+      dismissals: [
+        {
+          userIds: job.assignedCleanerIds,
+          types: ["job_assigned", "rework_required"],
+        },
+      ],
+    },
+  );
 
   const property = await ctx.db.get(job.propertyId);
   await createOpsNotifications(ctx, {
@@ -1087,22 +1104,25 @@ export const reopenForRework = mutation({
       rejectionReason: args.reason?.trim(),
       updatedAt: now,
     });
-    await syncConversationStatusForJob(ctx, {
-      jobId: args.jobId,
-      nextStatus: "rework_required",
-    });
-
-    await dismissNotificationsForJob(ctx, {
-      jobId: String(job._id),
-      userIds: await listOpsUserIds(ctx),
-      types: ["awaiting_approval"],
-    });
-
-    await dismissNotificationsForJob(ctx, {
-      jobId: String(job._id),
-      userIds: job.assignedCleanerIds,
-      types: ["job_assigned", "job_completed", "rework_required"],
-    });
+    // Wave 4: defer convo sync + both dismissal batches. Ops user IDs
+    // are resolved synchronously (cheap) so the deferred mutation has a
+    // concrete list to act on; the dismissal scans themselves run async.
+    const opsUserIds = await listOpsUserIds(ctx);
+    await ctx.scheduler.runAfter(
+      0,
+      internal.cleaningJobs.sideEffects.applyTransitionSideEffects,
+      {
+        jobId: args.jobId,
+        syncToStatus: "rework_required",
+        dismissals: [
+          { userIds: opsUserIds, types: ["awaiting_approval"] },
+          {
+            userIds: job.assignedCleanerIds,
+            types: ["job_assigned", "job_completed", "rework_required"],
+          },
+        ],
+      },
+    );
 
     return {
       ok: true,
@@ -1232,11 +1252,9 @@ export const assign = mutation({
       jobId: args.jobId,
       acks: nextAcks,
     });
-    await syncConversationStatusForJob(ctx, {
-      jobId: args.jobId,
-      nextStatus: updatedStatus,
-    });
-
+    // The follow-up `seedJobConversationParticipants` only reads/writes
+    // conversation participants — independent of `conversation.status`
+    // that the convo sync mutates — so the sync is safe to defer.
     const conversation = await getJobConversationByJobId(ctx, args.jobId);
     if (conversation) {
       const refreshedJob = await ctx.db.get(args.jobId);
@@ -1260,20 +1278,33 @@ export const assign = mutation({
       createdAt: now,
     });
 
-    await dismissNotificationsForJob(ctx, {
-      jobId: String(job._id),
-      userIds: removedCleanerIds,
-      types: ["job_assigned", "rework_required"],
-    });
-
+    // Wave 4: defer convo sync + dismissal batches. The
+    // createNotificationsForUsers call below stays synchronous so
+    // newly-assigned cleaners see the notification on their next tick.
+    const assignDismissals: Array<{
+      userIds: Id<"users">[];
+      types: Doc<"notifications">["type"][];
+    }> = [
+      { userIds: removedCleanerIds, types: ["job_assigned", "rework_required"] },
+    ];
     if (args.notifyCleaners !== false && args.cleanerIds.length > 0) {
-      const property = await ctx.db.get(job.propertyId);
-      await dismissNotificationsForJob(ctx, {
-        jobId: String(job._id),
+      assignDismissals.push({
         userIds: args.cleanerIds,
         types: ["job_assigned"],
       });
+    }
+    await ctx.scheduler.runAfter(
+      0,
+      internal.cleaningJobs.sideEffects.applyTransitionSideEffects,
+      {
+        jobId: args.jobId,
+        syncToStatus: updatedStatus,
+        dismissals: assignDismissals,
+      },
+    );
 
+    if (args.notifyCleaners !== false && args.cleanerIds.length > 0) {
+      const property = await ctx.db.get(job.propertyId);
       await createNotificationsForUsers(ctx, {
         userIds: args.cleanerIds,
         type: "job_assigned",
