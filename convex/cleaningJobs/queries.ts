@@ -264,6 +264,11 @@ export const getMyAssigned = query({
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
 
+    // Wave 5.a (this PR) only ships the schema + write hooks + backfill for
+    // `userJobAssignments`. The read here still scans cleaningJobs until the
+    // backfill has populated meta rows on this deployment. After backfill,
+    // Wave 5.b will switch this read to use `userJobAssignments` indexed by
+    // user. See Docs/2026-04-28-convex-bandwidth-optimization-plan.md.
     const allJobs = await ctx.db.query("cleaningJobs").collect();
     let jobs = allJobs.filter((job) => job.assignedCleanerIds.includes(user._id));
 

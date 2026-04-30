@@ -1139,6 +1139,27 @@ const notifications = defineTable({
   .index("by_user_and_dismissed", ["userId", "dismissedAt"])
   .index("by_type", ["type"]);
 
+// Reverse-index of cleaningJobs.assignedCleanerIds. Convex doesn't natively
+// index array fields, so `getMyAssigned` previously had to `.collect()` the
+// entire cleaningJobs table and filter in memory by
+// `assignedCleanerIds.includes(userId)`. With ~150 jobs and growing, that's
+// hundreds of KB per call — mounted reactively in the cleaner mobile app.
+//
+// Maintained by the `assign` mutation: when assignedCleanerIds changes,
+// additions get inserted, removals get deleted. Status/scheduledStartAt
+// are NOT denormalized — keeping this table thin so its rows are cheap.
+// Callers do `ctx.db.get(jobId)` for the few jobs they actually need.
+//
+// Wave 5 — see Docs/2026-04-28-convex-bandwidth-optimization-plan.md.
+const userJobAssignments = defineTable({
+  userId: v.id("users"),
+  jobId: v.id("cleaningJobs"),
+  createdAt: v.number(),
+})
+  .index("by_user", ["userId"])
+  .index("by_job", ["jobId"])
+  .index("by_user_and_job", ["userId", "jobId"]);
+
 const notificationSchedules = defineTable({
   jobId: v.id("cleaningJobs"),
   type: v.string(),
@@ -1470,6 +1491,7 @@ export default defineSchema({
   // Notifications
   notifications,
   notificationSchedules,
+  userJobAssignments,
 
   // Instructions
   instructionCategories,
