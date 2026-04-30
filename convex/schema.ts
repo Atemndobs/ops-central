@@ -1132,6 +1132,11 @@ const notifications = defineTable({
 })
   .index("by_user", ["userId"])
   .index("by_unread", ["userId", "readAt"])
+  // Bandwidth: lets `dismissNotificationsForJob` (called from the hot
+  // start/approve paths) read only undismissed notifications for the user
+  // instead of scanning the user's entire notification history. Wave 4 in
+  // Docs/2026-04-28-convex-bandwidth-optimization-plan.md.
+  .index("by_user_and_dismissed", ["userId", "dismissedAt"])
   .index("by_type", ["type"]);
 
 const notificationSchedules = defineTable({

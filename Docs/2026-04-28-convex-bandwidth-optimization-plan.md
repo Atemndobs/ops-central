@@ -149,18 +149,23 @@ This avoids split-brain memory: all work happens on whimsical, then ships home a
 
 ---
 
-### Wave 4 — Mutation hygiene (later)
+### Wave 4 — `dismissNotificationsForJob` index scoping (shipped 2026-04-29)
 
-#### #5 — `mutations.start` audit
+**Problem confirmed:** the 26 KB/call cost on `mutations.start` was traced to `dismissNotificationsForJob`, which does:
+```ts
+ctx.db.query("notifications").withIndex("by_user", (q) => q.eq("userId", userId)).collect()
+```
+This reads **every notification** for the user (no filter at the index level) and then filters in memory by `dismissedAt === undefined`, type, and embedded `data.jobId`. A cleaner with months of activity can have hundreds of notifications, most already dismissed — so most of the bandwidth is spent reading rows that get filtered out.
 
-**Problem:** 26 KB per `start` call is excessive. Likely culprits: dismissNotificationsForJob and syncConversationStatusForJob doing extra reads.
+8+ callers in production code (`mutations.start`, `mutations.complete`, all of `approve.ts`).
 
-**Fix:**
-- Profile what each side-effect helper reads
-- Defer non-critical side effects to a scheduled action (e.g., dismissNotifications can be async)
-- Cache cleaningJob read across the mutation (avoid double-reads in helpers)
+**Fix shipped:**
+- New index `notifications.by_user_and_dismissed` on `[userId, dismissedAt]`.
+- `dismissNotificationsForJob` now reads via that index with `dismissedAt === undefined` filter, scoping to undismissed only. The remaining type + jobId filter still happens in memory but only over the small undismissed slice.
 
-**Expected saving:** ~50% on this function, ~22 MB/day at current load.
+**Expected saving:** ~50-80% on every caller of `dismissNotificationsForJob`. At current whimsical load, ~22 MB/day off `start` alone, plus proportional reductions on `complete` + `approve`.
+
+**No data migration needed:** `dismissedAt: undefined` is the existing default for both new and historical rows, so the index materializes correctly without backfill.
 
 ---
 
@@ -174,7 +179,8 @@ Each wave that lands in production gets logged in [project_temp_convex_db_rollba
 | 1.1 — pingActiveSession prefix-index lookup | ✅ Shipped | 2026-04-28 | PR #27 (~95% saving on heartbeat) |
 | 1.2 — photos `.take(200)` defensive cap | ✅ Shipped | 2026-04-28 | PR #28 (defensive only) |
 | 2.a — jobSubmissionsMeta schema + writes + backfill mutation | ✅ Shipped | 2026-04-28 | PR #30 — additive only |
-| 2.b — Switch reads in getJobDetailInternal to use jobSubmissionsMeta | ✅ Shipped | 2026-04-28 | This branch — stacked on 2.a. Reads thin meta for history; uses latestSubmissionId pointer to fetch one heavy doc. |
+| 2.b — Switch reads in getJobDetailInternal to use jobSubmissionsMeta | ✅ Shipped | 2026-04-28 | PR #34 (re-PR after #30/#31 got tangled). Reads thin meta for history; uses latestSubmissionId pointer to fetch one heavy doc. |
+| 4 — `dismissNotificationsForJob` scoped to undismissed via new index | ✅ Shipped | 2026-04-29 | This branch — adds `notifications.by_user_and_dismissed` index, scopes the read at the index level. Affects 8+ callers including `start`, `complete`, all of `approve.ts`. |
 | 3 — Subscription audit | 📋 Planned | TBD | |
 | 4 — start mutation audit | 📋 Planned | TBD | |
 
