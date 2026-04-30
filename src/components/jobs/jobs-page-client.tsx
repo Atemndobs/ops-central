@@ -63,9 +63,24 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
       : "skip",
   );
 
-  const allJobs = useQuery(
-    api.cleaningJobs.queries.getAll,
-    isAuthenticated ? { limit: 1000 } : "skip",
+  // Wave 3 (bandwidth optimization): we previously made a SECOND
+  // `getAll({ limit: 1000 })` here just to derive (a) per-status filter
+  // chip counts, (b) property-name option list, and (c) cleaner-name
+  // option list. (a) now comes from a thin `getStatusCounts` query;
+  // (b)+(c) already had dedicated lightweight sources
+  // (`propertiesForCreate`, `cleanerOptionsFromUsers`) and the
+  // job-derived merge was a no-op in practice.
+  const statusCounts = useQuery(
+    api.cleaningJobs.queries.getStatusCounts,
+    isAuthenticated
+      ? {
+          propertyId:
+            propertyId === "all"
+              ? undefined
+              : (propertyId as Id<"properties">),
+          notEndedBefore: hidePastJobs && nowTs !== null ? nowTs : undefined,
+        }
+      : "skip",
   );
 
   const cleanerOptionsFromUsers = useQuery(
@@ -85,14 +100,6 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
     return () => window.clearInterval(intervalId);
   }, []);
 
-  const scopedAllJobs = useMemo(() => {
-    const source = allJobs ?? [];
-    if (!hidePastJobs || nowTs === null) {
-      return source;
-    }
-    return source.filter((job) => !isPastJob(job, nowTs));
-  }, [allJobs, hidePastJobs, nowTs]);
-
   const scopedJobs = useMemo(() => {
     const source = jobs ?? [];
     if (!hidePastJobs || nowTs === null) {
@@ -101,63 +108,37 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
     return source.filter((job) => !isPastJob(job, nowTs));
   }, [jobs, hidePastJobs, nowTs]);
 
-  const propertyOptionsFromJobs = useMemo(() => {
-    const optionMap = new Map<string, string>();
-    scopedAllJobs.forEach((job) => {
-      const name = job.property?.name?.trim();
-      if (!name) {
-        return;
-      }
-      optionMap.set(job.propertyId, name);
-    });
-    return Array.from(optionMap.entries()).map(([id, name]) => ({ id, name }));
-  }, [scopedAllJobs]);
-
   const propertyOptions = useMemo(() => {
     const map = new Map<string, string>();
     (propertiesForCreate ?? []).forEach((property) => {
       map.set(property._id, property.name);
     });
-    propertyOptionsFromJobs.forEach((property) => {
-      map.set(property.id, property.name);
-    });
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-  }, [propertiesForCreate, propertyOptionsFromJobs]);
-
-  const cleanerOptionsFromJobs = useMemo(() => {
-    const optionMap = new Map<string, string>();
-    scopedAllJobs.forEach((job) => {
-      const cleaner = job.cleaners?.[0];
-      if (!cleaner?._id) {
-        return;
-      }
-      const name = cleaner.name || `Cleaner ${cleaner._id.slice(-6)}`;
-      optionMap.set(cleaner._id, name);
-    });
-    return Array.from(optionMap.entries()).map(([id, name]) => ({ id, name }));
-  }, [scopedAllJobs]);
+  }, [propertiesForCreate]);
 
   const cleanerOptions = useMemo(() => {
     const map = new Map<string, string>();
     (cleanerOptionsFromUsers ?? []).forEach((cleaner) => {
       map.set(cleaner._id, cleaner.name?.trim() || `Cleaner ${cleaner._id.slice(-6)}`);
     });
-    cleanerOptionsFromJobs.forEach((cleaner) => {
-      map.set(cleaner.id, cleaner.name);
-    });
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-  }, [cleanerOptionsFromJobs, cleanerOptionsFromUsers]);
+  }, [cleanerOptionsFromUsers]);
 
   const counts = useMemo(() => {
-    const all = scopedAllJobs;
-    const values: Record<string, number> = { all: all.length };
+    const values: Record<string, number> = { all: 0 };
     JOB_STATUSES.forEach((itemStatus) => {
-      values[itemStatus] = all.filter((job) => job.status === itemStatus).length;
+      values[itemStatus] = 0;
     });
+    if (statusCounts) {
+      values.all = statusCounts.all;
+      JOB_STATUSES.forEach((itemStatus) => {
+        values[itemStatus] = statusCounts[itemStatus] ?? 0;
+      });
+    }
     return values;
-  }, [scopedAllJobs]);
+  }, [statusCounts]);
 
-  const isLoading = jobs === undefined || allJobs === undefined;
+  const isLoading = jobs === undefined || statusCounts === undefined;
 
   useEffect(() => {
     if (!openJobMenuId) {

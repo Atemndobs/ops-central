@@ -905,3 +905,193 @@ export const getJobLivePresence = query({
     };
   },
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Wave 3 (bandwidth optimization) — thin aggregate queries.
+//
+// These return only the numbers UI surfaces actually need, instead of having
+// the client subscribe to the full enriched job set just to compute counts.
+// `getAll`-with-limit-1000 reads ~1000 jobs + their property/cleaner/stay
+// docs reactively per call site; the queries below walk the
+// `cleaningJobs.by_status` and `by_scheduled` indexes and return scalars.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const JOB_STATUSES_ALL: Array<Doc<"cleaningJobs">["status"]> = [
+  "scheduled",
+  "assigned",
+  "in_progress",
+  "awaiting_approval",
+  "rework_required",
+  "completed",
+  "cancelled",
+];
+
+/** Cap on how many rows any single index range scan pulls. We never need more
+ *  than this for counting; if we ever do, switch to a paginated counter
+ *  table. 5000 is well above current per-status cardinality. */
+const COUNT_SCAN_CAP = 5000;
+
+/**
+ * Per-status job counts — what the Jobs page filter-tab chips need. Walks
+ * the `by_status` index for each status. No relational enrichment.
+ *
+ * Optional `propertyId` filter narrows via the `by_property_status` index
+ * (also no enrichment).
+ *
+ * Replaces the second `getAll({ limit: 1000 })` that `jobs-page-client`
+ * was making just to derive these chips.
+ */
+export const getStatusCounts = query({
+  args: {
+    propertyId: v.optional(v.id("properties")),
+    /** When set, only count jobs whose `scheduledEndAt` (or
+     *  `scheduledStartAt` as fallback) is >= this timestamp. Mirrors the
+     *  client-side `hidePastJobs` toggle so the chip counts match what
+     *  the user actually sees in the table. Caller usually passes
+     *  `Date.now()`. */
+    notEndedBefore: v.optional(v.number()),
+  },
+  returns: v.object({
+    all: v.number(),
+    scheduled: v.number(),
+    assigned: v.number(),
+    in_progress: v.number(),
+    awaiting_approval: v.number(),
+    rework_required: v.number(),
+    completed: v.number(),
+    cancelled: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const cutoff = args.notEndedBefore;
+    const isPast = (job: Doc<"cleaningJobs">): boolean => {
+      if (cutoff === undefined) return false;
+      const end = job.scheduledEndAt ?? job.scheduledStartAt ?? 0;
+      return end < cutoff;
+    };
+
+    const counts: Record<string, number> = {
+      all: 0,
+      scheduled: 0,
+      assigned: 0,
+      in_progress: 0,
+      awaiting_approval: 0,
+      rework_required: 0,
+      completed: 0,
+      cancelled: 0,
+    };
+
+    for (const status of JOB_STATUSES_ALL) {
+      const rows = args.propertyId
+        ? await ctx.db
+            .query("cleaningJobs")
+            .withIndex("by_property_status", (q) =>
+              q.eq("propertyId", args.propertyId!).eq("status", status),
+            )
+            .take(COUNT_SCAN_CAP)
+        : await ctx.db
+            .query("cleaningJobs")
+            .withIndex("by_status", (q) => q.eq("status", status))
+            .take(COUNT_SCAN_CAP);
+      const filtered = cutoff === undefined ? rows : rows.filter((j) => !isPast(j));
+      counts[status] = filtered.length;
+      counts.all += filtered.length;
+    }
+
+    return {
+      all: counts.all,
+      scheduled: counts.scheduled,
+      assigned: counts.assigned,
+      in_progress: counts.in_progress,
+      awaiting_approval: counts.awaiting_approval,
+      rework_required: counts.rework_required,
+      completed: counts.completed,
+      cancelled: counts.cancelled,
+    };
+  },
+});
+
+/**
+ * Scheduling metrics surfaced on the admin Settings → Scheduling tab.
+ *
+ * Replaces the `getAll({ limit: 1000 })` that `settings-page-client` was
+ * making just to derive these 7 numbers. Walks the `by_status` index for
+ * each lifecycle status, plus a windowed `by_scheduled` scan for the
+ * "next 24h" cohorts. No relational enrichment.
+ */
+export const getSchedulingMetrics = query({
+  args: {},
+  returns: v.object({
+    scheduled: v.number(),
+    assigned: v.number(),
+    inProgress: v.number(),
+    reworkRequired: v.number(),
+    unassignedUpcoming: v.number(),
+    urgentUpcoming: v.number(),
+    hospitableJobs: v.number(),
+  }),
+  handler: async (ctx) => {
+    const now = Date.now();
+    const nextTwentyFourHours = now + 24 * 60 * 60 * 1000;
+
+    const countByStatus = async (
+      status: Doc<"cleaningJobs">["status"],
+    ): Promise<number> =>
+      (
+        await ctx.db
+          .query("cleaningJobs")
+          .withIndex("by_status", (q) => q.eq("status", status))
+          .take(COUNT_SCAN_CAP)
+      ).length;
+
+    const [scheduled, assigned, inProgress, reworkRequired] = await Promise.all([
+      countByStatus("scheduled"),
+      countByStatus("assigned"),
+      countByStatus("in_progress"),
+      countByStatus("rework_required"),
+    ]);
+
+    // Upcoming-24h cohorts — scan the by_scheduled index over the window
+    // (range scan, no full-table walk) and count what matches.
+    const upcomingWindow = await ctx.db
+      .query("cleaningJobs")
+      .withIndex("by_scheduled", (q) =>
+        q.gte("scheduledStartAt", now).lte("scheduledStartAt", nextTwentyFourHours),
+      )
+      .take(COUNT_SCAN_CAP);
+
+    const unassignedUpcoming = upcomingWindow.filter(
+      (job) =>
+        (job.status === "scheduled" || job.status === "assigned") &&
+        (job.assignedCleanerIds?.length ?? 0) === 0,
+    ).length;
+
+    const urgentUpcoming = upcomingWindow.filter(
+      (job) => job.isUrgent || job.partyRiskFlag || job.opsRiskFlag,
+    ).length;
+
+    // Hospitable-sourced job count — single index walk, filter by metadata
+    // source. Caller previously did this client-side over 1000 enriched
+    // jobs; the index walk is free.
+    const allJobsForSourceCount = await ctx.db
+      .query("cleaningJobs")
+      .withIndex("by_scheduled")
+      .take(COUNT_SCAN_CAP);
+    const hospitableJobs = allJobsForSourceCount.filter(
+      (job) =>
+        job.metadata &&
+        typeof job.metadata === "object" &&
+        !Array.isArray(job.metadata) &&
+        (job.metadata as Record<string, unknown>).source === "hospitable",
+    ).length;
+
+    return {
+      scheduled,
+      assigned,
+      inProgress,
+      reworkRequired,
+      unassignedUpcoming,
+      urgentUpcoming,
+      hospitableJobs,
+    };
+  },
+});
