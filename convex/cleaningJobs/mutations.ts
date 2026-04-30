@@ -1248,6 +1248,40 @@ export const assign = mutation({
       status: updatedStatus,
       updatedAt: now,
     });
+
+    // Sync the userJobAssignments reverse-index. Wave 5 — see
+    // Docs/2026-04-28-convex-bandwidth-optimization-plan.md. The previous
+    // patch (above) is the source of truth for `assignedCleanerIds`; this
+    // table is a denormalized index maintained by every assign call.
+    const previousAssignments = await ctx.db
+      .query("userJobAssignments")
+      .withIndex("by_job", (q) => q.eq("jobId", args.jobId))
+      .collect();
+    const previousByUser = new Map(
+      previousAssignments.map((row) => [row.userId, row]),
+    );
+    const nextUserSet = new Set(args.cleanerIds);
+
+    // Insert new assignments (cleaners added to the job).
+    const additions = args.cleanerIds.filter(
+      (cleanerId) => !previousByUser.has(cleanerId),
+    );
+    await Promise.all(
+      additions.map((cleanerId) =>
+        ctx.db.insert("userJobAssignments", {
+          userId: cleanerId,
+          jobId: args.jobId,
+          createdAt: now,
+        }),
+      ),
+    );
+
+    // Delete removed assignments (cleaners taken off the job).
+    const removals = previousAssignments.filter(
+      (row) => !nextUserSet.has(row.userId),
+    );
+    await Promise.all(removals.map((row) => ctx.db.delete(row._id)));
+
     await schedulePendingAcknowledgementEscalation(ctx, {
       jobId: args.jobId,
       acks: nextAcks,
