@@ -22,6 +22,7 @@ import type * as cleaningJobs_devResetJobs from "../cleaningJobs/devResetJobs.js
 import type * as cleaningJobs_mutations from "../cleaningJobs/mutations.js";
 import type * as cleaningJobs_queries from "../cleaningJobs/queries.js";
 import type * as cleaningJobs_reviewAccess from "../cleaningJobs/reviewAccess.js";
+import type * as cleaningJobs_sideEffects from "../cleaningJobs/sideEffects.js";
 import type * as clerk_actions from "../clerk/actions.js";
 import type * as conversations_lib from "../conversations/lib.js";
 import type * as conversations_mutations from "../conversations/mutations.js";
@@ -121,6 +122,7 @@ declare const fullApi: ApiFromModules<{
   "cleaningJobs/mutations": typeof cleaningJobs_mutations;
   "cleaningJobs/queries": typeof cleaningJobs_queries;
   "cleaningJobs/reviewAccess": typeof cleaningJobs_reviewAccess;
+  "cleaningJobs/sideEffects": typeof cleaningJobs_sideEffects;
   "clerk/actions": typeof clerk_actions;
   "conversations/lib": typeof conversations_lib;
   "conversations/mutations": typeof conversations_mutations;
