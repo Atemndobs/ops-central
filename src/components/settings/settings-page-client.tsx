@@ -175,54 +175,22 @@ function PlaceholderTab({
 
 function SchedulingSettingsPanel() {
   const hospitableSync = useQuery(api.hospitable.queries.getSyncStatus, {});
-  const jobs = useQuery(api.cleaningJobs.queries.getAll, { limit: 1000 });
+  // Wave 3 (bandwidth optimization): we previously streamed 1000 enriched
+  // jobs to the client just to derive these 7 numeric counts. Now we ask
+  // the server for the counts directly via a thin aggregate query — see
+  // `convex/cleaningJobs/queries.ts:getSchedulingMetrics`.
+  const metricsResult = useQuery(api.cleaningJobs.queries.getSchedulingMetrics, {});
   const properties = useQuery(api.properties.queries.getAll, { limit: 500 });
-  const [referenceNow] = useState(() => Date.now());
 
-  const schedulingMetrics = useMemo(() => {
-    const now = referenceNow;
-    const nextTwentyFourHours = now + 24 * 60 * 60 * 1000;
-    const sourceJobs = jobs ?? [];
-
-    const scheduled = sourceJobs.filter((job) => job.status === "scheduled").length;
-    const assigned = sourceJobs.filter((job) => job.status === "assigned").length;
-    const inProgress = sourceJobs.filter((job) => job.status === "in_progress").length;
-    const reworkRequired = sourceJobs.filter(
-      (job) => job.status === "rework_required",
-    ).length;
-    const unassignedUpcoming = sourceJobs.filter(
-      (job) =>
-        (job.status === "scheduled" || job.status === "assigned") &&
-        (job.assignedCleanerIds?.length ?? 0) === 0 &&
-        typeof job.scheduledStartAt === "number" &&
-        job.scheduledStartAt >= now &&
-        job.scheduledStartAt <= nextTwentyFourHours,
-    ).length;
-    const urgentUpcoming = sourceJobs.filter(
-      (job) =>
-        (job.isUrgent || job.partyRiskFlag || job.opsRiskFlag) &&
-        typeof job.scheduledStartAt === "number" &&
-        job.scheduledStartAt >= now &&
-        job.scheduledStartAt <= nextTwentyFourHours,
-    ).length;
-    const hospitableJobs = sourceJobs.filter(
-      (job) =>
-        job.metadata &&
-        typeof job.metadata === "object" &&
-        !Array.isArray(job.metadata) &&
-        (job.metadata as Record<string, unknown>).source === "hospitable",
-    ).length;
-
-    return {
-      scheduled,
-      assigned,
-      inProgress,
-      reworkRequired,
-      unassignedUpcoming,
-      urgentUpcoming,
-      hospitableJobs,
-    };
-  }, [jobs, referenceNow]);
+  const schedulingMetrics = metricsResult ?? {
+    scheduled: 0,
+    assigned: 0,
+    inProgress: 0,
+    reworkRequired: 0,
+    unassignedUpcoming: 0,
+    urgentUpcoming: 0,
+    hospitableJobs: 0,
+  };
 
   return (
     <div className="space-y-6">

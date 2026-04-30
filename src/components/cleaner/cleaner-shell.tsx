@@ -174,10 +174,13 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
     api.conversations.queries.getUnreadConversationCount,
     isConvexAuthenticated ? {} : "skip",
   );
-  const assignedJobs = useQuery(
-    api.cleaningJobs.queries.getMyAssigned,
-    isConvexAuthenticated ? { limit: 200 } : "skip",
-  ) as Array<{ status: string }> | undefined;
+  // Wave 3 (bandwidth optimization): a layout-level subscription to
+  // `getMyAssigned` was previously declared here and never read by any
+  // child of CleanerShell. Each cleaner page mounts its own job query as
+  // needed (`cleaner-home-client`, `cleaner-history-client`,
+  // `cleaner-incident-page-client`, etc.), so the shell-level mount was
+  // pure overhead — every status change on every assigned job re-streamed
+  // up to 200 enriched job docs to every active cleaner client. Removed.
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
   const setLocalePreference = useMutation(api.users.mutations.setLocalePreference);
   const markNotificationRead = useMutation(api.users.mutations.markNotificationRead);
