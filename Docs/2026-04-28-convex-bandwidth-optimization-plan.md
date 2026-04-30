@@ -180,9 +180,9 @@ Each wave that lands in production gets logged in [project_temp_convex_db_rollba
 | 1.2 — photos `.take(200)` defensive cap | ✅ Shipped | 2026-04-28 | PR #28 (defensive only) |
 | 2.a — jobSubmissionsMeta schema + writes + backfill mutation | ✅ Shipped | 2026-04-28 | PR #30 — additive only |
 | 2.b — Switch reads in getJobDetailInternal to use jobSubmissionsMeta | ✅ Shipped | 2026-04-28 | PR #34 (re-PR after #30/#31 got tangled). Reads thin meta for history; uses latestSubmissionId pointer to fetch one heavy doc. |
-| 4 — `dismissNotificationsForJob` scoped to undismissed via new index | ✅ Shipped | 2026-04-29 | This branch — adds `notifications.by_user_and_dismissed` index, scopes the read at the index level. Affects 8+ callers including `start`, `complete`, all of `approve.ts`. |
-| 3 — Subscription audit | 📋 Planned | TBD | |
-| 4 — start mutation audit | 📋 Planned | TBD | |
+| 4 — `dismissNotificationsForJob` scoped to undismissed via new index | ✅ Shipped | 2026-04-29 | PR #37 — adds `notifications.by_user_and_dismissed` index, scopes the read at the index level. Affects 8+ callers including `start`, `complete`, all of `approve.ts`. |
+| 3.a — Hard cap on `cleaningJobs.queries.getAll` reads | ✅ Shipped | 2026-04-30 | This branch (stacked on Wave 4) — bounds unfiltered case to most-recent 500 via `by_scheduled.order("desc").take(500)`. 10+ subscription mount points were doing unbounded `.collect()` then memory-slicing. |
+| 3.b — Audit and narrow individual subscription mount points | 📋 Planned | TBD | Component-level work — replace many `getAll` subscriptions with narrower queries, or convert to one-shot fetches where reactive isn't needed. |
 
 ---
 
