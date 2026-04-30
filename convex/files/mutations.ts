@@ -140,7 +140,13 @@ export const uploadJobPhoto = mutation({
 
 export const getExternalUploadUrl = mutation({
   args: {
-    jobId: v.id("cleaningJobs"),
+    /**
+     * Optional since Phase 4a-extended. When omitted, the upload is for a
+     * standalone incident (no linked cleaning job). Object keys go under
+     * `incidents/standalone/...` instead of `videos/<jobId>/...`. The
+     * resulting `photos` row is created without `cleaningJobId`.
+     */
+    jobId: v.optional(v.id("cleaningJobs")),
     roomName: v.string(),
     photoType: photoTypeValidator,
     source: photoSourceValidator,
@@ -162,9 +168,12 @@ export const getExternalUploadUrl = mutation({
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
-    const job = await ctx.db.get(args.jobId);
-    if (!job) {
-      throw new Error("Cleaning job not found");
+    // Job lookup only when jobId is provided (standalone uploads skip it).
+    if (args.jobId !== undefined) {
+      const job = await ctx.db.get(args.jobId);
+      if (!job) {
+        throw new Error("Cleaning job not found");
+      }
     }
 
     const config = requireExternalStorageConfig();
@@ -203,7 +212,7 @@ export const getExternalUploadUrl = mutation({
       });
 
       await trackPendingUpload(ctx, {
-        cleaningJobId: args.jobId,
+        cleaningJobId: args.jobId ?? undefined,
         mediaKind: "image",
         provider: config.provider,
         bucket: config.bucket,
@@ -263,7 +272,7 @@ export const getExternalUploadUrl = mutation({
     const expiresAt = Math.min(videoTicket.expiresAt, posterTicket.expiresAt);
 
     await trackPendingUpload(ctx, {
-      cleaningJobId: args.jobId,
+      cleaningJobId: args.jobId ?? undefined,
       mediaKind: "video",
       provider: config.provider,
       bucket: config.bucket,
@@ -306,7 +315,10 @@ export const getExternalUploadUrl = mutation({
 
 export const completeExternalUpload = mutation({
   args: {
-    jobId: v.id("cleaningJobs"),
+    /** Optional since Phase 4a-extended. Omitted for standalone-incident
+     *  videos. The resulting `photos` row is created without
+     *  `cleaningJobId`. */
+    jobId: v.optional(v.id("cleaningJobs")),
     roomName: v.string(),
     photoType: photoTypeValidator,
     source: photoSourceValidator,
@@ -332,13 +344,18 @@ export const completeExternalUpload = mutation({
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
-    const job = await ctx.db.get(args.jobId);
-    if (!job) {
-      throw new Error("Cleaning job not found");
+    // For job-linked uploads, normalize the room name against the property's
+    // configured rooms. Standalone (no jobId) uses the raw input — there's
+    // no anchor property to normalize against.
+    let roomName = args.roomName;
+    if (args.jobId !== undefined) {
+      const job = await ctx.db.get(args.jobId);
+      if (!job) {
+        throw new Error("Cleaning job not found");
+      }
+      const property = await ctx.db.get(job.propertyId);
+      roomName = normalizeRoomName(property, args.roomName);
     }
-
-    const property = await ctx.db.get(job.propertyId);
-    const roomName = normalizeRoomName(property, args.roomName);
     const mediaKind = args.mediaKind ?? "image";
 
     if (mediaKind === "video") {
@@ -366,7 +383,9 @@ export const completeExternalUpload = mutation({
     }
 
     const photoId = await ctx.db.insert("photos", {
-      cleaningJobId: args.jobId,
+      // `cleaningJobId` is now optional on the photos table; for standalone
+      // incident videos it stays unset.
+      ...(args.jobId !== undefined ? { cleaningJobId: args.jobId } : {}),
       roomName,
       type: args.photoType,
       source: args.source,
@@ -564,12 +583,17 @@ export const deleteJobPhoto = mutation({
 // ─── Object-key builders ────────────────────────────────────────────────────
 
 function buildPhotoObjectKey(args: {
-  jobId: string;
+  jobId?: string;
   photoType: "before" | "after" | "incident";
   fileName?: string;
 }): string {
   const cleanedFileName = sanitizeFileName(args.fileName ?? `photo-${Date.now()}.jpg`);
-  return `jobs/${args.jobId}/${args.photoType}/${Date.now()}-${cleanedFileName}`;
+  // Standalone (no jobId): live under `incidents/standalone/<photoType>/...`
+  // so the bucket layout reflects ownership. Job-linked path is unchanged.
+  const prefix = args.jobId
+    ? `jobs/${args.jobId}/${args.photoType}`
+    : `incidents/standalone/${args.photoType}`;
+  return `${prefix}/${Date.now()}-${cleanedFileName}`;
 }
 
 /**
@@ -577,9 +601,11 @@ function buildPhotoObjectKey(args: {
  * random suffix as the uuid (Convex actions can't use crypto.randomUUID
  * cheaply from a mutation context, and the timestamp+random combo is
  * collision-resistant enough at our scale).
+ *
+ * Standalone (no jobId): `videos/standalone/<uuid>.mp4`.
  */
 function buildVideoObjectKey(args: {
-  jobId: string;
+  jobId?: string;
   fileName?: string;
 }): string {
   const stamp = Date.now();
@@ -587,7 +613,8 @@ function buildVideoObjectKey(args: {
   const suffix = sanitizeFileName(args.fileName ?? "video.mp4");
   // Force the .mp4 extension since the canonical stored format is MP4.
   const base = suffix.replace(/\.[^.]+$/, "") || "video";
-  return `videos/${args.jobId}/${stamp}-${rand}-${base}.mp4`;
+  const ownerSegment = args.jobId ?? "standalone";
+  return `videos/${ownerSegment}/${stamp}-${rand}-${base}.mp4`;
 }
 
 function sanitizeFileName(fileName: string): string {
@@ -605,7 +632,7 @@ function sanitizeFileName(fileName: string): string {
 async function trackPendingUpload(
   ctx: MutationCtx,
   args: {
-    cleaningJobId: Id<"cleaningJobs">;
+    cleaningJobId?: Id<"cleaningJobs">;
     mediaKind: "image" | "video";
     provider: string;
     bucket: string;
