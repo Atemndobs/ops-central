@@ -220,7 +220,7 @@ export function CleanerIncidentPageClient() {
    * `incident.photoIds`.
    */
   async function uploadIncidentVideos(
-    jobId: Id<"cleaningJobs">,
+    jobId: Id<"cleaningJobs"> | undefined,
   ): Promise<Id<"photos">[]> {
     if (videoFiles.length === 0) return [];
 
@@ -531,8 +531,7 @@ export function CleanerIncidentPageClient() {
 
       if (reportMode === "job" && selectedJob) {
         photoIds = await uploadIncidentPhotos(selectedJob._id as Id<"cleaningJobs">);
-        // Phase 4a — upload incident videos (job mode only; videos require
-        // a job context so the canonical `photos` row anchors correctly).
+        // Phase 4a — upload incident videos for the job-linked path.
         if (videoEnabled && videoFiles.length > 0) {
           const videoIds = await uploadIncidentVideos(
             selectedJob._id as Id<"cleaningJobs">,
@@ -541,6 +540,15 @@ export function CleanerIncidentPageClient() {
         }
       } else {
         photoStorageIds = await uploadStandalonePhotos();
+        // Phase 4a-extended — standalone-incident video. Backend now accepts
+        // `jobId: undefined` so we can land a canonical `photos` row with
+        // `mediaKind: "video"` and merge the resulting photoIds into the
+        // incident's `photoIds[]` (which is `string[]` and tolerates both
+        // `_storage` IDs and `Id<"photos">` IDs).
+        if (videoEnabled && videoFiles.length > 0) {
+          const videoIds = await uploadIncidentVideos(undefined);
+          photoIds = [...photoIds, ...videoIds];
+        }
       }
 
       await createIncident({
@@ -968,11 +976,13 @@ export function CleanerIncidentPageClient() {
               </>
             ) : null}
 
-            {/* Phase 4a — video attachments. Only available when reporting
-                against a specific job (videos require a job anchor for the
-                canonical `photos` row). Single 60s / 25 MiB clip per
-                attachment, dual-ticket B2 upload at submit time. */}
-            {videoEnabled && reportMode === "job" ? (
+            {/* Phase 4a-extended — video attachments. Available for both
+                job-linked AND standalone incidents. Standalone uploads use
+                `jobId: undefined` and live under
+                `videos/standalone/...` in the bucket; the resulting
+                `photos` row has no `cleaningJobId`. Single 60s / 25 MiB
+                clip per attachment, dual-ticket B2 upload at submit. */}
+            {videoEnabled ? (
               <>
                 <label className="mt-2 flex min-h-20 cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--muted-foreground)] transition hover:border-[var(--primary)] hover:text-[var(--primary)]">
                   <span className="text-base font-medium">+ Add video</span>
