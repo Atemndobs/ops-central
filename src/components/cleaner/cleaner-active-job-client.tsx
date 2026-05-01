@@ -1132,26 +1132,33 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                 try {
                   // Probe duration via a hidden <video> element so we can
                   // reject overlong clips before burning bandwidth.
+                  // iOS Safari may never fire onloadedmetadata for some
+                  // camera-captured .mov HEVC files — guard with a timeout
+                  // so the whole upload can't deadlock on a probe failure.
                   const probedDurationMs = await new Promise<number | null>(
                     (resolve) => {
                       const url = URL.createObjectURL(file);
                       const v = document.createElement("video");
                       v.preload = "metadata";
-                      const cleanup = () => {
+                      v.muted = true;
+                      v.playsInline = true;
+                      let settled = false;
+                      const settle = (value: number | null) => {
+                        if (settled) return;
+                        settled = true;
                         URL.revokeObjectURL(url);
                         v.src = "";
+                        clearTimeout(timer);
+                        resolve(value);
                       };
+                      const timer = setTimeout(() => settle(null), 5000);
                       v.onloadedmetadata = () => {
                         const ms = Number.isFinite(v.duration)
                           ? Math.round(v.duration * 1000)
                           : null;
-                        cleanup();
-                        resolve(ms);
+                        settle(ms);
                       };
-                      v.onerror = () => {
-                        cleanup();
-                        resolve(null);
-                      };
+                      v.onerror = () => settle(null);
                       v.src = url;
                     },
                   );
@@ -1160,17 +1167,26 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                     return;
                   }
 
-                  // Extract a poster as a JPEG blob via canvas.
+                  // Extract a poster as a JPEG blob via canvas. Same iOS
+                  // timeout safety — a missing poster is fine, a hung
+                  // upload is not.
                   const posterBlob = await new Promise<Blob | null>(
                     (resolve) => {
                       const url = URL.createObjectURL(file);
                       const v = document.createElement("video");
                       v.preload = "metadata";
                       v.muted = true;
-                      const cleanup = () => {
+                      v.playsInline = true;
+                      let settled = false;
+                      const settle = (value: Blob | null) => {
+                        if (settled) return;
+                        settled = true;
                         URL.revokeObjectURL(url);
                         v.src = "";
+                        clearTimeout(timer);
+                        resolve(value);
                       };
+                      const timer = setTimeout(() => settle(null), 6000);
                       v.onloadedmetadata = () => {
                         v.currentTime = 0.1;
                       };
@@ -1180,24 +1196,22 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                         canvas.height = v.videoHeight || 180;
                         const ctx = canvas.getContext("2d");
                         if (!ctx) {
-                          cleanup();
-                          resolve(null);
+                          settle(null);
                           return;
                         }
-                        ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+                        try {
+                          ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+                        } catch {
+                          settle(null);
+                          return;
+                        }
                         canvas.toBlob(
-                          (blob) => {
-                            cleanup();
-                            resolve(blob);
-                          },
+                          (blob) => settle(blob),
                           "image/jpeg",
                           0.8,
                         );
                       };
-                      v.onerror = () => {
-                        cleanup();
-                        resolve(null);
-                      };
+                      v.onerror = () => settle(null);
                       v.src = url;
                     },
                   );
