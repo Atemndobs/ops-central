@@ -105,6 +105,40 @@ export const listForCell = query({
   },
 });
 
+/**
+ * R2a — global/portfolio tasks for a single date-header cell.
+ * Returns ops-tasks where `propertyId` is undefined (portfolio-wide)
+ * and `anchorDate == day`.
+ */
+export const listForDateRow = query({
+  args: {
+    anchorDate: v.number(), // start-of-day UTC ms
+  },
+  handler: async (ctx, args) => {
+    const { isOps, canSee } = await getTaskVisibility(ctx);
+    if (!isOps) {
+      throw new Error("Date-row tasks are ops-only");
+    }
+    // by_anchor_status covers anchorDate; filter for global (no property).
+    const allOpen = await ctx.db
+      .query("opsTasks")
+      .withIndex("by_anchor_status", (q) =>
+        q.eq("anchorDate", args.anchorDate).eq("status", "open"),
+      )
+      .collect();
+    const allInProgress = await ctx.db
+      .query("opsTasks")
+      .withIndex("by_anchor_status", (q) =>
+        q.eq("anchorDate", args.anchorDate).eq("status", "in_progress"),
+      )
+      .collect();
+    const tasks = [...allOpen, ...allInProgress].filter(
+      (t) => t.propertyId === undefined,
+    );
+    return Promise.all(tasks.filter(canSee).map((t) => hydrate(ctx, t)));
+  },
+});
+
 /** All tasks intersecting a date range for a property. Used by the schedule
  *  grid to render drag-across bars. */
 export const listForPropertyRange = query({

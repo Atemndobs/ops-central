@@ -34,6 +34,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { cn } from "@/lib/utils";
 import type { PropertyStatus } from "@/types/property";
 import { ScheduleCellTaskOverlay } from "@/components/schedule/schedule-cell-task-overlay";
+import { ScheduleDateHeaderTaskOverlay } from "@/components/schedule/schedule-date-header-task-overlay";
 
 type JobWithRelations = {
   _id: Id<"cleaningJobs">;
@@ -1035,6 +1036,7 @@ export function ScheduleClient() {
                 <p className="text-sm font-extrabold leading-none sm:text-lg">
                   {day.toLocaleDateString([], { day: "2-digit" })}
                 </p>
+                <ScheduleDateHeaderTaskOverlay day={day} />
               </div>
             ))}
           </div>

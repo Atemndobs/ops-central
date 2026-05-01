@@ -180,8 +180,11 @@
       "assignee": "Assignee",
       "unassigned": "— Unassigned —",
       "opsGroup": "Ops staff",
-      "cleanersGroup": "Cleaners"
-    }
+      "cleanersGroup": "Cleaners",
+      "portfolioTask": "Portfolio task — applies to all properties"
+    },
+    "cellOpenCountGlobal": "Portfolio tasks: {count}",
+    "addPortfolioTask": "Add portfolio task"
   },
   "jobStatus": {
     "scheduled": "Scheduled",
@@ -552,10 +555,22 @@
       "loading": "Loading active job...",
       "notFound": "Job not found.",
       "steps": {
-        "before": { "label": "Before Photos", "short": "Before" },
-        "after": { "label": "After Photos", "short": "After" },
-        "incidents": { "label": "Incidents", "short": "Issues" },
-        "review": { "label": "Review & Submit", "short": "Submit" }
+        "before": {
+          "label": "Before Photos",
+          "short": "Before"
+        },
+        "after": {
+          "label": "After Photos",
+          "short": "After"
+        },
+        "incidents": {
+          "label": "Incidents",
+          "short": "Issues"
+        },
+        "review": {
+          "label": "Review & Submit",
+          "short": "Submit"
+        }
       },
       "stepOf": "Step {current} of {total}",
       "beforePhotos": "Before Photos",

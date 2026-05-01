@@ -40,6 +40,50 @@ function initialsOf(name?: string, email?: string): string {
   return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase();
 }
 
+export function deriveAvatarStackPublic(
+  tasks: Array<{
+    status: "open" | "in_progress" | "done";
+    assignee: {
+      _id: Id<"users">;
+      name?: string;
+      email: string;
+      avatarUrl?: string | null;
+    } | null;
+  }>,
+) {
+  const seen = new Map<string, Assignee>();
+  let unassigned = 0;
+  for (const t of tasks) {
+    if (t.status === "done") continue;
+    if (!t.assignee) {
+      unassigned += 1;
+      continue;
+    }
+    const key = String(t.assignee._id);
+    if (seen.has(key)) continue;
+    seen.set(key, {
+      _id: t.assignee._id,
+      name: t.assignee.name,
+      email: t.assignee.email,
+      avatarUrl: t.assignee.avatarUrl ?? null,
+    });
+  }
+  return {
+    assignees: Array.from(seen.values()),
+    unassignedCount: unassigned > 0 ? 1 : 0,
+  };
+}
+
+export function AssigneeAvatarStackPublic(props: {
+  assignees: Assignee[];
+  unassignedCount: number;
+  size?: "sm" | "md";
+  onAvatarClick?: (id: Id<"users">) => void;
+  onOverflowClick?: () => void;
+}) {
+  return <AssigneeAvatarStack {...props} />;
+}
+
 function AssigneeAvatarStack({
   assignees,
   unassignedCount,
