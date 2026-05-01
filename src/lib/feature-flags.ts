@@ -32,8 +32,15 @@
  * `jna-cleaners-app/components/VideoCapture.tsx`. Both should be flipped
  * together at rollout time.
  */
-export const ENABLE_VIDEO: boolean =
-  process.env.NEXT_PUBLIC_ENABLE_VIDEO === "true";
+function parseBoolEnv(raw: string | undefined): boolean {
+  if (!raw) return false;
+  const v = raw.trim().replace(/^["']|["']$/g, "").toLowerCase();
+  return v === "true" || v === "1" || v === "yes" || v === "on";
+}
+
+export const ENABLE_VIDEO: boolean = parseBoolEnv(
+  process.env.NEXT_PUBLIC_ENABLE_VIDEO,
+);
 
 /**
  * Convenience helper for components that prefer a function call over a
