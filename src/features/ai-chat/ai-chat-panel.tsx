@@ -72,8 +72,11 @@ export function AiChatPanel() {
       <button
         onClick={() => setIsOpen(true)}
         style={{
+          // Pinned top-right under the dashboard header so it never
+          // overlaps the messages composer (or any other bottom-anchored
+          // surface) while still being one click away on every page.
           position: "fixed",
-          bottom: 24,
+          top: 76,
           right: 24,
           zIndex: 9999,
           width: 56,
@@ -98,12 +101,17 @@ export function AiChatPanel() {
   return (
     <div
       style={{
+        // Anchor the panel to the same top-right region as the
+        // collapsed button so opening doesn't visually jump across the
+        // viewport, and so the panel never sits on top of a page-level
+        // composer/footer surface.
         position: "fixed",
-        bottom: 24,
+        top: 76,
         right: 24,
         zIndex: 9999,
         width: 384,
         height: 520,
+        maxHeight: "calc(100vh - 100px)",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
