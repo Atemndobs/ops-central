@@ -59,6 +59,11 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
           status: status === "all" ? undefined : status,
           propertyId: propertyId === "all" ? undefined : propertyId as Id<"properties">,
           limit: 1000,
+          // Wave 3.b — when "Hide past jobs" is on (default), filter
+          // ended jobs at the server instead of fetching + enriching
+          // them only to discard client-side. Mirrors the arg already
+          // used by `getStatusCounts` below.
+          notEndedBefore: hidePastJobs && nowTs !== null ? nowTs : undefined,
         }
       : "skip",
   );
