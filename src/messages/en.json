@@ -701,6 +701,13 @@
       "sendArrivalWindow": "Heads up — the cleaner is arriving between {window}. Let us know if that doesn't work.",
       "askPhotoOfIssue": "Could you send a quick photo of the issue so we can sort it out?",
       "markCompleteThank": "All wrapped up — thanks again for the great work today!"
+    },
+    "enhance": {
+      "label": "Polish with AI",
+      "tooltip": "Polish this message with AI",
+      "running": "Polishing…",
+      "errorEmpty": "Type something first.",
+      "errorGeneric": "Could not polish the message. Try again."
     }
   },
   "incidentsAdmin": {
