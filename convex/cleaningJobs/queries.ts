@@ -453,6 +453,70 @@ export const countByCleaner = query({
   },
 });
 
+// Wave 3.b — narrow team-page subscription to active statuses only.
+// Team page uses `allJobs` exclusively to populate the "Assign job"
+// dropdown, which only renders jobs in active statuses. Previously
+// subscribed to `getAll({ limit: 1000 })`, paying full enrichment for
+// terminal-state jobs (completed/cancelled) the UI never showed.
+const ACTIVE_ASSIGNABLE_STATUSES = [
+  "scheduled",
+  "assigned",
+  "in_progress",
+  "rework_required",
+] as const;
+const GET_ASSIGNABLE_HARD_CAP = 500;
+
+export const getAssignable = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const cap = Math.min(
+      args.limit ?? GET_ASSIGNABLE_HARD_CAP,
+      GET_ASSIGNABLE_HARD_CAP,
+    );
+    const perStatus = await Promise.all(
+      ACTIVE_ASSIGNABLE_STATUSES.map((status) =>
+        ctx.db
+          .query("cleaningJobs")
+          .withIndex("by_status", (q) => q.eq("status", status))
+          .collect(),
+      ),
+    );
+    const merged = perStatus.flat();
+    const sorted = merged.sort(
+      (a, b) => a.scheduledStartAt - b.scheduledStartAt,
+    );
+    const limited = sorted.slice(0, cap);
+    return await enrichJobs(ctx, limited);
+  },
+});
+
+// Wave 3.b — windowed read for the schedule calendar grid. Replaces a
+// global `getAll({ limit: 1000 })` subscription with a date-range scan
+// on the `by_scheduled` index. The schedule UI only ever needs jobs in
+// the currently visible date window (typically 1-2 weeks).
+const GET_IN_RANGE_HARD_CAP = 1500;
+
+export const getInDateRange = query({
+  args: {
+    from: v.number(),
+    to: v.number(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const cap = Math.min(
+      args.limit ?? GET_IN_RANGE_HARD_CAP,
+      GET_IN_RANGE_HARD_CAP,
+    );
+    const jobs = await ctx.db
+      .query("cleaningJobs")
+      .withIndex("by_scheduled", (q) =>
+        q.gte("scheduledStartAt", args.from).lt("scheduledStartAt", args.to),
+      )
+      .take(cap);
+    return await enrichJobs(ctx, jobs);
+  },
+});
+
 export const getAssignableCleanersByProperty = query({
   args: {
     propertyIds: v.array(v.id("properties")),
