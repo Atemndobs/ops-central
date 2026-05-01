@@ -56,6 +56,7 @@ const NOTIFICATION_TYPE = v.union(
   v.literal("incident_created"),
   v.literal("low_stock"),
   v.literal("message_received"),
+  v.literal("task_assigned"),
   v.literal("system"),
 );
 

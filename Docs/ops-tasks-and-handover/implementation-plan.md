@@ -23,6 +23,8 @@ Three milestones, each shippable on its own. Stop after any milestone if priorit
 6. Add `+` button + count badge to each schedule day-cell.
 7. Build `TaskOverlayBar` and integrate into the schedule grid (drag-across).
 8. Add "open tasks only" toggle (default ON) and "mine only" toggle.
+8a. **R2a — Global/portfolio task lane:** add `+`, count badge, popover, and drag-across overlay to the schedule's **date-header row**. Reuse `TaskQuickCreateDrawer` with `propertyId` field hidden. Convex: add `listForDateRow` and `listGlobalRange` to `convex/opsTasks/queries.ts`. List + detail pages render a "Portfolio" pill where the property column would be.
+8b. **R6a — Assignee avatar stack on cells:** build `AssigneeAvatarStack.tsx`. Add `listAssigneeAvatarsForRange` Convex query. Wire into both `ScheduleCellTaskOverlay` (per-property) and the new date-header overlay (global). Extend the `hydrate()` projection to include `assignee.avatarUrl`. Avatar click filters the cell popover to that assignee; `+N` opens the popover unfiltered.
 
 ### Frontend — list + detail
 9. Build `/tasks` page with filter sidebar (status, assignee, property, age).
@@ -54,6 +56,8 @@ Three milestones, each shippable on its own. Stop after any milestone if priorit
 - Dashboard shows my-open count and clicking a row deep-links to detail.
 - Cleaner receives push, opens task on mobile, can change status and comment but not edit fields.
 - en/es both render fully on web and mobile.
+- **R2a:** clicking `+` on a date-header cell creates a portfolio task (no property), which renders only on the date row, not on any property row, and drags across days the same way per-property tasks do.
+- **R6a:** when a user has an open task in a cell their avatar appears at the position of that task, immediately to the left of `+`. Five distinct assignees → 3 avatars + `+2` chip overlapping by ~40%. Clicking an avatar opens the cell popover filtered to that user's tasks. Closing a task removes that user from the stack (unless they have other open tasks in the cell).
 
 ---
 

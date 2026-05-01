@@ -65,6 +65,8 @@ opsTasks: defineTable({
   .index("by_template", ["templateId"]);
 ```
 
+> **R2a impact:** `propertyId` is already optional → no schema migration needed for global tasks. The existing `by_anchor_status` index covers `listForDateRow` (filter `propertyId === undefined` post-fetch — cardinality is bounded by ops-team size × days, low). If we ever exceed ~500 global tasks/day we add `by_global_anchor` on `["anchorDate"]` filtered to `propertyId == undefined` via a synthetic boolean column `isGlobal`.
+
 ### `opsTaskComments` *(M2)*
 
 ```ts
@@ -188,9 +190,12 @@ userPresence: defineTable({
 convex/opsTasks/
   queries.ts
     listForAssignee(userId, { status?, limit? })
-    listForCell(propertyId, anchorDate)              // schedule cell drawer
+    listForCell(propertyId, anchorDate)              // schedule cell drawer (per-property)
+    listForDateRow(anchorDate)                       // R2a: global/portfolio tasks for date-header cell
+    listGlobalRange(rangeStart, rangeEnd)            // R2a: drag-across bars on date-header row
     listForProperty(propertyId, { status?, range? })
     listGlobalForUser(userId, { status? })           // for /tasks page
+    listAssigneeAvatarsForRange(rangeStart, rangeEnd)// R6a: minimal projection (assigneeId × cellKey) for avatar stacks
     countOpenForUser(userId)                         // dashboard card
     getById(taskId)
     getActivityForUser(userId, since)                // diff for handover digest
@@ -254,10 +259,13 @@ src/app/(dashboard)/
     └─ TasksCard                                     # M1: real card replaces placeholder
   schedule/
     page.tsx                                         # existing
+    └─ DateHeaderCell                                # R2a: date row gains its own + / count / avatar stack for global tasks
+       └─ ScheduleDateHeaderTaskOverlay             # R2a: same affordances as DayCell, propertyId omitted
     └─ DayCell                                       # ADD: + button + count badge
-       └─ TaskQuickCreateDrawer                      # M1
+       └─ TaskQuickCreateDrawer                      # M1 (also used by DateHeaderCell with propertyId hidden)
        └─ TaskCellListDrawer                         # M1
-    TaskOverlayBar                                   # M1: drag-across rendering
+       └─ AssigneeAvatarStack                        # R6a: rendered immediately left of the +
+    TaskOverlayBar                                   # M1: drag-across rendering (per-property AND date-header)
   tasks/
     page.tsx                                         # M1: full list w/ filters
     [taskId]/
@@ -272,9 +280,11 @@ src/app/(dashboard)/
 ### New components (sketch)
 
 - `TaskCard.tsx` — compact card for lists & dashboard
-- `TaskQuickCreateForm.tsx` — title, assignee, link-to (autocomplete), due
+- `TaskQuickCreateForm.tsx` — title, assignee, link-to (autocomplete), due. **R2a:** when invoked from a date-header cell the `Property` field is omitted and a "Portfolio task" pill is shown.
 - `TaskStatusPill.tsx` — re-use design-system StatusPill spec
-- `TaskOverlayBar.tsx` — absolutely-positioned bar in schedule grid spanning anchor→today
+- `TaskOverlayBar.tsx` — absolutely-positioned bar in schedule grid spanning anchor→today (used both in property rows and the date-header row for global tasks)
+- `ScheduleDateHeaderTaskOverlay.tsx` — **R2a:** date-row sibling of `ScheduleCellTaskOverlay`; `propertyId` argument absent
+- `AssigneeAvatarStack.tsx` — **R6a:** stacks distinct assignee avatars for a `(propertyId | "global", anchorDate)` cell. Props: `assignees: { _id, name, avatarUrl?, role }[]`, `unassignedCount: number`, `size: "sm" | "md"`, `onAvatarClick(userId)`, `onOverflowClick()`. Renders `[avatar][avatar][+N]` with -8px overlap and ascending z-index. Reuses the existing user-avatar primitive.
 - `TasksCard.tsx` — replaces the dashboard placeholder
 - `HandoverPanel.tsx` — "Since you were last here at X" panel
 - `SignOutHandoffDialog.tsx` — write a handover note before logout
@@ -299,15 +309,38 @@ These are pure client-side filters layered on the same query (no extra Convex ro
 
 ## 4. Schedule grid: drag-across rendering
 
-The schedule is a CSS grid of `(properties × days)` cells. To render a task that spans multiple days:
+The schedule is a CSS grid of `(properties × days)` cells **plus a date-header row** that hosts global tasks (R2a). To render a task that spans multiple days:
 
-1. Server returns tasks for the visible date window.
+1. Server returns tasks for the visible date window. Per-property tasks via `listForPropertyRange`; global tasks via `listGlobalRange`.
 2. Client computes for each open task: `startCol = max(anchorDate, windowStart)`, `endCol = closedAt ?? today`.
-3. Render an absolutely-positioned `TaskOverlayBar` inside the property's row, with `grid-column: startCol / span (endCol - startCol + 1)`.
-4. The cell still owns its `+` button and count, but the bar overlays beneath the cell content with a low-opacity fill + colored left border, so cell content stays readable.
+3. Render an absolutely-positioned `TaskOverlayBar` inside the appropriate row — the property's row for `propertyId`-bound tasks, the **date-header row** for `propertyId == undefined` (global) tasks — with `grid-column: startCol / span (endCol - startCol + 1)`.
+4. The cell still owns its `+` button, count badge, and avatar stack (R6a), but the bar overlays beneath the cell content with a low-opacity fill + colored left border, so cell content stays readable.
 5. Color tier from `CountdownBadge` tokens — **calm `<2d` → soon `<5d` → urgent `≥5d`, capped at urgent (no further escalation, no pulsing).** Decided OQ-10.
 
 A "show closed" toggle re-renders frozen bars in muted gray.
+
+### 4a. Avatar-stack rendering on cells (R6a)
+
+For each `(cellKey, anchorDate)` cell — where `cellKey` is either `propertyId` or the literal `"global"` — the renderer needs:
+- the set of distinct **open** assignees with at least one task in the cell, hydrated `{ _id, name, avatarUrl, role }`;
+- a count of **unassigned** open tasks (collapsed into one ghost avatar).
+
+This is delivered by `listAssigneeAvatarsForRange(rangeStart, rangeEnd)`, which returns a single payload of shape:
+
+```ts
+{
+  cells: Array<{
+    cellKey: Id<"properties"> | "global";
+    anchorDate: number;
+    assignees: Array<{ _id: Id<"users">; name?: string; avatarUrl?: string; role: string }>;
+    unassignedCount: number;
+  }>;
+}
+```
+
+Computed by reading `opsTasks` via `by_anchor_status` for `status in ("open", "in_progress")` within the window, deduplicating by `(cellKey, assigneeId)`, then hydrating assignee user docs in one batched fetch. The schedule-grid component slices the result by cell and passes it to `AssigneeAvatarStack`.
+
+`hydrate()` in `convex/opsTasks/queries.ts` is extended to project `assignee.avatarUrl` (read from `users.metadata.avatarUrl` or Clerk image URL stored on the user doc — pick whichever is canonical at implementation time).
 
 ---
 

@@ -106,3 +106,36 @@ Top: two link-counts. Body: top 3 tasks sorted `(priority desc, age desc)`. Foot
 ## OQ-11. Bilingual content
 
 **Decided 2026-04-28: store user-authored text as-is.** UI chrome lives in `messages/{en,es}.json`. Add `authoredLocale: "en" | "es"` to `opsTasks` and `handoverNotes` so a future "translate this for me" button is additive, not a migration.
+
+---
+
+## OQ-12. Where do portfolio-wide / global tasks live on the schedule?
+
+**Question:** Some tasks ("supplies day", "send monthly owner statements") apply to the whole portfolio, not a single property. They have no `propertyId`. Where do they render in the schedule UI so they're not invisible?
+
+**Alternatives considered:**
+
+- **A. Force-attach to every property.** Creates N rows per task — explodes the grid; closing one row vs all is ambiguous.
+- **B. Separate `/portfolio-tasks` page.** Disconnects from the dated workflow — operators forget about them.
+- **C. Render on the date-header row of the schedule.** Same `+`, count, drag-across, avatar stack as per-property cells, but in the header row above the property grid.
+
+**Decided 2026-05-01: C.** The date-header row already exists visually. Adding the same affordances there makes the global lane discoverable in the same place operators already look. Quick-create from the header pre-omits `propertyId`. Drag-across bars on global tasks span the header row, not any property row, so they don't get visually conflated with per-property work.
+
+**Implication:** no schema change (`propertyId` is already optional). New queries `listForDateRow` and `listGlobalRange` mirror the per-property ones.
+
+---
+
+## OQ-13. How do operators see who's responsible for tasks in a cell at a glance?
+
+**Question:** With the count badge alone, ops can see *that* a cell has tasks but not *whose* tasks. At shift change especially, "are these mine, are these the new hire's?" matters before opening any popover.
+
+**Alternatives considered:**
+
+- **A. No avatars — count only.** Status quo. Forces a popover open for any cell with tasks.
+- **B. One avatar per task.** A cell with 6 tasks for one cleaner = 6 identical faces. Useless.
+- **C. One avatar per distinct assignee, capped at 3 + `+N` overflow.** Unassigned tasks collapse to a single ghost avatar.
+
+**Decided 2026-05-01: C.** Five distinct assignees → 3 avatars + `+2` chip, overlapping ~40%. Reuses the existing user-avatar primitive. Closed tasks contribute nothing. Click an avatar → cell popover filters to that user; `+N` chip → unfiltered popover.
+
+**Implication:** new query `listAssigneeAvatarsForRange` returns a slim `(cellKey, anchorDate, assignees[], unassignedCount)` payload — one round trip per visible window — instead of bloating `listForCell`. The `hydrate()` projection picks up `assignee.avatarUrl` for free.
+
