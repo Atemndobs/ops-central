@@ -1440,6 +1440,152 @@ const featureFlags = defineTable({
 }).index("by_key", ["key"]);
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// OPS TASKS & SHIFT HANDOVER  (Docs/ops-tasks-and-handover/)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const opsTasks = defineTable({
+  title: v.string(),
+  description: v.optional(v.string()),
+  status: v.union(
+    v.literal("open"),
+    v.literal("in_progress"),
+    v.literal("done"),
+  ),
+  priority: v.union(
+    v.literal("low"),
+    v.literal("normal"),
+    v.literal("high"),
+    v.literal("urgent"),
+  ),
+  anchorDate: v.number(),
+  dueDate: v.optional(v.number()),
+  closedAt: v.optional(v.number()),
+  closedBy: v.optional(v.id("users")),
+  createdBy: v.id("users"),
+  assigneeId: v.optional(v.id("users")),
+  assigneeRole: v.optional(
+    v.union(
+      v.literal("admin"),
+      v.literal("property_ops"),
+      v.literal("manager"),
+      v.literal("cleaner"),
+    ),
+  ),
+  propertyId: v.optional(v.id("properties")),
+  jobId: v.optional(v.id("cleaningJobs")),
+  incidentId: v.optional(v.id("incidents")),
+  workOrderId: v.optional(v.string()),
+  conversationId: v.optional(v.id("conversations")),
+  photoIds: v.optional(v.array(v.string())),
+  templateId: v.optional(v.id("opsTaskTemplates")),
+  authoredLocale: v.optional(v.union(v.literal("en"), v.literal("es"))),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+})
+  .index("by_assignee_status", ["assigneeId", "status"])
+  .index("by_property_anchor", ["propertyId", "anchorDate"])
+  .index("by_anchor_status", ["anchorDate", "status"])
+  .index("by_status_priority", ["status", "priority"])
+  .index("by_template", ["templateId"])
+  .index("by_created", ["createdAt"]);
+
+const opsTaskComments = defineTable({
+  taskId: v.id("opsTasks"),
+  authorId: v.id("users"),
+  body: v.string(),
+  authoredLocale: v.optional(v.union(v.literal("en"), v.literal("es"))),
+  createdAt: v.number(),
+}).index("by_task", ["taskId", "createdAt"]);
+
+const opsTaskTemplates = defineTable({
+  name: v.string(),
+  title: v.string(),
+  description: v.optional(v.string()),
+  defaultAssigneeId: v.optional(v.id("users")),
+  defaultPriority: v.union(
+    v.literal("low"),
+    v.literal("normal"),
+    v.literal("high"),
+    v.literal("urgent"),
+  ),
+  scope: v.union(v.literal("property"), v.literal("portfolio")),
+  active: v.boolean(),
+  createdBy: v.id("users"),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+}).index("by_active", ["active"]);
+
+const opsTaskRecurrences = defineTable({
+  templateId: v.id("opsTaskTemplates"),
+  propertyId: v.optional(v.id("properties")),
+  rule: v.object({
+    freq: v.union(
+      v.literal("daily"),
+      v.literal("weekly"),
+      v.literal("monthly"),
+    ),
+    interval: v.number(),
+    byWeekday: v.optional(v.array(v.number())),
+    byMonthDay: v.optional(v.array(v.number())),
+    timeOfDay: v.optional(v.string()),
+  }),
+  startDate: v.number(),
+  endDate: v.optional(v.number()),
+  active: v.boolean(),
+  createdAt: v.number(),
+}).index("by_active", ["active"]);
+
+const userPresence = defineTable({
+  userId: v.id("users"),
+  lastSeenAt: v.number(),
+  lastSignedOutAt: v.optional(v.number()),
+}).index("by_user", ["userId"]);
+
+const handoverNotes = defineTable({
+  authorId: v.id("users"),
+  body: v.string(),
+  bodySource: v.optional(
+    v.union(v.literal("typed"), v.literal("dictated"), v.literal("mixed")),
+  ),
+  authoredLocale: v.optional(v.union(v.literal("en"), v.literal("es"))),
+  validFrom: v.number(),
+  validUntil: v.optional(v.number()),
+  referencedTaskIds: v.optional(v.array(v.id("opsTasks"))),
+  checklistResponses: v.optional(
+    v.array(
+      v.object({
+        itemKey: v.string(),
+        checked: v.boolean(),
+        note: v.optional(v.string()),
+      }),
+    ),
+  ),
+  acknowledgedBy: v.optional(
+    v.array(
+      v.object({
+        userId: v.id("users"),
+        at: v.number(),
+      }),
+    ),
+  ),
+  createdAt: v.number(),
+}).index("by_validFrom", ["validFrom"]);
+
+const handoverChecklistConfig = defineTable({
+  items: v.array(
+    v.object({
+      key: v.string(),
+      label: v.string(),
+      labelEs: v.optional(v.string()),
+      required: v.boolean(),
+      order: v.number(),
+    }),
+  ),
+  updatedAt: v.number(),
+  updatedBy: v.id("users"),
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // EXPORT SCHEMA
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1520,4 +1666,13 @@ export default defineSchema({
   serviceUsageEvents,
   serviceUsageRollups,
   serviceQuotaCounters,
+
+  // Ops Tasks & Handover (Docs/ops-tasks-and-handover/)
+  opsTasks,
+  opsTaskComments,
+  opsTaskTemplates,
+  opsTaskRecurrences,
+  userPresence,
+  handoverNotes,
+  handoverChecklistConfig,
 });
