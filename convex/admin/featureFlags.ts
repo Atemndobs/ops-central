@@ -96,16 +96,6 @@ const FLAG_METADATA: Record<FeatureFlagKey, FlagMetadata> = {
       "Granola chips are hidden from the messages composer. Core messaging " +
       "flows continue without contextual chip suggestions.",
   },
-  messages_granola_composer: {
-    key: "messages_granola_composer",
-    label: "Granola-assisted message composer",
-    description:
-      "Enables the Granola-assisted composer experience for drafting and " +
-      "refining operations messages with meeting context.",
-    offBehaviour:
-      "Granola-assisted composer controls stay hidden. Users keep the " +
-      "standard text composer without AI-assisted context drafting.",
-  },
   usage_dashboard: {
     key: "usage_dashboard",
     label: "Service usage & cost dashboard",
