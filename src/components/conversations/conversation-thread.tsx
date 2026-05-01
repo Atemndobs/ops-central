@@ -139,6 +139,12 @@ export function ConversationThread({
     api.admin.featureFlags.isFeatureEnabled,
     { key: "voice_messages" },
   );
+  // Phase B pilot — Granola-shaped composer. Default OFF so legacy
+  // shape is what every user sees until an admin flips this on.
+  const granolaComposerEnabled = useQuery(
+    api.admin.featureFlags.isFeatureEnabled,
+    { key: "messages_granola_composer" },
+  );
   const [body, setBody] = useState("");
   const [pending, setPending] = useState(false);
   // Holds the retained-audio metadata returned by the transcribe action
@@ -506,6 +512,7 @@ export function ConversationThread({
         myLocale={myLocale}
         voiceMessagesEnabled={voiceMessagesEnabled}
         videoEnabled={videoEnabled}
+        granolaShape={granolaComposerEnabled === true}
         onSubmit={async () => {
           setPending(true);
           try {
