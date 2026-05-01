@@ -110,7 +110,24 @@ export type ChatComposerProps = {
   /** Phase B — render the Granola pill shape when true. Default false
    *  preserves the legacy side-by-side layout. */
   granolaShape?: boolean;
+  /** Phase C — quick-action prompt chips rendered above the input
+   *  (Granola variant only). Tapping a chip fills the textarea with
+   *  `prompt` (or runs `onSelect` when provided). */
+  chips?: ComposerChip[];
   onSubmit: () => Promise<void>;
+};
+
+export type ComposerChip = {
+  /** Stable id used for React keys. */
+  id: string;
+  /** Visible label rendered inside the chip. */
+  label: string;
+  /** Text inserted into the textarea on tap. Ignored when `onSelect` is set. */
+  prompt?: string;
+  /** Optional override that runs instead of the default fill-textarea. */
+  onSelect?: () => void;
+  /** Optional leading icon. */
+  icon?: React.ReactNode;
 };
 
 export function ChatComposer(props: ChatComposerProps) {
@@ -447,11 +464,13 @@ function GranolaChatComposer({
   myLocale,
   voiceMessagesEnabled,
   videoEnabled,
+  chips,
   onSubmit,
 }: ChatComposerProps) {
   const t = useTranslations();
   const { showToast } = useToast();
   const uploadVideo = useVideoUploader({ setVideoUploading, setPendingVideo });
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Attach popover open state. Closes on outside click / Escape.
   const [attachOpen, setAttachOpen] = useState(false);
@@ -559,6 +578,37 @@ function GranolaChatComposer({
         </div>
       ) : null}
 
+      {/* Phase C — quick-action chip row. Horizontal scroll on overflow
+          so narrow viewports don't wrap. Hidden when no chips are
+          configured for this surface. */}
+      {chips && chips.length > 0 ? (
+        <div
+          role="toolbar"
+          aria-label={t("messagesComposer.chips.ariaLabel")}
+          className="mb-2 flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {chips.map((chip) => (
+            <button
+              key={chip.id}
+              type="button"
+              disabled={pending || !canReplyInApp}
+              onClick={() => {
+                if (chip.onSelect) {
+                  chip.onSelect();
+                  return;
+                }
+                if (chip.prompt) setBody(chip.prompt);
+                textareaRef.current?.focus();
+              }}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--muted)]/40 px-3 py-1 text-xs font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40"
+            >
+              {chip.icon}
+              <span>{chip.label}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {/* Granola pill tile: textarea is the visual anchor; trailing
           action cluster (attach + mic↔send) sits inside the right edge.
           Tile uses elevated surface (slightly brighter than the thread
@@ -567,6 +617,7 @@ function GranolaChatComposer({
       <div className="rounded-[20px] border border-[var(--msg-bubble-border,var(--border))] bg-[var(--card)] px-2 py-1.5 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset,0_2px_12px_rgba(0,0,0,0.18)] transition-[border-color,box-shadow] duration-150 focus-within:border-[var(--msg-primary,var(--primary))]/60 focus-within:shadow-[0_0_0_3px_color-mix(in_oklch,var(--msg-primary,var(--primary))_22%,transparent)]">
         <div className="flex items-end gap-1">
           <textarea
+            ref={textareaRef}
             value={body}
             onChange={(event) => setBody(event.target.value)}
             onKeyDown={(event) => {
