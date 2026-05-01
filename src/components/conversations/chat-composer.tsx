@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { useMutation } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { useTranslations } from "next-intl";
 import {
   Camera,
@@ -24,6 +24,7 @@ import {
   Mic,
   Paperclip,
   Send,
+  Sparkles,
   Video as VideoIcon,
   X as XIcon,
 } from "lucide-react";
@@ -471,6 +472,8 @@ function GranolaChatComposer({
   const { showToast } = useToast();
   const uploadVideo = useVideoUploader({ setVideoUploading, setPendingVideo });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const enhanceDraft = useAction(api.conversations.enhance.enhanceDraft);
+  const [enhancing, setEnhancing] = useState(false);
 
   // Attach popover open state. Closes on outside click / Escape.
   const [attachOpen, setAttachOpen] = useState(false);
@@ -645,6 +648,57 @@ function GranolaChatComposer({
             }
             className="min-h-[40px] flex-1 resize-none bg-transparent px-3 py-2 text-[15px] leading-snug text-[var(--msg-text,var(--foreground))] outline-none placeholder:text-[var(--msg-text-muted,var(--muted-foreground))]/80 disabled:cursor-not-allowed disabled:opacity-60"
           />
+
+          {/* Polish-with-AI button — runs the draft through Gemini and
+              replaces the textarea body with the rewritten version.
+              Hidden on the WhatsApp lane to keep the surface minimal
+              there; available on internal threads. */}
+          {!isWhatsAppLane ? (
+            <button
+              type="button"
+              disabled={
+                enhancing ||
+                pending ||
+                !canReplyInApp ||
+                body.trim().length === 0
+              }
+              onClick={async () => {
+                const draft = body.trim();
+                if (!draft) {
+                  showToast(t("messagesComposer.enhance.errorEmpty"), "error");
+                  return;
+                }
+                setEnhancing(true);
+                try {
+                  const polished = await enhanceDraft({
+                    text: draft,
+                    locale: myLocale,
+                  });
+                  if (polished) setBody(polished);
+                  textareaRef.current?.focus();
+                } catch (error) {
+                  showToast(
+                    getErrorMessage(
+                      error,
+                      t("messagesComposer.enhance.errorGeneric"),
+                    ),
+                    "error",
+                  );
+                } finally {
+                  setEnhancing(false);
+                }
+              }}
+              aria-label={t("messagesComposer.enhance.tooltip")}
+              title={t("messagesComposer.enhance.tooltip")}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--msg-text-muted,var(--muted-foreground))] transition-colors hover:bg-[var(--accent)]/60 hover:text-[var(--msg-primary,var(--primary))] active:scale-95 disabled:pointer-events-none disabled:opacity-30"
+            >
+              {enhancing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+            </button>
+          ) : null}
 
           {/* Attach popover (paperclip) — unified entry for image / file / camera / video. */}
           <div className="relative" ref={attachRef}>

@@ -686,6 +686,13 @@
       "sendArrivalWindow": "Aviso — el equipo de limpieza llegará entre {window}. Avísanos si no funciona.",
       "askPhotoOfIssue": "¿Puedes enviarnos una foto rápida del problema para resolverlo?",
       "markCompleteThank": "¡Todo listo — gracias por el excelente trabajo de hoy!"
+    },
+    "enhance": {
+      "label": "Pulir con IA",
+      "tooltip": "Pulir este mensaje con IA",
+      "running": "Puliendo…",
+      "errorEmpty": "Escribe algo primero.",
+      "errorGeneric": "No se pudo pulir el mensaje. Inténtalo de nuevo."
     }
   },
   "incidentsAdmin": {
