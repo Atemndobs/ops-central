@@ -53,6 +53,7 @@ import type * as lib_adminNotifier from "../lib/adminNotifier.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_externalStorage from "../lib/externalStorage.js";
 import type * as lib_mediaValidation from "../lib/mediaValidation.js";
+import type * as lib_messageEnhance from "../lib/messageEnhance.js";
 import type * as lib_notificationLifecycle from "../lib/notificationLifecycle.js";
 import type * as lib_opsNotifications from "../lib/opsNotifications.js";
 import type * as lib_opsTaskAuth from "../lib/opsTaskAuth.js";
@@ -158,6 +159,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   "lib/externalStorage": typeof lib_externalStorage;
   "lib/mediaValidation": typeof lib_mediaValidation;
+  "lib/messageEnhance": typeof lib_messageEnhance;
   "lib/notificationLifecycle": typeof lib_notificationLifecycle;
   "lib/opsNotifications": typeof lib_opsNotifications;
   "lib/opsTaskAuth": typeof lib_opsTaskAuth;
