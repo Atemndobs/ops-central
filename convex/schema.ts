@@ -1430,7 +1430,8 @@ const featureFlags = defineTable({
     v.literal("voice_messages"),
     v.literal("voice_audio_attachments"),
     v.literal("usage_dashboard"),
-    v.literal("video_support")
+    v.literal("video_support"),
+    v.literal("messages_granola_composer")
     // future flags go here
   ),
   enabled: v.boolean(),

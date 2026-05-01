@@ -25,7 +25,8 @@ const flagKeyValidator = v.union(
   v.literal("voice_messages"),
   v.literal("voice_audio_attachments"),
   v.literal("usage_dashboard"),
-  v.literal("video_support")
+  v.literal("video_support"),
+  v.literal("messages_granola_composer")
   // future flags go here
 );
 
@@ -34,7 +35,8 @@ export type FeatureFlagKey =
   | "voice_messages"
   | "voice_audio_attachments"
   | "usage_dashboard"
-  | "video_support";
+  | "video_support"
+  | "messages_granola_composer";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UI metadata — single source of truth for the admin Feature Flags card.
@@ -107,6 +109,21 @@ const FLAG_METADATA: Record<FeatureFlagKey, FlagMetadata> = {
       "mobile cleaner app hides the \u201cRecord Video\u201d button. " +
       "Existing video rows in the database stay intact \u2014 turning the " +
       "flag back on makes them visible again.",
+  },
+  messages_granola_composer: {
+    key: "messages_granola_composer",
+    label: "Granola-style messages composer (pilot)",
+    description:
+      "Replaces the legacy messages composer with the Granola-inspired " +
+      "pill tile: mic\u2194send swap in a single right-most slot, unified " +
+      "attach popover (photo / file / camera / video), quick-action chips " +
+      "above the input, and Cmd/Ctrl+Enter to send (Enter inserts a " +
+      "newline). Behaviour is otherwise identical \u2014 same Convex " +
+      "mutations, same voice/video pipelines. See Docs/messages-redesign/" +
+      "2026-04-28-granola-inspired-chat-input.md.",
+    offBehaviour:
+      "Composer renders the current side-by-side mic + send layout with " +
+      "Enter-to-send keyboard contract. No chips, no expand-to-fullscreen.",
   },
 };
 
