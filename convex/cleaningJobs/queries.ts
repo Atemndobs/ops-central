@@ -428,6 +428,31 @@ export const getForCleaner = query({
   },
 });
 
+// Wave 3.b — thin counters for "Related Activity" panels.
+// Replace unbounded enriched reads (propertyJobs / getForCleaner)
+// when the consumer only needs a count.
+export const countByProperty = query({
+  args: { propertyId: v.id("properties") },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("cleaningJobs")
+      .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId))
+      .collect();
+    return { total: rows.length };
+  },
+});
+
+export const countByCleaner = query({
+  args: { cleanerId: v.id("users") },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("userJobAssignments")
+      .withIndex("by_user", (q) => q.eq("userId", args.cleanerId))
+      .collect();
+    return { total: rows.length };
+  },
+});
+
 export const getAssignableCleanersByProperty = query({
   args: {
     propertyIds: v.array(v.id("properties")),
