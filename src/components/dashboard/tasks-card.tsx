@@ -121,11 +121,13 @@ export function TasksCard() {
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold">{task.title}</p>
-                        {task.property?.name ? (
-                          <p className="truncate text-xs text-[var(--muted-foreground)]">
-                            {task.property.name}
-                          </p>
-                        ) : null}
+                        <p className="truncate text-xs text-[var(--muted-foreground)]">
+                          {new Date(task.dueDate ?? task.anchorDate).toLocaleDateString(
+                            undefined,
+                            { weekday: "short", month: "short", day: "numeric" },
+                          )}
+                          {task.property?.name ? ` · ${task.property.name}` : ""}
+                        </p>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-1">
                         <span
