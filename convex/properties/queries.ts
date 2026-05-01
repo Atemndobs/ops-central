@@ -309,10 +309,27 @@ export const getMyAccessibleProperties = query({
     if (isPrivileged) {
       filtered = activeProperties;
     } else {
-      const jobs = await ctx.db.query("cleaningJobs").collect();
+      // Bandwidth: previously did `ctx.db.query("cleaningJobs").collect()` to
+      // find this cleaner's assigned properties — a full scan of the jobs
+      // table on every cleaner subscription tick. Wave 6 — read from the
+      // `userJobAssignments` reverse-index (introduced in Wave 5.a) and only
+      // fetch the matching jobs. See
+      // Docs/2026-04-28-convex-bandwidth-optimization-plan.md.
+      //
+      // Pre-requisite: `cleaningJobs/backfillUserJobAssignments:run` must
+      // have populated assignment rows on the target deployment. Verified
+      // on whimsical-narwhal-849. On usable-anaconda-394 the deployment is
+      // paused and cleaners can't connect; backfill runs at consolidation.
+      const assignments = await ctx.db
+        .query("userJobAssignments")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .collect();
+      const assignedJobs = await Promise.all(
+        assignments.map((row) => ctx.db.get(row.jobId)),
+      );
       const assignedPropertyIds = new Set<Id<"properties">>();
-      for (const job of jobs) {
-        if (job.assignedCleanerIds.includes(user._id)) {
+      for (const job of assignedJobs) {
+        if (job) {
           assignedPropertyIds.add(job.propertyId);
         }
       }
