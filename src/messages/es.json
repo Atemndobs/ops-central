@@ -180,8 +180,11 @@
       "assignee": "Responsable",
       "unassigned": "— Sin asignar —",
       "opsGroup": "Equipo de Operaciones",
-      "cleanersGroup": "Limpiadores"
-    }
+      "cleanersGroup": "Limpiadores",
+      "portfolioTask": "Tarea de portafolio — aplica a todas las propiedades"
+    },
+    "cellOpenCountGlobal": "Tareas de portafolio: {count}",
+    "addPortfolioTask": "Agregar tarea de portafolio"
   },
   "jobStatus": {
     "scheduled": "Programado",
@@ -552,10 +555,22 @@
       "loading": "Cargando trabajo activo...",
       "notFound": "Trabajo no encontrado.",
       "steps": {
-        "before": { "label": "Fotos Antes", "short": "Antes" },
-        "after": { "label": "Fotos Después", "short": "Después" },
-        "incidents": { "label": "Incidentes", "short": "Problemas" },
-        "review": { "label": "Revisar y Enviar", "short": "Enviar" }
+        "before": {
+          "label": "Fotos Antes",
+          "short": "Antes"
+        },
+        "after": {
+          "label": "Fotos Después",
+          "short": "Después"
+        },
+        "incidents": {
+          "label": "Incidentes",
+          "short": "Problemas"
+        },
+        "review": {
+          "label": "Revisar y Enviar",
+          "short": "Enviar"
+        }
       },
       "stepOf": "Paso {current} de {total}",
       "beforePhotos": "Fotos Antes",

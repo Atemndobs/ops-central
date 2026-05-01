@@ -35,6 +35,9 @@ export function TaskQuickCreateDialog({
     jobId?: Id<"cleaningJobs">;
     incidentId?: Id<"incidents">;
     conversationId?: Id<"conversations">;
+    /** R2a: when true, the property selector is hidden and the task is
+     *  forced to be portfolio-wide (`propertyId` undefined). */
+    lockGlobal?: boolean;
   };
   onCreated?: (taskId: Id<"opsTasks">) => void;
 }) {
@@ -178,23 +181,29 @@ export function TaskQuickCreateDialog({
             </div>
           </div>
 
-          <div>
-            <label className="text-xs font-semibold">{t("tasks.fields.property")}</label>
-            <select
-              value={propertyId as string}
-              onChange={(e) =>
-                setPropertyId((e.target.value as Id<"properties">) || "")
-              }
-              className="mt-1 w-full rounded-lg border bg-[var(--background)] px-3 py-2 text-sm"
-            >
-              <option value="">{t("tasks.fields.noProperty")}</option>
-              {(properties ?? []).map((p) => (
-                <option key={p._id} value={p._id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {prefill?.lockGlobal ? (
+            <div className="rounded-lg border border-dashed border-[var(--primary)]/40 bg-[var(--primary)]/5 px-3 py-2 text-xs font-semibold text-[var(--primary)]">
+              {t("tasks.fields.portfolioTask")}
+            </div>
+          ) : (
+            <div>
+              <label className="text-xs font-semibold">{t("tasks.fields.property")}</label>
+              <select
+                value={propertyId as string}
+                onChange={(e) =>
+                  setPropertyId((e.target.value as Id<"properties">) || "")
+                }
+                className="mt-1 w-full rounded-lg border bg-[var(--background)] px-3 py-2 text-sm"
+              >
+                <option value="">{t("tasks.fields.noProperty")}</option>
+                {(properties ?? []).map((p) => (
+                  <option key={p._id} value={p._id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="text-xs font-semibold">{t("tasks.fields.assignee")}</label>

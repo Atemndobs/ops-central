@@ -23,6 +23,8 @@ import { requireAdmin } from "../lib/auth";
 const flagKeyValidator = v.union(
   v.literal("theme_switcher"),
   v.literal("voice_messages"),
+  v.literal("messages_granola_chips"),
+  v.literal("messages_granola_composer"),
   v.literal("voice_audio_attachments"),
   v.literal("usage_dashboard"),
   v.literal("video_support"),
@@ -33,6 +35,8 @@ const flagKeyValidator = v.union(
 export type FeatureFlagKey =
   | "theme_switcher"
   | "voice_messages"
+  | "messages_granola_chips"
+  | "messages_granola_composer"
   | "voice_audio_attachments"
   | "usage_dashboard"
   | "video_support"
@@ -81,6 +85,26 @@ const FLAG_METADATA: Record<FeatureFlagKey, FlagMetadata> = {
     offBehaviour:
       "Audio is discarded immediately after transcription (privacy- and " +
       "cost-minimising default). Only the transcript text is sent.",
+  },
+  messages_granola_chips: {
+    key: "messages_granola_chips",
+    label: "Granola context chips in messages",
+    description:
+      "Enables the Granola context chips UI in message composition flows " +
+      "to insert recent meeting context quickly.",
+    offBehaviour:
+      "Granola chips are hidden from the messages composer. Core messaging " +
+      "flows continue without contextual chip suggestions.",
+  },
+  messages_granola_composer: {
+    key: "messages_granola_composer",
+    label: "Granola-assisted message composer",
+    description:
+      "Enables the Granola-assisted composer experience for drafting and " +
+      "refining operations messages with meeting context.",
+    offBehaviour:
+      "Granola-assisted composer controls stay hidden. Users keep the " +
+      "standard text composer without AI-assisted context drafting.",
   },
   usage_dashboard: {
     key: "usage_dashboard",
