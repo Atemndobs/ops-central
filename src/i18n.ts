@@ -49,13 +49,22 @@ export default getRequestConfig(async () => {
 
   try {
     // Try to get authenticated user and their saved preference
-    const { userId } = await auth();
+    const { userId, getToken } = await auth();
 
     if (userId) {
       const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
       if (convexUrl) {
         try {
+          // Forward the Clerk JWT to Convex so `getLocalePreference`'s
+          // `requireAuth` resolves. Without this the server-rendered call
+          // hits Convex unauthenticated → "Not authenticated" → silent
+          // fallback to cookie/default locale on every page load.
+          // Requires a Clerk JWT template named "convex" to exist.
+          const token = await getToken({ template: "convex" });
           const convex = new ConvexHttpClient(convexUrl);
+          if (token) {
+            convex.setAuth(token);
+          }
           const userPreference = await convex.query(api.users.queries.getLocalePreference);
 
           if (userPreference?.locale && locales.includes(userPreference.locale)) {

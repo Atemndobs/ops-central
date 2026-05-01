@@ -757,7 +757,12 @@ const jobTemplates = defineTable({
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const photos = defineTable({
-  cleaningJobId: v.id("cleaningJobs"),
+  // Optional since Phase 4a-extended: standalone incidents can hold photos
+  // (and now videos) without a linked cleaning job. The `by_job` /
+  // `by_job_room` / `by_job_type` / `by_job_kind` indexes still work for
+  // job-linked rows; standalone rows just don't appear in those queries.
+  // Existing rows all have `cleaningJobId` set, so backward compatible.
+  cleaningJobId: v.optional(v.id("cleaningJobs")),
   storageId: v.optional(v.id("_storage")),
   provider: v.optional(v.string()),
   bucket: v.optional(v.string()),
@@ -859,8 +864,10 @@ const photoStorageAggregate = defineTable({
 // finds rows still "pending" past `expiresAt + grace`, and deletes the
 // bucket objects (best-effort). See Phase 1 of Docs/video-support/.
 const pendingMediaUploads = defineTable({
-  /** Job the upload is for (matches the photo row that would be inserted). */
-  cleaningJobId: v.id("cleaningJobs"),
+  /** Job the upload is for (matches the photo row that would be inserted).
+   *  Optional since Phase 4a-extended: standalone-incident videos have
+   *  no linked job. */
+  cleaningJobId: v.optional(v.id("cleaningJobs")),
   /** Discriminator. Posters are tracked alongside their parent video row, so
    *  this is the *primary* media kind. */
   mediaKind: v.union(v.literal("image"), v.literal("video")),
