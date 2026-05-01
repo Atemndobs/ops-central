@@ -43,3 +43,9 @@ next-env.d.ts
 
 # Runtime-only — scheduled-task lock file
 .claude/scheduled_tasks.lock
+
+# Tooling state (per-agent, never commit)
+.claude/worktrees/
+.claude/settings.json
+.codex/
+graphify-out/
