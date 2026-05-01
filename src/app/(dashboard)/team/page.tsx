@@ -128,9 +128,13 @@ export default function TeamPage() {
     api.properties.queries.getAll,
     isAuthenticated ? { limit: 500 } : "skip",
   );
+  // Wave 3.b — only active-status jobs are ever rendered (assign-job
+  // dropdown filters on these four statuses). Use the thin `getAssignable`
+  // query instead of `getAll({ limit: 1000 })` to skip enrichment for
+  // terminal-state jobs the UI never shows.
   const allJobs = useQuery(
-    api.cleaningJobs.queries.getAll,
-    isAuthenticated ? { limit: 1000 } : "skip",
+    api.cleaningJobs.queries.getAssignable,
+    isAuthenticated ? {} : "skip",
   );
   const assignUserCompanyMembership = useMutation(
     api.admin.mutations.assignUserCompanyMembership,

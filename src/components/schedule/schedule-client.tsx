@@ -158,7 +158,16 @@ export function ScheduleClient() {
 
   // --- Convex queries ---
   const properties = useQuery(api.properties.queries.getAll, isAuthenticated ? { limit: 500 } : "skip");
-  const jobs = useQuery(api.cleaningJobs.queries.getAll, isAuthenticated ? { limit: 1000 } : "skip");
+  // Wave 3.b — only fetch jobs in the currently-visible date window via the
+  // `by_scheduled` index instead of subscribing to `getAll({ limit: 1000 })`
+  // and slicing in memory. The schedule grid never renders jobs outside the
+  // visible range.
+  const rangeStartTime = startOfDay(rangeStart).getTime();
+  const rangeEndExclusiveTime = addDays(startOfDay(rangeEnd), 1).getTime();
+  const jobs = useQuery(
+    api.cleaningJobs.queries.getInDateRange,
+    isAuthenticated ? { from: rangeStartTime, to: rangeEndExclusiveTime } : "skip",
+  );
   const cleaners = useQuery(api.users.queries.getByRole, isAuthenticated ? { role: "cleaner" } : "skip");
   const assignJob = useMutation(api.cleaningJobs.mutations.assign);
 
@@ -171,9 +180,6 @@ export function ScheduleClient() {
     () => rangeDays.slice(effectiveDayOffset, effectiveDayOffset + visibleDaysCount),
     [effectiveDayOffset, rangeDays, visibleDaysCount],
   );
-
-  const rangeStartTime = startOfDay(rangeStart).getTime();
-  const rangeEndExclusiveTime = addDays(startOfDay(rangeEnd), 1).getTime();
 
   // --- Computed: city options (from properties) ---
   const cityOptions = useMemo(() => {
