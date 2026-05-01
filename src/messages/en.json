@@ -673,6 +673,21 @@
       "transcriptionFailed": "Could not transcribe audio. Try again in a moment."
     }
   },
+  "messagesComposer": {
+    "chips": {
+      "ariaLabel": "Suggested prompts",
+      "confirmNextClean": "Confirm next clean",
+      "sendArrivalWindow": "Send arrival window",
+      "askPhotoOfIssue": "Ask for photo of issue",
+      "markCompleteThank": "Mark complete & thank"
+    },
+    "chipPrompts": {
+      "confirmNextClean": "Hi! Confirming the next clean is on the schedule — please reply if anything changes.",
+      "sendArrivalWindow": "Heads up — the cleaner is arriving between {window}. Let us know if that doesn't work.",
+      "askPhotoOfIssue": "Could you send a quick photo of the issue so we can sort it out?",
+      "markCompleteThank": "All wrapped up — thanks again for the great work today!"
+    }
+  },
   "incidentsAdmin": {
     "eyebrow": "Operations",
     "title": "Incidents",

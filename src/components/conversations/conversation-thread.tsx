@@ -14,6 +14,7 @@ import { useIsVideoEnabled } from "@/hooks/use-is-video-enabled";
 import { ExternalLink, Image as ImageIcon, Languages, Loader2, Mic, Paperclip, Video as VideoIcon } from "lucide-react";
 import {
   ChatComposer,
+  type ComposerChip,
   type PendingAudio,
   type PendingVideo,
 } from "./chat-composer";
@@ -214,6 +215,36 @@ export function ConversationThread({
         : "Reply window open"
       : "Await cleaner reply before sending another WhatsApp message."
     : "Internal team thread";
+
+  // Phase C — quick-action chip set for the property/job thread. Strings
+  // come from i18n so en/es both work; the prompts are intentionally
+  // generic placeholders that ops can iterate on once the surface ships.
+  const composerChips: ComposerChip[] = [
+    {
+      id: "confirm-next-clean",
+      label: t("messagesComposer.chips.confirmNextClean"),
+      prompt: t("messagesComposer.chipPrompts.confirmNextClean"),
+    },
+    {
+      id: "send-arrival-window",
+      label: t("messagesComposer.chips.sendArrivalWindow"),
+      // {window} placeholder stays in the prompt so the user can fill in
+      // the actual time before sending.
+      prompt: t("messagesComposer.chipPrompts.sendArrivalWindow", {
+        window: "—:—",
+      }),
+    },
+    {
+      id: "ask-photo",
+      label: t("messagesComposer.chips.askPhotoOfIssue"),
+      prompt: t("messagesComposer.chipPrompts.askPhotoOfIssue"),
+    },
+    {
+      id: "mark-complete",
+      label: t("messagesComposer.chips.markCompleteThank"),
+      prompt: t("messagesComposer.chipPrompts.markCompleteThank"),
+    },
+  ];
 
   return (
     <div
@@ -513,6 +544,7 @@ export function ConversationThread({
         voiceMessagesEnabled={voiceMessagesEnabled}
         videoEnabled={videoEnabled}
         granolaShape={granolaComposerEnabled === true}
+        chips={composerChips}
         onSubmit={async () => {
           setPending(true);
           try {

@@ -673,6 +673,21 @@
       "transcriptionFailed": "No se pudo transcribir el audio. Inténtalo de nuevo en un momento."
     }
   },
+  "messagesComposer": {
+    "chips": {
+      "ariaLabel": "Sugerencias",
+      "confirmNextClean": "Confirmar próxima limpieza",
+      "sendArrivalWindow": "Enviar horario de llegada",
+      "askPhotoOfIssue": "Pedir foto del problema",
+      "markCompleteThank": "Marcar completado y agradecer"
+    },
+    "chipPrompts": {
+      "confirmNextClean": "¡Hola! Confirmamos la próxima limpieza en el calendario — avísanos si algo cambia.",
+      "sendArrivalWindow": "Aviso — el equipo de limpieza llegará entre {window}. Avísanos si no funciona.",
+      "askPhotoOfIssue": "¿Puedes enviarnos una foto rápida del problema para resolverlo?",
+      "markCompleteThank": "¡Todo listo — gracias por el excelente trabajo de hoy!"
+    }
+  },
   "incidentsAdmin": {
     "eyebrow": "Operaciones",
     "title": "Incidentes",
