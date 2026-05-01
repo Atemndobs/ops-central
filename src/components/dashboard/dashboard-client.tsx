@@ -111,9 +111,24 @@ export function DashboardClient() {
   const [quickAssignAlertId, setQuickAssignAlertId] = useState<Id<"cleaningJobs"> | null>(null);
   const [assigningJobId, setAssigningJobId] = useState<Id<"cleaningJobs"> | null>(null);
 
+  // Wave 3.b — dashboard renders only recent + upcoming jobs (alerts
+  // for overdues, today's timeline, per-status funnel deltas). Subscribe
+  // to a windowed read via the `by_scheduled` index instead of pulling
+  // the most-recent 500 jobs globally and filtering client-side.
+  // Window: past 7 days → future 30 days (covers stragglers + planning).
+  const dashboardJobsFromMs = useMemo(
+    () => Date.now() - 7 * 24 * 60 * 60 * 1000,
+    [],
+  );
+  const dashboardJobsToMs = useMemo(
+    () => Date.now() + 30 * 24 * 60 * 60 * 1000,
+    [],
+  );
   const jobs = useQuery(
-    api.cleaningJobs.queries.getAll,
-    isAuthenticated ? { limit: 500 } : "skip",
+    api.cleaningJobs.queries.getInDateRange,
+    isAuthenticated
+      ? { from: dashboardJobsFromMs, to: dashboardJobsToMs }
+      : "skip",
   );
   const properties = useQuery(
     api.properties.queries.getAll,

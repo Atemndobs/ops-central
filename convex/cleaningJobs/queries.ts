@@ -195,6 +195,12 @@ export const getAll = query({
     status: v.optional(JOB_STATUS_FILTER),
     propertyId: v.optional(v.id("properties")),
     limit: v.optional(v.number()),
+    /** Wave 3.b — drop jobs whose `scheduledEndAt` (or
+     *  `scheduledStartAt` as fallback) is before this timestamp.
+     *  Mirrors the client `hidePastJobs` toggle used by the jobs list
+     *  page so already-ended jobs aren't fetched + enriched only to be
+     *  discarded client-side. */
+    notEndedBefore: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const requestedLimit = Math.min(
@@ -228,6 +234,14 @@ export const getAll = query({
         .withIndex("by_scheduled")
         .order("desc")
         .take(requestedLimit);
+    }
+
+    if (typeof args.notEndedBefore === "number") {
+      const cutoff = args.notEndedBefore;
+      jobs = jobs.filter((job) => {
+        const end = job.scheduledEndAt ?? job.scheduledStartAt ?? 0;
+        return end >= cutoff;
+      });
     }
 
     const sorted = jobs.sort((a, b) => b.scheduledStartAt - a.scheduledStartAt);
