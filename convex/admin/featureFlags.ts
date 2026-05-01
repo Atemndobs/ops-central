@@ -27,8 +27,7 @@ const flagKeyValidator = v.union(
   v.literal("messages_granola_composer"),
   v.literal("voice_audio_attachments"),
   v.literal("usage_dashboard"),
-  v.literal("video_support"),
-  v.literal("messages_granola_composer")
+  v.literal("video_support")
   // future flags go here
 );
 
@@ -39,8 +38,7 @@ export type FeatureFlagKey =
   | "messages_granola_composer"
   | "voice_audio_attachments"
   | "usage_dashboard"
-  | "video_support"
-  | "messages_granola_composer";
+  | "video_support";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UI metadata — single source of truth for the admin Feature Flags card.
@@ -95,16 +93,6 @@ const FLAG_METADATA: Record<FeatureFlagKey, FlagMetadata> = {
     offBehaviour:
       "Granola chips are hidden from the messages composer. Core messaging " +
       "flows continue without contextual chip suggestions.",
-  },
-  messages_granola_composer: {
-    key: "messages_granola_composer",
-    label: "Granola-assisted message composer",
-    description:
-      "Enables the Granola-assisted composer experience for drafting and " +
-      "refining operations messages with meeting context.",
-    offBehaviour:
-      "Granola-assisted composer controls stay hidden. Users keep the " +
-      "standard text composer without AI-assisted context drafting.",
   },
   usage_dashboard: {
     key: "usage_dashboard",
