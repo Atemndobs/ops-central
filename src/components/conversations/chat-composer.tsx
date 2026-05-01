@@ -560,9 +560,12 @@ function GranolaChatComposer({
       ) : null}
 
       {/* Granola pill tile: textarea is the visual anchor; trailing
-          action cluster (attach + mic↔send) sits inside the right edge. */}
-      <div className="rounded-2xl border border-[var(--msg-bubble-border,var(--border))] bg-[var(--msg-card,var(--background))] p-2 transition-colors focus-within:border-[var(--msg-primary,var(--primary))] focus-within:ring-2 focus-within:ring-[var(--msg-primary,var(--primary))]/20">
-        <div className="flex items-end gap-1.5">
+          action cluster (attach + mic↔send) sits inside the right edge.
+          Tile uses elevated surface (slightly brighter than the thread
+          background) + a soft shadow so it reads as a distinct input
+          surface, mirroring Granola's composer treatment. */}
+      <div className="rounded-[20px] border border-[var(--msg-bubble-border,var(--border))] bg-[var(--card)] px-2 py-1.5 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset,0_2px_12px_rgba(0,0,0,0.18)] transition-[border-color,box-shadow] duration-150 focus-within:border-[var(--msg-primary,var(--primary))]/60 focus-within:shadow-[0_0_0_3px_color-mix(in_oklch,var(--msg-primary,var(--primary))_22%,transparent)]">
+        <div className="flex items-end gap-1">
           <textarea
             value={body}
             onChange={(event) => setBody(event.target.value)}
@@ -589,7 +592,7 @@ function GranolaChatComposer({
                   : "Await cleaner reply…"
                 : "Type a message…"
             }
-            className="min-h-[40px] flex-1 resize-none bg-transparent px-2 py-2 text-sm text-[var(--msg-text,var(--foreground))] outline-none placeholder:text-[var(--msg-text-muted,var(--muted-foreground))] disabled:cursor-not-allowed disabled:opacity-60"
+            className="min-h-[40px] flex-1 resize-none bg-transparent px-3 py-2 text-[15px] leading-snug text-[var(--msg-text,var(--foreground))] outline-none placeholder:text-[var(--msg-text-muted,var(--muted-foreground))]/80 disabled:cursor-not-allowed disabled:opacity-60"
           />
 
           {/* Attach popover (paperclip) — unified entry for image / file / camera / video. */}
@@ -602,7 +605,7 @@ function GranolaChatComposer({
               aria-expanded={attachOpen}
               aria-label="Attach"
               title="Attach"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--msg-text-muted,var(--muted-foreground))] transition-colors hover:bg-[var(--msg-card,var(--accent))] hover:text-[var(--msg-text,var(--foreground))] disabled:opacity-40"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--msg-text-muted,var(--muted-foreground))] transition-colors hover:bg-[var(--accent)]/60 hover:text-[var(--msg-text,var(--foreground))] active:scale-95 disabled:pointer-events-none disabled:opacity-30"
             >
               {videoUploading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -666,7 +669,7 @@ function GranolaChatComposer({
               type="submit"
               disabled={sendDisabled}
               aria-label="Send message"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--msg-primary,var(--primary))] text-[var(--msg-on-primary,var(--primary-foreground))] shadow-[var(--msg-shadow-float,none)] transition-transform hover:scale-105 active:scale-95 disabled:opacity-40"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--msg-primary,var(--primary))] text-[var(--msg-on-primary,var(--primary-foreground))] shadow-[0_2px_8px_color-mix(in_oklch,var(--msg-primary,var(--primary))_40%,transparent)] transition-transform hover:scale-[1.04] active:scale-95 disabled:pointer-events-none disabled:opacity-30 disabled:shadow-none"
             >
               <Send className="h-4 w-4" />
             </button>
@@ -688,7 +691,7 @@ function GranolaChatComposer({
               type="submit"
               disabled
               aria-label="Send message"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--msg-primary,var(--primary))] text-[var(--msg-on-primary,var(--primary-foreground))] opacity-40"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--muted)] text-[var(--muted-foreground)] opacity-60"
             >
               <Send className="h-4 w-4" />
             </button>
