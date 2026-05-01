@@ -27,8 +27,7 @@ const flagKeyValidator = v.union(
   v.literal("messages_granola_composer"),
   v.literal("voice_audio_attachments"),
   v.literal("usage_dashboard"),
-  v.literal("video_support"),
-  v.literal("messages_granola_composer")
+  v.literal("video_support")
   // future flags go here
 );
 
@@ -39,8 +38,7 @@ export type FeatureFlagKey =
   | "messages_granola_composer"
   | "voice_audio_attachments"
   | "usage_dashboard"
-  | "video_support"
-  | "messages_granola_composer";
+  | "video_support";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UI metadata — single source of truth for the admin Feature Flags card.
