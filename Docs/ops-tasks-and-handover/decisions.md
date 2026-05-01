@@ -15,6 +15,8 @@ One-line snapshot of every resolved question, with the date and the alternative 
 | OQ-9 | 2026-04-28 | Recurrence: 14-day window, hourly idempotent cron. | 30-day window or daily cron. |
 | OQ-10 | 2026-04-28 | Color tiers calm/soon/urgent, capped at urgent (no pulse); v1 ships open-tasks-only + mine-only + city-collapse filters default-on. | Fading bars over time / unlimited escalation. |
 | OQ-11 | 2026-04-28 | Store user-authored text as-is; record `authoredLocale`; no auto-translation. | Auto-translate at write time. |
+| OQ-12 | 2026-05-01 | **Portfolio (global) tasks** anchored to the date-header row of the schedule (`propertyId == undefined`). `+`, count, drag-across bar, and avatar stack all render on the date row. | Forcing a "ghost property" record, or a separate `/portfolio-tasks` page disconnected from the schedule. |
+| OQ-13 | 2026-05-01 | **Assignee avatar stack** on every schedule cell (per-property and date-header), rendering one avatar per distinct open-task assignee, capped at 3 + `+N` overflow chip, unassigned tasks collapsed into a single ghost avatar. | Showing one avatar per task (would scale poorly), or no avatars (the original spec — too anonymous for shift visibility). |
 
 ## Schema additions traced from these decisions
 
@@ -26,6 +28,8 @@ One-line snapshot of every resolved question, with the date and the alternative 
 - `handoverNotes.authoredLocale` *(OQ-11)*
 - `handoverChecklistConfig` reserved table *(OQ-7 / R13, ships in M2.5)*
 - `userPresence.lastSeenAt` / `lastSignedOutAt` *(OQ-6)*
+- *No new schema for OQ-12* — `opsTasks.propertyId` is already optional. Global = `propertyId == undefined`.
+- *No new schema for OQ-13* — avatar payload derived from existing `assigneeId` + hydrated `users.metadata.avatarUrl`.
 
 ## Plan deltas traced from these decisions
 
@@ -33,3 +37,4 @@ One-line snapshot of every resolved question, with the date and the alternative 
 - M2 grew ~1 day for voice dictation *(OQ-7 / R12)*.
 - New M2.5 milestone (~2 days) for handover checklist *(OQ-7 / R13)*.
 - M3 unchanged.
+- M1 grew ~1 day for date-header global-task lane *(OQ-12)* and ~1 day for `AssigneeAvatarStack` + `listAssigneeAvatarsForRange` *(OQ-13)*.

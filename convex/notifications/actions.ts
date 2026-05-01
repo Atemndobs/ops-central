@@ -116,6 +116,13 @@ function buildNotificationUrl(
   const conversationId =
     typeof data.conversationId === "string" ? data.conversationId : null;
   const jobId = typeof data.jobId === "string" ? data.jobId : null;
+  const taskId = typeof data.taskId === "string" ? data.taskId : null;
+
+  if (notification.type === "task_assigned" && taskId) {
+    return user.role === "cleaner"
+      ? `/cleaner/tasks/${taskId}`
+      : `/tasks/${taskId}`;
+  }
 
   if (notification.type === "message_received" && conversationId) {
     return user.role === "cleaner"

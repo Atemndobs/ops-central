@@ -11,6 +11,35 @@ import { mutation } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { getCurrentUser } from "../lib/auth";
 import { requireOpsRole, requireTaskActor } from "../lib/opsTaskAuth";
+import { createNotificationsForUsers } from "../lib/opsNotifications";
+
+async function notifyTaskAssigned(
+  ctx: Parameters<typeof createNotificationsForUsers>[0],
+  args: {
+    assigneeId: Id<"users">;
+    actorId: Id<"users">;
+    taskId: Id<"opsTasks">;
+    title: string;
+    propertyId?: Id<"properties">;
+  },
+) {
+  if (args.assigneeId === args.actorId) return; // self-assign: no push
+  const property = args.propertyId ? await ctx.db.get(args.propertyId) : null;
+  const propertyName =
+    property && "name" in property ? (property as Doc<"properties">).name : null;
+  await createNotificationsForUsers(ctx, {
+    userIds: [args.assigneeId],
+    type: "task_assigned",
+    title: "New Task Assigned",
+    message: propertyName
+      ? `${propertyName}: ${args.title}`
+      : args.title,
+    data: {
+      taskId: String(args.taskId),
+      propertyId: args.propertyId ? String(args.propertyId) : undefined,
+    },
+  });
+}
 
 const PRIORITY = v.union(
   v.literal("low"),
@@ -84,6 +113,16 @@ export const create = mutation({
       updatedAt: now,
     });
 
+    if (args.assigneeId) {
+      await notifyTaskAssigned(ctx, {
+        assigneeId: args.assigneeId,
+        actorId: ops._id,
+        taskId,
+        title: trimmedTitle,
+        propertyId: args.propertyId,
+      });
+    }
+
     return taskId;
   },
 });
@@ -140,7 +179,7 @@ export const assign = mutation({
     assigneeId: v.optional(v.id("users")), // undefined → unassign
   },
   handler: async (ctx, args) => {
-    await requireOpsRole(ctx);
+    const ops = await requireOpsRole(ctx);
     const task = await ctx.db.get(args.taskId);
     if (!task) throw new Error("Task not found");
 
@@ -150,6 +189,17 @@ export const assign = mutation({
       assigneeRole,
       updatedAt: Date.now(),
     });
+
+    const changed = args.assigneeId && args.assigneeId !== task.assigneeId;
+    if (changed && args.assigneeId) {
+      await notifyTaskAssigned(ctx, {
+        assigneeId: args.assigneeId,
+        actorId: ops._id,
+        taskId: args.taskId,
+        title: task.title,
+        propertyId: task.propertyId,
+      });
+    }
     return args.taskId;
   },
 });

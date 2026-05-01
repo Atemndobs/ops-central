@@ -25,8 +25,27 @@ Each requirement is tagged with a slice (M1 / M2 / M3) — see `implementation-p
 > "It could be a task of the job, then you have to create a task inside there so it links with the job. But if it's about the property on that day, it's in the box." — *product-ideas-draft.md:319*
 
 - A task may optionally link to: `propertyId`, `jobId` (cleaningJob), `incidentId`, `workOrderId`, `conversationId`.
-- A task with **no property** is a personal/global ops task (still appears on the day's row but not on the schedule grid).
+- A task with **no property** is a portfolio-wide / global ops task — see **R2a** for surface.
 - From the linked entity's detail page, the task appears in a "Related tasks" section.
+
+## R2a. Portfolio-wide (global) tasks anchored to the date row *(M1, added 2026-05-01)*
+
+> "A property owner may want a general task to remind them about one thing they have to do on a certain day that goes for all properties. For example, it is a supplies day for every property — it would not make sense to have an individual task per property, but a global task. I imagine that task being opened right where we have the dates, at the same level as where we create another task." — *founder feedback, 2026-05-01*
+
+- **Definition:** a task with `propertyId == undefined`. Applies to the operator across the whole portfolio for that day, **not** to any single property.
+- **Where it appears in the schedule grid:** the **date header row** (the row containing the day labels above the property rows), at the same `(date)` column. Each date header cell gains a `+` button + count badge identical to the per-property cell (R1) but representing the global lane.
+  - Click `+` on a date header → quick-create with `propertyId` blank (and pre-disabled — switching it makes the task per-property).
+  - Click count → list popover scoped to that day's portfolio tasks.
+- **Drag-across behavior:** an open global task with `anchorDate < today` renders a bar **across the date header row** (not across a property row). Same calm/soon/urgent color tiers as R3.
+- **Visibility:**
+  - Ops users: visible on the date header alongside per-property tasks.
+  - Cleaners: portfolio tasks **never** auto-appear on a cleaner's grid; they only see global tasks **if assigned to them personally** (in their mobile "My tasks" list, which is a flat list — no schedule grid).
+- **Authoring fields:** identical to R1 minus the `propertyId` field. UI hides "Property" in the create-from-date-header drawer.
+- **Backend impact:**
+  - `opsTasks.propertyId` is already optional (`v.optional(v.id("properties"))`) — no schema change needed.
+  - New query `listForDateRow(anchorDate)` returns tasks where `propertyId == undefined && anchorDate == day`. Uses a new index `by_global_anchor` on `["propertyId" undefined-marker, "anchorDate"]` (or filter post-fetch from `by_anchor` if cardinality stays low — implementer's call).
+  - `listForPropertyRange` is unchanged (still per-property). A sibling `listForGlobalRange(rangeStart, rangeEnd)` powers the date-header drag-across bar.
+- **No-property task in `/tasks` list:** rendered with a "Portfolio" pill in the property column.
 
 ## R3. Visual persistence: tasks "drag" across the schedule until closed *(M1, locked)*
 
@@ -66,6 +85,28 @@ Closing requires only a click in v1 — no mandatory note/proof. *(Open question
 - **Cleaner permissions on a task assigned to them:** view, update status (`open → in_progress → done`), add comment, attach photo. **Cannot** create, reassign, edit core fields, or delete.
 - **Visibility:** any ops user sees all ops tasks. Cleaners see only tasks assigned to them. No private/draft tasks in v1.
 - **Mobile cleaner app:** v1 ships a "My tasks" screen (list + detail + status + comment + photo). Promoted from M3 stretch into M1 because cleaner-assigned tasks make no sense without a cleaner-side surface.
+
+## R6a. Assignee avatar stack on schedule cells *(M1, added 2026-05-01)*
+
+> "When the admin logs in or when every other person logs in, we should be able to see if there is a task already created — we should see the avatar, just the avatar of the person that has that task at the position of the task. If I have a task on Tuesday for Dallas under-loos, right next to the plus button I should see my face. If another person has a task, we see that person's face at the position of that task. If five people have tasks, those five faces overlap slightly at that same location." — *founder feedback, 2026-05-01*
+
+- **Where:** every schedule cell that has at least one open task — both per-property cells (R1) and date-header cells (R2a, for global tasks).
+- **What renders:** a horizontal stack of **assignee avatars**, positioned **immediately to the left of the `+` button** in the cell footer (so the cluster reads `[avatar][avatar][avatar] [count] [+]`).
+- **Stack rules:**
+  - One avatar per **distinct** open-task assignee in that cell. Tasks with the same assignee count once.
+  - **Unassigned tasks** contribute a single neutral placeholder avatar (dashed circle, ghost icon) at the end of the stack — *not* one per task — so a cell with 5 unassigned tasks still only shows one ghost.
+  - Avatars overlap by ~40% (CSS `margin-left: -8px` from the second onward) and use `z-index` ascending so the leftmost is on top.
+  - Up to **3 avatars** are shown inline; if there are more distinct assignees, the 3rd is replaced with a `+N` chip showing the overflow count. Hover/tap reveals the full list (reuse `CellTasksPopover`).
+  - Avatar size scales with cell variant: `h-4 w-4` in `compact` (7-day mobile), `h-5 w-5` in `full` (3-day / day desktop).
+- **Avatar source:**
+  - Reuse the existing user-avatar component (Clerk image URL → fallback to Convex `users.metadata.avatarUrl` → fallback to initials on a deterministic color from `userId`).
+  - **Closed (`done`) tasks** never contribute to the stack — only `open` and `in_progress`.
+- **Click behavior:**
+  - Click an avatar → opens `CellTasksPopover` pre-filtered to that assignee.
+  - Click the `+N` chip → opens the popover unfiltered.
+- **Status hint (optional v1.1):** a tiny dot at the avatar bottom-right encoding the most-urgent status across that user's tasks in this cell (blue=open, amber=in_progress). Skip in v1 if it adds noise.
+- **Performance:** `listForCell` already returns hydrated `assignee` data (`_id`, `name`, `email`, `role`). Add `assignee.avatarUrl` to the projection. No extra query.
+- **Accessibility:** each avatar has `alt`/`title` = `"{assignee.name} — {n} task(s)"`; the stack itself has `role="group"` with `aria-label="Task assignees for {date}, {property}"`.
 
 ## R7. Notifications *(M1, light)*
 
