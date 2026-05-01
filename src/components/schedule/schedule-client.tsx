@@ -33,6 +33,7 @@ import { useToast } from "@/components/ui/toast-provider";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { cn } from "@/lib/utils";
 import type { PropertyStatus } from "@/types/property";
+import { ScheduleCellTaskOverlay } from "@/components/schedule/schedule-cell-task-overlay";
 
 type JobWithRelations = {
   _id: Id<"cleaningJobs">;
@@ -414,13 +415,28 @@ export function ScheduleClient() {
     const key = `${propertyId}-${dateKeyFn(day)}`;
 
     if (cellJobs.length === 0) {
-      return <div key={key} className="h-10 border-l sm:h-16" />;
+      return (
+        <div key={key} className="relative h-10 border-l sm:h-16">
+          <ScheduleCellTaskOverlay
+            propertyId={propertyId as Id<"properties">}
+            day={day}
+            variant="compact"
+          />
+        </div>
+      );
     }
 
     // 7-day compact mode: dots on mobile only, desktop always shows full cards
     if (dayCount === 7) {
       return (
-        <div key={key} className="border-l">
+        <div key={key} className="relative border-l">
+          <div className="md:hidden">
+            <ScheduleCellTaskOverlay
+              propertyId={propertyId as Id<"properties">}
+              day={day}
+              variant="compact"
+            />
+          </div>
           {/* Mobile: mini card view */}
           <button
             type="button"
@@ -527,6 +543,11 @@ export function ScheduleClient() {
             {cellJobs.length > 3 ? (
               <p className="text-[10px] text-[var(--muted-foreground)]">+{cellJobs.length - 3} more</p>
             ) : null}
+            <ScheduleCellTaskOverlay
+              propertyId={propertyId as Id<"properties">}
+              day={day}
+              variant="full"
+            />
           </div>
         </div>
       );
@@ -612,6 +633,11 @@ export function ScheduleClient() {
         {cellJobs.length > 3 ? (
           <p className="text-[10px] text-[var(--muted-foreground)]">+{cellJobs.length - 3} more</p>
         ) : null}
+        <ScheduleCellTaskOverlay
+          propertyId={propertyId as Id<"properties">}
+          day={day}
+          variant="full"
+        />
       </div>
     );
   };

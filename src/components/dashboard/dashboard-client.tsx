@@ -13,13 +13,13 @@ import {
   Ban,
   Check,
   CheckCircle2,
-  ClipboardList,
   Clock,
   Loader2,
   Play,
   ShieldAlert,
   UserPlus,
 } from "lucide-react";
+import { TasksCard } from "@/components/dashboard/tasks-card";
 import {
   STATUS_CLASSNAMES,
   STATUS_LABELS,
@@ -717,27 +717,7 @@ export function DashboardClient() {
           )}
         </section>
 
-        <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5 xl:col-span-4">
-          <div className="mb-3 flex items-center justify-between sm:mb-4">
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold sm:text-lg">{t("dashboard.tasks")}</h2>
-              <span className="rounded-full bg-[var(--accent)]/60 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-[var(--accent-foreground)]">
-                {t("dashboard.tasksComingSoon")}
-              </span>
-            </div>
-          </div>
-          <div className="flex min-h-36 flex-col items-start gap-3 rounded-xl border border-dashed border-[var(--border)] bg-[var(--muted)]/15 p-4">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--primary)]/10 text-[var(--primary)]">
-              <ClipboardList className="h-4 w-4" />
-            </div>
-            <p className="text-sm font-semibold leading-snug">
-              {t("dashboard.tasksDescription")}
-            </p>
-            <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">
-              {t("dashboard.tasksPreview")}
-            </p>
-          </div>
-        </section>
+        <TasksCard />
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">

@@ -4,6 +4,7 @@ import {
   Calendar,
   ClipboardList,
   ClipboardCheck,
+  ListChecks,
   MessageSquare,
   Building2,
   Building,
@@ -40,6 +41,12 @@ export const navigation: NavigationItem[] = [
     href: "/jobs",
     icon: ClipboardList,
     roles: ["admin", "property_ops", "manager", "cleaner"],
+  },
+  {
+    nameKey: "common.tasks",
+    href: "/tasks",
+    icon: ListChecks,
+    roles: ["admin", "property_ops", "manager"],
   },
   {
     nameKey: "common.messages",
