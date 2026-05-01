@@ -1429,6 +1429,8 @@ const featureFlags = defineTable({
   key: v.union(
     v.literal("theme_switcher"),
     v.literal("voice_messages"),
+    v.literal("messages_granola_chips"),
+    v.literal("messages_granola_composer"),
     v.literal("voice_audio_attachments"),
     v.literal("usage_dashboard"),
     v.literal("video_support")
