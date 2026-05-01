@@ -146,14 +146,14 @@ export function JobDetailClient({ id }: { id: string }) {
   const assignedCompanyName = assignableForProperty?.[0]?.companyName ?? null;
   const assignBlockedReason = assignableForProperty?.[0]?.blockedReason ?? null;
 
-  const cleanerJobs = useQuery(
-    api.cleaningJobs.queries.getForCleaner,
+  const cleanerJobsCount = useQuery(
+    api.cleaningJobs.queries.countByCleaner,
     detail?.job.assignedCleanerIds?.[0]
       ? { cleanerId: detail.job.assignedCleanerIds[0] }
       : "skip",
   );
-  const propertyJobs = useQuery(
-    api.cleaningJobs.queries.getAll,
+  const propertyJobsCount = useQuery(
+    api.cleaningJobs.queries.countByProperty,
     detail?.job.propertyId ? { propertyId: detail.job.propertyId } : "skip",
   );
 
@@ -756,13 +756,13 @@ export function JobDetailClient({ id }: { id: string }) {
                 <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
                   Jobs at this property
                 </p>
-                <p className="mt-2 text-2xl font-semibold">{propertyJobs?.length ?? 0}</p>
+                <p className="mt-2 text-2xl font-semibold">{propertyJobsCount?.total ?? 0}</p>
               </div>
               <div className="rounded-md border border-[var(--border)] p-3">
                 <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
                   Jobs for this cleaner
                 </p>
-                <p className="mt-2 text-2xl font-semibold">{cleanerJobs?.length ?? 0}</p>
+                <p className="mt-2 text-2xl font-semibold">{cleanerJobsCount?.total ?? 0}</p>
               </div>
             </div>
           </div>
