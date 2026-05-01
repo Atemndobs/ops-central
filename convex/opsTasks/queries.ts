@@ -37,6 +37,7 @@ async function hydrate(ctx: any, task: Task) {
           name: (assignee as Doc<"users">).name,
           email: (assignee as Doc<"users">).email,
           role: (assignee as Doc<"users">).role,
+          avatarUrl: (assignee as Doc<"users">).avatarUrl ?? null,
         }
       : null,
     createdByUser: createdBy

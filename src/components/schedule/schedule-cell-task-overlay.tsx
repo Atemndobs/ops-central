@@ -15,14 +15,107 @@
  * Uses the lightweight `listForCell` Convex query.
  */
 
+import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { useTranslations } from "next-intl";
-import { Plus } from "lucide-react";
+import { Plus, User } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { TaskQuickCreateDialog } from "@/components/tasks/task-quick-create-dialog";
+
+type Assignee = {
+  _id: Id<"users">;
+  name?: string;
+  email?: string;
+  avatarUrl?: string | null;
+};
+
+function initialsOf(name?: string, email?: string): string {
+  const src = (name && name.trim()) || email || "";
+  const words = src.split(/\s+|@/).filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase();
+}
+
+function AssigneeAvatarStack({
+  assignees,
+  unassignedCount,
+  size = "sm",
+  onAvatarClick,
+  onOverflowClick,
+}: {
+  assignees: Assignee[];
+  unassignedCount: number;
+  size?: "sm" | "md";
+  onAvatarClick?: (id: Id<"users">) => void;
+  onOverflowClick?: () => void;
+}) {
+  const dim = size === "sm" ? "h-4 w-4" : "h-5 w-5";
+  const text = size === "sm" ? "text-[8px]" : "text-[9px]";
+  const visible = assignees.slice(0, 3);
+  const overflow = Math.max(0, assignees.length - 3);
+  const showCount = visible.length === 3 ? overflow : 0;
+
+  return (
+    <div role="group" aria-label="Task assignees" className="pointer-events-auto flex items-center">
+      {visible.map((a, i) => (
+        <button
+          key={a._id}
+          type="button"
+          title={a.name ?? a.email ?? "Assignee"}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onAvatarClick?.(a._id);
+          }}
+          style={{ marginLeft: i === 0 ? 0 : -6, zIndex: 10 - i }}
+          className={`relative inline-flex ${dim} items-center justify-center overflow-hidden rounded-full border border-white bg-[var(--primary)]/15`}
+        >
+          {a.avatarUrl ? (
+            <Image
+              src={a.avatarUrl}
+              alt={a.name ?? "Assignee"}
+              fill
+              unoptimized
+              className="object-cover"
+              sizes="20px"
+            />
+          ) : (
+            <span className={`${text} font-bold text-[var(--primary)]`}>
+              {initialsOf(a.name, a.email)}
+            </span>
+          )}
+        </button>
+      ))}
+      {showCount > 0 ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onOverflowClick?.();
+          }}
+          style={{ marginLeft: -6 }}
+          className={`relative inline-flex ${dim} items-center justify-center rounded-full border border-white bg-[var(--muted)] ${text} font-bold text-[var(--foreground)]`}
+        >
+          +{showCount}
+        </button>
+      ) : null}
+      {unassignedCount > 0 ? (
+        <span
+          title={`${unassignedCount} unassigned`}
+          style={{ marginLeft: assignees.length > 0 ? -6 : 0 }}
+          className={`relative inline-flex ${dim} items-center justify-center rounded-full border border-dashed border-[var(--muted-foreground)] bg-[var(--background)]`}
+        >
+          <User className="h-2.5 w-2.5 text-[var(--muted-foreground)]" />
+        </span>
+      ) : null}
+    </div>
+  );
+}
 
 const STATUS_DOT: Record<string, string> = {
   open: "bg-blue-500",
@@ -57,12 +150,22 @@ export function ScheduleCellTaskOverlay({
 
   const openTasks = (tasks ?? []).filter((t) => t.status !== "done");
   const count = openTasks.length;
+  const { assignees, unassignedCount } = deriveAvatarStack(openTasks);
 
   // Compact = 7-day mobile dot mode; show only count or single +
   if (variant === "compact") {
     return (
       <>
         <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-end gap-0.5 px-0.5 py-0.5">
+          {count > 0 ? (
+            <AssigneeAvatarStack
+              assignees={assignees}
+              unassignedCount={unassignedCount}
+              size="sm"
+              onAvatarClick={() => setShowList(true)}
+              onOverflowClick={() => setShowList(true)}
+            />
+          ) : null}
           {count > 0 ? (
             <button
               type="button"
@@ -116,25 +219,34 @@ export function ScheduleCellTaskOverlay({
     <>
       <div className="mt-1 flex items-center justify-between gap-1 border-t border-dashed border-[var(--border)] pt-1">
         {count > 0 ? (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setShowList(true);
-            }}
-            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-[var(--muted-foreground)] hover:bg-[var(--accent)]/60 hover:text-[var(--foreground)]"
-          >
-            <span className="inline-flex items-center gap-0.5">
-              {openTasks.slice(0, 3).map((task) => (
-                <span
-                  key={task._id}
-                  className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[task.status] ?? STATUS_DOT.open}`}
-                />
-              ))}
-            </span>
-            {t("tasks.cellOpenCount", { count })}
-          </button>
+          <div className="inline-flex items-center gap-1.5">
+            <AssigneeAvatarStack
+              assignees={assignees}
+              unassignedCount={unassignedCount}
+              size="md"
+              onAvatarClick={() => setShowList(true)}
+              onOverflowClick={() => setShowList(true)}
+            />
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setShowList(true);
+              }}
+              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-[var(--muted-foreground)] hover:bg-[var(--accent)]/60 hover:text-[var(--foreground)]"
+            >
+              <span className="inline-flex items-center gap-0.5">
+                {openTasks.slice(0, 3).map((task) => (
+                  <span
+                    key={task._id}
+                    className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[task.status] ?? STATUS_DOT.open}`}
+                  />
+                ))}
+              </span>
+              {t("tasks.cellOpenCount", { count })}
+            </button>
+          </div>
         ) : (
           <span className="text-[10px] text-[var(--muted-foreground)]/60">
             {t("tasks.noTasks")}
@@ -181,8 +293,40 @@ type CellTask = {
   title: string;
   status: "open" | "in_progress" | "done";
   priority: "low" | "normal" | "high" | "urgent";
-  assignee: { name?: string; email: string } | null;
+  assignee: {
+    _id: Id<"users">;
+    name?: string;
+    email: string;
+    avatarUrl?: string | null;
+  } | null;
 };
+
+function deriveAvatarStack(tasks: CellTask[]): {
+  assignees: Assignee[];
+  unassignedCount: number;
+} {
+  const seen = new Map<string, Assignee>();
+  let unassignedCount = 0;
+  for (const t of tasks) {
+    if (t.status === "done") continue;
+    if (!t.assignee) {
+      unassignedCount += 1;
+      continue;
+    }
+    const key = String(t.assignee._id);
+    if (seen.has(key)) continue;
+    seen.set(key, {
+      _id: t.assignee._id,
+      name: t.assignee.name,
+      email: t.assignee.email,
+      avatarUrl: t.assignee.avatarUrl ?? null,
+    });
+  }
+  return {
+    assignees: Array.from(seen.values()),
+    unassignedCount: unassignedCount > 0 ? 1 : 0,
+  };
+}
 
 function CellTasksPopover({
   tasks,
