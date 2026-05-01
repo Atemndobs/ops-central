@@ -98,9 +98,12 @@ export const sendMessage = mutation({
         durationMs: v.optional(v.number()),
       }),
     ),
-    // Phase 4a video-support — outbound video attachment uploaded via
-    // Convex `_storage` two-step. Composer hands ownership of the
-    // storageId to this attachment row.
+    // Phase 4a video-support — outbound video attachment uploaded via the
+    // existing Convex `_storage` two-step (`generateUploadUrl` → PUT →
+    // `sendMessage`). The composer hands ownership of the storageId to
+    // this attachment row. The optional poster, when present, was
+    // extracted client-side via a `<video>` + `<canvas>` capture before
+    // upload (similar to the audio composer's retain-then-attach pattern).
     videoAttachment: v.optional(
       v.object({
         storageId: v.id("_storage"),
@@ -130,8 +133,9 @@ export const sendMessage = mutation({
     }
 
     const body = args.body.trim();
-    // Allow empty body when a video attachment is present (a clip alone
-    // is a valid message). Audio still requires the transcript body.
+    // Allow empty body when a video attachment is present (a clip alone is a
+    // valid message). Audio still requires the transcript body — that's
+    // enforced upstream by the transcribe action returning text.
     if (!body && !args.videoAttachment) {
       throw new ConvexError("Message body cannot be empty.");
     }
@@ -197,6 +201,7 @@ export const sendMessage = mutation({
     // Phase 4a — video attachment writer. Mirrors the audio block.
     if (args.videoAttachment) {
       const video = args.videoAttachment;
+      // Standardise the filename so download UX stays predictable.
       const ext = video.mimeType.includes("mp4")
         ? "mp4"
         : video.mimeType.includes("webm")
