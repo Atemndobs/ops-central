@@ -184,10 +184,16 @@ export function ScheduleCellTaskOverlay({
   propertyId,
   day,
   variant = "compact",
+  mineOnly = false,
+  myUserId,
 }: {
   propertyId: Id<"properties">;
   day: Date;
   variant?: "compact" | "full";
+  /** When true, drop tasks whose assignee !== `myUserId`. */
+  mineOnly?: boolean;
+  /** Required when `mineOnly` is true. Ignored otherwise. */
+  myUserId?: Id<"users"> | null;
 }) {
   const t = useTranslations();
   const { isAuthenticated } = useConvexAuth();
@@ -201,7 +207,11 @@ export function ScheduleCellTaskOverlay({
   const [showCreate, setShowCreate] = useState(false);
   const [showList, setShowList] = useState(false);
 
-  const openTasks = (tasks ?? []).filter((t) => t.status !== "done");
+  const openTasks = (tasks ?? [])
+    .filter((t) => t.status !== "done")
+    .filter((t) =>
+      mineOnly && myUserId ? t.assignee?._id === myUserId : true,
+    );
   const count = openTasks.length;
   const { assignees, unassignedCount } = deriveAvatarStack(openTasks);
 

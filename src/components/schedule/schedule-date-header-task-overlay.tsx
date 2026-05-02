@@ -54,7 +54,17 @@ type GlobalTask = {
   } | null;
 };
 
-export function ScheduleDateHeaderTaskOverlay({ day }: { day: Date }) {
+export function ScheduleDateHeaderTaskOverlay({
+  day,
+  mineOnly = false,
+  myUserId,
+}: {
+  day: Date;
+  /** When true, drop global tasks whose assignee !== `myUserId`. */
+  mineOnly?: boolean;
+  /** Required when `mineOnly` is true. Ignored otherwise. */
+  myUserId?: Id<"users"> | null;
+}) {
   const t = useTranslations();
   const { isAuthenticated } = useConvexAuth();
   const anchorDate = startOfDayMs(day);
@@ -67,7 +77,11 @@ export function ScheduleDateHeaderTaskOverlay({ day }: { day: Date }) {
   const [showCreate, setShowCreate] = useState(false);
   const [showList, setShowList] = useState(false);
 
-  const openTasks = (tasks ?? []).filter((t) => t.status !== "done");
+  const openTasks = (tasks ?? [])
+    .filter((t) => t.status !== "done")
+    .filter((t) =>
+      mineOnly && myUserId ? t.assignee?._id === myUserId : true,
+    );
   const count = openTasks.length;
   const { assignees, unassignedCount } = deriveAvatarStackPublic(openTasks);
 

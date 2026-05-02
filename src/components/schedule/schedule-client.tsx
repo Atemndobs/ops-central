@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import Link from "next/link";
@@ -139,6 +139,27 @@ export function ScheduleClient() {
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
 
+  // --- Tasks "Mine only" filter (architecture.md §3b) ---
+  // Per-user persisted via localStorage. Off by default for ops.
+  const MINE_ONLY_KEY = "schedule.tasks.mineOnly";
+  const [mineOnly, setMineOnlyState] = useState<boolean>(false);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(MINE_ONLY_KEY);
+      if (raw === "1") setMineOnlyState(true);
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }, []);
+  const setMineOnly = (v: boolean) => {
+    setMineOnlyState(v);
+    try {
+      window.localStorage.setItem(MINE_ONLY_KEY, v ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  };
+
   // --- Desktop toggles ---
   const [isCleanerPanelVisible, setIsCleanerPanelVisible] = useState(false);
   const [isGridFitMode, setIsGridFitMode] = useState(false);
@@ -171,6 +192,13 @@ export function ScheduleClient() {
   );
   const cleaners = useQuery(api.users.queries.getByRole, isAuthenticated ? { role: "cleaner" } : "skip");
   const assignJob = useMutation(api.cleaningJobs.mutations.assign);
+
+  // Current user — drives the "Mine only" filter on task overlays.
+  const me = useQuery(api.users.queries.getMyProfile, isAuthenticated ? {} : "skip") as
+    | { _id: Id<"users">; role: string }
+    | null
+    | undefined;
+  const myUserId: Id<"users"> | null = me?._id ?? null;
 
   // --- Computed: days ---
   const rangeDays = useMemo(() => listDaysBetween(rangeStart, rangeEnd), [rangeEnd, rangeStart]);
@@ -424,7 +452,7 @@ export function ScheduleClient() {
     if (cellJobs.length === 0) {
       return (
         <div key={key} className="relative h-10 border-l sm:h-16">
-          <ScheduleCellTaskOverlay
+          <ScheduleCellTaskOverlay mineOnly={mineOnly} myUserId={myUserId}
             propertyId={propertyId as Id<"properties">}
             day={day}
             variant="compact"
@@ -438,7 +466,7 @@ export function ScheduleClient() {
       return (
         <div key={key} className="relative border-l">
           <div className="md:hidden">
-            <ScheduleCellTaskOverlay
+            <ScheduleCellTaskOverlay mineOnly={mineOnly} myUserId={myUserId}
               propertyId={propertyId as Id<"properties">}
               day={day}
               variant="compact"
@@ -550,7 +578,7 @@ export function ScheduleClient() {
             {cellJobs.length > 3 ? (
               <p className="text-[10px] text-[var(--muted-foreground)]">+{cellJobs.length - 3} more</p>
             ) : null}
-            <ScheduleCellTaskOverlay
+            <ScheduleCellTaskOverlay mineOnly={mineOnly} myUserId={myUserId}
               propertyId={propertyId as Id<"properties">}
               day={day}
               variant="full"
@@ -640,7 +668,7 @@ export function ScheduleClient() {
         {cellJobs.length > 3 ? (
           <p className="text-[10px] text-[var(--muted-foreground)]">+{cellJobs.length - 3} more</p>
         ) : null}
-        <ScheduleCellTaskOverlay
+        <ScheduleCellTaskOverlay mineOnly={mineOnly} myUserId={myUserId}
           propertyId={propertyId as Id<"properties">}
           day={day}
           variant="full"
@@ -778,6 +806,25 @@ export function ScheduleClient() {
                 items={(properties ?? []).map((p) => ({ id: p._id, label: p.name }))}
               />
             </div>
+
+            {/* Tasks: mine-only toggle */}
+            <label
+              className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-semibold transition ${
+                mineOnly
+                  ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]"
+                  : "bg-[var(--card)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+              }`}
+              title="Show only tasks assigned to me"
+            >
+              <input
+                type="checkbox"
+                className="h-3 w-3"
+                checked={mineOnly}
+                onChange={(e) => setMineOnly(e.target.checked)}
+                aria-label="Mine only"
+              />
+              My tasks
+            </label>
 
             {/* Show/hide team (desktop) */}
             <button
@@ -1042,7 +1089,7 @@ export function ScheduleClient() {
                 <p className="text-sm font-extrabold leading-none sm:text-lg">
                   {day.toLocaleDateString([], { day: "2-digit" })}
                 </p>
-                <ScheduleDateHeaderTaskOverlay day={day} />
+                <ScheduleDateHeaderTaskOverlay day={day} mineOnly={mineOnly} myUserId={myUserId} />
               </div>
             ))}
           </div>
