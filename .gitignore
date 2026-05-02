@@ -49,3 +49,18 @@ next-env.d.ts
 .claude/settings.json
 .codex/
 graphify-out/
+
+# Convex AI-files install — multi-tool skill scatter (ignore all)
+# Most entries are symlinks to ../.agents/skills/convex; no trailing slash so symlinks match too.
+.claude/skills/convex
+.commandcode/
+.continue/skills/convex
+.goose/skills/convex
+.kiro/skills/convex
+.pi/skills/convex
+.qoder/skills/convex
+.roo/skills/convex
+.trae/skills/convex
+.windsurf/skills/convex
+skills/convex
+SESSIONS.md
