@@ -300,6 +300,10 @@ export const listAssigneeAvatarsForRange = query({
       anchorDate: number;
       assigneeIds: Set<string>;
       unassignedCount: number;
+      /** Total open/in-progress task occurrences in this cell — drives
+       *  the count badge. May exceed `assignees.length` because multiple
+       *  tasks can share an assignee. */
+      openCount: number;
     };
     const buckets = new Map<string, Bucket>();
 
@@ -316,9 +320,11 @@ export const listAssigneeAvatarsForRange = query({
           anchorDate,
           assigneeIds: new Set<string>(),
           unassignedCount: 0,
+          openCount: 0,
         };
         buckets.set(key, bucket);
       }
+      bucket.openCount += 1;
       if (assigneeId) bucket.assigneeIds.add(String(assigneeId));
       else bucket.unassignedCount += 1;
     };
@@ -371,7 +377,11 @@ export const listAssigneeAvatarsForRange = query({
       assignees: Array.from(b.assigneeIds)
         .map((id) => assigneeMap.get(id))
         .filter((a): a is AssigneeProjection => a !== undefined),
-      unassignedCount: b.unassignedCount > 0 ? 1 : 0,
+      // Returned as a count (not a flag) so the cell can show "3 unassigned"
+      // if it ever needs to. The current renderer collapses any non-zero
+      // value into a single dashed-user-icon.
+      unassignedCount: b.unassignedCount,
+      openCount: b.openCount,
     }));
 
     return { cells };
