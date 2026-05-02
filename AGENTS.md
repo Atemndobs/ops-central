@@ -167,6 +167,48 @@ When working on Convex code, **always read `convex/_generated/ai/guidelines.md` 
 Convex agent skills for common tasks can be installed by running `npx convex ai-files install`.
 <!-- convex-ai-end -->
 
+---
+
+## Multi-Agent Orchestration (READ BEFORE STARTING WORK)
+
+This repo runs with multiple parallel agent sessions (Claude Code, Codex, etc.). Coordination is **not** ad-hoc — there is a written protocol in `.harness/`.
+
+### Two roles
+
+- **Main session** = this checkout at `apps-ja/opscentral-admin/`. Owns integration, testing, Convex deploy, merge sequencing. Does **not** build features directly.
+- **Worktree session** = a `git worktree` outside this checkout. Owns one branch, one task, one PR.
+
+### If you are a worktree session
+
+1. You are **not** in `apps-ja/opscentral-admin/`. You are in `~/sites/opscentral-admin-<task-name>/`.
+2. Never run `npx convex deploy` or `npx convex dev`.
+3. Rebase on `origin/main` before push and before PR.
+4. Branch lifetime < 3 days. One feature only. No stacking.
+5. When done: open PR, write `.harness/handoffs/<TASK-ID>/worktree-handoff.md`, append to `.harness/integration-queue.md`. Then stop.
+
+### If you are the main session
+
+1. You are in `apps-ja/opscentral-admin/` on `main`.
+2. Read `.harness/integration-queue.md` for ready tasks.
+3. Merge PR, pull, run lint/build, run `npx convex dev --once` only if `Schema impact` ≠ `none`.
+4. Write `.harness/handoffs/<TASK-ID>/integration-result.md`.
+5. Move queue entry from `## Ready` → `## Done`.
+
+### Schema migration policy
+
+- **Schema-first by default.** New required fields, renames, type changes, removed fields, migrations → ship as separate schema-only PR first.
+- **Combined PR** allowed only for additive optional fields with no migration. See `.harness/convex.md`.
+
+### Full rules
+
+- `.harness/project-rules.md` — roles, lifecycle, forbidden actions
+- `.harness/convex.md` — Convex command ownership and migration policy
+- `.harness/worktrees.md` — exact `git worktree` commands
+- `.harness/integration-queue.md` — current ready queue
+- `.harness/handoffs/README.md` — handoff file template
+
+---
+
 ## graphify
 
 This project has a graphify knowledge graph at graphify-out/.

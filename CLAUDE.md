@@ -189,6 +189,17 @@ npm run lint       # ESLint
 5. **Keep pages as Server Components** by default — push `'use client'` down
 6. **All request APIs are async** — `await params`, `await searchParams`, etc.
 
+## Multi-Agent Orchestration
+
+This repo coordinates multiple parallel agent sessions via a written protocol. **Read `.harness/project-rules.md` before starting any task.**
+
+- This checkout (`apps-ja/opscentral-admin/` on `main`) is the **integration/test/deploy** session. Do not build features directly here.
+- Feature work happens in `git worktree` checkouts under `~/sites/opscentral-admin-<task>/` with branches `task/<name>` off `origin/main`.
+- Convex `deploy`/`dev` runs only from this main session.
+- Schema changes are **schema-first by default** — see `.harness/convex.md`.
+- Worktree → main handoff is via PR + `.harness/handoffs/<TASK-ID>/worktree-handoff.md` + entry in `.harness/integration-queue.md`.
+- See also `AGENTS.md` (this folder) and `../AGENTS.md` (workspace).
+
 <!-- convex-ai-start -->
 This project uses [Convex](https://convex.dev) as its backend.
 
