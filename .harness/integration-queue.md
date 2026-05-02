@@ -12,7 +12,15 @@ _None yet._
 
 ## Done
 
-_None yet._
+### TASK-FIX-TASKS-001
+- Branch: task/fix-tasks-feature
+- Worktree: ~/sites/jnabusiness_solutions/apps-ja/opscentral-admin-fix-tasks
+- PR: https://github.com/Atemndobs/ops-central/pull/61 (merged → c64bdf8)
+- Schema impact: none
+- Convex impact: main-dev-once-required (`npx convex dev --once` to regen api.ts for new queries)
+- Risk: low
+- Merged: 2026-05-02 18:34 UTC
+- Handoff: .harness/handoffs/TASK-FIX-TASKS-001/worktree-handoff.md
 
 ---
 
