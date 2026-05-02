@@ -32,6 +32,19 @@ type Assignee = {
   avatarUrl?: string | null;
 };
 
+/**
+ * Pre-computed summary for one (cellKey, anchorDate) cell, produced by the
+ * batched `listAssigneeAvatarsForRange` query at the schedule-grid level.
+ * When the schedule passes a `summary` to this overlay, the per-cell
+ * `listForCell` query is gated to popover-open — eliminating N×M
+ * round-trips on the grid.
+ */
+export type CellSummary = {
+  assignees: Assignee[];
+  unassignedCount: number;
+  openCount: number;
+};
+
 function initialsOf(name?: string, email?: string): string {
   const src = (name && name.trim()) || email || "";
   const words = src.split(/\s+|@/).filter(Boolean);
@@ -186,6 +199,7 @@ export function ScheduleCellTaskOverlay({
   variant = "compact",
   mineOnly = false,
   myUserId,
+  summary,
 }: {
   propertyId: Id<"properties">;
   day: Date;
@@ -194,26 +208,55 @@ export function ScheduleCellTaskOverlay({
   mineOnly?: boolean;
   /** Required when `mineOnly` is true. Ignored otherwise. */
   myUserId?: Id<"users"> | null;
+  /** Pre-computed cell summary from the batched range query. When provided,
+   *  the per-cell `listForCell` query is deferred until the popover opens. */
+  summary?: CellSummary;
 }) {
   const t = useTranslations();
   const { isAuthenticated } = useConvexAuth();
   const anchorDate = startOfDayMs(day);
 
-  const tasks = useQuery(
-    api.opsTasks.queries.listForCell,
-    isAuthenticated ? { propertyId, anchorDate } : "skip",
-  );
-
   const [showCreate, setShowCreate] = useState(false);
   const [showList, setShowList] = useState(false);
+
+  // When a summary is provided, gate `listForCell` on popover-open. Without
+  // a summary (legacy callers), keep the eager load so the badge & avatars
+  // continue to render correctly.
+  const useEagerCellQuery = summary === undefined;
+  const tasks = useQuery(
+    api.opsTasks.queries.listForCell,
+    isAuthenticated && (useEagerCellQuery || showList)
+      ? { propertyId, anchorDate }
+      : "skip",
+  );
 
   const openTasks = (tasks ?? [])
     .filter((t) => t.status !== "done")
     .filter((t) =>
       mineOnly && myUserId ? t.assignee?._id === myUserId : true,
     );
-  const count = openTasks.length;
-  const { assignees, unassignedCount } = deriveAvatarStack(openTasks);
+
+  const summaryFiltered = summary
+    ? mineOnly && myUserId
+      ? {
+          assignees: summary.assignees.filter((a) => a._id === myUserId),
+          // We can't filter `unassignedCount`/`openCount` against `me` from a
+          // summary (it doesn't carry assigneeId for unassigned, and openCount
+          // isn't broken down by assignee). When `mineOnly` is on we count
+          // distinct "mine" avatars only.
+          unassignedCount: 0,
+          openCount: summary.assignees.some((a) => a._id === myUserId) ? 1 : 0,
+        }
+      : summary
+    : undefined;
+
+  const count = summaryFiltered ? summaryFiltered.openCount : openTasks.length;
+  const { assignees, unassignedCount } = summaryFiltered
+    ? {
+        assignees: summaryFiltered.assignees,
+        unassignedCount: summaryFiltered.unassignedCount > 0 ? 1 : 0,
+      }
+    : deriveAvatarStack(openTasks);
 
   // Compact = 7-day mobile dot mode; show only count or single +
   if (variant === "compact") {

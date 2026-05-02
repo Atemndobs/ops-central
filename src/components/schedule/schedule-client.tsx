@@ -200,6 +200,58 @@ export function ScheduleClient() {
     | undefined;
   const myUserId: Id<"users"> | null = me?._id ?? null;
 
+  // Batched per-cell avatar/count projection for the visible window
+  // (architecture.md §4a, R6a). Replaces N×M `listForCell` round-trips.
+  //
+  // `anchorDate` is stored as UTC start-of-day (see startOfUtcDay in
+  // convex/opsTasks/mutations.ts). We MUST pass UTC-midnight bounds here —
+  // the existing rangeStartTime / rangeEndExclusiveTime are local-midnight
+  // (used by jobs with wall-clock scheduledStartAt) and would skip tasks
+  // in tz != UTC.
+  const utcStartOfDay = (d: Date) =>
+    Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  const taskRangeStartUtc = utcStartOfDay(rangeStart);
+  const taskRangeEndUtcExclusive = utcStartOfDay(rangeEnd) + oneDayMs;
+  const taskAvatarRange = useQuery(
+    api.opsTasks.queries.listAssigneeAvatarsForRange,
+    isAuthenticated
+      ? { rangeStart: taskRangeStartUtc, rangeEnd: taskRangeEndUtcExclusive }
+      : "skip",
+  );
+  const taskCellSummaries = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        assignees: Array<{
+          _id: Id<"users">;
+          name?: string;
+          email?: string;
+          avatarUrl?: string | null;
+        }>;
+        unassignedCount: number;
+        openCount: number;
+      }
+    >();
+    if (!taskAvatarRange?.cells) return map;
+    for (const cell of taskAvatarRange.cells) {
+      map.set(`${cell.cellKey}@${cell.anchorDate}`, {
+        assignees: cell.assignees.map((a) => ({
+          _id: a._id,
+          name: a.name,
+          email: a.email,
+          avatarUrl: a.avatarUrl,
+        })),
+        unassignedCount: cell.unassignedCount,
+        openCount: cell.openCount,
+      });
+    }
+    return map;
+  }, [taskAvatarRange]);
+  const taskCellAnchor = (day: Date) =>
+    Date.UTC(day.getFullYear(), day.getMonth(), day.getDate());
+  const summaryFor = (cellKey: string, day: Date) =>
+    taskCellSummaries.get(`${cellKey}@${taskCellAnchor(day)}`);
+
   // --- Computed: days ---
   const rangeDays = useMemo(() => listDaysBetween(rangeStart, rangeEnd), [rangeEnd, rangeStart]);
   const maxDayOffset = Math.max(0, rangeDays.length - visibleDaysCount);
@@ -452,7 +504,7 @@ export function ScheduleClient() {
     if (cellJobs.length === 0) {
       return (
         <div key={key} className="relative h-10 border-l sm:h-16">
-          <ScheduleCellTaskOverlay mineOnly={mineOnly} myUserId={myUserId}
+          <ScheduleCellTaskOverlay mineOnly={mineOnly} myUserId={myUserId} summary={summaryFor(propertyId, day)}
             propertyId={propertyId as Id<"properties">}
             day={day}
             variant="compact"
@@ -466,7 +518,7 @@ export function ScheduleClient() {
       return (
         <div key={key} className="relative border-l">
           <div className="md:hidden">
-            <ScheduleCellTaskOverlay mineOnly={mineOnly} myUserId={myUserId}
+            <ScheduleCellTaskOverlay mineOnly={mineOnly} myUserId={myUserId} summary={summaryFor(propertyId, day)}
               propertyId={propertyId as Id<"properties">}
               day={day}
               variant="compact"
@@ -578,7 +630,7 @@ export function ScheduleClient() {
             {cellJobs.length > 3 ? (
               <p className="text-[10px] text-[var(--muted-foreground)]">+{cellJobs.length - 3} more</p>
             ) : null}
-            <ScheduleCellTaskOverlay mineOnly={mineOnly} myUserId={myUserId}
+            <ScheduleCellTaskOverlay mineOnly={mineOnly} myUserId={myUserId} summary={summaryFor(propertyId, day)}
               propertyId={propertyId as Id<"properties">}
               day={day}
               variant="full"
@@ -668,7 +720,7 @@ export function ScheduleClient() {
         {cellJobs.length > 3 ? (
           <p className="text-[10px] text-[var(--muted-foreground)]">+{cellJobs.length - 3} more</p>
         ) : null}
-        <ScheduleCellTaskOverlay mineOnly={mineOnly} myUserId={myUserId}
+        <ScheduleCellTaskOverlay mineOnly={mineOnly} myUserId={myUserId} summary={summaryFor(propertyId, day)}
           propertyId={propertyId as Id<"properties">}
           day={day}
           variant="full"
@@ -1089,7 +1141,7 @@ export function ScheduleClient() {
                 <p className="text-sm font-extrabold leading-none sm:text-lg">
                   {day.toLocaleDateString([], { day: "2-digit" })}
                 </p>
-                <ScheduleDateHeaderTaskOverlay day={day} mineOnly={mineOnly} myUserId={myUserId} />
+                <ScheduleDateHeaderTaskOverlay day={day} mineOnly={mineOnly} myUserId={myUserId} summary={summaryFor("global", day)} />
               </div>
             ))}
           </div>

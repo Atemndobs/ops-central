@@ -24,6 +24,7 @@ import { TaskQuickCreateDialog } from "@/components/tasks/task-quick-create-dial
 import {
   AssigneeAvatarStackPublic,
   deriveAvatarStackPublic,
+  type CellSummary,
 } from "@/components/schedule/schedule-cell-task-overlay";
 
 const STATUS_DOT: Record<string, string> = {
@@ -58,32 +59,53 @@ export function ScheduleDateHeaderTaskOverlay({
   day,
   mineOnly = false,
   myUserId,
+  summary,
 }: {
   day: Date;
   /** When true, drop global tasks whose assignee !== `myUserId`. */
   mineOnly?: boolean;
   /** Required when `mineOnly` is true. Ignored otherwise. */
   myUserId?: Id<"users"> | null;
+  /** Pre-computed summary for this cell from the batched range query.
+   *  When provided, `listForDateRow` is deferred until the popover opens. */
+  summary?: CellSummary;
 }) {
   const t = useTranslations();
   const { isAuthenticated } = useConvexAuth();
   const anchorDate = startOfDayMs(day);
 
-  const tasks = useQuery(
-    api.opsTasks.queries.listForDateRow,
-    isAuthenticated ? { anchorDate } : "skip",
-  ) as GlobalTask[] | undefined;
-
   const [showCreate, setShowCreate] = useState(false);
   const [showList, setShowList] = useState(false);
+
+  const useEagerQuery = summary === undefined;
+  const tasks = useQuery(
+    api.opsTasks.queries.listForDateRow,
+    isAuthenticated && (useEagerQuery || showList) ? { anchorDate } : "skip",
+  ) as GlobalTask[] | undefined;
 
   const openTasks = (tasks ?? [])
     .filter((t) => t.status !== "done")
     .filter((t) =>
       mineOnly && myUserId ? t.assignee?._id === myUserId : true,
     );
-  const count = openTasks.length;
-  const { assignees, unassignedCount } = deriveAvatarStackPublic(openTasks);
+
+  const summaryFiltered = summary
+    ? mineOnly && myUserId
+      ? {
+          assignees: summary.assignees.filter((a) => a._id === myUserId),
+          unassignedCount: 0,
+          openCount: summary.assignees.some((a) => a._id === myUserId) ? 1 : 0,
+        }
+      : summary
+    : undefined;
+
+  const count = summaryFiltered ? summaryFiltered.openCount : openTasks.length;
+  const { assignees, unassignedCount } = summaryFiltered
+    ? {
+        assignees: summaryFiltered.assignees,
+        unassignedCount: summaryFiltered.unassignedCount > 0 ? 1 : 0,
+      }
+    : deriveAvatarStackPublic(openTasks);
 
   return (
     <>
