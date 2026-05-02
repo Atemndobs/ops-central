@@ -3,9 +3,26 @@
 import { useState, useRef, useEffect } from "react";
 import { useChat } from "@ai-sdk/react";
 import { useConvexAuth, useQuery } from "convex/react";
-import { Send, X, Loader2, Square, CheckCircle2 } from "lucide-react";
+import {
+  CheckCircle2,
+  Loader2,
+  PanelRightClose,
+  PanelRightOpen,
+  Send,
+  Square,
+  X,
+} from "lucide-react";
 import Markdown from "react-markdown";
 import { api } from "@convex/_generated/api";
+
+type Mode = "floating" | "drawer";
+const MODE_STORAGE_KEY = "opscentral-ai-mode";
+
+function readMode(): Mode {
+  if (typeof window === "undefined") return "floating";
+  const v = window.localStorage.getItem(MODE_STORAGE_KEY);
+  return v === "drawer" ? "drawer" : "floating";
+}
 
 const SUGGESTED_QUERIES = [
   "What's open today?",
@@ -25,8 +42,20 @@ export function AiChatPanel() {
     isAuthenticated ? {} : "skip",
   ) as { role?: string } | null | undefined;
   const [isOpen, setIsOpen] = useState(false);
+  const [mode, setMode] = useState<Mode>("floating");
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setMode(readMode());
+  }, []);
+
+  function persistMode(next: Mode) {
+    setMode(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(MODE_STORAGE_KEY, next);
+    }
+  }
 
   const { messages, sendMessage, stop, status, error, setMessages } = useChat({
     onError(err) {
@@ -72,11 +101,10 @@ export function AiChatPanel() {
       <button
         onClick={() => setIsOpen(true)}
         style={{
-          // Pinned top-right under the dashboard header so it never
-          // overlaps the messages composer (or any other bottom-anchored
-          // surface) while still being one click away on every page.
+          // Bottom-right floating action button (FAB). Drawer mode opens
+          // the panel docked to the right edge instead.
           position: "fixed",
-          top: 76,
+          bottom: 24,
           right: 24,
           zIndex: 9999,
           width: 56,
@@ -98,20 +126,34 @@ export function AiChatPanel() {
     );
   }
 
-  return (
-    <div
-      style={{
-        // Anchor the panel to the same top-right region as the
-        // collapsed button so opening doesn't visually jump across the
-        // viewport, and so the panel never sits on top of a page-level
-        // composer/footer surface.
+  const isDrawer = mode === "drawer";
+  const panelStyle: React.CSSProperties = isDrawer
+    ? {
+        // Edge Copilot / Confluence Rovo — full-height right drawer.
         position: "fixed",
-        top: 76,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 9999,
+        width: 420,
+        maxWidth: "100vw",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+        borderLeft: "1px solid var(--border)",
+        backgroundColor: "var(--card)",
+        color: "var(--card-foreground)",
+        boxShadow: "-12px 0 30px rgba(0,0,0,0.18)",
+      }
+    : {
+        // Bottom-right floating popover anchored above the FAB.
+        position: "fixed",
+        bottom: 24,
         right: 24,
         zIndex: 9999,
         width: 384,
         height: 520,
-        maxHeight: "calc(100vh - 100px)",
+        maxHeight: "calc(100vh - 48px)",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
@@ -120,8 +162,10 @@ export function AiChatPanel() {
         backgroundColor: "var(--card)",
         color: "var(--card-foreground)",
         boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
-      }}
-    >
+      };
+
+  return (
+    <div style={panelStyle}>
       {/* Header */}
       <div
         style={{
@@ -184,6 +228,25 @@ export function AiChatPanel() {
               Clear
             </button>
           )}
+          <button
+            onClick={() => persistMode(isDrawer ? "floating" : "drawer")}
+            style={{
+              padding: 6,
+              borderRadius: 8,
+              border: "none",
+              background: "none",
+              color: "var(--muted-foreground)",
+              cursor: "pointer",
+            }}
+            aria-label={isDrawer ? "Undock to floating popover" : "Dock to side drawer"}
+            title={isDrawer ? "Undock to floating popover" : "Dock to side drawer"}
+          >
+            {isDrawer ? (
+              <PanelRightClose style={{ width: 16, height: 16 }} />
+            ) : (
+              <PanelRightOpen style={{ width: 16, height: 16 }} />
+            )}
+          </button>
           <button
             onClick={() => setIsOpen(false)}
             style={{
