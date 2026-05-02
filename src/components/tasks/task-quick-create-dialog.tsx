@@ -54,10 +54,24 @@ export function TaskQuickCreateDialog({
   );
   const [assigneeId, setAssigneeId] = useState<Id<"users"> | "">("");
   const [anchorDate, setAnchorDate] = useState<string>(() => {
-    const d = new Date(prefill?.anchorDate ?? Date.now());
-    return new Date(d.getFullYear(), d.getMonth(), d.getDate())
-      .toISOString()
-      .slice(0, 10);
+    // `prefill.anchorDate` (when supplied by the schedule cell) is UTC
+    // start-of-day ms — same convention the mutation stores. We must read
+    // its UTC components, otherwise in tz < UTC the date input shows the
+    // previous calendar day from what the user clicked.
+    // When `prefill.anchorDate` is absent, use today's local date instead
+    // (the input is a `<input type="date">` which is naturally local).
+    if (typeof prefill?.anchorDate === "number") {
+      const d = new Date(prefill.anchorDate);
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(d.getUTCDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    }
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
   });
   const [submitting, setSubmitting] = useState(false);
 
