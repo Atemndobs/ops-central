@@ -15,6 +15,7 @@
  */
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { useTranslations } from "next-intl";
 import { ClipboardList, Loader2 } from "lucide-react";
@@ -51,18 +52,66 @@ export function TasksCard() {
   const t = useTranslations();
   const { isAuthenticated } = useConvexAuth();
 
-  const counts = useQuery(
+  // Scope: "mine" (own tasks only — quick personal glance, default) vs
+  // "team" (every ops user's open tasks — for transparency / admin
+  // oversight). Persists per browser via localStorage.
+  const SCOPE_KEY = "dashboard.tasks.scope";
+  const [scope, setScopeState] = useState<"mine" | "team">("mine");
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(SCOPE_KEY);
+      if (raw === "team" || raw === "mine") setScopeState(raw);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const setScope = (next: "mine" | "team") => {
+    setScopeState(next);
+    try {
+      window.localStorage.setItem(SCOPE_KEY, next);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  // "Mine" surface — own counts + own tasks.
+  const myCounts = useQuery(
     api.opsTasks.queries.countOpenForUser,
-    isAuthenticated ? {} : "skip",
+    isAuthenticated && scope === "mine" ? {} : "skip",
   );
   const myTasks = useQuery(
     api.opsTasks.queries.listForAssignee,
-    isAuthenticated ? { status: "open", limit: 50 } : "skip",
+    isAuthenticated && scope === "mine" ? { status: "open", limit: 50 } : "skip",
+  );
+  // "Team" surface — every ops user's open + in_progress tasks. `listAll`
+  // returns all tasks for ops users; cleaners would only get their own
+  // (which is fine — they shouldn't toggle this anyway).
+  const teamOpen = useQuery(
+    api.opsTasks.queries.listAll,
+    isAuthenticated && scope === "team" ? { status: "open", limit: 50 } : "skip",
+  );
+  const teamInProgress = useQuery(
+    api.opsTasks.queries.listAll,
+    isAuthenticated && scope === "team"
+      ? { status: "in_progress", limit: 50 }
+      : "skip",
   );
 
-  const loading = counts === undefined || myTasks === undefined;
+  const loading =
+    scope === "mine"
+      ? myCounts === undefined || myTasks === undefined
+      : teamOpen === undefined || teamInProgress === undefined;
 
-  const top3 = (myTasks ?? [])
+  const sourceTasks = scope === "mine" ? myTasks ?? [] : teamOpen ?? [];
+  const counts =
+    scope === "mine"
+      ? { open: myCounts?.open ?? 0, inProgress: myCounts?.inProgress ?? 0 }
+      : {
+          open: (teamOpen ?? []).length,
+          inProgress: (teamInProgress ?? []).length,
+        };
+
+  const top3 = sourceTasks
     .slice()
     .sort((a, b) => {
       const pr = (PRIORITY_RANK[b.priority] ?? 0) - (PRIORITY_RANK[a.priority] ?? 0);
@@ -75,13 +124,47 @@ export function TasksCard() {
 
   return (
     <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5 xl:col-span-4">
-      <div className="mb-3 flex items-center justify-between sm:mb-4">
-        <div className="flex items-center gap-2">
+      <div className="mb-3 flex items-center justify-between gap-2 sm:mb-4">
+        <div className="flex min-w-0 items-center gap-2">
           <h2 className="text-base font-bold sm:text-lg">{t("dashboard.tasks")}</h2>
+          {/* Scope toggle: Mine vs Team. Mine is the default — every other
+              user's tasks are still discoverable by flipping this. */}
+          <div
+            role="tablist"
+            aria-label="Task scope"
+            className="inline-flex rounded-full border bg-[var(--card)] p-0.5 text-[10px] font-semibold"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={scope === "mine"}
+              onClick={() => setScope("mine")}
+              className={`rounded-full px-2 py-0.5 transition ${
+                scope === "mine"
+                  ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                  : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]/40"
+              }`}
+            >
+              {t("dashboard.scopeMine")}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={scope === "team"}
+              onClick={() => setScope("team")}
+              className={`rounded-full px-2 py-0.5 transition ${
+                scope === "team"
+                  ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                  : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]/40"
+              }`}
+            >
+              {t("dashboard.scopeTeam")}
+            </button>
+          </div>
         </div>
         <Link
           href="/tasks"
-          className="text-xs font-semibold text-[var(--primary)] hover:underline"
+          className="shrink-0 text-xs font-semibold text-[var(--primary)] hover:underline"
         >
           {t("dashboard.viewAllTasks")}
         </Link>
@@ -96,11 +179,11 @@ export function TasksCard() {
         <>
           <div className="mb-3 flex items-baseline gap-3 text-sm">
             <span className="font-semibold">
-              {t("dashboard.myOpen")}:{" "}
-              <span className="text-lg font-extrabold">{counts?.open ?? 0}</span>
+              {scope === "mine" ? t("dashboard.myOpen") : t("dashboard.teamOpen")}:{" "}
+              <span className="text-lg font-extrabold">{counts.open}</span>
             </span>
             <span className="text-[var(--muted-foreground)]">
-              · {t("dashboard.inProgress")}: {counts?.inProgress ?? 0}
+              · {t("dashboard.inProgress")}: {counts.inProgress}
             </span>
           </div>
 
@@ -122,11 +205,21 @@ export function TasksCard() {
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold">{task.title}</p>
                         <p className="truncate text-xs text-[var(--muted-foreground)]">
+                          {/* anchorDate is UTC start-of-day ms; pin formatter
+                              to UTC so the day matches what was picked. */}
                           {new Date(task.dueDate ?? task.anchorDate).toLocaleDateString(
                             undefined,
-                            { weekday: "short", month: "short", day: "numeric" },
+                            {
+                              weekday: "short",
+                              month: "short",
+                              day: "numeric",
+                              timeZone: "UTC",
+                            },
                           )}
                           {task.property?.name ? ` · ${task.property.name}` : ""}
+                          {scope === "team" && task.assignee
+                            ? ` · ${task.assignee.name ?? task.assignee.email}`
+                            : ""}
                         </p>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-1">
