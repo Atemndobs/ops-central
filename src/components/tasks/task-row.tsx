@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+import { User } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 const PRIORITY_TONE: Record<string, string> = {
@@ -15,6 +17,13 @@ const STATUS_TONE: Record<string, string> = {
   done: "bg-emerald-100 text-emerald-700 border-emerald-200",
 };
 
+type Assignee = {
+  name?: string;
+  email: string;
+  role: string;
+  avatarUrl?: string | null;
+};
+
 type Task = {
   _id: string;
   title: string;
@@ -22,19 +31,76 @@ type Task = {
   priority: "low" | "normal" | "high" | "urgent";
   anchorDate: number;
   property: { name: string } | null;
-  assignee: { name?: string; email: string; role: string } | null;
+  assignee: Assignee | null;
 };
+
+function initialsOf(name?: string, email?: string): string {
+  const src = (name && name.trim()) || email || "";
+  const words = src.split(/\s+|@/).filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase();
+}
+
+function AssigneeAvatar({
+  assignee,
+  unassignedLabel,
+}: {
+  assignee: Assignee | null;
+  unassignedLabel: string;
+}) {
+  if (!assignee) {
+    return (
+      <span
+        title={unassignedLabel}
+        aria-label={unassignedLabel}
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-dashed border-[var(--muted-foreground)]/60 bg-[var(--background)] text-[var(--muted-foreground)]"
+      >
+        <User className="h-3.5 w-3.5" />
+      </span>
+    );
+  }
+  const tooltip = assignee.name ?? assignee.email;
+  return (
+    <span
+      title={tooltip}
+      aria-label={tooltip}
+      className="relative inline-flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--border)] bg-[var(--primary)]/15"
+    >
+      {assignee.avatarUrl ? (
+        <Image
+          src={assignee.avatarUrl}
+          alt={tooltip}
+          fill
+          unoptimized
+          sizes="28px"
+          className="object-cover"
+        />
+      ) : (
+        <span className="text-[10px] font-bold text-[var(--primary)]">
+          {initialsOf(assignee.name, assignee.email)}
+        </span>
+      )}
+    </span>
+  );
+}
 
 export function TaskRow({ task }: { task: Task }) {
   const t = useTranslations();
-  const date = new Date(task.anchorDate);
-  const dateLabel = date.toLocaleDateString(undefined, {
+  // anchorDate is UTC start-of-day ms (see convex/opsTasks/mutations.ts).
+  // Format with `timeZone: "UTC"` so the visible date matches the day the
+  // user picked, regardless of the viewer's tz.
+  const dateLabel = new Date(task.anchorDate).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
   });
+  const unassignedLabel = t("tasks.unassigned");
 
   return (
     <div className="flex items-center justify-between gap-3 px-2 py-2.5">
+      <AssigneeAvatar assignee={task.assignee} unassignedLabel={unassignedLabel} />
+
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold">{task.title}</p>
         <p className="truncate text-xs text-[var(--muted-foreground)]">
@@ -42,7 +108,7 @@ export function TaskRow({ task }: { task: Task }) {
           {task.property?.name ? ` · ${task.property.name}` : ""}
           {task.assignee
             ? ` · ${task.assignee.name ?? task.assignee.email}`
-            : ` · ${t("tasks.unassigned")}`}
+            : ` · ${unassignedLabel}`}
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
