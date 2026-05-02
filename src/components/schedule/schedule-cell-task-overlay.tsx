@@ -167,8 +167,17 @@ const STATUS_DOT: Record<string, string> = {
   done: "bg-emerald-500",
 };
 
+/**
+ * Convert a calendar day (as the user sees it on the schedule grid) to the
+ * UTC start-of-day ms used by the storage layer.
+ *
+ * Storage convention (see `convex/opsTasks/mutations.ts`'s `startOfUtcDay`):
+ * `anchorDate` is `Date.UTC(year, month, day)`. We MUST use the same
+ * convention when querying or the cell's `listForCell` lookup misses
+ * every task that wasn't created in UTC.
+ */
 function startOfDayMs(day: Date): number {
-  return new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, 0, 0, 0).getTime();
+  return Date.UTC(day.getFullYear(), day.getMonth(), day.getDate());
 }
 
 export function ScheduleCellTaskOverlay({

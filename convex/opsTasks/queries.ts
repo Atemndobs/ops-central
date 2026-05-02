@@ -186,6 +186,198 @@ export const listForPropertyRange = query({
   },
 });
 
+/**
+ * R2a — global/portfolio tasks intersecting a date range.
+ *
+ * Mirrors `listForPropertyRange` but for tasks where `propertyId` is
+ * undefined. Used by the schedule's date-header lane to render drag-across
+ * bars for portfolio-wide tasks. Default is "open + in_progress only";
+ * pass `includeClosed: true` for an audit view.
+ *
+ * Implementation note: `opsTasks` does not have a `by_global_anchor` index
+ * (see architecture.md §1). We use `by_anchor_status` keyed on
+ * `[anchorDate, status]` and post-filter on `propertyId == undefined`. This
+ * is bounded by the window size × ops-team-cardinality (<500 rows in v1).
+ */
+export const listGlobalRange = query({
+  args: {
+    rangeStart: v.number(), // inclusive UTC ms (start-of-day)
+    rangeEnd: v.number(), // exclusive UTC ms
+    includeClosed: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const { isOps } = await getTaskVisibility(ctx);
+    if (!isOps) {
+      throw new Error("Schedule range tasks are ops-only");
+    }
+
+    const inWindow = await ctx.db
+      .query("opsTasks")
+      .withIndex("by_anchor_status", (q) =>
+        q.gte("anchorDate", args.rangeStart).lt("anchorDate", args.rangeEnd),
+      )
+      .collect();
+
+    const draggingIn = await ctx.db
+      .query("opsTasks")
+      .withIndex("by_anchor_status", (q) =>
+        q.lt("anchorDate", args.rangeStart),
+      )
+      .collect();
+
+    const stillVisible = (t: Task): boolean => {
+      if (t.status === "done") {
+        return Boolean(args.includeClosed && (t.closedAt ?? 0) >= args.rangeStart);
+      }
+      return true;
+    };
+
+    const all = [
+      ...inWindow.filter((t) =>
+        args.includeClosed ? true : t.status !== "done",
+      ),
+      ...draggingIn.filter(stillVisible),
+    ];
+
+    // R2a: only portfolio-wide tasks (no property).
+    const globalOnly = all.filter((t) => t.propertyId === undefined);
+
+    return Promise.all(globalOnly.map((t) => hydrate(ctx, t)));
+  },
+});
+
+/**
+ * R6a — assignee-avatar projection for every (cellKey, anchorDate) cell in
+ * the visible schedule window. Returns one entry per cell that has at least
+ * one open or in-progress task; cellKey is either a propertyId or the
+ * literal "global" for the date-header lane.
+ *
+ * This is the batched alternative to running `listForCell` once per cell on
+ * the grid. The schedule grid should depend on this query (only) for
+ * avatar/count rendering; the per-cell `listForCell` query stays for the
+ * popover content (full task list shown when the cell is opened).
+ */
+export const listAssigneeAvatarsForRange = query({
+  args: {
+    rangeStart: v.number(), // inclusive UTC ms (start-of-day)
+    rangeEnd: v.number(), // exclusive UTC ms
+  },
+  handler: async (ctx, args) => {
+    const { isOps } = await getTaskVisibility(ctx);
+    if (!isOps) {
+      throw new Error("Avatar range query is ops-only");
+    }
+
+    const ONE_DAY = 24 * 60 * 60 * 1000;
+    const now = new Date();
+    const todayUtc = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+    );
+
+    const inWindow = await ctx.db
+      .query("opsTasks")
+      .withIndex("by_anchor_status", (q) =>
+        q.gte("anchorDate", args.rangeStart).lt("anchorDate", args.rangeEnd),
+      )
+      .collect();
+
+    const draggingIn = await ctx.db
+      .query("opsTasks")
+      .withIndex("by_anchor_status", (q) =>
+        q.lt("anchorDate", args.rangeStart),
+      )
+      .collect();
+
+    const visible: Task[] = [
+      ...inWindow.filter((t) => t.status !== "done"),
+      ...draggingIn.filter((t) => t.status !== "done"),
+    ];
+
+    type Bucket = {
+      cellKey: string; // Id<"properties"> | "global"
+      anchorDate: number;
+      assigneeIds: Set<string>;
+      unassignedCount: number;
+    };
+    const buckets = new Map<string, Bucket>();
+
+    const upsert = (
+      cellKey: string,
+      anchorDate: number,
+      assigneeId: Id<"users"> | undefined,
+    ) => {
+      const key = `${cellKey}@${anchorDate}`;
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = {
+          cellKey,
+          anchorDate,
+          assigneeIds: new Set<string>(),
+          unassignedCount: 0,
+        };
+        buckets.set(key, bucket);
+      }
+      if (assigneeId) bucket.assigneeIds.add(String(assigneeId));
+      else bucket.unassignedCount += 1;
+    };
+
+    for (const task of visible) {
+      const cellKey = task.propertyId ? String(task.propertyId) : "global";
+      const start = Math.max(task.anchorDate, args.rangeStart);
+      // Open tasks drag until today; cap at last visible day in window.
+      const lastInWindow = args.rangeEnd - ONE_DAY;
+      const end = Math.max(start, Math.min(todayUtc, lastInWindow));
+      for (let d = start; d <= end; d += ONE_DAY) {
+        upsert(cellKey, d, task.assigneeId);
+      }
+    }
+
+    // Hydrate distinct assignees in one batched fetch.
+    const distinctAssigneeIds = Array.from(
+      new Set(
+        Array.from(buckets.values()).flatMap((b) => Array.from(b.assigneeIds)),
+      ),
+    ) as Array<Id<"users">>;
+
+    const assigneeDocs = await Promise.all(
+      distinctAssigneeIds.map((id) => ctx.db.get(id)),
+    );
+
+    type AssigneeProjection = {
+      _id: Id<"users">;
+      name?: string;
+      email: string;
+      avatarUrl: string | null;
+      role: string;
+    };
+    const assigneeMap = new Map<string, AssigneeProjection>();
+    for (let i = 0; i < distinctAssigneeIds.length; i++) {
+      const a = assigneeDocs[i] as Doc<"users"> | null;
+      if (!a) continue;
+      assigneeMap.set(String(distinctAssigneeIds[i]), {
+        _id: a._id,
+        name: a.name,
+        email: a.email,
+        avatarUrl: a.avatarUrl ?? null,
+        role: a.role,
+      });
+    }
+
+    const cells = Array.from(buckets.values()).map((b) => ({
+      cellKey: b.cellKey,
+      anchorDate: b.anchorDate,
+      assignees: Array.from(b.assigneeIds)
+        .map((id) => assigneeMap.get(id))
+        .filter((a): a is AssigneeProjection => a !== undefined),
+      unassignedCount: b.unassignedCount > 0 ? 1 : 0,
+    }));
+
+    return { cells };
+  },
+});
+
 /** All tasks for a property (paged for the property detail page). */
 export const listForProperty = query({
   args: {

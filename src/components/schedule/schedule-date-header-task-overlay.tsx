@@ -32,8 +32,13 @@ const STATUS_DOT: Record<string, string> = {
   done: "bg-emerald-500",
 };
 
+/**
+ * Storage stores `anchorDate` as `Date.UTC(...)` — see
+ * `convex/opsTasks/mutations.ts#startOfUtcDay`. The grid must read with the
+ * same convention or `listForDateRow` misses every record.
+ */
 function startOfDayMs(day: Date): number {
-  return new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, 0, 0, 0).getTime();
+  return Date.UTC(day.getFullYear(), day.getMonth(), day.getDate());
 }
 
 type GlobalTask = {
