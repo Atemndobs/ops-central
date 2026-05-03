@@ -60,8 +60,8 @@ export default function PrivacyPolicyPage() {
             <strong>Principal office:</strong> Tucson, Arizona, USA
             <br />
             <strong>Contact:</strong>{" "}
-            <a className="text-blue-300 underline hover:text-blue-200" href="mailto:privacy@ja-bs.com">
-              privacy@ja-bs.com
+            <a className="text-blue-300 underline hover:text-blue-200" href="mailto:info@jnabusinesssolutions.com">
+              info@jnabusinesssolutions.com
             </a>
           </p>
           <p>
@@ -258,8 +258,8 @@ export default function PrivacyPolicyPage() {
           <p>
             To exercise any of these rights, email{" "}
             <strong>
-              <a className="text-blue-300 underline hover:text-blue-200" href="mailto:privacy@ja-bs.com">
-                privacy@ja-bs.com
+              <a className="text-blue-300 underline hover:text-blue-200" href="mailto:info@jnabusinesssolutions.com">
+                info@jnabusinesssolutions.com
               </a>
             </strong>
             . We will respond within the time period required by applicable law (typically 30 days).
@@ -271,8 +271,8 @@ export default function PrivacyPolicyPage() {
             You can request deletion of your account and associated personal data at any time by
             emailing{" "}
             <strong>
-              <a className="text-blue-300 underline hover:text-blue-200" href="mailto:privacy@ja-bs.com">
-                privacy@ja-bs.com
+              <a className="text-blue-300 underline hover:text-blue-200" href="mailto:info@jnabusinesssolutions.com">
+                info@jnabusinesssolutions.com
               </a>
             </strong>
             . Some records (such as completed job logs, audit trails, and tax-related records) may
@@ -320,8 +320,8 @@ export default function PrivacyPolicyPage() {
             Tucson, Arizona, USA
             <br />
             Email:{" "}
-            <a className="text-blue-300 underline hover:text-blue-200" href="mailto:privacy@ja-bs.com">
-              privacy@ja-bs.com
+            <a className="text-blue-300 underline hover:text-blue-200" href="mailto:info@jnabusinesssolutions.com">
+              info@jnabusinesssolutions.com
             </a>
           </p>
         </article>

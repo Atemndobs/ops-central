@@ -14,6 +14,8 @@ const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/sso-callback(.*)",
+  "/privacy",
+  "/terms",
   "/api/webhooks/hospitable(.*)",
   "/api/webhooks/clerk(.*)",
   "/api/webhooks/trello(.*)",
