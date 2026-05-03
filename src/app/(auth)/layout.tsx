@@ -61,6 +61,13 @@ export default function AuthLayout({
 
         {/* Auth form container */}
         <div className="relative w-full max-w-[480px]">{children}</div>
+
+        {/* Footer with legal links — public, crawlable */}
+        <div className="relative mt-8 text-center text-xs text-white/50">
+          <Link href="/privacy" className="hover:text-white/80">
+            Privacy Policy
+          </Link>
+        </div>
       </div>
     </div>
     </>
