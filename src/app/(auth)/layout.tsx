@@ -67,6 +67,10 @@ export default function AuthLayout({
           <Link href="/privacy" className="hover:text-white/80">
             Privacy Policy
           </Link>
+          <span className="px-2 text-white/30">·</span>
+          <Link href="/delete-account" className="hover:text-white/80">
+            Delete Account
+          </Link>
         </div>
       </div>
     </div>
