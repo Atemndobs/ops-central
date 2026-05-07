@@ -18,6 +18,9 @@ cd /Users/atem/sites/jnabusiness_solutions/apps-ja/jna-cleaners-app
 npm run sync:convex-backend
 ```
 
-Shared deployment:
-- URL: `https://usable-anaconda-394.eu-west-1.convex.cloud`
-- Deployment: `dev:usable-anaconda-394`
+Shared deployment (prod, US region — migrated 2026-05-02 from the
+retired EU dev DB `usable-anaconda-394`):
+- URL: `https://lovable-oriole-182.convex.cloud`
+- Deployment: `prod:lovable-oriole-182`
+- Ship via `npx convex deploy` with `PROD_CONVEX_DEPLOY_KEY` from
+  `.env.local` (Node 20+ required).

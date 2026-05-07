@@ -34,7 +34,7 @@ OpsCentral is the admin web dashboard for J&A Business Solutions' property care 
 
 ## Convex Deployment
 
-**CRITICAL:** This app shares a Convex deployment with the cleaners mobile app.
+**CRITICAL:** This app shares its Convex deployment with the cleaners mobile app.
 
 - **Prod (live, used by ja-bs.com):** `lovable-oriole-182` (US, `https://lovable-oriole-182.convex.cloud` / `.convex.site`)
 - **Dev/sandbox:** `usable-anaconda-394` (EU, legacy — kept only as historical reference, no live traffic)
@@ -52,6 +52,22 @@ Migrated from `whimsical-narwhal-849` to `lovable-oriole-182` on 2026-05-02 (US-
 - `npx convex dev` → spins up against the `dev:` deployment configured in `.env.local` (sandbox).
 
 **Old note about `usable-anaconda-394` being effectively-prod is OBSOLETE** — that was the pre-2026-05-02 state when ja-bs.com was pointed at the EU "Development" deployment. Do not act on it.
+
+### Deploying backend changes to prod
+
+```bash
+cd /Users/atem/sites/jnabusiness_solutions/apps-ja/opscentral-admin
+# Node 20+ required (the Convex CLI uses regex `v` flag).
+# If you're on nvm: `nvm use lts/jod` (Node 22) before running.
+export $(grep -v '^#' .env.local | grep PROD_CONVEX_DEPLOY_KEY | xargs)
+CONVEX_DEPLOY_KEY="$PROD_CONVEX_DEPLOY_KEY" npx convex deploy
+```
+
+Then mirror to cleaners (see warning below):
+```bash
+cd /Users/atem/sites/jnabusiness_solutions/apps-ja/jna-cleaners-app
+npm run sync:convex-backend
+```
 
 ## 🚨 BIG FAT WARNING: VERY DANGEROUS CONVEX DEPLOYMENT RULE
 
