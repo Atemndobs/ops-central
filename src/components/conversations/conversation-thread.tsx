@@ -17,6 +17,8 @@ import {
   type ComposerChip,
   type PendingAudio,
   type PendingVideo,
+  type PendingImage,
+  type PendingFile,
 } from "./chat-composer";
 
 function formatMessageTime(timestamp: number) {
@@ -159,6 +161,10 @@ export function ConversationThread({
   // send/cancel.
   const [pendingVideo, setPendingVideo] = useState<PendingVideo | null>(null);
   const [videoUploading, setVideoUploading] = useState(false);
+  const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [pendingFile, setPendingFile] = useState<PendingFile | null>(null);
+  const [fileUploading, setFileUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -537,6 +543,14 @@ export function ConversationThread({
         setPendingVideo={setPendingVideo}
         videoUploading={videoUploading}
         setVideoUploading={setVideoUploading}
+        pendingImage={pendingImage}
+        setPendingImage={setPendingImage}
+        imageUploading={imageUploading}
+        setImageUploading={setImageUploading}
+        pendingFile={pendingFile}
+        setPendingFile={setPendingFile}
+        fileUploading={fileUploading}
+        setFileUploading={setFileUploading}
         isWhatsAppLane={isWhatsAppLane}
         canReplyInApp={canReplyInApp}
         compact={compact}
@@ -580,11 +594,31 @@ export function ConversationThread({
                       height: pendingVideo.height ?? undefined,
                     }
                   : undefined,
+                imageAttachment: pendingImage
+                  ? {
+                      storageId: pendingImage.storageId as Id<"_storage">,
+                      mimeType: pendingImage.mimeType,
+                      byteSize: pendingImage.byteSize,
+                      fileName: pendingImage.fileName,
+                      width: pendingImage.width ?? undefined,
+                      height: pendingImage.height ?? undefined,
+                    }
+                  : undefined,
+                fileAttachment: pendingFile
+                  ? {
+                      storageId: pendingFile.storageId as Id<"_storage">,
+                      mimeType: pendingFile.mimeType,
+                      byteSize: pendingFile.byteSize,
+                      fileName: pendingFile.fileName,
+                    }
+                  : undefined,
               });
             }
             setBody("");
             setPendingAudio(null);
             setPendingVideo(null);
+            setPendingImage(null);
+            setPendingFile(null);
           } catch (error) {
             showToast(getErrorMessage(error, "Unable to send message."), "error");
           } finally {
