@@ -116,6 +116,29 @@ export const sendMessage = mutation({
         posterStorageId: v.optional(v.id("_storage")),
       }),
     ),
+    // Image attachment — uploaded via the same Convex two-step
+    // (`generateUploadUrl` → PUT → `sendMessage`) and persisted as an
+    // `image` row on `conversationMessageAttachments`.
+    imageAttachment: v.optional(
+      v.object({
+        storageId: v.id("_storage"),
+        mimeType: v.string(),
+        byteSize: v.number(),
+        fileName: v.optional(v.string()),
+        width: v.optional(v.number()),
+        height: v.optional(v.number()),
+      }),
+    ),
+    // Generic file attachment — anything not photo/video/audio. Persisted
+    // as a `document` row.
+    fileAttachment: v.optional(
+      v.object({
+        storageId: v.id("_storage"),
+        mimeType: v.string(),
+        byteSize: v.number(),
+        fileName: v.optional(v.string()),
+      }),
+    ),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
@@ -136,7 +159,12 @@ export const sendMessage = mutation({
     // Allow empty body when a video attachment is present (a clip alone is a
     // valid message). Audio still requires the transcript body — that's
     // enforced upstream by the transcribe action returning text.
-    if (!body && !args.videoAttachment) {
+    if (
+      !body &&
+      !args.videoAttachment &&
+      !args.imageAttachment &&
+      !args.fileAttachment
+    ) {
       throw new ConvexError("Message body cannot be empty.");
     }
     if (body.length > 4000) {
@@ -227,10 +255,49 @@ export const sendMessage = mutation({
       });
     }
 
-    // Phase 4a: video-only messages need a non-empty preview so the
-    // inbox row reads "📹 Video" rather than going blank.
+    if (args.imageAttachment) {
+      const image = args.imageAttachment;
+      await ctx.db.insert("conversationMessageAttachments", {
+        conversationId: conversation._id,
+        messageId,
+        storageId: image.storageId,
+        attachmentKind: "image",
+        channel: "internal",
+        mimeType: image.mimeType,
+        fileName: image.fileName ?? `photo-${now}`,
+        byteSize: image.byteSize,
+        width: image.width,
+        height: image.height,
+        createdAt: now,
+      });
+    }
+
+    if (args.fileAttachment) {
+      const file = args.fileAttachment;
+      await ctx.db.insert("conversationMessageAttachments", {
+        conversationId: conversation._id,
+        messageId,
+        storageId: file.storageId,
+        attachmentKind: "document",
+        channel: "internal",
+        mimeType: file.mimeType,
+        fileName: file.fileName ?? `file-${now}`,
+        byteSize: file.byteSize,
+        createdAt: now,
+      });
+    }
+
+    // Phase 4a: attachment-only messages need a non-empty preview so the
+    // inbox row reads "📹 Video" / "📷 Photo" / "📎 File" rather than going blank.
     const previewSource =
-      body || (args.videoAttachment ? "📹 Video" : "");
+      body ||
+      (args.videoAttachment
+        ? "📹 Video"
+        : args.imageAttachment
+          ? "📷 Photo"
+          : args.fileAttachment
+            ? "📎 File"
+            : "");
     await ctx.db.patch(conversation._id, {
       status: "open",
       lastMessageAt: now,
