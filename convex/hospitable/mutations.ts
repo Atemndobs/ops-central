@@ -322,16 +322,25 @@ export const createPropertyFromHospitable = internalMutation({
     timezone: v.optional(v.string()),
     bedrooms: v.optional(v.number()),
     bathrooms: v.optional(v.number()),
+    imageUrl: v.optional(v.string()),
     rooms: v.optional(v.array(v.object({ name: v.string(), type: v.string() }))),
   },
   handler: async (ctx, args) => {
-    // Idempotent: skip if already exists (handles races and re-runs).
+    // Idempotent for create. If a row already exists and is missing imageUrl,
+    // patch the image in (backfill for older bootstrap that didn't capture it).
     const existing = await ctx.db
       .query("properties")
       .withIndex("by_hospitable", (q) => q.eq("hospitableId", args.hospitableId))
       .first();
     if (existing) {
-      return { propertyId: existing._id, created: false };
+      if (!existing.imageUrl && args.imageUrl) {
+        await ctx.db.patch(existing._id, {
+          imageUrl: args.imageUrl,
+          updatedAt: Date.now(),
+        });
+        return { propertyId: existing._id, created: false, imagePatched: true };
+      }
+      return { propertyId: existing._id, created: false, imagePatched: false };
     }
 
     const now = Date.now();
@@ -345,6 +354,7 @@ export const createPropertyFromHospitable = internalMutation({
       timezone: args.timezone,
       bedrooms: args.bedrooms,
       bathrooms: args.bathrooms,
+      imageUrl: args.imageUrl,
       hospitableId: args.hospitableId,
       rooms: args.rooms,
       isActive: true,
@@ -352,7 +362,7 @@ export const createPropertyFromHospitable = internalMutation({
       updatedAt: now,
     });
 
-    return { propertyId, created: true };
+    return { propertyId, created: true, imagePatched: false };
   },
 });
 

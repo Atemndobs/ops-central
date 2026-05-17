@@ -1161,6 +1161,12 @@ export const bootstrapMissingProperties = internalAction({
       const bedrooms = asNumber(detailData.bedrooms) ?? asNumber(capacity?.bedrooms);
       const bathrooms = asNumber(detailData.bathrooms) ?? asNumber(capacity?.bathrooms);
 
+      // Hospitable returns the cover image as a string under `picture`.
+      const imageUrl =
+        asString(detailData.picture) ??
+        asString(detailData.cover_picture) ??
+        asString(detailData.thumbnail_url);
+
       const rooms = extractRoomsFromProperty(detailData);
 
       const r = await ctx.runMutation(
@@ -1176,6 +1182,7 @@ export const bootstrapMissingProperties = internalAction({
           timezone,
           bedrooms,
           bathrooms,
+          imageUrl,
           rooms,
         },
       );
