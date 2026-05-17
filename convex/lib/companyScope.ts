@@ -74,6 +74,44 @@ export async function getActivePropertyCompanyAssignment(
 }
 
 /**
+ * True when a caller is allowed to load a single property by ID.
+ *
+ * - `admin` / `property_ops`: always true.
+ * - `manager`: true iff the property is currently assigned to the
+ *   manager's active company (via `companyProperties`). Managers with
+ *   no active manager/owner membership get false.
+ * - `cleaner`: false — cleaners reach properties via their assigned
+ *   jobs, not via direct-ID load.
+ *
+ * Use for direct-ID guards (`getById`-style queries). For list queries
+ * use `getCallerJobScopeForListing` and filter the result set.
+ */
+export async function canCallerAccessPropertyById(
+  ctx: Ctx,
+  user: Doc<"users">,
+  propertyId: Id<"properties">,
+): Promise<boolean> {
+  if (user.role === "admin" || user.role === "property_ops") {
+    return true;
+  }
+
+  if (user.role !== "manager") {
+    return false;
+  }
+
+  const membership = await getLatestActiveCompanyMembership(ctx, user._id);
+  if (
+    !membership ||
+    (membership.role !== "manager" && membership.role !== "owner")
+  ) {
+    return false;
+  }
+
+  const assignment = await getActivePropertyCompanyAssignment(ctx, propertyId);
+  return assignment?.companyId === membership.companyId;
+}
+
+/**
  * Property scope for a caller, used by job/property/cleaner listings.
  *
  * - `admin` / `property_ops`: `null` (no scoping — see everything)

@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { getCurrentUser } from "../lib/auth";
+import { canCallerAccessPropertyById } from "../lib/companyScope";
 
 type PropertyStatus = "ready" | "dirty" | "in_progress" | "vacant";
 
@@ -202,10 +203,40 @@ export const getById = query({
     id: v.id("properties"),
   },
   handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
     const property = await ctx.db.get(args.id);
 
     if (!property || !property.isActive) {
       return null;
+    }
+
+    // Direct-ID access guard (manager-scope task, 2026-05-17).
+    // - admin / property_ops: unrestricted.
+    // - manager: only if the property is currently assigned to the
+    //   manager's company via companyProperties.
+    // - cleaner: only if assigned to at least one cleaningJob for this
+    //   property. Mirrors `getMyAccessibleProperties`.
+    if (user.role === "manager") {
+      const allowed = await canCallerAccessPropertyById(ctx, user, args.id);
+      if (!allowed) {
+        return null;
+      }
+    } else if (user.role === "cleaner") {
+      const assignments = await ctx.db
+        .query("userJobAssignments")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .collect();
+      const hasJobForProperty = (
+        await Promise.all(
+          assignments.map(async (row) => {
+            const job = await ctx.db.get(row.jobId);
+            return job?.propertyId === args.id;
+          }),
+        )
+      ).some(Boolean);
+      if (!hasJobForProperty) {
+        return null;
+      }
     }
 
     const [enriched] = await enrichProperties(ctx, [property]);

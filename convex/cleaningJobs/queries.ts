@@ -7,6 +7,7 @@ import { createExternalReadUrl, getExternalStorageConfigOrNull } from "../lib/ex
 import { resolvePhotoAccessUrl } from "../lib/photoUrls";
 import { assertReviewerRole } from "./reviewAccess";
 import {
+  canCallerAccessPropertyById,
   getCallerJobScopeForListing,
   getLatestActiveCompanyMembership,
   isActiveCompanyPropertyAssignment,
@@ -271,10 +272,31 @@ export const getById = query({
     jobId: v.id("cleaningJobs"),
   },
   handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
     const detail = await getJobDetailInternal(ctx, args.jobId);
     if (!detail) {
       return null;
     }
+
+    // Direct-ID access guard (R5 scenario 3, manager-scope task).
+    // - admin / property_ops: unrestricted
+    // - manager: only if the job's property is in the manager's company scope
+    // - cleaner: only if assigned to this job
+    if (user.role === "manager") {
+      const allowed = await canCallerAccessPropertyById(
+        ctx,
+        user,
+        detail.job.propertyId,
+      );
+      if (!allowed) {
+        return null;
+      }
+    } else if (user.role === "cleaner") {
+      if (!detail.job.assignedCleanerIds.includes(user._id)) {
+        return null;
+      }
+    }
+
     return {
       ...detail.job,
       property: detail.property,
@@ -349,8 +371,17 @@ export const getMyJobDetail = query({
       return null;
     }
 
-    const isPrivileged =
-      user.role === "admin" || user.role === "manager" || user.role === "property_ops";
+    // Manager-scope task (2026-05-17): managers previously passed the
+    // role gate for any job. Now they only pass for jobs whose property
+    // is in their company scope. Admin/ops still pass unconditionally.
+    let isPrivileged = user.role === "admin" || user.role === "property_ops";
+    if (!isPrivileged && user.role === "manager") {
+      isPrivileged = await canCallerAccessPropertyById(
+        ctx,
+        user,
+        detail.job.propertyId,
+      );
+    }
     const isAssignedCleaner = detail.job.assignedCleanerIds.includes(user._id);
 
     if (!isPrivileged && !isAssignedCleaner) {
