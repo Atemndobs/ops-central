@@ -680,10 +680,7 @@ export const getAssignableCleanersByProperty = query({
         ? await getLatestActiveCompanyMembership(ctx, actor._id)
         : null;
     const managerMissingMembership =
-      actor.role === "manager" &&
-      (!actorCompanyMembership ||
-        (actorCompanyMembership.role !== "manager" &&
-          actorCompanyMembership.role !== "owner"));
+      actor.role === "manager" && !actorCompanyMembership;
 
     const assignmentsByProperty = await Promise.all(
       propertyIds.map(async (propertyId) => {
@@ -770,7 +767,7 @@ export const getAssignableCleanersByProperty = query({
 
       if (managerMissingMembership) {
         blockedReason =
-          "As a manager, you need an active cleaning company manager membership before you can assign cleaners.";
+          "As a manager, you need an active cleaning company membership before you can assign cleaners.";
       } else if (!companyId) {
         blockedReason =
           "This property has no cleaning company assigned yet.";

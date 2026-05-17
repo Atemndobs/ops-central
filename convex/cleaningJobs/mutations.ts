@@ -1128,13 +1128,9 @@ export const assign = mutation({
     let actorCompanyMembership: Doc<"companyMembers"> | null = null;
     if (actor.role === "manager") {
       actorCompanyMembership = await getLatestActiveCompanyMembership(ctx, actor._id);
-      if (
-        !actorCompanyMembership ||
-        (actorCompanyMembership.role !== "manager" &&
-          actorCompanyMembership.role !== "owner")
-      ) {
+      if (!actorCompanyMembership) {
         throw new ConvexError(
-          "As a manager, you need an active cleaning company manager membership before you can assign cleaners.",
+          "As a manager, you need an active cleaning company membership before you can assign cleaners.",
         );
       }
 
