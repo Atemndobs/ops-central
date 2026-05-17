@@ -409,18 +409,21 @@ export function ScheduleClient() {
     setSliderValue(0);
   };
 
-  const handleQuickAssign = async (jobId: Id<"cleaningJobs">, cleanerId: Id<"users">) => {
+  const handleQuickAssign = async (
+    jobId: Id<"cleaningJobs">,
+    cleanerId: Id<"users"> | null,
+  ) => {
     setAssigningJobId(jobId);
     try {
       const result = await assignJob({
         jobId,
-        cleanerIds: [cleanerId],
+        cleanerIds: cleanerId ? [cleanerId] : [],
         notifyCleaners: false,
-        source: "schedule_quick_assign",
+        source: cleanerId ? "schedule_quick_assign" : "schedule_quick_unassign",
         returnWarnings: true,
       });
       setQuickAssignJobId(null);
-      showToast("Cleaner assigned successfully.");
+      showToast(cleanerId ? "Cleaner assigned successfully." : "Cleaner unassigned.");
       const warnings = getAssignWarnings(result);
       if (warnings.length > 0) {
         showToast(`Dispatch warning: ${warnings.join(" ")}`, "error");
@@ -599,6 +602,16 @@ export function ScheduleClient() {
                           {availableAssignment.blockedReason}
                         </p>
                       ) : null}
+                      {hasAssignedCleaner ? (
+                        <button
+                          type="button"
+                          disabled={assigningJobId === job._id}
+                          onClick={() => void handleQuickAssign(job._id, null)}
+                          className="mb-1 flex w-full items-center justify-between rounded px-2 py-1 text-left text-[11px] text-[var(--destructive)] hover:bg-[var(--accent)] disabled:opacity-60"
+                        >
+                          <span className="truncate">Unassign cleaner</span>
+                        </button>
+                      ) : null}
                       {companyCleaners.length === 0 ? (
                         <p className="text-[11px] text-[var(--muted-foreground)]">
                           {availableAssignment?.blockedReason ?? "No eligible cleaners."}
@@ -688,6 +701,16 @@ export function ScheduleClient() {
                     <p className="mb-2 text-[11px] text-[var(--destructive)]">
                       {availableAssignment.blockedReason}
                     </p>
+                  ) : null}
+                  {hasAssignedCleaner ? (
+                    <button
+                      type="button"
+                      disabled={assigningJobId === job._id}
+                      onClick={() => void handleQuickAssign(job._id, null)}
+                      className="mb-1 flex w-full items-center justify-between rounded px-2 py-1 text-left text-[11px] text-[var(--destructive)] hover:bg-[var(--accent)] disabled:opacity-60"
+                    >
+                      <span className="truncate">Unassign cleaner</span>
+                    </button>
                   ) : null}
                   {companyCleaners.length === 0 ? (
                     <p className="text-[11px] text-[var(--muted-foreground)]">
@@ -1254,6 +1277,16 @@ export function ScheduleClient() {
                           </button>
                           {isAssigning ? (
                             <div className="mt-2 space-y-1">
+                              {hasAssignedCleaner ? (
+                                <button
+                                  type="button"
+                                  disabled={assigningJobId === job._id}
+                                  onClick={() => void handleQuickAssign(job._id, null)}
+                                  className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[11px] text-[var(--destructive)] hover:bg-black/10 disabled:opacity-60"
+                                >
+                                  <span className="truncate">Unassign cleaner</span>
+                                </button>
+                              ) : null}
                               {companyCleaners.length === 0 ? (
                                 <p className="text-[11px] opacity-60">
                                   {availableAssignment?.blockedReason ??

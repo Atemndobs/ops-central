@@ -1193,7 +1193,11 @@ export const assign = mutation({
     }
 
     const updatedStatus =
-      job.status === "scheduled" ? "assigned" : job.status;
+      args.cleanerIds.length === 0 && job.status === "assigned"
+        ? "scheduled"
+        : job.status === "scheduled" && args.cleanerIds.length > 0
+          ? "assigned"
+          : job.status;
     const previousCleanerIds = job.assignedCleanerIds;
     const removedCleanerIds = previousCleanerIds.filter(
       (cleanerId) => !args.cleanerIds.includes(cleanerId),
