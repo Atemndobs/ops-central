@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { useAction, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import {
   Building2,
@@ -13,6 +13,7 @@ import {
   List,
   Loader2,
   Plus,
+  RefreshCw,
   Search,
   Trash2,
 } from "lucide-react";
@@ -104,6 +105,41 @@ function PropertiesPageContent() {
       ? { includeUnassigned: true, limit: 500 }
       : "skip",
   );
+
+  const me = useQuery(
+    api.users.queries.getMyProfile,
+    isAuthenticated ? {} : "skip",
+  ) as { role?: string } | null | undefined;
+  const canSyncFromHospitable = me?.role === "admin" || me?.role === "property_ops";
+
+  const syncFromHospitable = useAction(api.hospitable.actions.syncAllFromHospitable);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSyncFromHospitable = async () => {
+    setIsSyncing(true);
+    setActionError(null);
+    try {
+      const result = await syncFromHospitable({});
+      const parts: string[] = [];
+      if (result.bootstrap.created > 0) {
+        parts.push(`${result.bootstrap.created} new propert${result.bootstrap.created === 1 ? "y" : "ies"}`);
+      }
+      const newJobs = result.reservations.summary.jobsCreated;
+      const updatedJobs = result.reservations.summary.jobsUpdated;
+      if (newJobs > 0) parts.push(`${newJobs} new job${newJobs === 1 ? "" : "s"}`);
+      if (updatedJobs > 0) parts.push(`${updatedJobs} job${updatedJobs === 1 ? "" : "s"} updated`);
+      const msg = parts.length > 0
+        ? `Synced from Hospitable: ${parts.join(", ")}.`
+        : "Synced from Hospitable — already up to date.";
+      showToast(msg, "success");
+    } catch (error) {
+      const message = getErrorMessage(error, "Failed to sync from Hospitable.");
+      setActionError(message);
+      showToast(message, "error");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const createProperty = useMutation(
     api.properties.mutations.create,
@@ -300,6 +336,23 @@ function PropertiesPageContent() {
               List
             </button>
           </div>
+
+          {canSyncFromHospitable ? (
+            <button
+              type="button"
+              onClick={handleSyncFromHospitable}
+              disabled={isSyncing}
+              className="flex items-center gap-2 rounded-none border bg-[var(--card)] px-4 py-2 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60"
+              title="Pull latest properties and reservations from Hospitable"
+            >
+              {isSyncing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              {isSyncing ? "Syncing…" : "Sync from Hospitable"}
+            </button>
+          ) : null}
 
           <button
             className="flex items-center gap-2 rounded-none bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90"
