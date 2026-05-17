@@ -958,6 +958,96 @@ export const resyncPropertyDetails = action({
 });
 
 /**
+ * Public, auth-gated entry point that runs the full Hospitable resync chain
+ * in one shot. Called from the admin UI "Sync from Hospitable" button on
+ * the Properties page.
+ *
+ * Order:
+ *   1. bootstrapMissingProperties  — creates rows for new Hospitable properties
+ *   2. syncPropertyDetails         — refreshes rooms/capacity/timezone
+ *   3. syncReservations            — creates/updates upcoming cleaningJobs
+ *
+ * Safe for any signed-in user: all three steps are idempotent (upserts only).
+ * Manager-scoped views still apply on read, so triggering a sync never leaks
+ * other companies' data to a manager.
+ */
+export const syncAllFromHospitable = action({
+  args: {
+    daysForward: v.optional(v.number()),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    bootstrap: { total: number; created: number; skipped: number };
+    propertyDetails: {
+      success: boolean;
+      propertiesSynced: number;
+      propertiesSkipped: number;
+      errorCount: number;
+    };
+    reservations: {
+      success: boolean;
+      summary: {
+        reservationsReceived: number;
+        staysCreated: number;
+        staysUpdated: number;
+        jobsCreated: number;
+        jobsUpdated: number;
+        jobsCancelled: number;
+        skippedMissingProperty: number;
+      };
+    };
+  }> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated.");
+    }
+
+    const bootstrap = await ctx.runAction(
+      internal.hospitable.actions.bootstrapMissingProperties,
+      {},
+    );
+
+    const propertyDetails = await ctx.runAction(
+      internal.hospitable.actions.syncPropertyDetails,
+      {},
+    );
+
+    const reservations = await ctx.runAction(
+      internal.hospitable.actions.syncReservations,
+      args.daysForward !== undefined ? { daysForward: args.daysForward } : {},
+    );
+
+    return {
+      bootstrap: {
+        total: bootstrap.total,
+        created: bootstrap.created,
+        skipped: bootstrap.skipped,
+      },
+      propertyDetails: {
+        success: propertyDetails.success,
+        propertiesSynced: propertyDetails.propertiesSynced,
+        propertiesSkipped: propertyDetails.propertiesSkipped,
+        errorCount: propertyDetails.errors.length,
+      },
+      reservations: {
+        success: reservations.success,
+        summary: {
+          reservationsReceived: reservations.summary.reservationsReceived,
+          staysCreated: reservations.summary.staysCreated,
+          staysUpdated: reservations.summary.staysUpdated,
+          jobsCreated: reservations.summary.jobsCreated,
+          jobsUpdated: reservations.summary.jobsUpdated,
+          jobsCancelled: reservations.summary.jobsCancelled,
+          skippedMissingProperty: reservations.summary.skippedMissingProperty,
+        },
+      },
+    };
+  },
+});
+
+/**
  * Bootstrap any Hospitable properties that are missing from Convex.
  *
  * `syncPropertyDetails` only updates existing properties; `syncReservations`
