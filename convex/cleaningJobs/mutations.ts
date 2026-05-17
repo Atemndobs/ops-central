@@ -2,7 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { mutation, type MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import { getCurrentUser } from "../lib/auth";
+import { getCurrentUser, requireRole } from "../lib/auth";
 import {
   getActivePropertyCompanyAssignment,
   getLatestActiveCompanyMembership,
@@ -455,6 +455,12 @@ export const create = mutation({
     notesForCleaner: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Per R7.4 (manager-scope task, 2026-05-17): manual job creation is
+    // admin/ops only. Production jobs come from the Hospitable webhook
+    // automatically; this mutation is the ops escape hatch. Managers and
+    // cleaners are explicitly not allowed.
+    await requireRole(ctx, ["admin", "property_ops"]);
+
     const property = await ctx.db.get(args.propertyId);
     if (!property) {
       throw new ConvexError("Property not found.");
