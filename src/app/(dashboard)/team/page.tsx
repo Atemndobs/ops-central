@@ -269,6 +269,21 @@ export default function TeamPage() {
     };
   }, [members, teamMetrics]);
 
+  const companyMembershipRows = useMemo(() => {
+    return [...(teamMetrics?.members ?? [])]
+      .filter((member) => member.role === "cleaner" || member.role === "manager")
+      .sort((a, b) => {
+        const companyRank =
+          Number(Boolean(a.companyId)) - Number(Boolean(b.companyId));
+        if (companyRank !== 0) {
+          return companyRank;
+        }
+        const nameA = (a.name?.trim() || a.email || "").toLowerCase();
+        const nameB = (b.name?.trim() || b.email || "").toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+  }, [teamMetrics]);
+
   const leaderboard = useMemo(() => {
     return [...members]
       .filter((member) => typeof member.qualityScore === "number")
@@ -876,6 +891,69 @@ export default function TeamPage() {
               onClick={() => scrollToSection("team-leaderboard-section")}
             />
           </div>
+
+          {canManageTeam ? (
+            <section className="rounded-none border bg-[var(--card)]">
+              <div className="flex flex-col gap-2 border-b border-[var(--border)] p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-base font-semibold">Company Membership</h2>
+                  <p className="text-sm text-[var(--muted-foreground)]">
+                    Attach cleaners and managers to the company their manager will dispatch.
+                  </p>
+                </div>
+                <span className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+                  {companyMembershipRows.filter((member) => !member.companyId).length} unassigned
+                </span>
+              </div>
+              <div className="divide-y divide-[var(--border)]">
+                {companyMembershipRows.length === 0 ? (
+                  <div className="p-4 text-sm text-[var(--muted-foreground)]">
+                    Add cleaners or managers before assigning company membership.
+                  </div>
+                ) : (
+                  companyMembershipRows.map((member) => (
+                    <div
+                      key={member._id}
+                      className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] sm:items-center"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <ProfileImage
+                          avatarUrl={member.avatarUrl}
+                          label={member.name || member.email || "Member"}
+                          className="h-10 w-10"
+                        />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold">
+                            {member.name || member.email || "Unknown"}
+                          </p>
+                          <p className="truncate text-xs text-[var(--muted-foreground)]">
+                            {member.email || "No email"} · {formatRoleLabel(member.role)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm">
+                          {member.companyName ?? "No company assigned"}
+                        </p>
+                        <p className="text-xs text-[var(--muted-foreground)]">
+                          {member.companyMemberRole
+                            ? formatCompanyRoleLabel(member.companyMemberRole)
+                            : "Not visible to any manager"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openCompanyEditor(toMemberActionTarget(member))}
+                        className="inline-flex items-center justify-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-[var(--accent)]"
+                      >
+                        {member.companyId ? "Change" : "Attach"}
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+          ) : null}
 
           <div id="team-members-section">
             {loading ? (
@@ -1697,7 +1775,7 @@ export default function TeamPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-xl border bg-[var(--card)] p-4">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-bold">Assign Company</h2>
+              <h2 className="text-lg font-bold">Attach to Cleaning Company</h2>
               <button
                 className="rounded-md px-2 py-1 text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
                 onClick={() => setCompanyEditor(null)}
@@ -1727,7 +1805,7 @@ export default function TeamPage() {
               </label>
 
               <label className="block text-sm">
-                <span className="mb-1 block text-[var(--muted-foreground)]">Company role</span>
+                <span className="mb-1 block text-[var(--muted-foreground)]">Membership role</span>
                 <select
                   value={companyRoleDraft}
                   onChange={(event) =>
@@ -1747,7 +1825,7 @@ export default function TeamPage() {
                 disabled={isUpdatingCompany}
                 className="w-full rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-black disabled:opacity-60"
               >
-                {isUpdatingCompany ? "Saving..." : "Save Company Assignment"}
+                {isUpdatingCompany ? "Saving..." : "Save Membership"}
               </button>
             </form>
           </div>
