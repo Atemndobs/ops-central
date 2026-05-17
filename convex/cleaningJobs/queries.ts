@@ -480,10 +480,37 @@ export const getForCleaner = query({
     cleanerId: v.id("users"),
   },
   handler: async (ctx, args) => {
-    const allJobs = await ctx.db.query("cleaningJobs").collect();
-    const jobs = allJobs.filter((job) =>
-      job.assignedCleanerIds.includes(args.cleanerId),
+    const user = await getCurrentUser(ctx);
+
+    // Manager-scope task (2026-05-17): caller authorization.
+    // - admin / property_ops: unrestricted.
+    // - manager: only jobs whose property is in their company scope.
+    // - cleaner: only if asking about themselves.
+    if (user.role === "cleaner" && user._id !== args.cleanerId) {
+      return [];
+    }
+    const allowedPropertyIds = await getCallerJobScopeForListing(ctx, user);
+    if (allowedPropertyIds && allowedPropertyIds.size === 0) {
+      return [];
+    }
+
+    // Use the `userJobAssignments` reverse-index instead of scanning the
+    // whole jobs table. Mirrors the pattern in `getMyAssigned`.
+    const assignments = await ctx.db
+      .query("userJobAssignments")
+      .withIndex("by_user", (q) => q.eq("userId", args.cleanerId))
+      .collect();
+    const jobDocs = await Promise.all(
+      assignments.map((row) => ctx.db.get(row.jobId)),
     );
+    let jobs = jobDocs.filter(
+      (job): job is Doc<"cleaningJobs"> => job !== null,
+    );
+
+    if (allowedPropertyIds) {
+      jobs = jobs.filter((job) => allowedPropertyIds.has(job.propertyId));
+    }
+
     const enriched = await enrichJobs(ctx, jobs);
     return enriched.sort((a, b) => b.scheduledStartAt - a.scheduledStartAt);
   },
@@ -506,11 +533,36 @@ export const countByProperty = query({
 export const countByCleaner = query({
   args: { cleanerId: v.id("users") },
   handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+
+    // Same scope/auth rules as `getForCleaner` so the count and the list
+    // stay in sync. Cleaners can only see their own count.
+    if (user.role === "cleaner" && user._id !== args.cleanerId) {
+      return { total: 0 };
+    }
+    const allowedPropertyIds = await getCallerJobScopeForListing(ctx, user);
+    if (allowedPropertyIds && allowedPropertyIds.size === 0) {
+      return { total: 0 };
+    }
+
     const rows = await ctx.db
       .query("userJobAssignments")
       .withIndex("by_user", (q) => q.eq("userId", args.cleanerId))
       .collect();
-    return { total: rows.length };
+
+    if (!allowedPropertyIds) {
+      return { total: rows.length };
+    }
+
+    // Manager — count only assignments whose job is in scope.
+    let total = 0;
+    for (const row of rows) {
+      const job = await ctx.db.get(row.jobId);
+      if (job && allowedPropertyIds.has(job.propertyId)) {
+        total += 1;
+      }
+    }
+    return { total };
   },
 });
 
@@ -530,10 +582,19 @@ const GET_ASSIGNABLE_HARD_CAP = 500;
 export const getAssignable = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
     const cap = Math.min(
       args.limit ?? GET_ASSIGNABLE_HARD_CAP,
       GET_ASSIGNABLE_HARD_CAP,
     );
+
+    // Manager-scope task (2026-05-17): Team-page "Assign job" dropdown
+    // must only surface jobs from the manager's company.
+    const allowedPropertyIds = await getCallerJobScopeForListing(ctx, user);
+    if (allowedPropertyIds && allowedPropertyIds.size === 0) {
+      return [];
+    }
+
     const perStatus = await Promise.all(
       ACTIVE_ASSIGNABLE_STATUSES.map((status) =>
         ctx.db
@@ -542,7 +603,10 @@ export const getAssignable = query({
           .collect(),
       ),
     );
-    const merged = perStatus.flat();
+    let merged = perStatus.flat();
+    if (allowedPropertyIds) {
+      merged = merged.filter((job) => allowedPropertyIds.has(job.propertyId));
+    }
     const sorted = merged.sort(
       (a, b) => a.scheduledStartAt - b.scheduledStartAt,
     );
@@ -564,16 +628,37 @@ export const getInDateRange = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
     const cap = Math.min(
       args.limit ?? GET_IN_RANGE_HARD_CAP,
       GET_IN_RANGE_HARD_CAP,
     );
-    const jobs = await ctx.db
+
+    // Manager-scope task (2026-05-17): Schedule calendar must not leak
+    // other companies' jobs to a manager. Cleaners go through
+    // `getMyAssigned`; this query is admin/ops/manager facing.
+    const allowedPropertyIds = await getCallerJobScopeForListing(ctx, user);
+    if (allowedPropertyIds && allowedPropertyIds.size === 0) {
+      return [];
+    }
+
+    // Over-fetch when scoping so the post-filter doesn't underflow.
+    const fetchCap = allowedPropertyIds
+      ? Math.min(cap * 4, GET_IN_RANGE_HARD_CAP * 4)
+      : cap;
+    let jobs = await ctx.db
       .query("cleaningJobs")
       .withIndex("by_scheduled", (q) =>
         q.gte("scheduledStartAt", args.from).lt("scheduledStartAt", args.to),
       )
-      .take(cap);
+      .take(fetchCap);
+
+    if (allowedPropertyIds) {
+      jobs = jobs
+        .filter((job) => allowedPropertyIds.has(job.propertyId))
+        .slice(0, cap);
+    }
+
     return await enrichJobs(ctx, jobs);
   },
 });
