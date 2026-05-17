@@ -116,6 +116,10 @@ export default function TeamPage() {
   const roleFromMetadata = getRoleFromMetadata(user?.publicMetadata);
   const currentRole = roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "manager";
   const canManageTeam = currentRole === "admin";
+  const canDispatchCleaners =
+    currentRole === "admin" ||
+    currentRole === "property_ops" ||
+    currentRole === "manager";
   const teamMetrics = useQuery(
     api.admin.queries.getTeamMetrics,
     isAuthenticated ? {} : "skip",
@@ -225,6 +229,10 @@ export default function TeamPage() {
       companyId: member.companyId,
       companyMemberRole: member.companyMemberRole,
     };
+  }
+
+  function canDispatchMember(member: { role: UserRole }) {
+    return canDispatchCleaners && (member.role === "cleaner" || member.role === "manager");
   }
 
   const summary = useMemo(() => {
@@ -919,7 +927,7 @@ export default function TeamPage() {
                         </p>
                       </div>
                     </div>
-                    {canManageTeam ? (
+                    {canManageTeam || canDispatchMember(member) ? (
                       <div className="relative" data-team-member-menu>
                         <button
                           className="text-2xl leading-none"
@@ -935,41 +943,49 @@ export default function TeamPage() {
                         </button>
                         {openMenuForUserId === member._id ? (
                           <div className="absolute right-0 top-8 z-20 w-44 rounded-none border bg-[var(--card)] py-1 shadow-lg">
-                            <button
-                              type="button"
-                              className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                              onClick={() => openProfileEditor(toMemberActionTarget(member))}
-                            >
-                              Edit Profile
-                            </button>
-                            <button
-                              type="button"
-                              className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                              onClick={() => openRoleEditor(toMemberActionTarget(member))}
-                            >
-                              Assign Role
-                            </button>
-                            <button
-                              type="button"
-                              className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                              onClick={() => openCompanyEditor(toMemberActionTarget(member))}
-                            >
-                              Assign Company
-                            </button>
-                            <button
-                              type="button"
-                              className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                              onClick={() => openJobEditor(toMemberActionTarget(member))}
-                            >
-                              Assign Job
-                            </button>
-                            <button
-                              type="button"
-                              className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                              onClick={() => openPropertyEditor(toMemberActionTarget(member))}
-                            >
-                              Assign Property
-                            </button>
+                            {canManageTeam ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
+                                  onClick={() => openProfileEditor(toMemberActionTarget(member))}
+                                >
+                                  Edit Profile
+                                </button>
+                                <button
+                                  type="button"
+                                  className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
+                                  onClick={() => openRoleEditor(toMemberActionTarget(member))}
+                                >
+                                  Assign Role
+                                </button>
+                                <button
+                                  type="button"
+                                  className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
+                                  onClick={() => openCompanyEditor(toMemberActionTarget(member))}
+                                >
+                                  Assign Company
+                                </button>
+                              </>
+                            ) : null}
+                            {canDispatchMember(member) ? (
+                              <button
+                                type="button"
+                                className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
+                                onClick={() => openJobEditor(toMemberActionTarget(member))}
+                              >
+                                Dispatch to Job
+                              </button>
+                            ) : null}
+                            {canManageTeam ? (
+                              <button
+                                type="button"
+                                className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
+                                onClick={() => openPropertyEditor(toMemberActionTarget(member))}
+                              >
+                                Assign Property
+                              </button>
+                            ) : null}
                           </div>
                         ) : null}
                       </div>
@@ -1077,43 +1093,51 @@ export default function TeamPage() {
                               <p>On-Time: {formatPercent(member.onTimePct)}</p>
                               <p>Assignments: {member.activeAssignmentsCount}</p>
                             </div>
-                            {canManageTeam ? (
+                            {canManageTeam || canDispatchMember(member) ? (
                               <div className="mt-2 grid gap-1">
-                                <button
-                                  type="button"
-                                  className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                  onClick={() => openProfileEditor(toMemberActionTarget(member))}
-                                >
-                                  Edit Profile
-                                </button>
-                                <button
-                                  type="button"
-                                  className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                  onClick={() => openRoleEditor(toMemberActionTarget(member))}
-                                >
-                                  Assign Role
-                                </button>
-                                <button
-                                  type="button"
-                                  className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                  onClick={() => openCompanyEditor(toMemberActionTarget(member))}
-                                >
-                                  Assign Company
-                                </button>
-                                <button
-                                  type="button"
-                                  className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                  onClick={() => openJobEditor(toMemberActionTarget(member))}
-                                >
-                                  Assign Job
-                                </button>
-                                <button
-                                  type="button"
-                                  className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                  onClick={() => openPropertyEditor(toMemberActionTarget(member))}
-                                >
-                                  Assign Property
-                                </button>
+                                {canManageTeam ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
+                                      onClick={() => openProfileEditor(toMemberActionTarget(member))}
+                                    >
+                                      Edit Profile
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
+                                      onClick={() => openRoleEditor(toMemberActionTarget(member))}
+                                    >
+                                      Assign Role
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
+                                      onClick={() => openCompanyEditor(toMemberActionTarget(member))}
+                                    >
+                                      Assign Company
+                                    </button>
+                                  </>
+                                ) : null}
+                                {canDispatchMember(member) ? (
+                                  <button
+                                    type="button"
+                                    className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
+                                    onClick={() => openJobEditor(toMemberActionTarget(member))}
+                                  >
+                                    Dispatch to Job
+                                  </button>
+                                ) : null}
+                                {canManageTeam ? (
+                                  <button
+                                    type="button"
+                                    className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
+                                    onClick={() => openPropertyEditor(toMemberActionTarget(member))}
+                                  >
+                                    Assign Property
+                                  </button>
+                                ) : null}
                               </div>
                             ) : null}
                           </div>
@@ -1139,7 +1163,7 @@ export default function TeamPage() {
                   {members.map((member) => (
                     <tr key={member._id} className="border-t">
                       <td className="px-4 py-3">
-                        {canManageTeam ? (
+                        {canManageTeam || canDispatchMember(member) ? (
                           <button
                             type="button"
                             onClick={() => setMemberActionSheet(toMemberActionTarget(member))}
@@ -1159,7 +1183,7 @@ export default function TeamPage() {
                                   {member.email || "—"}
                                 </p>
                                 <p className="text-[10px] uppercase tracking-wider text-[var(--primary)]">
-                                  Click to edit or assign
+                                  {canManageTeam ? "Click to edit or dispatch" : "Click to dispatch"}
                                 </p>
                               </div>
                             </div>
@@ -1427,41 +1451,49 @@ export default function TeamPage() {
             </p>
 
             <div className="grid gap-2">
-              <button
-                type="button"
-                className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                onClick={() => openProfileEditor(memberActionSheet)}
-              >
-                Edit Profile
-              </button>
-              <button
-                type="button"
-                className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                onClick={() => openRoleEditor(memberActionSheet)}
-              >
-                Edit Role
-              </button>
-              <button
-                type="button"
-                className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                onClick={() => openCompanyEditor(memberActionSheet)}
-              >
-                Assign Company
-              </button>
-              <button
-                type="button"
-                className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                onClick={() => openJobEditor(memberActionSheet)}
-              >
-                Assign to Job
-              </button>
-              <button
-                type="button"
-                className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                onClick={() => openPropertyEditor(memberActionSheet)}
-              >
-                Assign to Property
-              </button>
+              {canManageTeam ? (
+                <>
+                  <button
+                    type="button"
+                    className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
+                    onClick={() => openProfileEditor(memberActionSheet)}
+                  >
+                    Edit Profile
+                  </button>
+                  <button
+                    type="button"
+                    className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
+                    onClick={() => openRoleEditor(memberActionSheet)}
+                  >
+                    Edit Role
+                  </button>
+                  <button
+                    type="button"
+                    className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
+                    onClick={() => openCompanyEditor(memberActionSheet)}
+                  >
+                    Assign Company
+                  </button>
+                </>
+              ) : null}
+              {canDispatchMember(memberActionSheet) ? (
+                <button
+                  type="button"
+                  className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
+                  onClick={() => openJobEditor(memberActionSheet)}
+                >
+                  Dispatch to Job
+                </button>
+              ) : null}
+              {canManageTeam ? (
+                <button
+                  type="button"
+                  className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
+                  onClick={() => openPropertyEditor(memberActionSheet)}
+                >
+                  Assign Property
+                </button>
+              ) : null}
             </div>
           </div>
         </div>

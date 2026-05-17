@@ -1159,9 +1159,9 @@ export const assign = mutation({
       if (!cleaner) {
         throw new ConvexError(`Cleaner not found: ${cleanerId}`);
       }
-      if (cleaner.role !== "cleaner") {
+      if (cleaner.role !== "cleaner" && cleaner.role !== "manager") {
         throw new ConvexError(
-          `Only users with cleaner role can be assigned (invalid: ${cleaner.email}).`,
+          `Only cleaners or managers can be assigned (invalid: ${cleaner.email}).`,
         );
       }
 

@@ -733,9 +733,7 @@ export const getAssignableCleanersByProperty = query({
     for (const companyId of companyIds) {
       const members = await ctx.db
         .query("companyMembers")
-        .withIndex("by_company_role", (q) =>
-          q.eq("companyId", companyId).eq("role", "cleaner"),
-        )
+        .withIndex("by_company", (q) => q.eq("companyId", companyId))
         .collect();
 
       const activeMemberIds = members
@@ -748,7 +746,7 @@ export const getAssignableCleanersByProperty = query({
 
       const cleaners = cleanerDocs
         .filter((cleaner): cleaner is Doc<"users"> => cleaner !== null)
-        .filter((cleaner) => cleaner.role === "cleaner")
+        .filter((cleaner) => cleaner.role === "cleaner" || cleaner.role === "manager")
         .map((cleaner) => ({
           _id: cleaner._id,
           name: cleaner.name,
