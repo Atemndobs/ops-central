@@ -310,6 +310,52 @@ export const updatePropertyDetails = internalMutation({
   },
 });
 
+export const createPropertyFromHospitable = internalMutation({
+  args: {
+    hospitableId: v.string(),
+    name: v.string(),
+    address: v.string(),
+    city: v.optional(v.string()),
+    state: v.optional(v.string()),
+    zipCode: v.optional(v.string()),
+    country: v.optional(v.string()),
+    timezone: v.optional(v.string()),
+    bedrooms: v.optional(v.number()),
+    bathrooms: v.optional(v.number()),
+    rooms: v.optional(v.array(v.object({ name: v.string(), type: v.string() }))),
+  },
+  handler: async (ctx, args) => {
+    // Idempotent: skip if already exists (handles races and re-runs).
+    const existing = await ctx.db
+      .query("properties")
+      .withIndex("by_hospitable", (q) => q.eq("hospitableId", args.hospitableId))
+      .first();
+    if (existing) {
+      return { propertyId: existing._id, created: false };
+    }
+
+    const now = Date.now();
+    const propertyId = await ctx.db.insert("properties", {
+      name: args.name,
+      address: args.address,
+      city: args.city,
+      state: args.state,
+      zipCode: args.zipCode,
+      country: args.country,
+      timezone: args.timezone,
+      bedrooms: args.bedrooms,
+      bathrooms: args.bathrooms,
+      hospitableId: args.hospitableId,
+      rooms: args.rooms,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return { propertyId, created: true };
+  },
+});
+
 export const markSyncFailed = internalMutation({
   args: {
     error: v.string(),
