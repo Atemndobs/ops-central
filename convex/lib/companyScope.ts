@@ -99,11 +99,16 @@ export async function canCallerAccessPropertyById(
     return false;
   }
 
+  // `users.role === "manager"` is the source of truth for "this caller
+  // dispatches a cleaning company." The `companyMembers` row exists to
+  // identify WHICH company — its `role` field (cleaner/manager/owner)
+  // is the user's position inside the company and is orthogonal to
+  // platform authority. Sofia Cleaning's launch state on prod has the
+  // platform manager with a `companyMembers.role === "cleaner"` row,
+  // which is a valid (if unusual) setup; we should still scope him to
+  // that company.
   const membership = await getLatestActiveCompanyMembership(ctx, user._id);
-  if (
-    !membership ||
-    (membership.role !== "manager" && membership.role !== "owner")
-  ) {
+  if (!membership) {
     return false;
   }
 
@@ -138,11 +143,11 @@ export async function getCallerJobScopeForListing(
     return new Set();
   }
 
+  // See `canCallerAccessPropertyById` — platform role gates entry; the
+  // companyMembers row only identifies which company the manager belongs
+  // to. Any active membership counts.
   const membership = await getLatestActiveCompanyMembership(ctx, user._id);
-  if (
-    !membership ||
-    (membership.role !== "manager" && membership.role !== "owner")
-  ) {
+  if (!membership) {
     return new Set();
   }
 
