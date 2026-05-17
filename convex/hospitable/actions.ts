@@ -956,3 +956,153 @@ export const resyncPropertyDetails = action({
     };
   },
 });
+
+/**
+ * Bootstrap any Hospitable properties that are missing from Convex.
+ *
+ * `syncPropertyDetails` only updates existing properties; `syncReservations`
+ * skips reservations whose property isn't in Convex. That left the door open
+ * for a Hospitable-side new property to never get a Convex row.
+ *
+ * This action lists Hospitable's `/properties`, then for every one that's
+ * missing from Convex it fetches the detail endpoint and inserts a
+ * `properties` row via `createPropertyFromHospitable` (which is idempotent —
+ * safe to re-run).
+ *
+ * Usage (prod):
+ *   npx convex run hospitable/actions:bootstrapMissingProperties
+ *
+ * Pairs with `syncPropertyDetails` (richer metadata refresh) and
+ * `syncReservations` (jobs creation). Recommended order on a cold start:
+ *   1. bootstrapMissingProperties   ← creates missing property rows
+ *   2. syncPropertyDetails          ← refreshes rooms/capacity/timezone
+ *   3. syncReservations             ← creates upcoming cleaningJobs
+ */
+export const bootstrapMissingProperties = internalAction({
+  args: {},
+  handler: async (
+    ctx,
+  ): Promise<{
+    total: number;
+    created: number;
+    skipped: number;
+    results: Array<{
+      hospitableId: string;
+      name?: string;
+      created: boolean;
+      skippedReason?: string;
+    }>;
+  }> => {
+    const apiKey = process.env.HOSPITABLE_API_KEY ?? process.env.HOSPITABLE_API_TOKEN;
+    if (!apiKey) {
+      throw new Error("Missing HOSPITABLE_API_KEY/HOSPITABLE_API_TOKEN environment variable.");
+    }
+    const baseUrl = process.env.HOSPITABLE_API_URL ?? DEFAULT_HOSPITABLE_BASE_URL;
+
+    const listPayload = await fetchHospitableJson(
+      apiKey,
+      `${baseUrl}/properties`,
+      ctx,
+      "hospitable_bootstrap_properties",
+    );
+    const rawList = getArrayFromApiPayload(listPayload);
+
+    const results: Array<{
+      hospitableId: string;
+      name?: string;
+      created: boolean;
+      skippedReason?: string;
+    }> = [];
+
+    for (const raw of rawList) {
+      if (!isRecord(raw)) continue;
+      const hospitableId = asString(raw.id);
+      if (!hospitableId) continue;
+
+      // Fetch the detail endpoint for richer address + capacity data.
+      let detailData: unknown = raw;
+      try {
+        const detail = await fetchHospitableJson(
+          apiKey,
+          `${baseUrl}/properties/${hospitableId}`,
+          ctx,
+          "hospitable_bootstrap_properties",
+        );
+        detailData =
+          isRecord(detail) && isRecord(detail.data) ? detail.data : detail;
+      } catch {
+        // Fall back to list payload.
+      }
+
+      if (!isRecord(detailData)) {
+        results.push({ hospitableId, created: false, skippedReason: "no detail payload" });
+        continue;
+      }
+
+      const name =
+        asString(detailData.name) ??
+        asString(detailData.title) ??
+        hospitableId;
+
+      const address = isRecord(detailData.address) ? detailData.address : undefined;
+      const street =
+        asString(address?.street) ??
+        asString(address?.address1) ??
+        asString(address?.line1) ??
+        asString(address?.address);
+      const city = asString(address?.city);
+      const state = asString(address?.state) ?? asString(address?.region);
+      const zipCode =
+        asString(address?.postal_code) ??
+        asString(address?.postcode) ??
+        asString(address?.zip);
+      const country =
+        asString(address?.country) ?? asString(address?.country_code);
+      const timezone =
+        asString(detailData.timezone) ??
+        asString(detailData.time_zone) ??
+        asString(address?.timezone) ??
+        asString(address?.time_zone);
+
+      const addressLine =
+        [street, city, state, zipCode].filter(Boolean).join(", ") || name;
+
+      const capacity = isRecord(detailData.capacity) ? detailData.capacity : undefined;
+      const bedrooms = asNumber(detailData.bedrooms) ?? asNumber(capacity?.bedrooms);
+      const bathrooms = asNumber(detailData.bathrooms) ?? asNumber(capacity?.bathrooms);
+
+      const rooms = extractRoomsFromProperty(detailData);
+
+      const r = await ctx.runMutation(
+        internal.hospitable.mutations.createPropertyFromHospitable,
+        {
+          hospitableId,
+          name,
+          address: addressLine,
+          city,
+          state,
+          zipCode,
+          country,
+          timezone,
+          bedrooms,
+          bathrooms,
+          rooms,
+        },
+      );
+
+      results.push({
+        hospitableId,
+        name,
+        created: r.created,
+      });
+    }
+
+    const created = results.filter((r) => r.created).length;
+    return {
+      total: results.length,
+      created,
+      skipped: results.length - created,
+      results,
+    };
+  },
+});
