@@ -94,7 +94,7 @@ export const navigation: NavigationItem[] = [
     nameKey: "common.reports",
     href: "/reports",
     icon: BarChart3,
-    roles: ["admin", "property_ops", "manager"],
+    roles: ["admin", "property_ops"],
   },
   {
     nameKey: "common.settings",

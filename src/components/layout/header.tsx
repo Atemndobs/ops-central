@@ -135,6 +135,7 @@ export function Header() {
   const roleFromMetadata = getRoleFromMetadata(user?.publicMetadata);
   const role: UserRole = roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "manager";
   const canViewSettings = isLoaded && canAccessPath(role, "/settings");
+  const canViewReports = isLoaded && canAccessPath(role, "/reports");
   const mobileNavigation = navigation.filter((item) => item.roles.includes(role));
   const unreadMessageCount = useQuery(
     api.conversations.queries.getUnreadConversationCount,
@@ -256,9 +257,11 @@ export function Header() {
             <Link href="/" className="text-sm font-bold text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
               Dashboard
             </Link>
-            <Link href="/reports" className="text-sm font-bold text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
-              Reports
-            </Link>
+            {canViewReports ? (
+              <Link href="/reports" className="text-sm font-bold text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+                Reports
+              </Link>
+            ) : null}
           </nav>
         </div>
         <div className="flex items-center gap-4">

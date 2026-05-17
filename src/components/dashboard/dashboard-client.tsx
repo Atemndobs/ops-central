@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { useAuth, useUser } from "@clerk/nextjs";
 import { useTranslations } from "next-intl";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -26,6 +27,12 @@ import {
 } from "@/components/jobs/job-status";
 import { JobCountdown } from "@/components/jobs/job-countdown";
 import { useToast } from "@/components/ui/toast-provider";
+import {
+  canAccessPath,
+  getRoleFromMetadata,
+  getRoleFromSessionClaimsOrNull,
+  type UserRole,
+} from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { isPropertyStatus, type PropertyStatus } from "@/types/property";
 
@@ -106,10 +113,22 @@ export function DashboardClient() {
   const t = useTranslations();
   const { showToast } = useToast();
   const { isAuthenticated } = useConvexAuth();
+  const { isLoaded, isSignedIn, userId, sessionClaims } = useAuth();
+  const { user } = useUser();
   const [showAllAlerts, setShowAllAlerts] = useState(false);
   const [now, setNow] = useState<number | null>(null);
   const [quickAssignAlertId, setQuickAssignAlertId] = useState<Id<"cleaningJobs"> | null>(null);
   const [assigningJobId, setAssigningJobId] = useState<Id<"cleaningJobs"> | null>(null);
+  const convexUser = useQuery(
+    api.users.queries.getByClerkId,
+    isLoaded && isSignedIn && userId ? { clerkId: userId } : "skip",
+  );
+  const roleFromClaims = getRoleFromSessionClaimsOrNull(
+    sessionClaims as Record<string, unknown> | null,
+  );
+  const roleFromMetadata = getRoleFromMetadata(user?.publicMetadata);
+  const role: UserRole = roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "manager";
+  const canViewReports = isLoaded && canAccessPath(role, "/reports");
 
   // Wave 3.b — dashboard renders only recent + upcoming jobs (alerts
   // for overdues, today's timeline, per-status funnel deltas). Subscribe
@@ -397,12 +416,14 @@ export function DashboardClient() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            href="/reports"
-            className="rounded-xl bg-[var(--secondary)] px-3 py-1.5 text-xs font-semibold text-[var(--secondary-foreground)] transition hover:opacity-90 sm:px-4 sm:py-2 sm:text-sm"
-          >
-            {t("dashboard.generateReport")}
-          </Link>
+          {canViewReports ? (
+            <Link
+              href="/reports"
+              className="rounded-xl bg-[var(--secondary)] px-3 py-1.5 text-xs font-semibold text-[var(--secondary-foreground)] transition hover:opacity-90 sm:px-4 sm:py-2 sm:text-sm"
+            >
+              {t("dashboard.generateReport")}
+            </Link>
+          ) : null}
           <Link
             href="/jobs"
             className="rounded-xl bg-[var(--primary)] px-3 py-1.5 text-center text-xs font-semibold text-[var(--primary-foreground)] sm:px-4 sm:py-2 sm:text-sm"
