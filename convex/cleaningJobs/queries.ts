@@ -175,6 +175,49 @@ async function getLatestActiveCompanyMembership(
   return active ?? null;
 }
 
+/**
+ * Returns the set of property IDs a caller is allowed to see in job listings.
+ *
+ * - `admin` / `property_ops`: returns `null` (no scoping — caller sees all jobs)
+ * - `manager`: returns the active property IDs assigned to the manager's
+ *   active company membership. Fail-closed: a manager with no active
+ *   membership or whose company has no properties gets an empty set (sees
+ *   nothing) rather than leaking other companies' jobs.
+ * - `cleaner`: returns `[]` (cleaners should use `getMyAssigned` instead).
+ */
+async function getCallerJobScopeForListing(
+  ctx: QueryCtx,
+  user: Doc<"users">,
+): Promise<Set<Id<"properties">> | null> {
+  if (user.role === "admin" || user.role === "property_ops") {
+    return null;
+  }
+
+  if (user.role === "cleaner") {
+    return new Set();
+  }
+
+  // Manager — scope to their active company's currently-assigned properties.
+  const membership = await getLatestActiveCompanyMembership(ctx, user._id);
+  if (
+    !membership ||
+    (membership.role !== "manager" && membership.role !== "owner")
+  ) {
+    return new Set();
+  }
+
+  const assignments = await ctx.db
+    .query("companyProperties")
+    .withIndex("by_company", (q) => q.eq("companyId", membership.companyId))
+    .collect();
+
+  return new Set(
+    assignments
+      .filter(isActiveCompanyPropertyAssignment)
+      .map((a) => a.propertyId),
+  );
+}
+
 // Hard cap on `getAll` reads. Subscribed reactively across 10+ mount points
 // in admin web (jobs page, dashboard, schedule, settings, team, properties,
 // inventory, companies, review-queue, etc.). Most callers pass `limit: 1000`,
@@ -203,6 +246,24 @@ export const getAll = query({
     notEndedBefore: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    const allowedPropertyIds = await getCallerJobScopeForListing(ctx, user);
+
+    // Fail-closed: managers with no scope (no active company / no
+    // properties assigned) and cleaners calling getAll see nothing.
+    if (allowedPropertyIds && allowedPropertyIds.size === 0) {
+      return [];
+    }
+
+    // Manager filtered to a single property they don't own → empty.
+    if (
+      allowedPropertyIds &&
+      args.propertyId &&
+      !allowedPropertyIds.has(args.propertyId)
+    ) {
+      return [];
+    }
+
     const requestedLimit = Math.min(
       args.limit ?? GET_ALL_HARD_CAP,
       GET_ALL_HARD_CAP,
@@ -226,14 +287,33 @@ export const getAll = query({
         .query("cleaningJobs")
         .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId!))
         .collect();
+    } else if (allowedPropertyIds) {
+      // Manager: read per-property via the by_property index, then merge.
+      // Avoids scanning the full by_scheduled list across other companies.
+      const perProperty = await Promise.all(
+        [...allowedPropertyIds].map((propertyId) =>
+          ctx.db
+            .query("cleaningJobs")
+            .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
+            .collect(),
+        ),
+      );
+      jobs = perProperty.flat();
     } else {
-      // Unfiltered case: most-recent-N via index ordering. Avoids reading
-      // the entire jobs table just to slice in memory.
+      // Unfiltered case (admin / property_ops): most-recent-N via index
+      // ordering. Avoids reading the entire jobs table just to slice in
+      // memory.
       jobs = await ctx.db
         .query("cleaningJobs")
         .withIndex("by_scheduled")
         .order("desc")
         .take(requestedLimit);
+    }
+
+    // Final scope filter — covers the cases above that didn't already
+    // filter by propertyId (status-only, by_scheduled).
+    if (allowedPropertyIds) {
+      jobs = jobs.filter((job) => allowedPropertyIds.has(job.propertyId));
     }
 
     if (typeof args.notEndedBefore === "number") {
