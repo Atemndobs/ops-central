@@ -79,9 +79,11 @@ test("canAccessPath enforces route access by role", () => {
   assert.equal(canAccessPath("manager", "/messages/thread-123"), true);
   assert.equal(canAccessPath("manager", "/review"), true);
   assert.equal(canAccessPath("manager", "/review/jobs/abc"), true);
+  assert.equal(canAccessPath("manager", "/companies"), false);
   assert.equal(canAccessPath("manager", "/reports"), false);
   assert.equal(canAccessPath("property_ops", "/review"), true);
   assert.equal(canAccessPath("property_ops", "/messages"), true);
+  assert.equal(canAccessPath("property_ops", "/companies"), true);
   assert.equal(canAccessPath("property_ops", "/reports"), true);
   assert.equal(canAccessPath("manager", "/schedule"), true);
   assert.equal(canAccessPath("cleaner", "/"), false);

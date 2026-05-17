@@ -70,7 +70,7 @@ export const navigation: NavigationItem[] = [
     nameKey: "nav.companies",
     href: "/companies",
     icon: Building,
-    roles: ["admin", "property_ops", "manager"],
+    roles: ["admin", "property_ops"],
   },
   {
     nameKey: "common.team",
