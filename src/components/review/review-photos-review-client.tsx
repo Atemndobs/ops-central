@@ -9,8 +9,26 @@ import { JobPhotosReviewClient } from "@/components/jobs/job-photos-review-clien
 
 export function ReviewPhotosReviewClient({ id }: { id: string }) {
   const { isAuthenticated } = useConvexAuth();
+  const profile = useQuery(api.users.queries.getMyProfile, isAuthenticated ? {} : "skip");
+  // Per R7.4 (2026-05-17): approval routes are admin + property_ops only.
+  const canReview =
+    profile !== undefined &&
+    profile !== null &&
+    (profile.role === "admin" || profile.role === "property_ops");
+
   const jobId = id as Id<"cleaningJobs">;
-  const detail = useQuery(api.cleaningJobs.queries.getReviewJobDetail, isAuthenticated ? { jobId } : "skip");
+  const detail = useQuery(
+    api.cleaningJobs.queries.getReviewJobDetail,
+    isAuthenticated && canReview ? { jobId } : "skip",
+  );
+
+  if (isAuthenticated && profile && !canReview) {
+    return (
+      <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--card)] px-4 py-12 text-center text-sm text-[var(--muted-foreground)]">
+        Approval is restricted to admin and operations roles.
+      </div>
+    );
+  }
 
   if (detail === undefined) {
     return (
