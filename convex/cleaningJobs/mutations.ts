@@ -1136,7 +1136,7 @@ export const assign = mutation({
 
       if (!propertyCompanyId) {
         throw new ConvexError(
-          "Property has no assigned cleaning company. Assign one in Companies Hub.",
+          "Property has no assigned cleaning company. Ask admin/property ops to assign it from Team/Properties.",
         );
       }
 
@@ -1149,7 +1149,7 @@ export const assign = mutation({
 
     if (!propertyCompanyId) {
       warnings.push(
-        "Property has no assigned cleaning company. Manage assignment in Companies Hub.",
+        "Property has no assigned cleaning company. Ask admin/property ops to assign it from Team/Properties.",
       );
     }
 
