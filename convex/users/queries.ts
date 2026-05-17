@@ -228,34 +228,49 @@ export const getCleaners = query({
   handler: async (ctx) => {
     const currentUser = await requireRole(ctx, ["manager", "property_ops", "admin"]);
 
-    const allCleaners = await ctx.db
-      .query("users")
-      .withIndex("by_role", (q) => q.eq("role", "cleaner"))
-      .collect();
+    let cleaners: Doc<"users">[];
 
-    let cleaners = allCleaners;
-
-    if (currentUser.role !== "admin") {
+    if (currentUser.role === "manager") {
+      // R1.1 (manager-scope task, 2026-05-17): drive off `companyMembers`
+      // for the manager's active company, not the `users.by_role` index.
+      // This naturally includes cleaner-manager hybrids — users whose
+      // platform `users.role === "manager"` but who also have an active
+      // `companyMembers` row with `role === "cleaner"` in the same
+      // company. The previous query missed those because it pre-filtered
+      // by platform role.
+      //
+      // Fail-closed: manager without an active manager/owner membership
+      // sees nothing (don't fall back to "all platform cleaners").
       const membership = await getLatestActiveCompanyMembership(ctx, currentUser._id);
-      if (membership) {
-        const companyMembers = await ctx.db
-          .query("companyMembers")
-          .withIndex("by_company", (q) => q.eq("companyId", membership.companyId))
-          .collect();
-
-        const activeCleanerIds = new Set(
-          companyMembers
-            .filter(
-              (member) =>
-                member.isActive &&
-                member.leftAt === undefined &&
-                member.role === "cleaner",
-            )
-            .map((member) => member.userId),
-        );
-
-        cleaners = allCleaners.filter((cleaner) => activeCleanerIds.has(cleaner._id));
+      if (
+        !membership ||
+        (membership.role !== "manager" && membership.role !== "owner")
+      ) {
+        return [];
       }
+
+      const memberRows = await ctx.db
+        .query("companyMembers")
+        .withIndex("by_company_role", (q) =>
+          q.eq("companyId", membership.companyId).eq("role", "cleaner"),
+        )
+        .collect();
+
+      const cleanerIds = memberRows
+        .filter((row) => row.isActive && row.leftAt === undefined)
+        .map((row) => row.userId);
+
+      const resolved = await Promise.all(cleanerIds.map((id) => ctx.db.get(id)));
+      cleaners = resolved.filter(
+        (user): user is Doc<"users"> => user !== null,
+      );
+    } else {
+      // admin / property_ops — see every platform cleaner across all
+      // companies. Unchanged from prior behavior.
+      cleaners = await ctx.db
+        .query("users")
+        .withIndex("by_role", (q) => q.eq("role", "cleaner"))
+        .collect();
     }
 
     return cleaners
@@ -264,8 +279,8 @@ export const getCleaners = query({
         id: cleaner._id,
       }))
       .sort((a, b) => {
-        const nameA = a.name ?? a.email;
-        const nameB = b.name ?? b.email;
+        const nameA = a.name ?? a.email ?? "";
+        const nameB = b.name ?? b.email ?? "";
         return nameA.localeCompare(nameB);
       });
   },
