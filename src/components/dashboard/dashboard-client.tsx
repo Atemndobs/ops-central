@@ -138,6 +138,11 @@ export function DashboardClient() {
     api.incidents.queries.getOpenIncidentCounts,
     isAuthenticated ? {} : "skip",
   );
+  const me = useQuery(
+    api.users.queries.getMyProfile,
+    isAuthenticated ? {} : "skip",
+  ) as { _id: Id<"users">; role: string } | null | undefined;
+  const isManagerRole = me?.role === "manager";
   const assignJob = useMutation(api.cleaningJobs.mutations.assign);
 
   useEffect(() => {
@@ -560,6 +565,7 @@ export function DashboardClient() {
         )}
       </section>
 
+      {isManagerRole ? null : (
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
         <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5 xl:col-span-4">
           <div className="mb-3 flex items-center justify-between">
@@ -734,6 +740,7 @@ export function DashboardClient() {
 
         <TasksCard />
       </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
         <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5 xl:col-span-7">

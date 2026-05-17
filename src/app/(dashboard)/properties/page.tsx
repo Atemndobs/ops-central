@@ -106,6 +106,12 @@ function PropertiesPageContent() {
       : "skip",
   );
 
+  const me = useQuery(
+    api.users.queries.getMyProfile,
+    isAuthenticated ? {} : "skip",
+  ) as { role?: string } | null | undefined;
+  const canSyncFromHospitable = me?.role === "admin" || me?.role === "property_ops";
+
   const syncFromHospitable = useAction(api.hospitable.actions.syncAllFromHospitable);
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -331,20 +337,22 @@ function PropertiesPageContent() {
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={handleSyncFromHospitable}
-            disabled={isSyncing}
-            className="flex items-center gap-2 rounded-none border bg-[var(--card)] px-4 py-2 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60"
-            title="Pull latest properties and reservations from Hospitable"
-          >
-            {isSyncing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            {isSyncing ? "Syncing…" : "Sync from Hospitable"}
-          </button>
+          {canSyncFromHospitable ? (
+            <button
+              type="button"
+              onClick={handleSyncFromHospitable}
+              disabled={isSyncing}
+              className="flex items-center gap-2 rounded-none border bg-[var(--card)] px-4 py-2 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60"
+              title="Pull latest properties and reservations from Hospitable"
+            >
+              {isSyncing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              {isSyncing ? "Syncing…" : "Sync from Hospitable"}
+            </button>
+          ) : null}
 
           <button
             className="flex items-center gap-2 rounded-none bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90"
