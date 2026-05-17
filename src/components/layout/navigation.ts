@@ -94,7 +94,10 @@ export const navigation: NavigationItem[] = [
     nameKey: "common.reports",
     href: "/reports",
     icon: BarChart3,
-    roles: ["admin", "property_ops", "manager"],
+    // 2026-05-18: Reports is admin/ops only — managers don't need
+    // cross-portfolio reporting (they have the dashboard for their
+    // own company's KPIs).
+    roles: ["admin", "property_ops"],
   },
   {
     nameKey: "common.settings",

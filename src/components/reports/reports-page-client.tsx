@@ -29,6 +29,15 @@ const presetOptions: Array<{ value: ReportPreset; label: string }> = [
 export function ReportsPageClient() {
   const { showToast } = useToast();
   const { isAuthenticated } = useConvexAuth();
+  const profile = useQuery(api.users.queries.getMyProfile, isAuthenticated ? {} : "skip");
+  // 2026-05-18: Reports is admin/ops only. Managers don't have
+  // cross-portfolio reporting — their dashboard already shows their
+  // company's KPIs. Server-side reports queries are not yet scoped,
+  // so we gate at the UI level for now.
+  const canAccessReports =
+    profile !== undefined &&
+    profile !== null &&
+    (profile.role === "admin" || profile.role === "property_ops");
 
   const [preset, setPreset] = useState<ReportPreset>("30d");
   const [customFromDate, setCustomFromDate] = useState("");
@@ -63,11 +72,11 @@ export function ReportsPageClient() {
 
   const dashboard = useQuery(
     api.reports.queries.getDashboard,
-    isAuthenticated ? dashboardArgs : "skip",
+    isAuthenticated && canAccessReports ? dashboardArgs : "skip",
   );
   const exportHistory = useQuery(
     api.reports.queries.listExports,
-    isAuthenticated ? { limit: 20 } : "skip",
+    isAuthenticated && canAccessReports ? { limit: 20 } : "skip",
   );
   const requestExport = useMutation(api.reports.mutations.requestExport);
 
@@ -140,6 +149,17 @@ export function ReportsPageClient() {
       setIsSubmittingExport(false);
     }
   };
+
+  if (isAuthenticated && profile && !canAccessReports) {
+    return (
+      <div className="space-y-3">
+        <h1 className="text-display">Reports</h1>
+        <p className="text-sm text-[var(--muted-foreground)]">
+          Reports are available to admin and operations only. For company-level KPIs, see the dashboard.
+        </p>
+      </div>
+    );
+  }
 
   if (!dashboard || !summary) {
     return (
