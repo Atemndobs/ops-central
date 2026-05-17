@@ -4,7 +4,15 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
-_None yet._
+### TASK-MANAGER-SCOPE-001
+- Branch: claude/gracious-borg-3d5a6e
+- Worktree: ~/sites/jnabusiness_solutions/apps-ja/opscentral-admin/.claude/worktrees/gracious-borg-3d5a6e
+- PR: pending
+- Schema impact: none
+- Convex impact: deploy-required
+- Risk: medium (auth surface — flips manager behavior on prod)
+- Ready since: 2026-05-17 23:55 UTC+2
+- Handoff: .harness/handoffs/TASK-MANAGER-SCOPE-001/worktree-handoff.md
 
 ## In progress (main session integrating)
 

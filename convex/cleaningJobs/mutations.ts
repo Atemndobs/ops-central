@@ -2,7 +2,11 @@ import { ConvexError, v } from "convex/values";
 import { mutation, type MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import { getCurrentUser } from "../lib/auth";
+import { getCurrentUser, requireRole } from "../lib/auth";
+import {
+  getActivePropertyCompanyAssignment,
+  getLatestActiveCompanyMembership,
+} from "../lib/companyScope";
 import {
   createNotificationsForUsers,
   createOpsNotifications,
@@ -101,48 +105,6 @@ function requirePrivilegedRole(user: Doc<"users">) {
   ) {
     throw new ConvexError("Only privileged users can perform this action.");
   }
-}
-
-function isActiveCompanyPropertyAssignment(
-  assignment: Doc<"companyProperties">,
-): boolean {
-  return assignment.isActive !== false && assignment.unassignedAt === undefined;
-}
-
-function isActiveMembership(membership: Doc<"companyMembers">): boolean {
-  return membership.isActive && membership.leftAt === undefined;
-}
-
-async function getActivePropertyCompanyAssignment(
-  ctx: MutationCtx,
-  propertyId: Id<"properties">,
-) {
-  const assignments = await ctx.db
-    .query("companyProperties")
-    .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
-    .collect();
-
-  const active = assignments
-    .filter(isActiveCompanyPropertyAssignment)
-    .sort((a, b) => b.assignedAt - a.assignedAt)[0];
-
-  return active ?? null;
-}
-
-async function getLatestActiveCompanyMembership(
-  ctx: MutationCtx,
-  userId: Id<"users">,
-) {
-  const memberships = await ctx.db
-    .query("companyMembers")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .collect();
-
-  const active = memberships
-    .filter(isActiveMembership)
-    .sort((a, b) => b.joinedAt - a.joinedAt)[0];
-
-  return active ?? null;
 }
 
 type SubmissionValidation = {
@@ -493,6 +455,12 @@ export const create = mutation({
     notesForCleaner: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Per R7.4 (manager-scope task, 2026-05-17): manual job creation is
+    // admin/ops only. Production jobs come from the Hospitable webhook
+    // automatically; this mutation is the ops escape hatch. Managers and
+    // cleaners are explicitly not allowed.
+    await requireRole(ctx, ["admin", "property_ops"]);
+
     const property = await ctx.db.get(args.propertyId);
     if (!property) {
       throw new ConvexError("Property not found.");

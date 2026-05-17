@@ -3,6 +3,10 @@ import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { getCurrentUser } from "../lib/auth";
+import {
+  canCallerAccessPropertyById,
+  getCallerJobScopeForListing,
+} from "../lib/companyScope";
 
 type PropertyStatus = "ready" | "dirty" | "in_progress" | "vacant";
 
@@ -178,7 +182,16 @@ export const list = query({
     includeInactive: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
     const includeInactive = args.includeInactive ?? false;
+
+    // Manager-scope task (2026-05-17): admin/ops see all; managers see
+    // only their company's properties; cleaners use
+    // getMyAccessibleProperties and get [] here.
+    const allowedPropertyIds = await getCallerJobScopeForListing(ctx, user);
+    if (allowedPropertyIds && allowedPropertyIds.size === 0) {
+      return [];
+    }
 
     let properties;
     if (!includeInactive) {
@@ -188,6 +201,10 @@ export const list = query({
         .collect();
     } else {
       properties = await ctx.db.query("properties").collect();
+    }
+
+    if (allowedPropertyIds) {
+      properties = properties.filter((p) => allowedPropertyIds.has(p._id));
     }
 
     const sorted = properties.sort(
@@ -202,10 +219,40 @@ export const getById = query({
     id: v.id("properties"),
   },
   handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
     const property = await ctx.db.get(args.id);
 
     if (!property || !property.isActive) {
       return null;
+    }
+
+    // Direct-ID access guard (manager-scope task, 2026-05-17).
+    // - admin / property_ops: unrestricted.
+    // - manager: only if the property is currently assigned to the
+    //   manager's company via companyProperties.
+    // - cleaner: only if assigned to at least one cleaningJob for this
+    //   property. Mirrors `getMyAccessibleProperties`.
+    if (user.role === "manager") {
+      const allowed = await canCallerAccessPropertyById(ctx, user, args.id);
+      if (!allowed) {
+        return null;
+      }
+    } else if (user.role === "cleaner") {
+      const assignments = await ctx.db
+        .query("userJobAssignments")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .collect();
+      const hasJobForProperty = (
+        await Promise.all(
+          assignments.map(async (row) => {
+            const job = await ctx.db.get(row.jobId);
+            return job?.propertyId === args.id;
+          }),
+        )
+      ).some(Boolean);
+      if (!hasJobForProperty) {
+        return null;
+      }
     }
 
     const [enriched] = await enrichProperties(ctx, [property]);
@@ -220,10 +267,20 @@ export const search = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
     const includeInactive = args.includeInactive ?? false;
     const queryText = args.query.trim().toLowerCase();
     const limit = args.limit ?? 50;
     const cap = Math.max(1, Math.min(limit, 100));
+
+    const allowedPropertyIds = await getCallerJobScopeForListing(ctx, user);
+    if (allowedPropertyIds && allowedPropertyIds.size === 0) {
+      return [];
+    }
+    const applyScope = (list: Doc<"properties">[]) =>
+      allowedPropertyIds
+        ? list.filter((p) => allowedPropertyIds.has(p._id))
+        : list;
 
     if (!queryText) {
       let properties;
@@ -235,23 +292,27 @@ export const search = query({
       } else {
         properties = await ctx.db.query("properties").collect();
       }
-      const sorted = properties
+      const sorted = applyScope(properties)
         .sort((a, b) => (b.updatedAt ?? b.createdAt) - (a.updatedAt ?? a.createdAt))
         .slice(0, cap);
       return await enrichProperties(ctx, sorted);
     }
 
-    // search_name has no filterFields, so filter isActive in memory
+    // search_name has no filterFields, so filter isActive in memory.
+    // Fetch more candidates when scoping so the final scope+active filter
+    // doesn't underflow `cap` on managers whose company has few properties.
+    const overscan = allowedPropertyIds ? cap * 4 : cap * 2;
     const results = await ctx.db
       .query("properties")
       .withSearchIndex("search_name", (q) => q.search("name", queryText))
-      .take(cap * 2); // fetch extra to account for in-memory filtering
+      .take(overscan);
 
-    const filtered = includeInactive
+    const activeFiltered = includeInactive
       ? results
       : results.filter((property) => property.isActive);
+    const scoped = applyScope(activeFiltered);
 
-    return await enrichProperties(ctx, filtered.slice(0, cap));
+    return await enrichProperties(ctx, scoped.slice(0, cap));
   },
 });
 
@@ -260,12 +321,22 @@ export const getAll = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
     const limit = args.limit ?? 500;
 
-    const properties = await ctx.db
+    const allowedPropertyIds = await getCallerJobScopeForListing(ctx, user);
+    if (allowedPropertyIds && allowedPropertyIds.size === 0) {
+      return [];
+    }
+
+    let properties = await ctx.db
       .query("properties")
       .withIndex("by_active", (q) => q.eq("isActive", true))
       .collect();
+
+    if (allowedPropertyIds) {
+      properties = properties.filter((p) => allowedPropertyIds.has(p._id));
+    }
 
     const sorted = properties
       .sort((a, b) => (b.updatedAt ?? b.createdAt) - (a.updatedAt ?? a.createdAt))
@@ -277,11 +348,14 @@ export const getAll = query({
 /**
  * Returns properties the current user can access.
  *
- * - Admin / property_ops / manager: all active properties (same as getAll).
- * - Cleaner / any other role: only properties the user has been assigned to
- *   on at least one cleaning job (past or upcoming). Derived from
- *   cleaningJobs.assignedCleanerIds, mirroring how jobs are scoped in
- *   cleaningJobs.getMyAssigned.
+ * - Admin / property_ops: all active properties.
+ * - Manager: only active properties currently assigned to the manager's
+ *   company via `companyProperties`. Fail-closed if the manager has no
+ *   active manager/owner membership.
+ * - Cleaner / any other role: only properties the user has been assigned
+ *   to on at least one cleaning job (past or upcoming). Derived from
+ *   `userJobAssignments`, mirroring how jobs are scoped in
+ *   `cleaningJobs.getMyAssigned`.
  *
  * This is the canonical query for any cleaner-facing property picker
  * (incident reports, standalone reports, etc.) so cleaners only see the
@@ -295,10 +369,11 @@ export const getMyAccessibleProperties = query({
     const user = await getCurrentUser(ctx);
     const limit = args.limit ?? 500;
 
-    const isPrivileged =
-      user.role === "admin" ||
-      user.role === "property_ops" ||
-      user.role === "manager";
+    // Manager-scope task (2026-05-17): managers were previously lumped
+    // with admin/ops and got every active property. They should only get
+    // their company's `companyProperties`.
+    const allowedPropertyIds = await getCallerJobScopeForListing(ctx, user);
+    const isUnscoped = allowedPropertyIds === null;
 
     const activeProperties = await ctx.db
       .query("properties")
@@ -306,8 +381,11 @@ export const getMyAccessibleProperties = query({
       .collect();
 
     let filtered: Doc<"properties">[];
-    if (isPrivileged) {
+    if (isUnscoped) {
+      // admin / property_ops
       filtered = activeProperties;
+    } else if (user.role === "manager") {
+      filtered = activeProperties.filter((p) => allowedPropertyIds.has(p._id));
     } else {
       // Bandwidth: previously did `ctx.db.query("cleaningJobs").collect()` to
       // find this cleaner's assigned properties — a full scan of the jobs

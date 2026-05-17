@@ -1,7 +1,11 @@
 import { v } from "convex/values";
-import { query, type QueryCtx } from "../_generated/server";
+import { query } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { getCurrentUser, requireRole } from "../lib/auth";
+import {
+  getCallerJobScopeForListing,
+  getLatestActiveCompanyMembership,
+} from "../lib/companyScope";
 
 function readThemePreference(metadata: unknown): "dark" | "light" | null {
   if (!metadata || typeof metadata !== "object") {
@@ -30,22 +34,6 @@ function endOfToday(now: number): number {
   const date = new Date(now);
   date.setHours(23, 59, 59, 999);
   return date.getTime();
-}
-
-async function getLatestActiveMembership(
-  ctx: QueryCtx,
-  userId: Id<"users">,
-): Promise<Doc<"companyMembers"> | null> {
-  const memberships = await ctx.db
-    .query("companyMembers")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .collect();
-
-  const active = memberships
-    .filter((membership) => membership.isActive && membership.leftAt === undefined)
-    .sort((a, b) => b.joinedAt - a.joinedAt);
-
-  return active[0] ?? null;
 }
 
 export const getByRole = query({
@@ -180,11 +168,33 @@ export const getManagerDashboard = query({
     const todayStart = startOfToday(now);
     const todayEnd = endOfToday(now);
 
-    const allJobs = await ctx.db.query("cleaningJobs").collect();
-    const managerJobs =
-      currentUser.role === "admin"
-        ? allJobs
-        : allJobs.filter((job) => job.assignedManagerId === currentUser._id);
+    // Manager-scope task (2026-05-17): axis fix.
+    //
+    // Previously: managerJobs = allJobs.filter(job.assignedManagerId === self).
+    // That field is rarely set, so the dashboard was usually empty even for
+    // a manager with a fully-loaded company. Switch to the canonical scope:
+    // jobs whose property is currently assigned to the manager's company
+    // via `companyProperties`. Also stops reading the entire jobs table
+    // for managers by walking the `by_property` index per allowed property.
+    const allowedPropertyIds = await getCallerJobScopeForListing(ctx, currentUser);
+
+    let managerJobs: Doc<"cleaningJobs">[];
+    if (allowedPropertyIds === null) {
+      // admin
+      managerJobs = await ctx.db.query("cleaningJobs").collect();
+    } else if (allowedPropertyIds.size === 0) {
+      managerJobs = [];
+    } else {
+      const perProperty = await Promise.all(
+        [...allowedPropertyIds].map((propertyId) =>
+          ctx.db
+            .query("cleaningJobs")
+            .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
+            .collect(),
+        ),
+      );
+      managerJobs = perProperty.flat();
+    }
 
     const cleanerIds = [
       ...new Set(managerJobs.flatMap((job) => job.assignedCleanerIds)),
@@ -217,7 +227,7 @@ export const getManagerDashboard = query({
       })
       .sort((a, b) => a.name.localeCompare(b.name));
 
-    const membership = await getLatestActiveMembership(ctx, currentUser._id);
+    const membership = await getLatestActiveCompanyMembership(ctx, currentUser._id);
     const company = membership ? await ctx.db.get(membership.companyId) : null;
 
     return {
@@ -243,34 +253,49 @@ export const getCleaners = query({
   handler: async (ctx) => {
     const currentUser = await requireRole(ctx, ["manager", "property_ops", "admin"]);
 
-    const allCleaners = await ctx.db
-      .query("users")
-      .withIndex("by_role", (q) => q.eq("role", "cleaner"))
-      .collect();
+    let cleaners: Doc<"users">[];
 
-    let cleaners = allCleaners;
-
-    if (currentUser.role !== "admin") {
-      const membership = await getLatestActiveMembership(ctx, currentUser._id);
-      if (membership) {
-        const companyMembers = await ctx.db
-          .query("companyMembers")
-          .withIndex("by_company", (q) => q.eq("companyId", membership.companyId))
-          .collect();
-
-        const activeCleanerIds = new Set(
-          companyMembers
-            .filter(
-              (member) =>
-                member.isActive &&
-                member.leftAt === undefined &&
-                member.role === "cleaner",
-            )
-            .map((member) => member.userId),
-        );
-
-        cleaners = allCleaners.filter((cleaner) => activeCleanerIds.has(cleaner._id));
+    if (currentUser.role === "manager") {
+      // R1.1 (manager-scope task, 2026-05-17): drive off `companyMembers`
+      // for the manager's active company, not the `users.by_role` index.
+      // This naturally includes cleaner-manager hybrids — users whose
+      // platform `users.role === "manager"` but who also have an active
+      // `companyMembers` row with `role === "cleaner"` in the same
+      // company. The previous query missed those because it pre-filtered
+      // by platform role.
+      //
+      // Fail-closed: manager without an active manager/owner membership
+      // sees nothing (don't fall back to "all platform cleaners").
+      const membership = await getLatestActiveCompanyMembership(ctx, currentUser._id);
+      if (
+        !membership ||
+        (membership.role !== "manager" && membership.role !== "owner")
+      ) {
+        return [];
       }
+
+      const memberRows = await ctx.db
+        .query("companyMembers")
+        .withIndex("by_company_role", (q) =>
+          q.eq("companyId", membership.companyId).eq("role", "cleaner"),
+        )
+        .collect();
+
+      const cleanerIds = memberRows
+        .filter((row) => row.isActive && row.leftAt === undefined)
+        .map((row) => row.userId);
+
+      const resolved = await Promise.all(cleanerIds.map((id) => ctx.db.get(id)));
+      cleaners = resolved.filter(
+        (user): user is Doc<"users"> => user !== null,
+      );
+    } else {
+      // admin / property_ops — see every platform cleaner across all
+      // companies. Unchanged from prior behavior.
+      cleaners = await ctx.db
+        .query("users")
+        .withIndex("by_role", (q) => q.eq("role", "cleaner"))
+        .collect();
     }
 
     return cleaners
@@ -279,8 +304,8 @@ export const getCleaners = query({
         id: cleaner._id,
       }))
       .sort((a, b) => {
-        const nameA = a.name ?? a.email;
-        const nameB = b.name ?? b.email;
+        const nameA = a.name ?? a.email ?? "";
+        const nameB = b.name ?? b.email ?? "";
         return nameA.localeCompare(nameB);
       });
   },
