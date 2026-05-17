@@ -31,12 +31,25 @@ function endOfDay(dateString: string): number | undefined {
 
 export function ReviewQueueClient() {
   const { isAuthenticated } = useConvexAuth();
+  const profile = useQuery(api.users.queries.getMyProfile, isAuthenticated ? {} : "skip");
+  // Per R7.4 (2026-05-17), approval is admin + property_ops only. Calling
+  // `getReviewQueue` as any other role throws "Reviewer-only query.". Gate
+  // the underlying query and render an unauthorized state instead of
+  // letting the throw bubble.
+  const canReview =
+    profile !== undefined &&
+    profile !== null &&
+    (profile.role === "admin" || profile.role === "property_ops");
+
   const [status, setStatus] = useState<JobStatus | "all">("awaiting_approval");
   const [propertyId, setPropertyId] = useState("all");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
-  const properties = useQuery(api.properties.queries.getAll, isAuthenticated ? { limit: 500 } : "skip");
+  const properties = useQuery(
+    api.properties.queries.getAll,
+    isAuthenticated && canReview ? { limit: 500 } : "skip",
+  );
 
   const queryArgs = useMemo(
     () => ({
@@ -49,7 +62,21 @@ export function ReviewQueueClient() {
     [fromDate, propertyId, status, toDate],
   );
 
-  const jobs = useQuery(api.cleaningJobs.queries.getReviewQueue, isAuthenticated ? queryArgs : "skip");
+  const jobs = useQuery(
+    api.cleaningJobs.queries.getReviewQueue,
+    isAuthenticated && canReview ? queryArgs : "skip",
+  );
+
+  if (isAuthenticated && profile && !canReview) {
+    return (
+      <div className="space-y-3">
+        <h1 className="text-3xl font-extrabold tracking-tight">Review Queue</h1>
+        <p className="text-sm text-[var(--muted-foreground)]">
+          Approval is restricted to admin and operations roles.
+        </p>
+      </div>
+    );
+  }
 
   const counts = useMemo(() => {
     const source = jobs ?? [];

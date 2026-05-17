@@ -101,7 +101,11 @@ test("getCallerJobScopeForListing: manager with no membership returns empty set"
   assert.equal(scope!.size, 0);
 });
 
-test("getCallerJobScopeForListing: manager with cleaner-only membership returns empty set", async () => {
+test("getCallerJobScopeForListing: platform-manager with cleaner-role membership still gets scope (Sofia launch state)", async () => {
+  // Real prod state on 2026-05-18: Jesse has `users.role === "manager"`
+  // but his `companyMembers.role === "cleaner"`. He should still be
+  // scoped to Sofia's properties — the platform role gates entry, the
+  // membership row only identifies the company.
   const ctx = makeCtx({
     companyMembers: [
       {
@@ -114,15 +118,14 @@ test("getCallerJobScopeForListing: manager with cleaner-only membership returns 
       },
     ],
     companyProperties: [
-      { _id: "cp1", companyId: SOFIA, propertyId: PROP_A, assignedAt: 1 },
+      { _id: "cp1", companyId: SOFIA, propertyId: PROP_A, assignedAt: 1, isActive: true },
     ],
   });
   const scope = await getCallerJobScopeForListing(ctx, {
     _id: "u_jesse",
     role: "manager",
   } as never);
-  assert.ok(scope instanceof Set);
-  assert.equal(scope!.size, 0);
+  assert.deepEqual([...scope!], [PROP_A]);
 });
 
 test("getCallerJobScopeForListing: manager with manager membership scopes to active company properties", async () => {

@@ -72,7 +72,17 @@ export function ReviewJobDetailClient({ id }: { id: string }) {
   const router = useRouter();
   const jobId = id as Id<"cleaningJobs">;
 
-  const detail = useQuery(api.cleaningJobs.queries.getReviewJobDetail, isAuthenticated ? { jobId } : "skip") as ReviewDetail | null | undefined;
+  const profile = useQuery(api.users.queries.getMyProfile, isAuthenticated ? {} : "skip");
+  // Per R7.4 (2026-05-17): approval is admin + property_ops only.
+  const canReview =
+    profile !== undefined &&
+    profile !== null &&
+    (profile.role === "admin" || profile.role === "property_ops");
+
+  const detail = useQuery(
+    api.cleaningJobs.queries.getReviewJobDetail,
+    isAuthenticated && canReview ? { jobId } : "skip",
+  ) as ReviewDetail | null | undefined;
   const approveCompletion = useMutation(api.cleaningJobs.approve.approveCompletion);
   const rejectCompletion = useMutation(api.cleaningJobs.approve.rejectCompletion);
 
@@ -81,6 +91,14 @@ export function ReviewJobDetailClient({ id }: { id: string }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  if (isAuthenticated && profile && !canReview) {
+    return (
+      <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--card)] px-4 py-12 text-center text-sm text-[var(--muted-foreground)]">
+        Approval is restricted to admin and operations roles.
+      </div>
+    );
+  }
 
   if (detail === undefined) {
     return (
