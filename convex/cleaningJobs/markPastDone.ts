@@ -32,8 +32,8 @@ const STATUSES_TO_CLOSE = [
 ] as const;
 
 // Start of 2026-05-18 00:00 America/Chicago (CDT, UTC-5) in ms epoch.
-// 2026-05-18T00:00:00-05:00 = 1747544400000
-const DEFAULT_CUTOFF_MS = 1747544400000;
+// 2026-05-18T05:00:00Z = 1779080400000.
+const DEFAULT_CUTOFF_MS = 1779080400000;
 
 export const markPastDone = internalMutation({
   args: {
