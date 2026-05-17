@@ -2,7 +2,10 @@ import { v } from "convex/values";
 import { query } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { getCurrentUser, requireRole } from "../lib/auth";
-import { getLatestActiveCompanyMembership } from "../lib/companyScope";
+import {
+  getCallerJobScopeForListing,
+  getLatestActiveCompanyMembership,
+} from "../lib/companyScope";
 
 function readThemePreference(metadata: unknown): "dark" | "light" | null {
   if (!metadata || typeof metadata !== "object") {
@@ -165,11 +168,33 @@ export const getManagerDashboard = query({
     const todayStart = startOfToday(now);
     const todayEnd = endOfToday(now);
 
-    const allJobs = await ctx.db.query("cleaningJobs").collect();
-    const managerJobs =
-      currentUser.role === "admin"
-        ? allJobs
-        : allJobs.filter((job) => job.assignedManagerId === currentUser._id);
+    // Manager-scope task (2026-05-17): axis fix.
+    //
+    // Previously: managerJobs = allJobs.filter(job.assignedManagerId === self).
+    // That field is rarely set, so the dashboard was usually empty even for
+    // a manager with a fully-loaded company. Switch to the canonical scope:
+    // jobs whose property is currently assigned to the manager's company
+    // via `companyProperties`. Also stops reading the entire jobs table
+    // for managers by walking the `by_property` index per allowed property.
+    const allowedPropertyIds = await getCallerJobScopeForListing(ctx, currentUser);
+
+    let managerJobs: Doc<"cleaningJobs">[];
+    if (allowedPropertyIds === null) {
+      // admin
+      managerJobs = await ctx.db.query("cleaningJobs").collect();
+    } else if (allowedPropertyIds.size === 0) {
+      managerJobs = [];
+    } else {
+      const perProperty = await Promise.all(
+        [...allowedPropertyIds].map((propertyId) =>
+          ctx.db
+            .query("cleaningJobs")
+            .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
+            .collect(),
+        ),
+      );
+      managerJobs = perProperty.flat();
+    }
 
     const cleanerIds = [
       ...new Set(managerJobs.flatMap((job) => job.assignedCleanerIds)),
