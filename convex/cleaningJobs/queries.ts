@@ -1241,6 +1241,7 @@ export const getStatusCounts = query({
     cancelled: v.number(),
   }),
   handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
     const cutoff = args.notEndedBefore;
     const isPast = (job: Doc<"cleaningJobs">): boolean => {
       if (cutoff === undefined) return false;
@@ -1248,7 +1249,7 @@ export const getStatusCounts = query({
       return end < cutoff;
     };
 
-    const counts: Record<string, number> = {
+    const zeroCounts = {
       all: 0,
       scheduled: 0,
       assigned: 0,
@@ -1258,6 +1259,24 @@ export const getStatusCounts = query({
       completed: 0,
       cancelled: 0,
     };
+
+    // Manager-scope task (2026-05-17): chip counts must match the
+    // (scoped) list. If the caller has no scope, return zeros.
+    const allowedPropertyIds = await getCallerJobScopeForListing(ctx, user);
+    if (allowedPropertyIds && allowedPropertyIds.size === 0) {
+      return zeroCounts;
+    }
+    // If a single-property filter was requested but the property is out
+    // of scope for a manager, also return zeros.
+    if (
+      args.propertyId &&
+      allowedPropertyIds &&
+      !allowedPropertyIds.has(args.propertyId)
+    ) {
+      return zeroCounts;
+    }
+
+    const counts: Record<string, number> = { ...zeroCounts };
 
     for (const status of JOB_STATUSES_ALL) {
       const rows = args.propertyId
@@ -1271,7 +1290,11 @@ export const getStatusCounts = query({
             .query("cleaningJobs")
             .withIndex("by_status", (q) => q.eq("status", status))
             .take(COUNT_SCAN_CAP);
-      const filtered = cutoff === undefined ? rows : rows.filter((j) => !isPast(j));
+      let filtered = cutoff === undefined ? rows : rows.filter((j) => !isPast(j));
+      // Apply manager scope when no single-property filter narrowed already.
+      if (allowedPropertyIds && !args.propertyId) {
+        filtered = filtered.filter((j) => allowedPropertyIds.has(j.propertyId));
+      }
       counts[status] = filtered.length;
       counts.all += filtered.length;
     }
@@ -1309,6 +1332,11 @@ export const getSchedulingMetrics = query({
     hospitableJobs: v.number(),
   }),
   handler: async (ctx) => {
+    // Manager-scope task (2026-05-17): admin/ops surface only. Settings →
+    // Scheduling tab is not exposed to managers; restrict at the backend
+    // so a direct call leaks no global counts.
+    await requireRole(ctx, ["admin", "property_ops"]);
+
     const now = Date.now();
     const nextTwentyFourHours = now + 24 * 60 * 60 * 1000;
 
