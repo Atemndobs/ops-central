@@ -2,14 +2,8 @@
 
 import { useAuth, useSignIn } from "@clerk/nextjs";
 import { Eye, EyeOff, LoaderCircle } from "lucide-react";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import type { TestAuthPreset, TestAuthRole } from "@/lib/test-auth-presets";
-
-type TestableSignInProps = {
-  presets: TestAuthPreset[];
-  showTestPresets: boolean;
-};
 
 function readClerkErrorMessage(error: unknown): string | null {
   if (!error || typeof error !== "object") {
@@ -41,10 +35,7 @@ function getAuthErrorMessage(error: unknown): string {
   return "Sign in failed.";
 }
 
-export function TestableSignIn({
-  presets,
-  showTestPresets,
-}: TestableSignInProps) {
+export function SignInForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLoaded: isAuthLoaded, isSignedIn } = useAuth();
@@ -71,48 +62,12 @@ export function TestableSignIn({
     }
     router.replace(target);
   }, [isAuthLoaded, isSignedIn, router, searchParams]);
-  const availablePresets = useMemo(
-    () => presets.filter((preset) => preset.email && preset.password),
-    [presets],
-  );
-  const defaultPreset = availablePresets[0] ?? presets[0] ?? null;
-  const [selectedRole, setSelectedRole] = useState<TestAuthRole>(
-    defaultPreset?.role ?? "manager",
-  );
-  const [email, setEmail] = useState(defaultPreset?.email ?? "");
-  const [password, setPassword] = useState(defaultPreset?.password ?? "");
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [oauthLoading, setOauthLoading] = useState(false);
-
-  useEffect(() => {
-    if (!defaultPreset) {
-      return;
-    }
-
-    setSelectedRole((currentRole) => {
-      const currentPreset = availablePresets.find((preset) => preset.role === currentRole);
-      if (currentPreset) {
-        return currentRole;
-      }
-
-      setEmail(defaultPreset.email);
-      setPassword(defaultPreset.password);
-      return defaultPreset.role;
-    });
-  }, [availablePresets, defaultPreset]);
-
-  const applyPreset = (role: TestAuthRole) => {
-    const preset = presets.find((entry) => entry.role === role);
-    if (!preset) {
-      return;
-    }
-
-    setSelectedRole(role);
-    setEmail(preset.email);
-    setPassword(preset.password);
-    setError(null);
-  };
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -173,8 +128,6 @@ export function TestableSignIn({
         throw result.error;
       }
 
-      // Clerk v7 FutureResource: redirect may not fire automatically.
-      // Check for the external provider redirect URL and navigate manually.
       const redirectUrl = signIn.firstFactorVerification?.externalVerificationRedirectURL;
       if (redirectUrl) {
         window.location.href = redirectUrl.toString();
@@ -186,63 +139,16 @@ export function TestableSignIn({
     }
   };
 
-  const selectedPreset = presets.find((preset) => preset.role === selectedRole) ?? null;
   const isSubmitting = isPending || fetchStatus === "fetching" || !signIn;
-
-  const rolePillLabel: Record<TestAuthRole, string> = {
-    cleaner: "Cleaner",
-    manager: "Manager",
-    admin: "Admin",
-    property_ops: "Ops",
-  };
 
   return (
     <div className="space-y-6 text-white">
-      {/* Title */}
       <h1 className="text-center text-[32px] leading-tight font-medium tracking-[-0.5px] sm:text-[36px]">
         Welcome back
       </h1>
 
-      {/* Test role pill switcher — compact, mobile-app style */}
-      {showTestPresets ? (
-        <div className="flex flex-col items-center gap-2.5">
-          <span className="text-[11px] font-semibold tracking-[1px] text-white/50 uppercase">
-            Test as
-          </span>
-          <div className="flex flex-wrap justify-center gap-2">
-            {presets.map((preset) => {
-              const isReady = Boolean(preset.email && preset.password);
-              const isSelected = preset.role === selectedRole;
-
-              return (
-                <button
-                  key={preset.role}
-                  type="button"
-                  onClick={() => applyPreset(preset.role)}
-                  disabled={!isReady || isSubmitting}
-                  className={`rounded-full px-4 py-2 text-[13px] font-semibold transition-all ${
-                    isSelected
-                      ? "bg-white/25 text-white"
-                      : "bg-white/10 text-white/60 hover:bg-white/15 hover:text-white/80"
-                  } ${!isReady ? "cursor-not-allowed opacity-40" : ""}`}
-                >
-                  {rolePillLabel[preset.role] ?? preset.label}
-                </button>
-              );
-            })}
-          </div>
-          {selectedPreset ? (
-            <p className="text-[12px] text-white/40">
-              {selectedPreset.email}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-
-      {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-5" suppressHydrationWarning>
         <div className="space-y-4" suppressHydrationWarning>
-          {/* Email */}
           <div className="space-y-1.5" suppressHydrationWarning>
             <label
               htmlFor="email"
@@ -262,7 +168,6 @@ export function TestableSignIn({
             />
           </div>
 
-          {/* Password */}
           <div className="space-y-1.5" suppressHydrationWarning>
             <label
               htmlFor="password"
@@ -293,25 +198,22 @@ export function TestableSignIn({
           </div>
         </div>
 
-        {/* Error message */}
         {error ? (
           <div className="rounded-xl bg-red-500/15 px-4 py-3 text-sm text-red-200">
             {error}
           </div>
         ) : null}
 
-        {/* Submit */}
         <button
           type="submit"
           disabled={isSubmitting}
           className="flex h-[52px] w-full items-center justify-center gap-2.5 rounded-2xl bg-white/15 text-[15px] font-semibold text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50 sm:h-[56px] sm:text-base"
         >
           {isSubmitting ? <LoaderCircle className="h-5 w-5 animate-spin" /> : null}
-          <span>{isSubmitting ? "Signing in\u2026" : "Sign in"}</span>
+          <span>{isSubmitting ? "Signing in…" : "Sign in"}</span>
         </button>
       </form>
 
-      {/* Divider */}
       <div className="flex items-center gap-4">
         <div className="h-px flex-1 bg-white/10" />
         <span className="text-[11px] font-semibold tracking-[1px] text-white/30 uppercase select-none">
@@ -320,7 +222,6 @@ export function TestableSignIn({
         <div className="h-px flex-1 bg-white/10" />
       </div>
 
-      {/* Google OAuth */}
       <button
         type="button"
         onClick={handleGoogleSignIn}
@@ -352,7 +253,6 @@ export function TestableSignIn({
         <span>Google</span>
       </button>
 
-      {/* Terms footer */}
       <p className="text-center text-[13px] text-white/30">
         By signing in, you agree to our Terms of Service
       </p>

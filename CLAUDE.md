@@ -25,7 +25,7 @@ OpsCentral is the admin web dashboard for J&A Business Solutions' property care 
 ```
 
 - **Frontend:** Next.js 16 (App Router) + Tailwind CSS + shadcn/ui
-- **Backend:** Convex (shared deployment `dev:usable-anaconda-394`)
+- **Backend:** Convex — `prod:lovable-oriole-182` (US, ja-bs.com prod). `dev:usable-anaconda-394` (EU) is the legacy/sandbox deployment, retired after the 2026-05-02 migration.
 - **Auth:** Clerk (`good-bluejay-68.clerk.accounts.dev`)
 - **Charts:** Recharts
 - **Icons:** Lucide React
@@ -36,48 +36,22 @@ OpsCentral is the admin web dashboard for J&A Business Solutions' property care 
 
 **CRITICAL:** This app shares a Convex deployment with the cleaners mobile app.
 
-- URL: `https://usable-anaconda-394.eu-west-1.convex.cloud`
-- Deployment: `dev:usable-anaconda-394`
+- **Prod (live, used by ja-bs.com):** `lovable-oriole-182` (US, `https://lovable-oriole-182.convex.cloud` / `.convex.site`)
+- **Dev/sandbox:** `usable-anaconda-394` (EU, legacy — kept only as historical reference, no live traffic)
 - Team: `bertrand-atemkeng`
 - Project: `opscentral-admin`
 
 **Any schema change affects both apps.** Coordinate carefully.
 
-## 🚨🚨 VERY IMPORTANT: ja-bs.com RUNS ON THE *DEV* CONVEX DEPLOYMENT
+## ja-bs.com prod = `lovable-oriole-182` (US)
 
-**Current reality (as of 2026-04-21):** the production Vercel site at
-https://ja-bs.com is pointed at the Convex deployment labeled
-**"Development"** in the Convex dashboard:
+Migrated from `whimsical-narwhal-849` to `lovable-oriole-182` on 2026-05-02 (US-region prod). Vercel prod env vars (`CONVEX_DEPLOY_KEY`, `NEXT_PUBLIC_CONVEX_URL`, `NEXT_PUBLIC_CONVEX_SITE_URL`) all point at `lovable-oriole-182.convex.{cloud,site}`.
 
-- Effective-prod DB: `usable-anaconda-394` (labeled *Development* in Convex)
-- Unused real-prod DB: `optimistic-guanaco-990` (labeled *Production*, empty)
+**Commands in this repo:**
+- `npx convex deploy` → pushes to `lovable-oriole-182` (real prod). Use this for prod backend releases.
+- `npx convex dev` → spins up against the `dev:` deployment configured in `.env.local` (sandbox).
 
-All production data — users, properties, jobs, incidents, photos,
-messages — lives in `usable-anaconda-394`. The real "Production"
-Convex deployment has never been used.
-
-**What this means in practice:**
-- **`npx convex dev --once` is what updates the live site.** It pushes
-  to `usable-anaconda-394`.
-- **`npx convex deploy` pushes to an unused deployment**
-  (`optimistic-guanaco-990`) and has no effect on users. Skip it until
-  the split below is done.
-- There is no prod/dev separation right now. Any code or data change
-  affects real users immediately.
-
-**At go-live (before announcing / onboarding real customers):**
-1. Export data from `usable-anaconda-394` and import into
-   `optimistic-guanaco-990`.
-2. Update Vercel env vars (`CONVEX_DEPLOYMENT`,
-   `NEXT_PUBLIC_CONVEX_URL`, `NEXT_PUBLIC_CONVEX_SITE_URL`) to point
-   at `optimistic-guanaco-990.eu-west-1.convex.cloud`.
-3. Also clean the trailing `\n` currently present in those encrypted
-   env values.
-4. Redeploy Vercel.
-5. Then `npx convex deploy` and `npx convex dev --once` behave as
-   their names suggest: deploy → prod, dev → sandbox.
-
-Until that migration runs, treat `usable-anaconda-394` AS PROD.
+**Old note about `usable-anaconda-394` being effectively-prod is OBSOLETE** — that was the pre-2026-05-02 state when ja-bs.com was pointed at the EU "Development" deployment. Do not act on it.
 
 ## 🚨 BIG FAT WARNING: VERY DANGEROUS CONVEX DEPLOYMENT RULE
 
