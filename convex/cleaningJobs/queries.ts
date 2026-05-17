@@ -6,6 +6,11 @@ import { getCurrentUser, requireRole } from "../lib/auth";
 import { createExternalReadUrl, getExternalStorageConfigOrNull } from "../lib/externalStorage";
 import { resolvePhotoAccessUrl } from "../lib/photoUrls";
 import { assertReviewerRole } from "./reviewAccess";
+import {
+  getCallerJobScopeForListing,
+  getLatestActiveCompanyMembership,
+  isActiveCompanyPropertyAssignment,
+} from "../lib/companyScope";
 
 const CLEANER_SESSION_DONE_STATUSES = new Set(["submitted", "excused"]);
 const JOB_STATUS_FILTER = v.union(
@@ -147,75 +152,6 @@ async function resolveSnapshotPhotoUrl(
 
 function getCurrentRevision(job: Doc<"cleaningJobs">): number {
   return job.currentRevision ?? 1;
-}
-
-function isActiveCompanyPropertyAssignment(
-  assignment: Doc<"companyProperties">,
-): boolean {
-  return assignment.isActive !== false && assignment.unassignedAt === undefined;
-}
-
-function isActiveMembership(membership: Doc<"companyMembers">): boolean {
-  return membership.isActive && membership.leftAt === undefined;
-}
-
-async function getLatestActiveCompanyMembership(
-  ctx: QueryCtx,
-  userId: Id<"users">,
-) {
-  const memberships = await ctx.db
-    .query("companyMembers")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .collect();
-
-  const active = memberships
-    .filter(isActiveMembership)
-    .sort((a, b) => b.joinedAt - a.joinedAt)[0];
-
-  return active ?? null;
-}
-
-/**
- * Returns the set of property IDs a caller is allowed to see in job listings.
- *
- * - `admin` / `property_ops`: returns `null` (no scoping — caller sees all jobs)
- * - `manager`: returns the active property IDs assigned to the manager's
- *   active company membership. Fail-closed: a manager with no active
- *   membership or whose company has no properties gets an empty set (sees
- *   nothing) rather than leaking other companies' jobs.
- * - `cleaner`: returns `[]` (cleaners should use `getMyAssigned` instead).
- */
-async function getCallerJobScopeForListing(
-  ctx: QueryCtx,
-  user: Doc<"users">,
-): Promise<Set<Id<"properties">> | null> {
-  if (user.role === "admin" || user.role === "property_ops") {
-    return null;
-  }
-
-  if (user.role === "cleaner") {
-    return new Set();
-  }
-
-  // Manager — scope to their active company's currently-assigned properties.
-  const membership = await getLatestActiveCompanyMembership(ctx, user._id);
-  if (
-    !membership ||
-    (membership.role !== "manager" && membership.role !== "owner")
-  ) {
-    return new Set();
-  }
-
-  const assignments = await ctx.db
-    .query("companyProperties")
-    .withIndex("by_company", (q) => q.eq("companyId", membership.companyId))
-    .collect();
-
-  return new Set(
-    assignments
-      .filter(isActiveCompanyPropertyAssignment)
-      .map((a) => a.propertyId),
-  );
 }
 
 // Hard cap on `getAll` reads. Subscribed reactively across 10+ mount points

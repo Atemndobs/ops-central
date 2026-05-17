@@ -1,7 +1,8 @@
 import { v } from "convex/values";
-import { query, type QueryCtx } from "../_generated/server";
+import { query } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { getCurrentUser, requireRole } from "../lib/auth";
+import { getLatestActiveCompanyMembership } from "../lib/companyScope";
 
 function readThemePreference(metadata: unknown): "dark" | "light" | null {
   if (!metadata || typeof metadata !== "object") {
@@ -30,22 +31,6 @@ function endOfToday(now: number): number {
   const date = new Date(now);
   date.setHours(23, 59, 59, 999);
   return date.getTime();
-}
-
-async function getLatestActiveMembership(
-  ctx: QueryCtx,
-  userId: Id<"users">,
-): Promise<Doc<"companyMembers"> | null> {
-  const memberships = await ctx.db
-    .query("companyMembers")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .collect();
-
-  const active = memberships
-    .filter((membership) => membership.isActive && membership.leftAt === undefined)
-    .sort((a, b) => b.joinedAt - a.joinedAt);
-
-  return active[0] ?? null;
 }
 
 export const getByRole = query({
@@ -217,7 +202,7 @@ export const getManagerDashboard = query({
       })
       .sort((a, b) => a.name.localeCompare(b.name));
 
-    const membership = await getLatestActiveMembership(ctx, currentUser._id);
+    const membership = await getLatestActiveCompanyMembership(ctx, currentUser._id);
     const company = membership ? await ctx.db.get(membership.companyId) : null;
 
     return {
@@ -251,7 +236,7 @@ export const getCleaners = query({
     let cleaners = allCleaners;
 
     if (currentUser.role !== "admin") {
-      const membership = await getLatestActiveMembership(ctx, currentUser._id);
+      const membership = await getLatestActiveCompanyMembership(ctx, currentUser._id);
       if (membership) {
         const companyMembers = await ctx.db
           .query("companyMembers")
