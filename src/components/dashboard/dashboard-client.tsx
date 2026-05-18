@@ -405,7 +405,7 @@ export function DashboardClient() {
   const unmappedReadinessCount = Math.max(0, readiness.totalCount - readiness.mappedCount);
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="flex flex-col gap-4 sm:gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3 sm:items-start sm:gap-4">
         <div className="min-w-0">
           <h1 className="hidden text-3xl font-extrabold tracking-tight sm:block">
@@ -424,22 +424,23 @@ export function DashboardClient() {
               {t("dashboard.generateReport")}
             </Link>
           ) : null}
-          <Link
-            href="/jobs"
-            className="rounded-xl bg-[var(--primary)] px-3 py-1.5 text-center text-xs font-semibold text-[var(--primary-foreground)] sm:px-4 sm:py-2 sm:text-sm"
-          >
-            {t("dashboard.newJob")}
-          </Link>
+          {isManagerRole ? null : (
+            <Link
+              href="/jobs"
+              className="rounded-xl bg-[var(--primary)] px-3 py-1.5 text-center text-xs font-semibold text-[var(--primary-foreground)] sm:px-4 sm:py-2 sm:text-sm"
+            >
+              {t("dashboard.newJob")}
+            </Link>
+          )}
         </div>
       </div>
 
-      <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5">
+      <section className={`rounded-2xl border bg-[var(--card)] p-3 sm:p-5${isManagerRole ? " order-3" : ""}`}>
         <div className="mb-3 flex items-center justify-between sm:mb-4">
           <div>
-            <h2 className="text-base font-bold sm:text-lg">{t("dashboard.opsFunnel")}</h2>
-            <p className="text-xs text-[var(--muted-foreground)]">
-              {t("dashboard.opsFunnelSubtitle")}
-            </p>
+            <h2 className="text-base font-bold sm:text-lg">
+              {isManagerRole ? t("dashboard.jobs") : t("dashboard.opsFunnel")}
+            </h2>
           </div>
         </div>
         {loading ? (
@@ -448,8 +449,18 @@ export function DashboardClient() {
             {t("dashboard.loadingFunnel")}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-            {opsFunnel.primary.map((stage) => {
+          <div className={`grid gap-2 ${isManagerRole ? "grid-cols-3" : "grid-cols-2 lg:grid-cols-4"}`}>
+            {(isManagerRole
+              ? [
+                  ...opsFunnel.primary,
+                  ...opsFunnel.inFlight.filter((s) => s.status === "in_progress"),
+                ]
+              : opsFunnel.primary
+            ).map((stage) => {
+              const stageLabel =
+                isManagerRole && stage.status === "scheduled"
+                  ? t("dashboard.openStatus")
+                  : t(stage.labelKey);
               const deltaLabel =
                 stage.overdueDelta > 0
                   ? `+${stage.overdueDelta}`
@@ -467,7 +478,7 @@ export function DashboardClient() {
                   className="rounded-xl border bg-[var(--card)] px-3 py-2.5 transition hover:border-[var(--primary)]/40 hover:bg-[var(--accent)]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
                 >
                   <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--muted-foreground)]">
-                    {t(stage.labelKey)}
+                    {stageLabel}
                   </p>
                   <p className="mt-1 text-2xl font-extrabold leading-none">
                     {stage.count}
@@ -479,6 +490,7 @@ export function DashboardClient() {
               );
             })}
 
+            {isManagerRole ? null : (
             <Link
               href="/jobs"
               className="rounded-xl border bg-[var(--card)] px-3 py-2.5 transition hover:border-[var(--primary)]/40 hover:bg-[var(--accent)]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
@@ -506,7 +518,9 @@ export function DashboardClient() {
                 })}
               </div>
             </Link>
+            )}
 
+            {isManagerRole ? null : (
             <Link
               href="/incidents"
               className={`relative rounded-xl border px-3 py-2.5 transition focus-visible:outline-none focus-visible:ring-2 ${
@@ -582,6 +596,7 @@ export function DashboardClient() {
                 </p>
               )}
             </Link>
+            )}
           </div>
         )}
       </section>
@@ -763,8 +778,8 @@ export function DashboardClient() {
       </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5 xl:col-span-7">
+      <div className={`grid grid-cols-1 gap-4 xl:grid-cols-12${isManagerRole ? " order-2" : ""}`}>
+        <section className={`rounded-2xl border bg-[var(--card)] p-3 sm:p-5 ${isManagerRole ? "xl:col-span-12" : "xl:col-span-7"}`}>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-base font-bold sm:text-lg">{t("dashboard.todayTimeline")}</h2>
             <Link
@@ -828,6 +843,7 @@ export function DashboardClient() {
           )}
         </section>
 
+        {isManagerRole ? null : (
         <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5 xl:col-span-5">
           <div className="mb-3 flex items-center justify-between sm:mb-4">
             <h2 className="text-base font-bold sm:text-lg">{t("dashboard.propertyReadiness")}</h2>
@@ -838,7 +854,9 @@ export function DashboardClient() {
             </p>
           ) : (
             <div className="grid grid-cols-2 gap-2">
-              {(Object.keys(readiness.summary) as PropertyStatus[]).map((status) => (
+              {(Object.keys(readiness.summary) as PropertyStatus[])
+                .filter((status) => (isManagerRole ? status !== "vacant" : true))
+                .map((status) => (
                 <Link
                   key={status}
                   href={`/properties?status=${status}`}
@@ -867,6 +885,7 @@ export function DashboardClient() {
             </p>
           ) : null}
         </section>
+        )}
       </div>
     </div>
   );
