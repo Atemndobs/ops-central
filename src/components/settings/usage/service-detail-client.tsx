@@ -15,6 +15,7 @@ import type { Doc } from "@convex/_generated/dataModel";
 import {
   AlertTriangle,
   ArrowLeft,
+  CheckCircle2,
   ExternalLink,
   Gauge,
   Loader2,
@@ -303,8 +304,9 @@ export function ServiceDetailClient({
           </div>
         </div>
         {detail.recentErrors.length === 0 ? (
-          <p className="mt-3 text-sm text-[var(--muted-foreground)]">
-            No recent errors recorded. 🎉
+          <p className="mt-3 inline-flex items-center gap-1.5 text-sm text-[var(--muted-foreground)]">
+            <CheckCircle2 className="h-4 w-4 text-emerald-500" aria-hidden />
+            No recent errors recorded.
           </p>
         ) : (
           <ul className="mt-3 divide-y divide-[var(--border)]/70">

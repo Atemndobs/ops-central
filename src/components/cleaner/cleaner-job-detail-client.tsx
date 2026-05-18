@@ -20,6 +20,7 @@ import { getErrorMessage } from "@/lib/errors";
 import {
   AlertTriangle,
   Camera,
+  Check,
   ChevronDown,
   ChevronUp,
   ExternalLink,
@@ -335,8 +336,9 @@ export function CleanerJobDetailClient({ id }: { id: string }) {
         ) : null}
 
         {myAck?.state === "accepted" ? (
-          <p className="mt-3 text-xs font-medium text-[var(--cleaner-ink)]">
-            ✓ {tr("cleaner.ackAccepted", tr("cleaner.acknowledgementAccepted", "Accepted"))}
+          <p className="mt-3 flex items-center gap-1 text-xs font-medium text-[var(--cleaner-ink)]">
+            <Check className="h-3.5 w-3.5" aria-hidden />
+            {tr("cleaner.ackAccepted", tr("cleaner.acknowledgementAccepted", "Accepted"))}
           </p>
         ) : null}
         {myAck?.state === "declined" ? (
