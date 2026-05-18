@@ -282,7 +282,7 @@ function assessPartyRisk(
   return false;
 }
 
-function normalizeReservation(
+export function normalizeReservation(
   rawReservation: unknown,
   fallbackPropertyId: string
 ): { reservation?: NormalizedReservation; error?: string } {

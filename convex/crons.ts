@@ -3,9 +3,14 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
+// Reconciliation sweep. Event-driven ingestion via the Hospitable webhook
+// (src/app/api/webhooks/hospitable/route.ts → convex/hospitable/webhooks.ts)
+// is the primary path; this 6-hourly sweep catches any deliveries Hospitable
+// dropped or that failed our HMAC check during the discovery window.
+// See Docs/2026-05-18-hospitable-webhook-implementation-plan.md.
 crons.interval(
   "sync-hospitable-reservations-hourly",
-  { hours: 1 },
+  { hours: 6 },
   internal.hospitable.actions.syncReservations,
   {}
 );

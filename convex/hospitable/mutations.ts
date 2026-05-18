@@ -1,5 +1,5 @@
-import { v } from "convex/values";
-import { internalMutation } from "../_generated/server";
+import { v, type Infer } from "convex/values";
+import { internalMutation, type MutationCtx } from "../_generated/server";
 import { syncConversationStatusForJob } from "../conversations/lib";
 
 const SIX_HOURS_IN_MS = 6 * 60 * 60 * 1000;
@@ -21,6 +21,209 @@ const normalizedReservationValidator = v.object({
   status: v.optional(v.string()),
   metadata: v.optional(v.any()),
 });
+
+export type NormalizedReservation = Infer<typeof normalizedReservationValidator>;
+
+export type UpsertSingleReservationDelta = {
+  staysCreated: number;
+  staysUpdated: number;
+  jobsCreated: number;
+  jobsUpdated: number;
+  jobsCancelled: number;
+  skippedMissingProperty: number;
+  errors: string[];
+};
+
+const EMPTY_DELTA = (): UpsertSingleReservationDelta => ({
+  staysCreated: 0,
+  staysUpdated: 0,
+  jobsCreated: 0,
+  jobsUpdated: 0,
+  jobsCancelled: 0,
+  skippedMissingProperty: 0,
+  errors: [],
+});
+
+export async function upsertSingleReservation(
+  ctx: MutationCtx,
+  args: { reservation: NormalizedReservation; syncedAt: number }
+): Promise<UpsertSingleReservationDelta> {
+  const { reservation, syncedAt } = args;
+  const delta = EMPTY_DELTA();
+
+  const property = await ctx.db
+    .query("properties")
+    .withIndex("by_hospitable", (q) =>
+      q.eq("hospitableId", reservation.propertyHospitableId)
+    )
+    .first();
+
+  if (!property) {
+    delta.skippedMissingProperty = 1;
+    delta.errors.push(
+      `Missing property mapping for hospitable property ${reservation.propertyHospitableId} (reservation ${reservation.reservationId}).`
+    );
+    return delta;
+  }
+
+  const existingStay = await ctx.db
+    .query("stays")
+    .withIndex("by_hospitable", (q) =>
+      q.eq("hospitableId", reservation.reservationId)
+    )
+    .first();
+
+  const stayMetadata = {
+    source: "hospitable",
+    specialRequests: reservation.specialRequests,
+    ...(reservation.metadata ?? {}),
+  };
+
+  let stayId = existingStay?._id;
+
+  if (existingStay) {
+    await ctx.db.patch(existingStay._id, {
+      propertyId: property._id,
+      guestName: reservation.guestName,
+      guestEmail: reservation.guestEmail,
+      guestPhone: reservation.guestPhone,
+      numberOfGuests: reservation.numberOfGuests,
+      checkInAt: reservation.checkInAt,
+      checkOutAt: reservation.checkOutAt,
+      lateCheckout: reservation.lateCheckout,
+      partyRiskFlag: reservation.partyRiskFlag,
+      platform: reservation.platform,
+      confirmationCode: reservation.confirmationCode,
+      metadata: stayMetadata,
+      updatedAt: syncedAt,
+    });
+    delta.staysUpdated = 1;
+  } else {
+    stayId = await ctx.db.insert("stays", {
+      propertyId: property._id,
+      hospitableId: reservation.reservationId,
+      guestName: reservation.guestName,
+      guestEmail: reservation.guestEmail,
+      guestPhone: reservation.guestPhone,
+      numberOfGuests: reservation.numberOfGuests,
+      checkInAt: reservation.checkInAt,
+      checkOutAt: reservation.checkOutAt,
+      lateCheckout: reservation.lateCheckout,
+      earlyCheckin: false,
+      partyRiskFlag: reservation.partyRiskFlag,
+      platform: reservation.platform,
+      confirmationCode: reservation.confirmationCode,
+      metadata: stayMetadata,
+      createdAt: syncedAt,
+      updatedAt: syncedAt,
+    });
+    delta.staysCreated = 1;
+  }
+
+  if (!stayId) {
+    delta.errors.push(
+      `Failed to resolve stay for reservation ${reservation.reservationId}.`
+    );
+    return delta;
+  }
+
+  const nextStay = await ctx.db
+    .query("stays")
+    .withIndex("by_property", (q) => q.eq("propertyId", property._id))
+    .filter((q) => q.gt(q.field("checkInAt"), reservation.checkOutAt))
+    .order("asc")
+    .take(1);
+
+  const scheduledStartAt = reservation.checkOutAt;
+  const fallbackEndAt = scheduledStartAt + SIX_HOURS_IN_MS;
+  const candidateEndAt = nextStay[0]?.checkInAt ?? fallbackEndAt;
+  const scheduledEndAt =
+    candidateEndAt > scheduledStartAt ? candidateEndAt : fallbackEndAt;
+
+  const existingJob = await ctx.db
+    .query("cleaningJobs")
+    .withIndex("by_stay", (q) => q.eq("stayId", stayId))
+    .first();
+
+  const reservationCancelled = isCancelledStatus(reservation.status);
+  const notesForCleaner = buildCleaningNotes(
+    reservation.partyRiskFlag,
+    reservation.lateCheckout,
+    reservation.numberOfGuests,
+    reservation.specialRequests
+  );
+
+  if (existingJob) {
+    if (
+      reservationCancelled &&
+      existingJob.status !== "completed" &&
+      existingJob.status !== "cancelled"
+    ) {
+      await ctx.db.patch(existingJob._id, {
+        status: "cancelled",
+        updatedAt: syncedAt,
+        metadata: {
+          ...(existingJob.metadata ?? {}),
+          source: "hospitable",
+          reservationStatus: reservation.status,
+        },
+      });
+      await syncConversationStatusForJob(ctx, {
+        jobId: existingJob._id,
+        nextStatus: "cancelled",
+      });
+      delta.jobsCancelled = 1;
+      return delta;
+    }
+
+    if (
+      existingJob.status === "scheduled" ||
+      existingJob.status === "assigned"
+    ) {
+      await ctx.db.patch(existingJob._id, {
+        scheduledStartAt,
+        scheduledEndAt,
+        partyRiskFlag: reservation.partyRiskFlag,
+        notesForCleaner,
+        updatedAt: syncedAt,
+        metadata: {
+          ...(existingJob.metadata ?? {}),
+          source: "hospitable",
+          reservationStatus: reservation.status,
+        },
+      });
+      delta.jobsUpdated = 1;
+    }
+
+    return delta;
+  }
+
+  if (reservationCancelled) {
+    return delta;
+  }
+
+  await ctx.db.insert("cleaningJobs", {
+    propertyId: property._id,
+    stayId,
+    assignedCleanerIds: [],
+    status: "scheduled",
+    scheduledStartAt,
+    scheduledEndAt,
+    partyRiskFlag: reservation.partyRiskFlag,
+    opsRiskFlag: false,
+    isUrgent: false,
+    notesForCleaner,
+    metadata: {
+      source: "hospitable",
+      reservationStatus: reservation.status,
+    },
+    createdAt: syncedAt,
+    updatedAt: syncedAt,
+  });
+
+  delta.jobsCreated = 1;
+  return delta;
+}
 
 function isCancelledStatus(status: string | undefined): boolean {
   if (!status) {
@@ -69,175 +272,18 @@ export const upsertReservations = internalMutation({
     const errors: string[] = [...(args.sourceErrors ?? [])];
 
     for (const reservation of args.reservations) {
-      const property = await ctx.db
-        .query("properties")
-        .withIndex("by_hospitable", (q) =>
-          q.eq("hospitableId", reservation.propertyHospitableId)
-        )
-        .first();
-
-      if (!property) {
-        summary.skippedMissingProperty += 1;
-        errors.push(
-          `Missing property mapping for hospitable property ${reservation.propertyHospitableId} (reservation ${reservation.reservationId}).`
-        );
-        continue;
-      }
-
-      const existingStay = await ctx.db
-        .query("stays")
-        .withIndex("by_hospitable", (q) =>
-          q.eq("hospitableId", reservation.reservationId)
-        )
-        .first();
-
-      const stayMetadata = {
-        source: "hospitable",
-        specialRequests: reservation.specialRequests,
-        ...(reservation.metadata ?? {}),
-      };
-
-      let stayId = existingStay?._id;
-
-      if (existingStay) {
-        await ctx.db.patch(existingStay._id, {
-          propertyId: property._id,
-          guestName: reservation.guestName,
-          guestEmail: reservation.guestEmail,
-          guestPhone: reservation.guestPhone,
-          numberOfGuests: reservation.numberOfGuests,
-          checkInAt: reservation.checkInAt,
-          checkOutAt: reservation.checkOutAt,
-          lateCheckout: reservation.lateCheckout,
-          partyRiskFlag: reservation.partyRiskFlag,
-          platform: reservation.platform,
-          confirmationCode: reservation.confirmationCode,
-          metadata: stayMetadata,
-          updatedAt: args.syncedAt,
-        });
-        summary.staysUpdated += 1;
-      } else {
-        stayId = await ctx.db.insert("stays", {
-          propertyId: property._id,
-          hospitableId: reservation.reservationId,
-          guestName: reservation.guestName,
-          guestEmail: reservation.guestEmail,
-          guestPhone: reservation.guestPhone,
-          numberOfGuests: reservation.numberOfGuests,
-          checkInAt: reservation.checkInAt,
-          checkOutAt: reservation.checkOutAt,
-          lateCheckout: reservation.lateCheckout,
-          earlyCheckin: false,
-          partyRiskFlag: reservation.partyRiskFlag,
-          platform: reservation.platform,
-          confirmationCode: reservation.confirmationCode,
-          metadata: stayMetadata,
-          createdAt: args.syncedAt,
-          updatedAt: args.syncedAt,
-        });
-        summary.staysCreated += 1;
-      }
-
-      if (!stayId) {
-        errors.push(`Failed to resolve stay for reservation ${reservation.reservationId}.`);
-        continue;
-      }
-
-      const nextStay = await ctx.db
-        .query("stays")
-        .withIndex("by_property", (q) => q.eq("propertyId", property._id))
-        .filter((q) => q.gt(q.field("checkInAt"), reservation.checkOutAt))
-        .order("asc")
-        .take(1);
-
-      const scheduledStartAt = reservation.checkOutAt;
-      const fallbackEndAt = scheduledStartAt + SIX_HOURS_IN_MS;
-      const candidateEndAt = nextStay[0]?.checkInAt ?? fallbackEndAt;
-      const scheduledEndAt =
-        candidateEndAt > scheduledStartAt ? candidateEndAt : fallbackEndAt;
-
-      const existingJob = await ctx.db
-        .query("cleaningJobs")
-        .withIndex("by_stay", (q) => q.eq("stayId", stayId))
-        .first();
-
-      const reservationCancelled = isCancelledStatus(reservation.status);
-      const notesForCleaner = buildCleaningNotes(
-        reservation.partyRiskFlag,
-        reservation.lateCheckout,
-        reservation.numberOfGuests,
-        reservation.specialRequests
-      );
-
-      if (existingJob) {
-        if (
-          reservationCancelled &&
-          existingJob.status !== "completed" &&
-          existingJob.status !== "cancelled"
-        ) {
-          await ctx.db.patch(existingJob._id, {
-            status: "cancelled",
-            updatedAt: args.syncedAt,
-            metadata: {
-              ...(existingJob.metadata ?? {}),
-              source: "hospitable",
-              reservationStatus: reservation.status,
-            },
-          });
-          await syncConversationStatusForJob(ctx, {
-            jobId: existingJob._id,
-            nextStatus: "cancelled",
-          });
-          summary.jobsCancelled += 1;
-          continue;
-        }
-
-        if (
-          existingJob.status === "scheduled" ||
-          existingJob.status === "assigned"
-        ) {
-          await ctx.db.patch(existingJob._id, {
-            scheduledStartAt,
-            scheduledEndAt,
-            partyRiskFlag: reservation.partyRiskFlag,
-            notesForCleaner,
-            updatedAt: args.syncedAt,
-            metadata: {
-              ...(existingJob.metadata ?? {}),
-              source: "hospitable",
-              reservationStatus: reservation.status,
-            },
-          });
-          summary.jobsUpdated += 1;
-        }
-
-        continue;
-      }
-
-      if (reservationCancelled) {
-        continue;
-      }
-
-      await ctx.db.insert("cleaningJobs", {
-        propertyId: property._id,
-        stayId,
-        assignedCleanerIds: [],
-        status: "scheduled",
-        scheduledStartAt,
-        scheduledEndAt,
-        partyRiskFlag: reservation.partyRiskFlag,
-        opsRiskFlag: false,
-        isUrgent: false,
-        notesForCleaner,
-        metadata: {
-          source: "hospitable",
-          reservationStatus: reservation.status,
-        },
-        createdAt: args.syncedAt,
-        updatedAt: args.syncedAt,
+      const delta = await upsertSingleReservation(ctx, {
+        reservation,
+        syncedAt: args.syncedAt,
       });
 
-      summary.jobsCreated += 1;
+      summary.staysCreated += delta.staysCreated;
+      summary.staysUpdated += delta.staysUpdated;
+      summary.jobsCreated += delta.jobsCreated;
+      summary.jobsUpdated += delta.jobsUpdated;
+      summary.jobsCancelled += delta.jobsCancelled;
+      summary.skippedMissingProperty += delta.skippedMissingProperty;
+      errors.push(...delta.errors);
     }
 
     const syncStatus =
