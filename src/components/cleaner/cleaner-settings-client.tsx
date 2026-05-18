@@ -7,6 +7,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { type ChangeEvent, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
+import { Check } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { clearPendingUploads, listPendingUploads } from "@/features/cleaner/offline/indexeddb";
 import { uploadImageFile } from "@/lib/upload-image";
@@ -484,10 +485,15 @@ export function CleanerSettingsClient() {
         <button
           type="button"
           disabled={clearingCache}
-          className="mt-3 rounded-md border border-[var(--destructive)]/50 bg-[var(--destructive)]/10 px-3 py-2 text-sm font-semibold text-[var(--destructive)] hover:bg-[var(--destructive)]/20 active:opacity-70 disabled:opacity-50"
+          className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-[var(--destructive)]/50 bg-[var(--destructive)]/10 px-3 py-2 text-sm font-semibold text-[var(--destructive)] hover:bg-[var(--destructive)]/20 active:opacity-70 disabled:opacity-50"
           onClick={() => { void handleClearCache(); }}
         >
-          {cacheCleared ? `✓ ${t("cleaner.settings.cacheCleared")}` : clearingCache ? t("cleaner.settings.clearing") : t("cleaner.settings.clearCacheRefresh")}
+          {cacheCleared ? (
+            <>
+              <Check className="h-4 w-4" aria-hidden />
+              {t("cleaner.settings.cacheCleared")}
+            </>
+          ) : clearingCache ? t("cleaner.settings.clearing") : t("cleaner.settings.clearCacheRefresh")}
         </button>
       </section>
 

@@ -11,6 +11,7 @@ import { formatLabel } from "@/lib/format";
 import { buildRoomOptions } from "@/lib/rooms";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useIsVideoEnabled } from "@/hooks/use-is-video-enabled";
+import { Clapperboard, X } from "lucide-react";
 
 const INCIDENT_TYPES = [
   "missing_item",
@@ -965,10 +966,10 @@ export function CleanerIncidentPageClient() {
                         onClick={() => {
                           setFiles((current) => current.filter((_, fileIndex) => fileIndex !== index));
                         }}
-                        className="absolute right-1 top-1 rounded bg-black/65 px-1 text-[10px] text-white"
+                        className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded bg-black/65 text-white"
                         aria-label={t("cleaner.incident.removePhoto", { index: index + 1 })}
                       >
-                        ✕
+                        <X className="h-3 w-3" aria-hidden />
                       </button>
                     </div>
                   ))}
@@ -1007,7 +1008,7 @@ export function CleanerIncidentPageClient() {
                         key={`${file.name}-${index}`}
                         className="relative flex h-20 w-20 shrink-0 flex-col items-center justify-center gap-1 rounded-md border border-[var(--border)] bg-black/5 text-xs"
                       >
-                        <span className="text-lg">🎬</span>
+                        <Clapperboard className="h-5 w-5 text-[var(--muted-foreground)]" aria-hidden />
                         <span className="px-1 text-center text-[10px] leading-tight text-[var(--muted-foreground)] line-clamp-2">
                           {file.name.length > 16
                             ? `${file.name.slice(0, 13)}...`
@@ -1020,10 +1021,10 @@ export function CleanerIncidentPageClient() {
                               current.filter((_, i) => i !== index),
                             );
                           }}
-                          className="absolute right-1 top-1 rounded bg-black/65 px-1 text-[10px] text-white"
+                          className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded bg-black/65 text-white"
                           aria-label="Remove video"
                         >
-                          ✕
+                          <X className="h-3 w-3" aria-hidden />
                         </button>
                       </div>
                     ))}

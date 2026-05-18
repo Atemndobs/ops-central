@@ -13,7 +13,7 @@ import {
 } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { makeFunctionReference } from "convex/server";
-import { ArrowDownAZ, Filter, Search } from "lucide-react";
+import { ArrowDownAZ, Check, Filter, Search, X } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useToast } from "@/components/ui/toast-provider";
@@ -1259,7 +1259,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                             : "border-[var(--border)] hover:border-emerald-500 hover:text-emerald-600"
                         } disabled:cursor-not-allowed disabled:opacity-60`}
                       >
-                        <span>✓</span> Pass
+                        <Check className="h-4 w-4" aria-hidden /> Pass
                       </button>
                       <button
                         type="button"
@@ -1271,7 +1271,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                             : "border-[var(--border)] hover:border-rose-500 hover:text-rose-600"
                         } disabled:cursor-not-allowed disabled:opacity-60`}
                       >
-                        <span>✗</span> Rework
+                        <X className="h-4 w-4" aria-hidden /> Rework
                       </button>
                       <button
                         type="button"
@@ -1332,8 +1332,18 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
           </div>
           <p className="shrink-0 text-xs font-semibold tabular-nums">
             {reviewedCount}/{totalRooms}
-            {passCount > 0 ? <span className="ml-2 text-emerald-500">✓{passCount}</span> : null}
-            {reworkCount > 0 ? <span className="ml-1 text-rose-500">✗{reworkCount}</span> : null}
+            {passCount > 0 ? (
+              <span className="ml-2 inline-flex items-center gap-0.5 text-emerald-500">
+                <Check className="h-3 w-3" aria-hidden />
+                {passCount}
+              </span>
+            ) : null}
+            {reworkCount > 0 ? (
+              <span className="ml-1 inline-flex items-center gap-0.5 text-rose-500">
+                <X className="h-3 w-3" aria-hidden />
+                {reworkCount}
+              </span>
+            ) : null}
           </p>
         </div>
         {!visibleRows.length ? (
@@ -1409,7 +1419,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                           : "border-[var(--border)] text-[var(--muted-foreground)]"
                       } disabled:cursor-not-allowed disabled:opacity-60`}
                     >
-                      <span className="text-xl leading-none">✓</span>
+                      <Check className="h-5 w-5" aria-hidden />
                       <span className="text-sm">Pass</span>
                     </button>
                     <button
@@ -1422,7 +1432,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                           : "border-[var(--border)] text-[var(--muted-foreground)]"
                       } disabled:cursor-not-allowed disabled:opacity-60`}
                     >
-                      <span className="text-xl leading-none">✗</span>
+                      <X className="h-5 w-5" aria-hidden />
                       <span className="text-sm">Rework</span>
                     </button>
                   </div>
@@ -1469,7 +1479,10 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                     {reworkCount > 0 ? (
                       <span className="text-rose-500">{reworkCount} room{reworkCount !== 1 ? "s" : ""} need rework</span>
                     ) : (
-                      <span className="text-[var(--success)]">All {totalRooms} rooms passed ✓</span>
+                      <span className="inline-flex items-center gap-1 text-[var(--success)]">
+                        All {totalRooms} rooms passed
+                        <Check className="h-3.5 w-3.5" aria-hidden />
+                      </span>
                     )}
                   </>
                 ) : (
@@ -1525,9 +1538,10 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
               <button
                 type="button"
                 onClick={() => setCompareRoomKey(null)}
-                className="shrink-0 rounded-md border border-[var(--border)] px-2.5 py-1 text-xs"
+                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--border)] px-2.5 py-1 text-xs"
               >
-                ✕ Close
+                <X className="h-3 w-3" aria-hidden />
+                Close
               </button>
             </div>
             {/* Row 2: verdict + linked buttons */}

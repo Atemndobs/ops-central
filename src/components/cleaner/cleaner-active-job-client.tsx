@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { AlertTriangle, Check, Clapperboard, Play, X } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { SyncBanner } from "@/components/cleaner/sync-banner";
@@ -245,7 +246,7 @@ function StepIndicator({
                     : "border-[var(--border)] bg-[var(--muted)] text-[var(--muted-foreground)]",
                 ].join(" ")}
               >
-                {isCompleted ? "✓" : index + 1}
+                {isCompleted ? <Check className="h-4 w-4" aria-hidden /> : index + 1}
               </span>
               <span
                 className={[
@@ -414,12 +415,12 @@ function RoomPhotoCard({
                     />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center bg-black/20">
-                      <span className="text-lg">🎬</span>
+                      <Clapperboard className="h-5 w-5 text-white/80" aria-hidden />
                     </div>
                   )}
                   <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                    <span className="rounded-full bg-black/55 px-1.5 py-0.5 text-[10px] text-white">
-                      ▶
+                    <span className="rounded-full bg-black/55 p-1 text-white">
+                      <Play className="h-2.5 w-2.5 fill-current" aria-hidden />
                     </span>
                   </div>
                   {video.durationMs && video.durationMs > 0 ? (
@@ -1325,7 +1326,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
       {/* ── Incident prompt — shown when leaving after_photos ────────────── */}
       {phase === "after_photos" && showIncidentPrompt && (
         <section className="space-y-4 rounded-md border border-[var(--border)] bg-[var(--card)] p-6 text-center">
-          <p className="text-3xl">⚠️</p>
+          <AlertTriangle className="mx-auto h-9 w-9 text-amber-500" aria-hidden />
           <h3 className="text-base font-semibold text-[var(--foreground)]">{t("cleaner.active.incidentPromptTitle")}</h3>
           <p className="text-sm text-[var(--muted-foreground)]">
             {t("cleaner.active.incidentPromptDescription")}
@@ -1451,10 +1452,10 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                               void removeIncidentPhotoRef(photoRef);
                               setNewIncidentPhotoIds((current) => current.filter((id) => id !== photoRef));
                             }}
-                            className="absolute right-1 top-1 rounded bg-black/65 px-1 text-[10px] text-white"
+                            className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded bg-black/65 text-white"
                             aria-label={t("cleaner.active.removeIncidentPhoto", { index: index + 1 })}
                           >
-                            ✕
+                            <X className="h-3 w-3" aria-hidden />
                           </button>
                         </div>
                       );
@@ -1517,8 +1518,9 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                     type="button"
                     className="shrink-0 text-[var(--destructive)] hover:opacity-80"
                     onClick={() => { void removeIncident(incident.id); }}
+                    aria-label="Remove incident"
                   >
-                    ✕
+                    <X className="h-4 w-4" aria-hidden />
                   </button>
                 </li>
               ))}
@@ -1652,7 +1654,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                     ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
                     : "border-[var(--border)] bg-[var(--card)]",
                 ].join(" ")}>
-                  {guestReady ? "✓" : ""}
+                  {guestReady ? <Check className="h-3 w-3" aria-hidden /> : null}
                 </span>
                 <input type="checkbox" checked={guestReady} className="sr-only" onChange={(e) => setGuestReady(e.target.checked)} />
                 <span className="text-sm text-[var(--foreground)]">{t("cleaner.active.unitGuestReady")}</span>
@@ -1730,7 +1732,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
             className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/30"
             aria-label={t("common.close")}
           >
-            ✕
+            <X className="h-4 w-4" aria-hidden />
           </button>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img

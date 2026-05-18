@@ -12,9 +12,11 @@ import {
   Building2,
   CalendarClock,
   CheckCircle2,
+  Clapperboard,
   ExternalLink,
   Loader2,
   MapPin,
+  Play,
 } from "lucide-react";
 import {
   SEVERITY_CHIP_CLASSNAMES,
@@ -133,13 +135,13 @@ export function CleanerIncidentDetailClient({ incidentId }: Props) {
                           className="h-full w-full object-cover"
                         />
                       ) : (
-                        <div className="flex h-full w-full items-center justify-center bg-black/5 text-2xl">
-                          🎬
+                        <div className="flex h-full w-full items-center justify-center bg-black/5">
+                          <Clapperboard className="h-6 w-6 text-[var(--muted-foreground)]" aria-hidden />
                         </div>
                       )}
                       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                        <span className="rounded-full bg-black/55 px-1.5 py-0.5 text-xs text-white">
-                          ▶
+                        <span className="rounded-full bg-black/55 p-1 text-white">
+                          <Play className="h-3 w-3 fill-current" aria-hidden />
                         </span>
                       </div>
                       {durationMs && durationMs > 0 ? (
