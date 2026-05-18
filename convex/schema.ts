@@ -1274,6 +1274,22 @@ const hospitableConfig = defineTable({
   updatedAt: v.optional(v.number()),
 });
 
+// Inbound Hospitable webhook deliveries. Insert-on-receive provides
+// idempotency (Hospitable retries up to 5 times) and a debug trail for the
+// 24h header-discovery window before signature verification is enforced.
+const hospitableWebhookEvents = defineTable({
+  hospitableEventId: v.string(),
+  action: v.string(),
+  receivedAt: v.number(),
+  processedAt: v.optional(v.number()),
+  processingError: v.optional(v.string()),
+  rawPayload: v.any(),
+  // Log-only signature observation (PR B). Both fields removed in PR C
+  // once verification is enforced at the route boundary.
+  signatureValid: v.optional(v.boolean()),
+  signatureHeaders: v.optional(v.any()),
+}).index("by_event_id", ["hospitableEventId"]);
+
 // AI PROVIDERS (admin-configurable)
 // ═══════════════════════════════════════════════════════════════════════════════
 //
@@ -1659,6 +1675,7 @@ export default defineSchema({
 
   // Integration
   hospitableConfig,
+  hospitableWebhookEvents,
 
   // AI Providers (admin-configurable)
   aiProviderSettings,
