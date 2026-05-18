@@ -25,7 +25,7 @@ OpsCentral is the admin web dashboard for J&A Business Solutions' property care 
 ```
 
 - **Frontend:** Next.js 16 (App Router) + Tailwind CSS + shadcn/ui
-- **Backend:** Convex (shared deployment `dev:usable-anaconda-394`)
+- **Backend:** Convex (prod deployment `prod:lovable-oriole-182`, US region)
 - **Auth:** Clerk (`good-bluejay-68.clerk.accounts.dev`)
 - **Charts:** Recharts
 - **Icons:** Lucide React
@@ -34,14 +34,22 @@ OpsCentral is the admin web dashboard for J&A Business Solutions' property care 
 
 ## Convex Deployment
 
-**CRITICAL:** This app shares a Convex deployment with the cleaners mobile app.
+**CRITICAL:** This app shares its Convex deployment with the cleaners mobile app.
 
-- URL: `https://usable-anaconda-394.eu-west-1.convex.cloud`
-- Deployment: `dev:usable-anaconda-394`
-- Team: `bertrand-atemkeng`
-- Project: `opscentral-admin`
+- **Prod URL:** `https://lovable-oriole-182.convex.cloud`
+- **Prod deployment:** `prod:lovable-oriole-182` (US region)
+- **Team:** `bertrand-atemkeng`
+- **Project:** `opscentral-admin-us`
+
+> Migrated 2026-05-02 from the EU-region `whimsical-narwhal-849` /
+> `usable-anaconda-394` deployments. Those are retired — do not push
+> to them.
 
 **Any schema change affects both apps.** Coordinate carefully.
+
+**Shipping backend changes:** use `npx convex deploy` (with
+`PROD_CONVEX_DEPLOY_KEY` from `.env.local`), not `npx convex dev`.
+Node 20+ required (`nvm use lts/jod` if you're on nvm).
 
 ## 🚨 BIG FAT WARNING: CONVEX OWNER REPO
 
