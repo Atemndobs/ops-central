@@ -170,6 +170,28 @@ export function ScheduleClient() {
   const [showIdleProperties, setShowIdleProperties] = useState(false);
   const [selectedCell, setSelectedCell] = useState<{ propertyId: string; dayKey: string } | null>(null);
 
+  // --- Mobile-default applier (2026-05-19) ---
+  // On a narrow viewport, the 7-day grid crams six tiny columns + a 180px
+  // property column into ~360px and most managers can't read anything.
+  // On mount only (not on every resize — that would override an explicit
+  // user toggle mid-session), if we look mobile, swap to 3-day view +
+  // initials labels. Frees ~140px for the day columns and surfaces the
+  // 3-day window the manager actually cares about. User can still hit
+  // "7" or "Aa" in the toolbar to override.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.innerWidth < 768) {
+      setDayCount(3);
+      setPropertyLabelMode("initials");
+      // Without grid-fit mode, day columns have `minmax(120px, 1fr)` which
+      // overflows a 360px viewport (40px col + 3*120px = 400px). Fit mode
+      // drops the floor so the 3 columns share the available width.
+      setIsGridFitMode(true);
+    }
+    // Intentional: empty dep array → mount-only. Don't react to resize.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // --- Quick assign ---
   const [quickAssignJobId, setQuickAssignJobId] = useState<Id<"cleaningJobs"> | null>(null);
   const [assigningJobId, setAssigningJobId] = useState<Id<"cleaningJobs"> | null>(null);
