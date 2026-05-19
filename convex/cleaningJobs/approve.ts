@@ -11,6 +11,7 @@ import {
   listOpsUserIds,
 } from "../lib/notificationLifecycle";
 import { syncConversationStatusForJob } from "../conversations/lib";
+import { isReviewerRole } from "./reviewAccess";
 
 const roomReviewSnapshotValidator = v.array(
   v.object({
@@ -20,13 +21,20 @@ const roomReviewSnapshotValidator = v.array(
   }),
 );
 
+/**
+ * Per R7.4 (manager-scope task, 2026-05-17): approval rights are
+ * admin + property_ops only. Managers do NOT approve cleaner submissions.
+ * See convex/cleaningJobs/reviewAccess.ts for the canonical predicate;
+ * we delegate to keep both gates in sync.
+ *
+ * Issue #92 — this previously also admitted "manager", inconsistent with
+ * assertReviewerRole. Tightened 2026-05-19.
+ */
 function requireApproverRole(user: Doc<"users">) {
-  if (
-    user.role !== "admin" &&
-    user.role !== "manager" &&
-    user.role !== "property_ops"
-  ) {
-    throw new ConvexError("Only managers, property ops, or admins can approve.");
+  if (!isReviewerRole(user.role)) {
+    throw new ConvexError(
+      "Only property ops or admins can approve cleaner submissions.",
+    );
   }
 }
 
