@@ -1,4 +1,7 @@
 import { query } from "../_generated/server";
+import { requireRole } from "../lib/auth";
+import { getCallerJobScopeForListing } from "../lib/companyScope";
+import type { Doc, Id } from "../_generated/dataModel";
 
 const openStatuses = ["scheduled", "assigned", "in_progress", "awaiting_approval", "rework_required"] as const;
 type OpenStatus = (typeof openStatuses)[number];
@@ -22,16 +25,58 @@ function isOpenStatus(status: string): status is OpenStatus {
   return openStatuses.includes(status as OpenStatus);
 }
 
+/**
+ * Issue #94 (2026-05-19) — these queries previously had:
+ *   - NO authentication (anyone with a Convex client could call them).
+ *   - NO company-scope (manager from company A could see company B's jobs).
+ *
+ * Both are fixed below. Auth via requireRole; scope via
+ * getCallerJobScopeForListing (same helper cleaningJobs.queries.getAll uses).
+ *
+ * Stays are scoped via the same propertyScope — a stay belongs to a
+ * property, so company access carries through.
+ *
+ * For managers without an active manager/owner companyMembers row, the
+ * scope is an empty Set → all queries return zero-result shapes (empty
+ * arrays / zero counts), matching getCleaners / getAll behavior.
+ */
+
+type JobLike = Pick<
+  Doc<"cleaningJobs">,
+  | "propertyId"
+  | "status"
+  | "scheduledStartAt"
+  | "scheduledEndAt"
+  | "assignedCleanerIds"
+  | "isUrgent"
+  | "createdAt"
+  | "updatedAt"
+> & { _id: Id<"cleaningJobs"> };
+
+function applyPropertyScope<T extends { propertyId: Id<"properties"> }>(
+  rows: T[],
+  propertyScope: Set<Id<"properties">> | null,
+): T[] {
+  if (propertyScope === null) return rows;
+  return rows.filter((r) => propertyScope.has(r.propertyId));
+}
+
 export const getTodayJobs = query({
   args: {},
   handler: async (ctx) => {
+    const user = await requireRole(ctx, ["admin", "property_ops", "manager"]);
+    const propertyScope = await getCallerJobScopeForListing(ctx, user);
+    if (propertyScope !== null && propertyScope.size === 0) return [];
+
     const { start, end } = getDayRange();
 
-    const jobs = await ctx.db
+    const jobsRaw = await ctx.db
       .query("cleaningJobs")
       .withIndex("by_scheduled", (q) => q.gte("scheduledStartAt", start))
       .filter((q) => q.lt(q.field("scheduledStartAt"), end))
       .collect();
+
+    const jobs = applyPropertyScope(jobsRaw as JobLike[], propertyScope);
 
     const activeToday = jobs
       .filter((job) => job.status !== "cancelled")
@@ -42,7 +87,6 @@ export const getTodayJobs = query({
       propertyIds.map((propertyId) => ctx.db.get(propertyId)),
     )) as Array<RelatedEntity | null>;
 
-    // Get all unique cleaner IDs
     const allCleanerIds = [...new Set(activeToday.flatMap((job) => job.assignedCleanerIds ?? []))];
     const cleaners = (await Promise.all(
       allCleanerIds.map((id) => ctx.db.get(id)),
@@ -85,15 +129,20 @@ export const getTodayJobs = query({
 export const getUpcomingCheckins = query({
   args: {},
   handler: async (ctx) => {
+    const user = await requireRole(ctx, ["admin", "property_ops", "manager"]);
+    const propertyScope = await getCallerJobScopeForListing(ctx, user);
+    if (propertyScope !== null && propertyScope.size === 0) return [];
+
     const now = Date.now();
     const nextThreeDays = now + 72 * 60 * 60 * 1000;
 
-    // Use stays table for check-in data
-    const stays = await ctx.db
+    const staysRaw = await ctx.db
       .query("stays")
       .withIndex("by_checkin", (q) => q.gte("checkInAt", now))
       .filter((q) => q.lt(q.field("checkInAt"), nextThreeDays))
       .collect();
+
+    const stays = applyPropertyScope(staysRaw, propertyScope);
 
     const propertyIds = [...new Set(stays.map((stay) => stay.propertyId))];
     const properties = (await Promise.all(
@@ -123,19 +172,38 @@ export const getUpcomingCheckins = query({
 export const getQuickStats = query({
   args: {},
   handler: async (ctx) => {
+    const user = await requireRole(ctx, ["admin", "property_ops", "manager"]);
+    const propertyScope = await getCallerJobScopeForListing(ctx, user);
+    if (propertyScope !== null && propertyScope.size === 0) {
+      return {
+        todayJobs: 0,
+        inProgress: 0,
+        completedToday: 0,
+        needsAttention: 0,
+        upcomingCheckins: 0,
+        openJobs: 0,
+      };
+    }
+
     const { start, end } = getDayRange();
 
-    const allJobs = await ctx.db.query("cleaningJobs").collect();
+    // NOTE: still a full-table scan. Index-backed pagination is the next
+    // optimization once the scope+auth posture is fixed. Acceptable for
+    // now because the scope filter trims the result set considerably for
+    // managers (typical: a handful of properties).
+    const allJobsRaw = await ctx.db.query("cleaningJobs").collect();
+    const allJobs = applyPropertyScope(allJobsRaw as JobLike[], propertyScope);
+
     const todayJobs = allJobs.filter(
       (job) => job.scheduledStartAt >= start && job.scheduledStartAt < end,
     );
 
-    // Use stays for upcoming check-ins
-    const upcomingStays = await ctx.db
+    const upcomingStaysRaw = await ctx.db
       .query("stays")
       .withIndex("by_checkin", (q) => q.gte("checkInAt", Date.now()))
       .filter((q) => q.lt(q.field("checkInAt"), end + 24 * 60 * 60 * 1000))
       .collect();
+    const upcomingStays = applyPropertyScope(upcomingStaysRaw, propertyScope);
 
     return {
       todayJobs: todayJobs.length,
@@ -162,8 +230,14 @@ export const getQuickStats = query({
 export const getRecentActivity = query({
   args: {},
   handler: async (ctx) => {
+    const user = await requireRole(ctx, ["admin", "property_ops", "manager"]);
+    const propertyScope = await getCallerJobScopeForListing(ctx, user);
+    if (propertyScope !== null && propertyScope.size === 0) return [];
+
     const yesterday = Date.now() - 24 * 60 * 60 * 1000;
-    const jobs = await ctx.db.query("cleaningJobs").collect();
+    // NOTE: still a full-table scan; same comment as getQuickStats applies.
+    const jobsRaw = await ctx.db.query("cleaningJobs").collect();
+    const jobs = applyPropertyScope(jobsRaw as JobLike[], propertyScope);
 
     const recentJobs = jobs
       .filter((job) => (job.updatedAt ?? job.createdAt) >= yesterday)
