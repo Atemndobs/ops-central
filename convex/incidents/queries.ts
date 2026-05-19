@@ -3,6 +3,7 @@ import { query } from "../_generated/server";
 import type { QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { getCurrentUser, requireRole } from "../lib/auth";
+import { getCallerJobScopeForListing } from "../lib/companyScope";
 import { resolvePhotoAccessUrl } from "../lib/photoUrls";
 
 type IncidentDoc = Doc<"incidents">;
@@ -248,7 +249,23 @@ export const listIncidents = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, ["admin", "property_ops", "manager"]);
+    const user = await requireRole(ctx, ["admin", "property_ops", "manager"]);
+
+    // Issue #93 — scope managers to their company's properties.
+    // null = admin/property_ops, no filter. Set = caller's allowed
+    // propertyIds (empty Set = fail-closed, return []).
+    const propertyScope = await getCallerJobScopeForListing(ctx, user);
+    if (propertyScope !== null && propertyScope.size === 0) {
+      return [];
+    }
+    // If caller passed a propertyId that's outside their scope, return [].
+    if (
+      propertyScope !== null &&
+      args.propertyId &&
+      !propertyScope.has(args.propertyId)
+    ) {
+      return [];
+    }
 
     const limit = Math.min(Math.max(args.limit ?? 50, 1), 200);
 
@@ -278,6 +295,11 @@ export const listIncidents = query({
       .filter((i) => (args.status ? i.status === args.status : true))
       .filter((i) => (args.severity ? i.severity === args.severity : true))
       .filter((i) => (args.reporterId ? i.reportedBy === args.reporterId : true))
+      // Issue #93 — apply company-scope filter for managers. Done after
+      // the index read because the indexes available aren't keyed on
+      // (companyId, ...). Acceptable cost for the typical manager whose
+      // company owns a small slice of platform incidents.
+      .filter((i) => (propertyScope === null ? true : propertyScope.has(i.propertyId)))
       .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, limit);
 
@@ -318,12 +340,27 @@ export const getIncidentById = query({
     const incident = await ctx.db.get(args.incidentId);
     if (!incident) return null;
 
-    const canViewAll =
-      user.role === "admin" ||
-      user.role === "property_ops" ||
-      user.role === "manager";
     const isReporter = incident.reportedBy === user._id;
-    if (!canViewAll && !isReporter) {
+    const isAdminOrOps = user.role === "admin" || user.role === "property_ops";
+    // canResolve preserves the prior return contract — who can mark
+    // this incident resolved. Same set as before: admin + property_ops + manager.
+    const canViewAll =
+      isAdminOrOps || user.role === "manager";
+
+    if (isAdminOrOps || isReporter) {
+      // Allowed — no further check needed.
+    } else if (user.role === "manager") {
+      // Issue #93 — managers can only view incidents on properties in
+      // their company. Without this, a manager from company A could
+      // request an incident _id from company B and read it.
+      const propertyScope = await getCallerJobScopeForListing(ctx, user);
+      if (
+        propertyScope === null /* defensive: should never be null for manager */ ||
+        !propertyScope.has(incident.propertyId)
+      ) {
+        throw new Error("Not authorized to view this incident");
+      }
+    } else {
       throw new Error("Not authorized to view this incident");
     }
 
