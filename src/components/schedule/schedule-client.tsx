@@ -9,7 +9,6 @@ import type { Id } from "@convex/_generated/dataModel";
 import {
   Calendar,
   Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Eye,
@@ -167,7 +166,6 @@ export function ScheduleClient() {
   // --- Mobile-specific ---
   const [mobileTab, setMobileTab] = useState<"schedule" | "team">("schedule");
   const [propertyLabelMode, setPropertyLabelMode] = useState<"full" | "initials" | "hidden">("full");
-  const [showIdleProperties, setShowIdleProperties] = useState(false);
   const [selectedCell, setSelectedCell] = useState<{ propertyId: string; dayKey: string } | null>(null);
 
   // --- Mobile-default applier (2026-05-19) ---
@@ -1201,8 +1199,9 @@ export function ScheduleClient() {
             <div className="px-4 py-10 text-sm text-[var(--muted-foreground)]">No properties match your filter.</div>
           ) : (
             <>
-              {/* Active properties (with jobs) */}
-              {activeProperties.map((property) => (
+              {/* All properties — show active and idle together. Portfolio is
+                  too small to make hiding idle rows worthwhile. */}
+              {[...activeProperties, ...idleProperties].map((property) => (
                 <div
                   key={property._id}
                   className="grid border-b last:border-b-0"
@@ -1216,35 +1215,6 @@ export function ScheduleClient() {
                   })}
                 </div>
               ))}
-
-              {/* Idle properties (no jobs in range) */}
-              {idleProperties.length > 0 ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setShowIdleProperties((v) => !v)}
-                    className="flex w-full items-center justify-center gap-2 border-b py-2 text-xs text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
-                  >
-                    <ChevronDown className={cn("h-3 w-3 transition", showIdleProperties && "rotate-180")} />
-                    {idleProperties.length} {idleProperties.length === 1 ? "property" : "properties"} with no jobs
-                    <ChevronDown className={cn("h-3 w-3 transition", showIdleProperties && "rotate-180")} />
-                  </button>
-                  {showIdleProperties
-                    ? idleProperties.map((property) => (
-                        <div
-                          key={property._id}
-                          className="grid border-b last:border-b-0"
-                          style={{ gridTemplateColumns: scheduleGridTemplateColumns }}
-                        >
-                          {renderPropertyCell(property as { _id: string; name: string; address: string; status?: unknown })}
-                          {visibleDays.map((day) => (
-                            <div key={`${property._id}-${dateKeyFn(day)}`} className="h-8 border-l sm:h-10" />
-                          ))}
-                        </div>
-                      ))
-                    : null}
-                </>
-              ) : null}
             </>
           )}
 
