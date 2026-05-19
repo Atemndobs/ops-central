@@ -41,6 +41,16 @@ type MobileJobsFilterPanel = "search" | "property" | "cleaner" | "date" | null;
 
 export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
   const { isAuthenticated } = useConvexAuth();
+  // Gate the "+ New Job" button to roles the backend actually accepts.
+  // convex/cleaningJobs/mutations.ts:create requires admin or property_ops
+  // (requireRole(["admin", "property_ops"])). Managers and cleaners would
+  // get a 401 on submit, so hiding the button avoids surfacing an action
+  // the user can't complete. Same pattern dashboard-client.tsx already uses.
+  const me = useQuery(
+    api.users.queries.getMyProfile,
+    isAuthenticated ? {} : "skip",
+  ) as { role?: string } | null | undefined;
+  const canCreateJob = me?.role === "admin" || me?.role === "property_ops";
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<JobStatus | "all">(initialStatus);
   const [propertyId, setPropertyId] = useState("all");
@@ -401,13 +411,15 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
           </button>
         </div>
 
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex w-full items-center justify-center gap-2 rounded-none bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90 md:w-auto"
-        >
-          <Plus className="h-4 w-4" />
-          New Job
-        </button>
+        {canCreateJob && (
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex w-full items-center justify-center gap-2 rounded-none bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90 md:w-auto"
+          >
+            <Plus className="h-4 w-4" />
+            New Job
+          </button>
+        )}
       </div>
 
       <div className="flex gap-1 overflow-x-auto border-b">
