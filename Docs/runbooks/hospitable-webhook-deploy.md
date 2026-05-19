@@ -1,5 +1,10 @@
 # Runbook — Deploy Hospitable Webhook + 24h Observation
 
+> **⚠️ SUPERSEDED 2026-05-19 by [hospitable-webhook-token-auth.md](./hospitable-webhook-token-auth.md).**
+> Hospitable does not sign webhooks (verified against the official help doc).
+> We replaced HMAC verification with URL-token auth in PR C. Keep this file
+> for historical reference only.
+
 **Date:** 2026-05-18
 **Phase:** P0.1 of [agentic-OS roadmap](../2026-05-18-agentic-os-roadmap.md)
 **PR:** [#79 — task/hospitable-webhook](https://github.com/Atemndobs/ops-central/pull/79)
