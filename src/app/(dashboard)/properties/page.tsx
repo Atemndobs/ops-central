@@ -111,6 +111,7 @@ function PropertiesPageContent() {
     isAuthenticated ? {} : "skip",
   ) as { role?: string } | null | undefined;
   const canSyncFromHospitable = me?.role === "admin" || me?.role === "property_ops";
+  const canMutateProperties = me?.role === "admin" || me?.role === "property_ops";
 
   const syncFromHospitable = useAction(api.hospitable.actions.syncAllFromHospitable);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -354,13 +355,15 @@ function PropertiesPageContent() {
             </button>
           ) : null}
 
-          <button
-            className="flex items-center gap-2 rounded-none bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90"
-            onClick={() => setIsCreateOpen(true)}
-          >
-            <Plus className="h-4 w-4" />
-            Add Property
-          </button>
+          {canMutateProperties ? (
+            <button
+              className="flex items-center gap-2 rounded-none bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90"
+              onClick={() => setIsCreateOpen(true)}
+            >
+              <Plus className="h-4 w-4" />
+              Add Property
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -445,22 +448,24 @@ function PropertiesPageContent() {
                   .
                 </p>
 
-                <div className="flex items-center justify-end gap-2 border-t pt-3">
-                  <button
-                    className="inline-flex items-center gap-1 rounded-none border px-2 py-1 text-xs hover:bg-[var(--accent)]"
-                    onClick={() => setEditingProperty(property)}
-                  >
-                    <Edit3 className="h-3.5 w-3.5" />
-                    Edit
-                  </button>
-                  <button
-                    className="inline-flex items-center gap-1 rounded-none border border-red-500/40 px-2 py-1 text-xs text-red-500 hover:bg-red-500/10"
-                    onClick={() => handleDelete(property._id)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Archive
-                  </button>
-                </div>
+                {canMutateProperties ? (
+                  <div className="flex items-center justify-end gap-2 border-t pt-3">
+                    <button
+                      className="inline-flex items-center gap-1 rounded-none border px-2 py-1 text-xs hover:bg-[var(--accent)]"
+                      onClick={() => setEditingProperty(property)}
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                      Edit
+                    </button>
+                    <button
+                      className="inline-flex items-center gap-1 rounded-none border border-red-500/40 px-2 py-1 text-xs text-red-500 hover:bg-red-500/10"
+                      onClick={() => handleDelete(property._id)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Archive
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
           ))}
@@ -526,22 +531,24 @@ function PropertiesPageContent() {
                   .
                 </p>
 
-                <div className="flex items-center justify-end gap-2 border-t pt-3">
-                  <button
-                    className="inline-flex items-center gap-1 rounded-none border px-2 py-1 text-xs hover:bg-[var(--accent)]"
-                    onClick={() => setEditingProperty(property)}
-                  >
-                    <Edit3 className="h-3.5 w-3.5" />
-                    Edit
-                  </button>
-                  <button
-                    className="inline-flex items-center gap-1 rounded-none border border-red-500/40 px-2 py-1 text-xs text-red-500 hover:bg-red-500/10"
-                    onClick={() => handleDelete(property._id)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Archive
-                  </button>
-                </div>
+                {canMutateProperties ? (
+                  <div className="flex items-center justify-end gap-2 border-t pt-3">
+                    <button
+                      className="inline-flex items-center gap-1 rounded-none border px-2 py-1 text-xs hover:bg-[var(--accent)]"
+                      onClick={() => setEditingProperty(property)}
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                      Edit
+                    </button>
+                    <button
+                      className="inline-flex items-center gap-1 rounded-none border border-red-500/40 px-2 py-1 text-xs text-red-500 hover:bg-red-500/10"
+                      onClick={() => handleDelete(property._id)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Archive
+                    </button>
+                  </div>
+                ) : null}
               </article>
             ))}
           </div>
@@ -557,7 +564,9 @@ function PropertiesPageContent() {
                   <th className="px-4 py-3 font-medium">Cleaner</th>
                   <th className="px-4 py-3 font-medium">Company</th>
                   <th className="px-4 py-3 font-medium">Beds/Baths</th>
-                  <th className="px-4 py-3 text-right font-medium">Actions</th>
+                  {canMutateProperties ? (
+                    <th className="px-4 py-3 text-right font-medium">Actions</th>
+                  ) : null}
                 </tr>
               </thead>
               <tbody>
@@ -623,24 +632,26 @@ function PropertiesPageContent() {
                     <td className="px-4 py-3 text-[var(--muted-foreground)]">
                       {formatBedsAndBaths(property)}
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          className="inline-flex items-center gap-1 rounded-none border px-2 py-1 text-xs hover:bg-[var(--accent)]"
-                          onClick={() => setEditingProperty(property)}
-                        >
-                          <Edit3 className="h-3.5 w-3.5" />
-                          Edit
-                        </button>
-                        <button
-                          className="inline-flex items-center gap-1 rounded-none border border-red-500/40 px-2 py-1 text-xs text-red-500 hover:bg-red-500/10"
-                          onClick={() => handleDelete(property._id)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Archive
-                        </button>
-                      </div>
-                    </td>
+                    {canMutateProperties ? (
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            className="inline-flex items-center gap-1 rounded-none border px-2 py-1 text-xs hover:bg-[var(--accent)]"
+                            onClick={() => setEditingProperty(property)}
+                          >
+                            <Edit3 className="h-3.5 w-3.5" />
+                            Edit
+                          </button>
+                          <button
+                            className="inline-flex items-center gap-1 rounded-none border border-red-500/40 px-2 py-1 text-xs text-red-500 hover:bg-red-500/10"
+                            onClick={() => handleDelete(property._id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Archive
+                          </button>
+                        </div>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>

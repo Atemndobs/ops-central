@@ -2,6 +2,7 @@ import { mutation, type MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { ConvexError, v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
+import { requireRole } from "../lib/auth";
 
 const SUPPORTED_LANGS = ["en", "es"] as const;
 type SupportedLang = (typeof SUPPORTED_LANGS)[number];
@@ -112,6 +113,7 @@ export const create = mutation({
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    await requireRole(ctx, ["admin", "property_ops"]);
     try {
       const timestamp = Date.now();
       const name = args.name.trim();
@@ -202,6 +204,7 @@ export const update = mutation({
     updatedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireRole(ctx, ["admin", "property_ops"]);
     try {
       const existing = await ctx.db.get(args.id);
 
@@ -493,6 +496,7 @@ export const softDelete = mutation({
     id: v.id("properties"),
   },
   handler: async (ctx, args) => {
+    await requireRole(ctx, ["admin", "property_ops"]);
     try {
       const existing = await ctx.db.get(args.id);
 
