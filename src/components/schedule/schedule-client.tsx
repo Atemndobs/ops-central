@@ -210,7 +210,7 @@ export function ScheduleClient() {
     api.cleaningJobs.queries.getInDateRange,
     isAuthenticated ? { from: rangeStartTime, to: rangeEndExclusiveTime } : "skip",
   );
-  const cleaners = useQuery(api.users.queries.getByRole, isAuthenticated ? { role: "cleaner" } : "skip");
+  const cleaners = useQuery(api.users.queries.getCleaners, isAuthenticated ? {} : "skip");
   const assignJob = useMutation(api.cleaningJobs.mutations.assign);
 
   // Current user — drives the "Mine only" filter on task overlays.
