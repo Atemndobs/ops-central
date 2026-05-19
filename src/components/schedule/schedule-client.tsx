@@ -876,19 +876,16 @@ export function ScheduleClient() {
             </div>
 
             {/* City filter (desktop) */}
-            <select
-              value={cityFilter}
-              onChange={(event) => setCityFilter(event.target.value)}
-              className="hidden h-8 rounded-md border bg-[var(--card)] px-2 text-xs outline-none md:inline-flex"
-              aria-label="Filter by city"
-            >
-              <option value="all">All Cities</option>
-              {cityOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <div className="hidden w-36 md:block">
+              <SearchableSelect
+                value={cityFilter === "all" ? null : cityFilter}
+                onChange={(id) => setCityFilter(id ?? "all")}
+                placeholder="All Cities"
+                searchPlaceholder="Search cities…"
+                aria-label="Filter by city"
+                items={cityOptions.map((o) => ({ id: o.value, label: o.label }))}
+              />
+            </div>
 
             {/* Property filter (desktop) */}
             <div className="hidden w-48 md:block">
@@ -1030,19 +1027,16 @@ export function ScheduleClient() {
               </button>
             )}
 
-            <select
-              value={cityFilter}
-              onChange={(event) => setCityFilter(event.target.value)}
-              className="h-7 max-w-[120px] rounded-md border bg-[var(--card)] px-1.5 text-[11px] outline-none"
-              aria-label="Filter by city"
-            >
-              <option value="all">All Cities</option>
-              {cityOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <div className="max-w-[120px]">
+              <SearchableSelect
+                value={cityFilter === "all" ? null : cityFilter}
+                onChange={(id) => setCityFilter(id ?? "all")}
+                placeholder="All Cities"
+                searchPlaceholder="Search…"
+                aria-label="Filter by city"
+                items={cityOptions.map((o) => ({ id: o.value, label: o.label }))}
+              />
+            </div>
 
             <div className="max-w-[160px]">
               <SearchableSelect
