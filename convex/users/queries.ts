@@ -311,6 +311,65 @@ export const getCleaners = query({
   },
 });
 
+/**
+ * Cleaners that are eligible to clean a specific property.
+ *
+ * Path: property → active `companyProperties` row → company →
+ * active `companyMembers` rows with role === "cleaner" → users.
+ *
+ * Why this exists (2026-05-19): the "+ New Job" modal previously listed
+ * every platform cleaner regardless of property. An admin in Austin could
+ * accidentally assign a Dallas cleaner. Backend `cleaningJobs.mutations.assign`
+ * does its own dispatch-warning check, but the UI shouldn't surface
+ * obviously-wrong choices in the first place.
+ *
+ * Returns [] if the property has no active company assignment — caller
+ * should render a "this property has no cleaning company assigned" hint
+ * rather than silently falling back to all cleaners.
+ *
+ * Authorization: any role that can create jobs (admin, property_ops),
+ * plus manager for symmetry with the existing getCleaners. Cleaners
+ * themselves don't need this — they don't create jobs.
+ */
+export const getCleanersForProperty = query({
+  args: { propertyId: v.id("properties") },
+  handler: async (ctx, { propertyId }) => {
+    await requireRole(ctx, ["manager", "property_ops", "admin"]);
+
+    const assignment = await ctx.db
+      .query("companyProperties")
+      .withIndex("by_property_and_is_active", (q) =>
+        q.eq("propertyId", propertyId).eq("isActive", true),
+      )
+      .first();
+
+    if (!assignment) {
+      return [];
+    }
+
+    const memberRows = await ctx.db
+      .query("companyMembers")
+      .withIndex("by_company_role", (q) =>
+        q.eq("companyId", assignment.companyId).eq("role", "cleaner"),
+      )
+      .collect();
+
+    const cleanerIds = memberRows
+      .filter((row) => row.isActive && row.leftAt === undefined)
+      .map((row) => row.userId);
+
+    const resolved = await Promise.all(cleanerIds.map((id) => ctx.db.get(id)));
+    return resolved
+      .filter((user): user is Doc<"users"> => user !== null)
+      .map((user) => ({ ...user, id: user._id }))
+      .sort((a, b) => {
+        const nameA = a.name ?? a.email ?? "";
+        const nameB = b.name ?? b.email ?? "";
+        return nameA.localeCompare(nameB);
+      });
+  },
+});
+
 export const getOpsDashboard = query({
   args: {},
   handler: async (ctx) => {
