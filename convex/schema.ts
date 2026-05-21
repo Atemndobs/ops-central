@@ -19,7 +19,8 @@ const users = defineTable({
     v.literal("cleaner"),
     v.literal("manager"),
     v.literal("property_ops"),
-    v.literal("admin")
+    v.literal("admin"),
+    v.literal("owner")
   ),
   pushToken: v.optional(v.string()),
   phone: v.optional(v.string()),

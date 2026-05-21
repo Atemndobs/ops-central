@@ -12,6 +12,7 @@ const roleValidator = v.union(
   v.literal("manager"),
   v.literal("property_ops"),
   v.literal("admin"),
+  v.literal("owner"),
 );
 
 const themeValidator = v.union(v.literal("dark"), v.literal("light"));

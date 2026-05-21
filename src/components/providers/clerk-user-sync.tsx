@@ -5,14 +5,15 @@ import { useAuth, useUser } from "@clerk/nextjs";
 import { useConvexAuth, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 
-type UserRole = "cleaner" | "manager" | "property_ops" | "admin";
+type UserRole = "cleaner" | "manager" | "property_ops" | "admin" | "owner";
 
 function parseRole(value: unknown): UserRole | undefined {
   if (
     value === "cleaner" ||
     value === "manager" ||
     value === "property_ops" ||
-    value === "admin"
+    value === "admin" ||
+    value === "owner"
   ) {
     return value;
   }

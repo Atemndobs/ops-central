@@ -207,7 +207,8 @@
     "admin": "Admin",
     "property_ops": "Property Ops",
     "manager": "Manager",
-    "cleaner": "Cleaner"
+    "cleaner": "Cleaner",
+    "owner": "Owner"
   },
   "auth": {
     "signIn": "Sign In",

@@ -207,7 +207,8 @@
     "admin": "Administrador",
     "property_ops": "Operaciones",
     "manager": "Gerente",
-    "cleaner": "Limpiador"
+    "cleaner": "Limpiador",
+    "owner": "Propietario"
   },
   "auth": {
     "signIn": "Iniciar Sesión",

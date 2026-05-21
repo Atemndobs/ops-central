@@ -109,7 +109,8 @@ export const getAllUsers = query({
         v.literal("cleaner"),
         v.literal("manager"),
         v.literal("property_ops"),
-        v.literal("admin")
+        v.literal("admin"),
+        v.literal("owner")
       )
     ),
     status: v.optional(v.string()),
