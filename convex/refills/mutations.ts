@@ -277,6 +277,12 @@ export const recordJobRefillCheck = mutation({
           type: "low_stock",
           title: `Refill ${queueLevel === "out" ? "Out of Stock" : "Low Stock"}`,
           message: `${property?.name ?? "Property"}: ${item.name} at ${percentRemaining}%`,
+          messageKey: "notifications.messages.refill_low_stock",
+          messageParams: {
+            propertyName: property?.name ?? "Property",
+            itemName: item.name,
+            percentRemaining,
+          },
           data: {
             jobId: job._id,
             propertyId: job.propertyId,

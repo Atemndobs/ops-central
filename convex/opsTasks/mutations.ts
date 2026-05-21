@@ -27,6 +27,14 @@ async function notifyTaskAssigned(
   const property = args.propertyId ? await ctx.db.get(args.propertyId) : null;
   const propertyName =
     property && "name" in property ? (property as Doc<"properties">).name : null;
+  // Two-key split — translation strings differ in whether they include the
+  // property prefix. Simpler than an ICU `select` per design doc §6.
+  const messageKey = propertyName
+    ? "notifications.messages.task_assigned_with_property"
+    : "notifications.messages.task_assigned";
+  const messageParams: Record<string, string> = propertyName
+    ? { propertyName, taskTitle: args.title }
+    : { taskTitle: args.title };
   await createNotificationsForUsers(ctx, {
     userIds: [args.assigneeId],
     type: "task_assigned",
@@ -34,6 +42,8 @@ async function notifyTaskAssigned(
     message: propertyName
       ? `${propertyName}: ${args.title}`
       : args.title,
+    messageKey,
+    messageParams,
     data: {
       taskId: String(args.taskId),
       propertyId: args.propertyId ? String(args.propertyId) : undefined,

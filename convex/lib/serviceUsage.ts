@@ -219,6 +219,14 @@ async function updateCountersAndNotify(
       await notifyAdmins(ctx, {
         title: `${serviceKey} usage at ${crossed}%`,
         message: `${quota.label}: ${Math.round(newConsumed)} / ${quota.limit} (${newPct.toFixed(1)}%)`,
+        messageKey: "notifications.messages.service_quota_usage",
+        messageParams: {
+          quotaLabel: quota.label,
+          consumed: Math.round(newConsumed),
+          limit: quota.limit,
+          // Match the existing single-decimal English template.
+          percent: Number(newPct.toFixed(1)),
+        },
         data: {
           dedupeKey,
           serviceKey,

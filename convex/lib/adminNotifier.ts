@@ -16,12 +16,21 @@
 
 import type { MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
+import type { NotificationMessageParams } from "./opsNotifications";
 
 const DEBOUNCE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
 export interface NotifyAdminsInput {
   title: string;
   message: string;
+  /**
+   * i18n key under `notifications.messages.*`. When present, clients render
+   * `t(messageKey, messageParams)`; otherwise they fall back to `message`.
+   * See Docs/2026-05-21-notification-message-i18n-design.md.
+   */
+  messageKey?: string;
+  /** Params passed to the client's `t()` for interpolation. */
+  messageParams?: NotificationMessageParams;
   /**
    * Arbitrary structured payload. MUST include `dedupeKey: string` for the
    * 1-hour debounce to apply. Events without a dedupeKey are always sent.
@@ -85,6 +94,8 @@ export async function notifyAdmins(
       type: "system",
       title: input.title,
       message: input.message,
+      messageKey: input.messageKey,
+      messageParams: input.messageParams,
       data: input.data,
       pushSent: false,
       createdAt: now,

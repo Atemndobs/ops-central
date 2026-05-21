@@ -1128,7 +1128,19 @@ const notifications = defineTable({
     v.literal("system")
   ),
   title: v.string(),
+  // English fallback body. Kept for back-compat with old clients and for
+  // push payloads (FCM/APNs don't run our i18n). New clients prefer
+  // `messageKey` + `messageParams` and fall back to `message` if absent.
+  // See Docs/2026-05-21-notification-message-i18n-design.md.
   message: v.string(),
+  // i18n key under `notifications.messages.*` in the client message
+  // catalogs. Optional — old rows have no key and clients render
+  // `message` verbatim.
+  messageKey: v.optional(v.string()),
+  // Params to interpolate into the resolved translation string
+  // (e.g. `{ propertyName: "Casa Bonita" }`). Shape is per-key; not
+  // validated server-side. See design doc §3 for the worked examples.
+  messageParams: v.optional(v.any()),
   data: v.optional(v.any()),
 
   readAt: v.optional(v.number()),

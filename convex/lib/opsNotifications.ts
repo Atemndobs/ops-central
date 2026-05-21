@@ -8,6 +8,17 @@ function isOpsRole(role: Doc<"users">["role"]): boolean {
   return role === "admin" || role === "property_ops" || role === "manager";
 }
 
+/**
+ * Param values for `messageParams`. Strings and numbers are the only types
+ * worth interpolating into a translation template — anything else is a code
+ * smell (objects/arrays should be flattened by the caller). `boolean` is
+ * deliberately excluded; if you need it, stringify it first.
+ *
+ * `messageParams` itself is `v.any()` in the schema, so this is a TypeScript-
+ * only guard. See Docs/2026-05-21-notification-message-i18n-design.md §5.
+ */
+export type NotificationMessageParams = Record<string, string | number>;
+
 export async function createNotificationsForUsers(
   ctx: MutationCtx,
   args: {
@@ -15,6 +26,13 @@ export async function createNotificationsForUsers(
     type: OpsNotificationType;
     title: string;
     message: string;
+    /**
+     * i18n key under `notifications.messages.*`. When present, clients render
+     * `t(messageKey, messageParams)`; otherwise they fall back to `message`.
+     */
+    messageKey?: string;
+    /** Params passed to the client's `t()` for interpolation. */
+    messageParams?: NotificationMessageParams;
     data?: Record<string, unknown>;
   },
 ) {
@@ -32,6 +50,8 @@ export async function createNotificationsForUsers(
         type: args.type,
         title: args.title,
         message: args.message,
+        messageKey: args.messageKey,
+        messageParams: args.messageParams,
         data: args.data,
         pushSent: false,
         createdAt: now,
@@ -56,6 +76,8 @@ export async function createOpsNotifications(
     type: OpsNotificationType;
     title: string;
     message: string;
+    messageKey?: string;
+    messageParams?: NotificationMessageParams;
     data?: Record<string, unknown>;
   },
 ) {

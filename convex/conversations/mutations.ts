@@ -341,6 +341,11 @@ export const sendMessage = mutation({
           ? `New message for ${property.name}`
           : "New job message",
         message: `${user.name ?? user.email}: ${buildConversationPreview(previewSource)}`,
+        messageKey: "notifications.messages.new_message_from_user",
+        messageParams: {
+          senderName: user.name ?? user.email,
+          preview: buildConversationPreview(previewSource),
+        },
         data: {
           conversationId: conversation._id,
           jobId: linkedJob?._id ?? conversation.linkedJobId,
