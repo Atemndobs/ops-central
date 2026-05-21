@@ -6,6 +6,9 @@ import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   Building2,
   CalendarDays,
   Check,
@@ -38,6 +41,41 @@ type JobsPageClientProps = {
   initialStatus?: JobStatus | "all";
 };
 type MobileJobsFilterPanel = "search" | "property" | "cleaner" | "date" | null;
+type SortKey = "urgency" | "job" | "property" | "cleaner" | "scheduled" | "status";
+type SortDir = "asc" | "desc";
+
+const STATUS_ORDER: Record<string, number> = {
+  in_progress: 0,
+  assigned: 1,
+  scheduled: 2,
+  awaiting_approval: 3,
+  rework_required: 4,
+  completed: 5,
+  cancelled: 6,
+};
+
+function urgencyScore(
+  job: {
+    status: string;
+    scheduledStartAt?: number | null;
+    actualStartAt?: number | null;
+    actualEndAt?: number | null;
+  },
+  now: number,
+): number {
+  // Running timer (in-progress, started, not ended) — most urgent
+  if (job.status === "in_progress" && job.actualStartAt && !job.actualEndAt) {
+    return -Number.MAX_SAFE_INTEGER + (job.actualStartAt ?? 0);
+  }
+  if (job.status === "completed" || job.status === "cancelled") {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  if (!job.scheduledStartAt) {
+    return Number.MAX_SAFE_INTEGER - 1;
+  }
+  // Smaller (incl. negative = "Now") = more urgent
+  return job.scheduledStartAt - now;
+}
 
 export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
   const { isAuthenticated } = useConvexAuth();
@@ -61,6 +99,8 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
   const [openJobMenuId, setOpenJobMenuId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [nowTs, setNowTs] = useState<number | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("urgency");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const jobs = useQuery(
     api.cleaningJobs.queries.getAll,
@@ -188,20 +228,70 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
       list = list.filter((job) => (job.assignedCleanerIds ?? []).includes(cleanerId as Id<"users">));
     }
 
-    if (!selectedDate) {
-      return list;
+    if (selectedDate) {
+      const start = new Date(selectedDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 1);
+
+      list = list.filter((job) => {
+        const when = job.scheduledStartAt ?? 0;
+        return when >= start.getTime() && when < end.getTime();
+      });
     }
 
-    const start = new Date(selectedDate);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
-
-    return list.filter((job) => {
-      const when = job.scheduledStartAt ?? 0;
-      return when >= start.getTime() && when < end.getTime();
+    const now = nowTs ?? Date.now();
+    const dir = sortDir === "asc" ? 1 : -1;
+    const sorted = [...list].sort((a, b) => {
+      switch (sortKey) {
+        case "urgency":
+          return (urgencyScore(a, now) - urgencyScore(b, now)) * dir;
+        case "job": {
+          const aLabel = (a.notesForCleaner?.split("\n")[0] || "Cleaning Job").toLowerCase();
+          const bLabel = (b.notesForCleaner?.split("\n")[0] || "Cleaning Job").toLowerCase();
+          return aLabel.localeCompare(bLabel) * dir;
+        }
+        case "property":
+          return (a.property?.name ?? "").localeCompare(b.property?.name ?? "") * dir;
+        case "cleaner":
+          return (a.cleaners?.[0]?.name ?? "").localeCompare(b.cleaners?.[0]?.name ?? "") * dir;
+        case "scheduled":
+          return ((a.scheduledStartAt ?? 0) - (b.scheduledStartAt ?? 0)) * dir;
+        case "status":
+          return ((STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99)) * dir;
+        default:
+          return 0;
+      }
     });
-  }, [scopedJobs, selectedDate, search, cleanerId]);
+    return sorted;
+  }, [scopedJobs, selectedDate, search, cleanerId, sortKey, sortDir, nowTs]);
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  const SortHeader = ({ label, k }: { label: string; k: SortKey }) => {
+    const active = sortKey === k;
+    const Icon = !active ? ArrowUpDown : sortDir === "asc" ? ArrowUp : ArrowDown;
+    return (
+      <button
+        type="button"
+        onClick={() => toggleSort(k)}
+        className={`inline-flex items-center gap-1 uppercase tracking-wide ${
+          active ? "text-[var(--foreground)]" : ""
+        }`}
+        aria-label={`Sort by ${label}`}
+      >
+        {label}
+        <Icon className="h-3 w-3 opacity-70" />
+      </button>
+    );
+  };
 
   return (
     <div className="space-y-4 md:space-y-8">
@@ -538,13 +628,13 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
           <table className="min-w-full text-left text-sm">
           <thead className="border-b border-[var(--border)] text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
             <tr>
-              <th className="px-4 py-3">Job</th>
-              <th className="px-4 py-3">Property</th>
-              <th className="px-4 py-3">Cleaner</th>
-              <th className="px-4 py-3">Scheduled</th>
-              <th className="px-4 py-3">Countdown</th>
+              <th className="px-4 py-3"><SortHeader label="Job" k="job" /></th>
+              <th className="px-4 py-3"><SortHeader label="Property" k="property" /></th>
+              <th className="px-4 py-3"><SortHeader label="Cleaner" k="cleaner" /></th>
+              <th className="px-4 py-3"><SortHeader label="Scheduled" k="scheduled" /></th>
+              <th className="px-4 py-3"><SortHeader label="Countdown" k="urgency" /></th>
               <th className="px-4 py-3">Workflow</th>
-              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3"><SortHeader label="Status" k="status" /></th>
               <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
