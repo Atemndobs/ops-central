@@ -20,7 +20,7 @@ const OWNER_PORTAL_TABLES = [
 ];
 
 test("owner-portal Wave 1 tables are registered in defineSchema", () => {
-  const registered = Object.keys((schema as any).tables);
+  const registered = Object.keys((schema as unknown as { tables: Record<string, unknown> }).tables);
   for (const name of OWNER_PORTAL_TABLES) {
     assert.ok(
       registered.includes(name),
@@ -30,7 +30,7 @@ test("owner-portal Wave 1 tables are registered in defineSchema", () => {
 });
 
 test("schema includes the three owner-portal notification literals", () => {
-  const notificationsTable = (schema as any).tables.notifications;
+  const notificationsTable = (schema as unknown as { tables: Record<string, unknown> }).tables.notifications;
   const validatorJson = JSON.stringify(notificationsTable);
   for (const literal of [
     "owner_statement_issued",
@@ -45,7 +45,7 @@ test("schema includes the three owner-portal notification literals", () => {
 });
 
 test("schema includes the \"owner\" role literal", () => {
-  const usersTable = (schema as any).tables.users;
+  const usersTable = (schema as unknown as { tables: Record<string, unknown> }).tables.users;
   assert.ok(
     JSON.stringify(usersTable).includes("owner"),
     "expected users.role union to include \"owner\"",

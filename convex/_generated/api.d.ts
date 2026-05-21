@@ -10,6 +10,7 @@
 
 import type * as admin_cleanup from "../admin/cleanup.js";
 import type * as admin_featureFlags from "../admin/featureFlags.js";
+import type * as admin_fixSofiaRandallsRoles from "../admin/fixSofiaRandallsRoles.js";
 import type * as admin_mutations from "../admin/mutations.js";
 import type * as admin_queries from "../admin/queries.js";
 import type * as admin_userSync from "../admin/userSync.js";
@@ -20,6 +21,7 @@ import type * as cleaningJobs_acknowledgements from "../cleaningJobs/acknowledge
 import type * as cleaningJobs_approve from "../cleaningJobs/approve.js";
 import type * as cleaningJobs_backfillMeta from "../cleaningJobs/backfillMeta.js";
 import type * as cleaningJobs_backfillUserJobAssignments from "../cleaningJobs/backfillUserJobAssignments.js";
+import type * as cleaningJobs_devClearStaleTimers from "../cleaningJobs/devClearStaleTimers.js";
 import type * as cleaningJobs_devResetJobs from "../cleaningJobs/devResetJobs.js";
 import type * as cleaningJobs_markPastDone from "../cleaningJobs/markPastDone.js";
 import type * as cleaningJobs_mutations from "../cleaningJobs/mutations.js";
@@ -74,6 +76,7 @@ import type * as notifications_mutations from "../notifications/mutations.js";
 import type * as notifications_queries from "../notifications/queries.js";
 import type * as opsTasks_mutations from "../opsTasks/mutations.js";
 import type * as opsTasks_queries from "../opsTasks/queries.js";
+import type * as owner_constants from "../owner/constants.js";
 import type * as properties_mutations from "../properties/mutations.js";
 import type * as properties_queries from "../properties/queries.js";
 import type * as properties_seed from "../properties/seed.js";
@@ -121,6 +124,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   "admin/cleanup": typeof admin_cleanup;
   "admin/featureFlags": typeof admin_featureFlags;
+  "admin/fixSofiaRandallsRoles": typeof admin_fixSofiaRandallsRoles;
   "admin/mutations": typeof admin_mutations;
   "admin/queries": typeof admin_queries;
   "admin/userSync": typeof admin_userSync;
@@ -131,6 +135,7 @@ declare const fullApi: ApiFromModules<{
   "cleaningJobs/approve": typeof cleaningJobs_approve;
   "cleaningJobs/backfillMeta": typeof cleaningJobs_backfillMeta;
   "cleaningJobs/backfillUserJobAssignments": typeof cleaningJobs_backfillUserJobAssignments;
+  "cleaningJobs/devClearStaleTimers": typeof cleaningJobs_devClearStaleTimers;
   "cleaningJobs/devResetJobs": typeof cleaningJobs_devResetJobs;
   "cleaningJobs/markPastDone": typeof cleaningJobs_markPastDone;
   "cleaningJobs/mutations": typeof cleaningJobs_mutations;
@@ -185,6 +190,7 @@ declare const fullApi: ApiFromModules<{
   "notifications/queries": typeof notifications_queries;
   "opsTasks/mutations": typeof opsTasks_mutations;
   "opsTasks/queries": typeof opsTasks_queries;
+  "owner/constants": typeof owner_constants;
   "properties/mutations": typeof properties_mutations;
   "properties/queries": typeof properties_queries;
   "properties/seed": typeof properties_seed;
