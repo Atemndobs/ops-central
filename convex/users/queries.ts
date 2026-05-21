@@ -196,12 +196,55 @@ export const getManagerDashboard = query({
       managerJobs = perProperty.flat();
     }
 
-    const cleanerIds = [
-      ...new Set(managerJobs.flatMap((job) => job.assignedCleanerIds)),
-    ];
-    const cleaners = (
-      await Promise.all(cleanerIds.map((cleanerId) => ctx.db.get(cleanerId)))
-    ).filter((cleaner): cleaner is NonNullable<typeof cleaner> => cleaner !== null);
+    // R1.2 (manager-scope follow-up, 2026-05-20): scope the "Your team" list
+    // to canonical company membership instead of deriving it from job history.
+    //
+    // Previously: `cleanerIds = unique(managerJobs.flatMap(assignedCleanerIds))`.
+    // That leaked anyone EVER assigned to a job at any property in the
+    // manager's company — including ex-cleaners, one-off helpers from other
+    // companies, and members whose `companyMembers` row is no longer active.
+    // Sofia (manager of a 2-cleaner company) was seeing 5 cleaners.
+    //
+    // The canonical source is `companyMembers` (active cleaner rows). Mobile
+    // commit 8440bc3 mitigated this client-side; this is the proper backend
+    // fix and mirrors the R1.1 pattern already in `getCleaners` below.
+    //
+    // Admins keep the original behavior: `managerJobs` is already unscoped
+    // for admin, and they're expected to see every assigned cleaner.
+    const membership = await getLatestActiveCompanyMembership(ctx, currentUser._id);
+
+    let cleaners: Doc<"users">[];
+    if (currentUser.role === "admin") {
+      const cleanerIds = [
+        ...new Set(managerJobs.flatMap((job) => job.assignedCleanerIds)),
+      ];
+      cleaners = (
+        await Promise.all(cleanerIds.map((cleanerId) => ctx.db.get(cleanerId)))
+      ).filter((cleaner): cleaner is Doc<"users"> => cleaner !== null);
+    } else if (
+      !membership ||
+      (membership.role !== "manager" && membership.role !== "owner")
+    ) {
+      // Fail-closed: manager without an active manager/owner membership
+      // sees no team (don't fall back to job-history leak).
+      cleaners = [];
+    } else {
+      const memberRows = await ctx.db
+        .query("companyMembers")
+        .withIndex("by_company_role", (q) =>
+          q.eq("companyId", membership.companyId).eq("role", "cleaner"),
+        )
+        .collect();
+
+      const cleanerIds = memberRows
+        .filter((row) => row.isActive && row.leftAt === undefined)
+        .map((row) => row.userId);
+
+      const resolved = await Promise.all(cleanerIds.map((id) => ctx.db.get(id)));
+      cleaners = resolved.filter(
+        (user): user is Doc<"users"> => user !== null,
+      );
+    }
 
     const cleanersWithStats = cleaners
       .map((cleaner) => {
@@ -227,7 +270,6 @@ export const getManagerDashboard = query({
       })
       .sort((a, b) => a.name.localeCompare(b.name));
 
-    const membership = await getLatestActiveCompanyMembership(ctx, currentUser._id);
     const company = membership ? await ctx.db.get(membership.companyId) : null;
 
     return {
