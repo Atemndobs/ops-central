@@ -1133,7 +1133,10 @@ const notifications = defineTable({
     v.literal("low_stock"),
     v.literal("message_received"),
     v.literal("task_assigned"),
-    v.literal("system")
+    v.literal("system"),
+    v.literal("owner_statement_issued"),
+    v.literal("owner_approval_request"),
+    v.literal("owner_incident_reported")
   ),
   title: v.string(),
   // English fallback body. Kept for back-compat with old clients and for
@@ -1626,6 +1629,358 @@ const handoverChecklistConfig = defineTable({
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// OWNER PORTAL — FINANCE & COSTS (Wave 1; spec §3 + §4)
+// Ported verbatim from archive jna-bs-admin/convex/schema.ts. The owner-facing
+// queries/mutations land in Wave 3; this wave only adds storage.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const manualAdjustments = defineTable({
+  month: v.string(),                        // "YYYY-MM"
+  propertyId: v.optional(v.id("properties")),
+  type: v.union(
+    v.literal("revenue"),
+    v.literal("expense"),
+    v.literal("cash"),
+  ),
+  category: v.string(),
+  amount: v.number(),
+  reason: v.string(),
+  createdBy: v.id("users"),
+  createdAt: v.number(),
+})
+  .index("by_month", ["month"])
+  .index("by_property", ["propertyId"]);
+
+const capitalExpenditures = defineTable({
+  propertyId: v.id("properties"),
+  amount: v.number(),
+  category: v.string(),
+  description: v.string(),
+  vendor: v.optional(v.string()),
+  purchaseDate: v.number(),
+  receiptStorageIds: v.array(v.id("_storage")),
+  createdBy: v.optional(v.id("users")),
+  approvedBy: v.optional(v.id("users")),
+  createdAt: v.number(),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_date", ["purchaseDate"]);
+
+const costCategories = defineTable({
+  name: v.string(),
+  description: v.optional(v.string()),
+  color: v.optional(v.string()),
+  icon: v.optional(v.string()),
+  isFixed: v.boolean(),
+  sortOrder: v.number(),
+  // Owner-portal: bucket classification for statement rendering. Optional
+  // during Wave 1 — Wave 2 backfill assigns a value to every row, then a
+  // follow-up PR narrows to required. Until then, queries that need a bucket
+  // value treat undefined as "fallback to name-based mapping."
+  bucket: v.optional(v.union(
+    v.literal("lease"),
+    v.literal("cleaning"),
+    v.literal("supplies"),
+    v.literal("utilities"),
+    v.literal("maintenance"),
+    v.literal("lawnPoolOutdoor"),
+    v.literal("platformFees"),
+    v.literal("subscriptions"),
+    v.literal("labor"),
+    v.literal("insurance"),
+    v.literal("taxes"),
+    v.literal("managementFee"),
+    v.literal("other"),
+  )),
+  createdAt: v.number(),
+})
+  .index("by_name", ["name"])
+  .index("by_order", ["sortOrder"])
+  .index("by_bucket", ["bucket"]);
+
+const costItems = defineTable({
+  categoryId: v.id("costCategories"),
+  name: v.string(),
+  description: v.optional(v.string()),
+  defaultAmount: v.optional(v.number()),
+  isActive: v.boolean(),
+  createdAt: v.number(),
+})
+  .index("by_category", ["categoryId"])
+  .index("by_active", ["isActive"]);
+
+const costTemplates = defineTable({
+  name: v.string(),
+  description: v.optional(v.string()),
+  isDefault: v.boolean(),
+  isActive: v.optional(v.boolean()),
+  items: v.array(v.object({
+    categoryId: v.string(),
+    itemName: v.string(),
+    amount: v.number(),
+  })),
+  createdBy: v.optional(v.id("users")),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_default", ["isDefault"])
+  .index("by_name", ["name"]);
+
+const propertyCostItems = defineTable({
+  propertyId: v.id("properties"),
+  categoryId: v.id("costCategories"),
+  costItemId: v.optional(v.id("costItems")),
+  name: v.string(),
+  amount: v.number(),
+  frequency: v.union(
+    v.literal("one_time"),
+    v.literal("monthly"),
+    v.literal("quarterly"),
+    v.literal("annual"),
+    v.literal("yearly"),
+    v.literal("per_booking"),
+    v.literal("revenue_percentage"),
+  ),
+  percentageRate: v.optional(v.number()),
+  startDate: v.optional(v.number()),
+  endDate: v.optional(v.number()),
+  isActive: v.boolean(),
+  // Owner-portal: receipts that back this cost line. Optional so existing
+  // prod rows remain valid; UI renders [] and undefined identically.
+  receiptStorageIds: v.optional(v.array(v.id("_storage"))),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_category", ["categoryId"]);
+
+const monthlyCalculations = defineTable({
+  propertyId: v.id("properties"),
+  month: v.string(),
+  grossRevenue: v.number(),
+  platformFees: v.number(),
+  netRevenue: v.number(),
+  totalCosts: v.number(),
+  costBreakdown: v.optional(v.any()),
+  netProfit: v.number(),
+  marginPercent: v.optional(v.number()),
+  occupancyRate: v.optional(v.number()),
+  totalNights: v.optional(v.number()),
+  bookedNights: v.optional(v.number()),
+  scenarioName: v.optional(v.string()),
+  isActual: v.optional(v.boolean()),
+  totalBookings: v.optional(v.number()),
+  totalDays: v.optional(v.number()),
+  profitOptimization: v.optional(v.any()),
+  optimizationSource: v.optional(v.string()),
+  damageCost: v.optional(v.number()),
+  claimsReceived: v.optional(v.number()),
+  netDamageImpact: v.optional(v.number()),
+  adjustedProfit: v.optional(v.number()),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_month", ["month"])
+  .index("by_property_month", ["propertyId", "month"]);
+
+const propertyMonthlySettings = defineTable({
+  propertyId: v.id("properties"),
+  month: v.string(),
+  settings: v.object({
+    cleaningModel: v.optional(v.union(v.literal("percent"), v.literal("flat_cap"))),
+    cleaningPercent: v.optional(v.number()),
+    cleaningFlatCap: v.optional(v.number()),
+    utilitiesOverride: v.optional(v.number()),
+    customCosts: v.optional(v.array(v.object({
+      name: v.string(),
+      amount: v.number(),
+    }))),
+  }),
+  configurationName: v.optional(v.string()),
+  monthlyBookingsAssumption: v.optional(v.number()),
+  totalRevenueAssumption: v.optional(v.number()),
+  occupancyRateAssumption: v.optional(v.number()),
+  avgBookingValueAssumption: v.optional(v.number()),
+  notes: v.optional(v.string()),
+  isActive: v.optional(v.boolean()),
+  bookedNights: v.optional(v.number()),
+  importSource: v.optional(v.string()),
+  externalPropertyId: v.optional(v.string()),
+  damageCost: v.optional(v.number()),
+  claimsReceived: v.optional(v.number()),
+  createdBy: v.optional(v.id("users")),
+  updatedBy: v.optional(v.id("users")),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_property_month", ["propertyId", "month"]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OWNER PORTAL — NET-NEW TABLES (Wave 1; spec §4)
+// Order matters: propertyOwners + propertyFeeConfig must appear BEFORE
+// ownerStatements + maintenanceApprovalRequests, which reference them via v.id().
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const propertyOwners = defineTable({
+  propertyId: v.id("properties"),
+  userId: v.id("users"),
+  stakePct: v.number(),
+  role: v.union(v.literal("landlord"), v.literal("investor")),
+  isPrimaryApprover: v.boolean(),
+  effectiveFrom: v.number(),
+  effectiveTo: v.optional(v.number()),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_user", ["userId"])
+  .index("by_property_and_effective", ["propertyId", "effectiveFrom"])
+  .index("by_user_and_active", ["userId", "effectiveTo"]);
+
+const propertyFeeConfig = defineTable({
+  propertyId: v.id("properties"),
+  feePct: v.number(),
+  feeBase: v.union(
+    v.literal("grossRevenue"),
+    v.literal("netRevenue"),
+    v.literal("netOperatingProfit"),
+  ),
+  approvalThreshold: v.number(),
+  autoApproveAfterDays: v.optional(v.number()),
+  effectiveFrom: v.number(),
+  effectiveTo: v.optional(v.number()),
+  createdBy: v.id("users"),
+  createdAt: v.number(),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_property_and_effective", ["propertyId", "effectiveFrom"]);
+
+const ownerStatements = defineTable({
+  propertyId: v.id("properties"),
+  periodStart: v.number(),
+  periodEnd: v.number(),
+  status: v.union(v.literal("draft"), v.literal("issued")),
+  snapshotTotals: v.object({
+    grossRevenue: v.number(),
+    platformFees: v.number(),
+    netRevenue: v.number(),
+    costsByBucket: v.array(v.object({
+      bucket: v.string(),
+      amount: v.number(),
+    })),
+    operatingCosts: v.number(),
+    noi: v.number(),
+    feeBase: v.union(
+      v.literal("grossRevenue"),
+      v.literal("netRevenue"),
+      v.literal("netOperatingProfit"),
+    ),
+    feePct: v.number(),
+    mgmtFee: v.number(),
+    ownerPayout: v.number(),
+    capExMemo: v.number(),
+    perOwner: v.array(v.object({
+      ownerId: v.id("propertyOwners"),
+      userId: v.id("users"),
+      stakePct: v.number(),
+      payout: v.number(),
+    })),
+  }),
+  feeConfigSnapshot: v.object({
+    feeConfigId: v.id("propertyFeeConfig"),
+    feePct: v.number(),
+    feeBase: v.string(),
+    effectiveFrom: v.number(),
+  }),
+  sourceRefs: v.array(v.union(
+    v.object({
+      table: v.literal("propertyCostItems"),
+      rowId: v.id("propertyCostItems"),
+      amount: v.number(),
+      bucket: v.string(),
+    }),
+    v.object({
+      table: v.literal("manualAdjustments"),
+      rowId: v.id("manualAdjustments"),
+      amount: v.number(),
+      bucket: v.optional(v.string()),
+    }),
+    v.object({
+      table: v.literal("stays"),
+      rowId: v.id("stays"),
+      amount: v.number(),
+    }),
+    v.object({
+      table: v.literal("capitalExpenditures"),
+      rowId: v.id("capitalExpenditures"),
+      amount: v.number(),
+    }),
+  )),
+  issuedAt: v.optional(v.number()),
+  issuedBy: v.optional(v.id("users")),
+  // Server-rendered PDF artifact. Populated by `renderOwnerStatementPdf`
+  // action scheduled by the issuance mutation. undefined ≡ still generating.
+  pdfStorageId: v.optional(v.id("_storage")),
+  pdfTemplateVersion: v.optional(v.number()),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_property_and_period", ["propertyId", "periodStart"])
+  .index("by_status", ["status"]);
+
+const maintenanceApprovalRequests = defineTable({
+  propertyId: v.id("properties"),
+  ownerId: v.id("propertyOwners"),
+  proposedCost: v.number(),
+  description: v.string(),
+  photoIds: v.array(v.id("photos")),
+  requestedBy: v.id("users"),
+  status: v.union(
+    v.literal("pending"),
+    v.literal("approved"),
+    v.literal("declined"),
+    v.literal("auto_approved"),
+  ),
+  decidedAt: v.optional(v.number()),
+  decidedBy: v.optional(v.id("users")),
+  decidedNote: v.optional(v.string()),
+  resultingCostItemId: v.optional(v.id("propertyCostItems")),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_owner", ["ownerId"])
+  .index("by_status", ["status"])
+  .index("by_property_and_status", ["propertyId", "status"]);
+
+const ownerDateBlocks = defineTable({
+  propertyId: v.id("properties"),
+  ownerId: v.id("propertyOwners"),
+  startDate: v.number(),
+  endDate: v.number(),
+  note: v.optional(v.string()),
+  syncedToChannelsAt: v.optional(v.number()),
+  createdAt: v.number(),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_owner", ["ownerId"])
+  .index("by_property_and_start", ["propertyId", "startDate"]);
+
+const ownerNotificationPrefs = defineTable({
+  userId: v.id("users"),
+  channel: v.union(v.literal("email"), v.literal("sms"), v.literal("push")),
+  statementIssued: v.boolean(),
+  approvalRequest: v.boolean(),
+  incidentReport: v.boolean(),
+  updatedAt: v.number(),
+})
+  .index("by_user", ["userId"])
+  .index("by_user_and_channel", ["userId", "channel"]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // EXPORT SCHEMA
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1716,4 +2071,20 @@ export default defineSchema({
   userPresence,
   handoverNotes,
   handoverChecklistConfig,
+
+  // Owner Portal — Wave 1 (spec §3 + §4)
+  manualAdjustments,
+  capitalExpenditures,
+  costCategories,
+  costItems,
+  costTemplates,
+  propertyCostItems,
+  monthlyCalculations,
+  propertyMonthlySettings,
+  propertyOwners,
+  propertyFeeConfig,
+  ownerStatements,
+  maintenanceApprovalRequests,
+  ownerDateBlocks,
+  ownerNotificationPrefs,
 });
