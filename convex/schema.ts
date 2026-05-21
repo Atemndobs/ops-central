@@ -255,6 +255,13 @@ const stays = defineTable({
   totalAmount: v.optional(v.number()),
   currency: v.optional(v.string()),
 
+  // Owner-portal: cancellation marker. The fee engine excludes stays with
+  // cancelledAt != null from grossRevenue. Populated by the Hospitable
+  // webhook handler on RESERVATION_CANCELLED, or manually by ops.
+  // Additive optional field — every existing row is valid without backfill.
+  cancelledAt: v.optional(v.number()),
+  cancellationSource: v.optional(v.string()),
+
   metadata: v.optional(v.any()),
   createdAt: v.number(),
   updatedAt: v.optional(v.number()),
