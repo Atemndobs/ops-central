@@ -109,6 +109,12 @@ export const recordCheckpointResult = mutation({
         type: "incident_created",
         title: "Critical Checkpoint Failed",
         message: `${property?.name ?? "Property"}: ${checkpoint.title} in ${checkpoint.roomName}`,
+        messageKey: "notifications.messages.critical_checkpoint_failed",
+        messageParams: {
+          propertyName: property?.name ?? "Property",
+          checkpointTitle: checkpoint.title,
+          roomName: checkpoint.roomName,
+        },
         data: {
           jobId: job._id,
           propertyId: job.propertyId,

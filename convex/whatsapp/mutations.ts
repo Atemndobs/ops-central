@@ -530,6 +530,14 @@ export const bootstrapInboundMessage = internalMutation({
           ? `New WhatsApp message for ${property.name}`
           : "New WhatsApp message",
         message: `${args.profileName ?? args.phoneNumber}: ${buildConversationPreview(args.body)}`,
+        // Shared key with conversations/mutations.ts (in-app messages) —
+        // same colon-prefix template applies to both channels. Per design
+        // doc §3 Example C.
+        messageKey: "notifications.messages.new_message_from_user",
+        messageParams: {
+          senderName: args.profileName ?? args.phoneNumber,
+          preview: buildConversationPreview(args.body),
+        },
         data: {
           conversationId: conversation._id,
           jobId: conversation.linkedJobId,

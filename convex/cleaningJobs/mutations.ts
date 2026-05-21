@@ -888,6 +888,8 @@ async function submitForApprovalInternal(
     type: "awaiting_approval",
     title: "Job Awaiting Approval",
     message: `${property?.name ?? "Property"} is ready for review.`,
+    messageKey: "notifications.messages.awaiting_approval_ready",
+    messageParams: { propertyName: property?.name ?? "Property" },
     data: {
       jobId: job._id,
       propertyId: job.propertyId,
@@ -1312,6 +1314,8 @@ export const assign = mutation({
         type: "job_assigned",
         title: "New Job Assigned",
         message: `${property?.name ?? "Property"} has been assigned to you.`,
+        messageKey: "notifications.messages.job_assigned_to_you",
+        messageParams: { propertyName: property?.name ?? "Property" },
         data: {
           jobId: job._id,
           propertyId: job.propertyId,

@@ -72,6 +72,8 @@ export const submitForApproval = mutation({
         type: "awaiting_approval",
         title: "Job Awaiting Approval",
         message: `${property?.name ?? "Property"} is ready for review.`,
+        messageKey: "notifications.messages.awaiting_approval_ready",
+        messageParams: { propertyName: property?.name ?? "Property" },
         data: {
           jobId: job._id,
           propertyId: job.propertyId,
@@ -147,6 +149,8 @@ export const approveCompletion = mutation({
       type: "job_completed",
       title: "Job Approved",
       message: `${property?.name ?? "Property"} was approved.`,
+      messageKey: "notifications.messages.job_approved",
+      messageParams: { propertyName: property?.name ?? "Property" },
       data: {
         jobId: job._id,
         propertyId: job.propertyId,
@@ -232,6 +236,8 @@ export const rejectCompletion = mutation({
       type: "rework_required",
       title: "Rework Required",
       message: `${property?.name ?? "Property"} needs another pass.`,
+      messageKey: "notifications.messages.rework_needed",
+      messageParams: { propertyName: property?.name ?? "Property" },
       data: {
         jobId: job._id,
         propertyId: job.propertyId,
@@ -299,6 +305,8 @@ export const reopenCompleted = mutation({
       type: "rework_required",
       title: "Job Reopened",
       message: `${property?.name ?? "Property"} was reopened for rework.`,
+      messageKey: "notifications.messages.job_reopened_for_rework",
+      messageParams: { propertyName: property?.name ?? "Property" },
       data: {
         jobId: job._id,
         propertyId: job.propertyId,

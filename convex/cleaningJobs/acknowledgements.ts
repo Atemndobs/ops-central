@@ -175,6 +175,17 @@ export const acknowledge = mutation({
         type: "job_at_risk",
         title: "Cleaner declined assignment",
         message: `${user.name ?? user.email} declined ${property?.name ?? "a job"}: ${reason}`,
+        messageKey: "notifications.messages.cleaner_declined_assignment",
+        messageParams: {
+          cleanerName: user.name ?? user.email,
+          propertyName: property?.name ?? "a job",
+          // Free-form cleaner-typed reason. Not translated — interpolated
+          // verbatim so the surrounding sentence still localizes. The
+          // `?? ""` is a TS-narrowing crutch — control flow above (line
+          // ~130) throws if `reason` is missing on decline, so this is
+          // unreachable.
+          reason: reason ?? "",
+        },
         data: {
           jobId: job._id,
           propertyId: job.propertyId,
@@ -243,6 +254,13 @@ async function escalateExpiredAcksForJob(
     type: "job_at_risk",
     title: "Assignment not acknowledged",
     message: `${cleanerNames || "Cleaner"} has not accepted ${property?.name ?? "a job"} in time.`,
+    messageKey: "notifications.messages.assignment_not_acknowledged",
+    messageParams: {
+      // `cleanerNames` is already a joined string (e.g. "Atem, Randalls").
+      // We pass it through as a single param.
+      cleanerName: cleanerNames || "Cleaner",
+      propertyName: property?.name ?? "a job",
+    },
     data: {
       jobId: job._id,
       propertyId: job.propertyId,
