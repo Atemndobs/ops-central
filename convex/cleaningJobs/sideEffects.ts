@@ -58,6 +58,9 @@ const NOTIFICATION_TYPE = v.union(
   v.literal("message_received"),
   v.literal("task_assigned"),
   v.literal("system"),
+  v.literal("owner_statement_issued"),
+  v.literal("owner_approval_request"),
+  v.literal("owner_incident_reported"),
 );
 
 /**

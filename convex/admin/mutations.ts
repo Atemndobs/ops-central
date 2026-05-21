@@ -12,6 +12,7 @@ const appRoleValidator = v.union(
   v.literal("manager"),
   v.literal("property_ops"),
   v.literal("admin"),
+  v.literal("owner"),
 );
 
 const companyMemberRoleValidator = v.union(

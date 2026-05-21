@@ -137,6 +137,7 @@ export function Sidebar() {
     property_ops: t("roles.property_ops"),
     manager: t("roles.manager"),
     cleaner: t("roles.cleaner"),
+    owner: t("roles.owner"),
   };
   const quickLinks = navigation
     .filter((item) => item.roles.includes(role))
