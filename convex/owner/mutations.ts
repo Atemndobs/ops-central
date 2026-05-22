@@ -592,6 +592,44 @@ export { assertStatementMutable };
  * the first owner-portal demo (e.g. Randalls on a Dallas property). NOT
  * exposed publicly — invoke via `npx convex run` with admin key.
  */
+/**
+ * One-shot internal mutation to backdate the effectiveFrom on existing
+ * propertyOwners + propertyFeeConfig rows for a property. Used when seed
+ * data was inserted mid-period and you want the engine to see the rows
+ * as active from the start of the period (so the live-draft works).
+ */
+export const backdateOwnerSeed = internalMutation({
+  args: {
+    propertyId: v.id("properties"),
+    effectiveFrom: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const ownerRows = await ctx.db
+      .query("propertyOwners")
+      .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId))
+      .collect();
+    const configRows = await ctx.db
+      .query("propertyFeeConfig")
+      .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId))
+      .collect();
+    let touchedOwners = 0;
+    let touchedConfigs = 0;
+    for (const row of ownerRows) {
+      if (row.effectiveTo === undefined) {
+        await ctx.db.patch(row._id, { effectiveFrom: args.effectiveFrom });
+        touchedOwners += 1;
+      }
+    }
+    for (const row of configRows) {
+      if (row.effectiveTo === undefined) {
+        await ctx.db.patch(row._id, { effectiveFrom: args.effectiveFrom });
+        touchedConfigs += 1;
+      }
+    }
+    return { touchedOwners, touchedConfigs, newEffectiveFrom: args.effectiveFrom };
+  },
+});
+
 export const seedOwnerDemo = internalMutation({
   args: {
     propertyId: v.id("properties"),
