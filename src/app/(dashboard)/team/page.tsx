@@ -32,6 +32,27 @@ type AvailabilityFilter = "all" | "active" | "working" | "available" | "off";
 type TeamViewMode = "card" | "list";
 type MobileFilterPanel = "search" | "role" | "status" | null;
 
+// Items for the role-assignment SearchableSelect (Add Member + Edit Member).
+// Order mirrors the legacy <select> for muscle memory: cleaner → owner.
+const ROLE_ASSIGN_ITEMS: { id: UserRole; label: string }[] = [
+  { id: "cleaner", label: "Cleaner" },
+  { id: "manager", label: "Manager" },
+  { id: "property_ops", label: "Property Ops" },
+  { id: "admin", label: "Admin" },
+  { id: "owner", label: "Owner" },
+];
+
+// Items for the role-filter SearchableSelect (mobile + desktop). The "all"
+// affordance is the SearchableSelect's `clearable` clear button — when the
+// selection is cleared, we map back to "all" in onChange.
+const ROLE_FILTER_ITEMS: { id: UserRole; label: string }[] = [
+  { id: "admin", label: "Admin" },
+  { id: "cleaner", label: "Cleaner" },
+  { id: "manager", label: "Manager" },
+  { id: "property_ops", label: "Property Ops" },
+  { id: "owner", label: "Owner" },
+];
+
 const TEAM_VIEW_MODE_STORAGE_KEY = "opscentral.team.defaultViewMode";
 
 type MemberActionTarget = {
@@ -764,21 +785,18 @@ export default function TeamPage() {
                 </div>
               ) : null}
               {mobileFilterPanel === "role" ? (
-                <select
-                  value={roleFilter}
-                  onChange={(event) => {
-                    setRoleFilter(event.target.value as typeof roleFilter);
+                <SearchableSelect
+                  value={roleFilter === "all" ? null : roleFilter}
+                  onChange={(id) => {
+                    setRoleFilter((id ?? "all") as typeof roleFilter);
                     setMobileFilterPanel(null);
                   }}
-                  className="w-full min-w-0 rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm outline-none"
-                >
-                  <option value="all">All Roles</option>
-                  <option value="admin">Admin</option>
-                  <option value="cleaner">Cleaner</option>
-                  <option value="manager">Manager</option>
-                  <option value="property_ops">Property Ops</option>
-                  <option value="owner">Owner</option>
-                </select>
+                  items={ROLE_FILTER_ITEMS}
+                  placeholder="All Roles"
+                  searchPlaceholder="Search roles…"
+                  aria-label="Filter team by role"
+                  clearable
+                />
               ) : null}
               {mobileFilterPanel === "status" ? (
                 <select
@@ -807,18 +825,19 @@ export default function TeamPage() {
                   className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)] md:w-44"
                 />
               </div>
-              <select
-                value={roleFilter}
-                onChange={(event) => setRoleFilter(event.target.value as typeof roleFilter)}
-                className="w-full min-w-0 rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm outline-none md:w-auto"
-              >
-                <option value="all">All Roles</option>
-                <option value="admin">Admin</option>
-                <option value="cleaner">Cleaner</option>
-                <option value="manager">Manager</option>
-                <option value="property_ops">Property Ops</option>
-                <option value="owner">Owner</option>
-              </select>
+              <div className="w-full min-w-0 md:w-44">
+                <SearchableSelect
+                  value={roleFilter === "all" ? null : roleFilter}
+                  onChange={(id) =>
+                    setRoleFilter((id ?? "all") as typeof roleFilter)
+                  }
+                  items={ROLE_FILTER_ITEMS}
+                  placeholder="All Roles"
+                  searchPlaceholder="Search roles…"
+                  aria-label="Filter team by role"
+                  clearable
+                />
+              </div>
               <select
                 value={availabilityFilter}
                 onChange={(event) =>
@@ -1467,22 +1486,20 @@ export default function TeamPage() {
 
               <label className="block text-sm">
                 <span className="mb-1 block text-[var(--muted-foreground)]">Role</span>
-                <select
+                <SearchableSelect
                   value={newMember.role}
-                  onChange={(event) =>
+                  onChange={(id) => {
+                    if (!id) return;
                     setNewMember((prev) => ({
                       ...prev,
-                      role: event.target.value as UserRole,
-                    }))
-                  }
-                  className="w-full rounded-md border bg-transparent px-3 py-2"
-                >
-                  <option value="cleaner">Cleaner</option>
-                  <option value="manager">Manager</option>
-                  <option value="property_ops">Property Ops</option>
-                  <option value="admin">Admin</option>
-                  <option value="owner">Owner</option>
-                </select>
+                      role: id as UserRole,
+                    }));
+                  }}
+                  items={ROLE_ASSIGN_ITEMS}
+                  placeholder="Select role"
+                  searchPlaceholder="Search roles…"
+                  aria-label="Member role"
+                />
               </label>
 
               <label className="block text-sm">
@@ -1697,17 +1714,16 @@ export default function TeamPage() {
             <form className="space-y-3" onSubmit={handleRoleUpdate}>
               <label className="block text-sm">
                 <span className="mb-1 block text-[var(--muted-foreground)]">Role</span>
-                <select
+                <SearchableSelect
                   value={roleDraft}
-                  onChange={(event) => setRoleDraft(event.target.value as UserRole)}
-                  className="w-full rounded-md border bg-transparent px-3 py-2"
-                >
-                  <option value="cleaner">Cleaner</option>
-                  <option value="manager">Manager</option>
-                  <option value="property_ops">Property Ops</option>
-                  <option value="admin">Admin</option>
-                  <option value="owner">Owner</option>
-                </select>
+                  onChange={(id) => {
+                    if (id) setRoleDraft(id as UserRole);
+                  }}
+                  items={ROLE_ASSIGN_ITEMS}
+                  placeholder="Select role"
+                  searchPlaceholder="Search roles…"
+                  aria-label="Role"
+                />
               </label>
 
               <button
