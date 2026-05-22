@@ -122,4 +122,16 @@ crons.cron(
   },
 );
 
+// Hourly sweep of pending owner maintenance approvals. For each request whose
+// property has `propertyFeeConfig.autoApproveAfterDays` set AND whose age
+// exceeds that threshold, books the cost item + flips status to "auto_approved".
+// Default-OFF per spec §5 — only fires when ops explicitly enables auto-approval
+// on a property. Spec §13a-2.
+crons.interval(
+  "owner-maintenance-auto-approve-hourly",
+  { hours: 1 },
+  internal.owner.mutations.sweepAutoApprovals,
+  {},
+);
+
 export default crons;
