@@ -5,6 +5,7 @@
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
+import { internal } from "../_generated/api";
 import {
   internalMutation,
   mutation,
@@ -253,12 +254,88 @@ export const issueOwnerStatement = mutation({
       sourceRefs: output.sourceRefs,
       issuedAt: now,
       issuedBy: caller._id,
-      // pdfStorageId + pdfTemplateVersion populated by renderOwnerStatementPdf
-      // action (Wave 3 follow-up). Frontend shows "generating PDF…" until set.
+      // pdfStorageId + pdfTemplateVersion populated by the action below.
+      // Frontend shows "generating PDF…" until pdfStorageId lands.
       createdAt: now,
     });
 
+    // Fire-and-forget PDF render. Action runs in Node runtime (pdfkit isn't
+    // isomorphic); on completion it patches pdfStorageId via
+    // internal.owner.pdf.attachPdfToStatement.
+    await ctx.scheduler.runAfter(0, internal.owner.pdf.renderOwnerStatementPdf, {
+      statementId: id,
+    });
+
     return { statementId: id };
+  },
+});
+
+// ─── Auto-approve sweep (called by cron) ────────────────────────────────────
+
+/**
+ * Internal mutation called hourly by `convex/crons.ts`. Finds pending
+ * maintenance-approval requests whose property's fee-config sets
+ * `autoApproveAfterDays` AND whose age exceeds that threshold. Auto-approves
+ * each by booking a cost item + flipping status to "auto_approved".
+ */
+export const sweepAutoApprovals = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const pending = await ctx.db
+      .query("maintenanceApprovalRequests")
+      .withIndex("by_status", (q) => q.eq("status", "pending"))
+      .collect();
+    if (pending.length === 0) return { approved: 0, scanned: 0 };
+
+    const byProperty = new Map<Id<"properties">, typeof pending>();
+    for (const r of pending) {
+      const list = byProperty.get(r.propertyId) ?? [];
+      list.push(r);
+      byProperty.set(r.propertyId, list);
+    }
+
+    const allCats = await ctx.db.query("costCategories").collect();
+    const maintCat = allCats.find((c) => c.bucket === "maintenance");
+    if (!maintCat) {
+      return { approved: 0, scanned: pending.length, reason: "no_maintenance_category" };
+    }
+
+    let approved = 0;
+    for (const [propertyId, requests] of byProperty.entries()) {
+      const configs = await ctx.db
+        .query("propertyFeeConfig")
+        .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
+        .collect();
+      const active = configs.find((c) => c.effectiveTo === undefined);
+      if (!active || active.autoApproveAfterDays === undefined) continue;
+      const thresholdMs = active.autoApproveAfterDays * 24 * 60 * 60 * 1000;
+
+      for (const req of requests) {
+        if (now - req.createdAt < thresholdMs) continue;
+        const ownership = await ctx.db.get(req.ownerId);
+        const costItemId = await ctx.db.insert("propertyCostItems", {
+          propertyId: req.propertyId,
+          categoryId: maintCat._id,
+          name: req.description.slice(0, 100),
+          amount: req.proposedCost,
+          frequency: "one_time",
+          startDate: now,
+          isActive: true,
+          createdAt: now,
+        });
+        await ctx.db.patch(req._id, {
+          status: "auto_approved",
+          decidedAt: now,
+          decidedBy: ownership?.userId,
+          decidedNote: `Auto-approved after ${active.autoApproveAfterDays} days`,
+          resultingCostItemId: costItemId,
+          updatedAt: now,
+        });
+        approved += 1;
+      }
+    }
+    return { approved, scanned: pending.length };
   },
 });
 

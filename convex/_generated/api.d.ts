@@ -81,6 +81,8 @@ import type * as owner_backfill from "../owner/backfill.js";
 import type * as owner_constants from "../owner/constants.js";
 import type * as owner_feeEngine from "../owner/feeEngine.js";
 import type * as owner_mutations from "../owner/mutations.js";
+import type * as owner_pdf from "../owner/pdf.js";
+import type * as owner_pdfHelpers from "../owner/pdfHelpers.js";
 import type * as owner_queries from "../owner/queries.js";
 import type * as properties_mutations from "../properties/mutations.js";
 import type * as properties_queries from "../properties/queries.js";
@@ -200,6 +202,8 @@ declare const fullApi: ApiFromModules<{
   "owner/constants": typeof owner_constants;
   "owner/feeEngine": typeof owner_feeEngine;
   "owner/mutations": typeof owner_mutations;
+  "owner/pdf": typeof owner_pdf;
+  "owner/pdfHelpers": typeof owner_pdfHelpers;
   "owner/queries": typeof owner_queries;
   "properties/mutations": typeof properties_mutations;
   "properties/queries": typeof properties_queries;
