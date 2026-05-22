@@ -102,7 +102,7 @@ export function OwnerPropertyClient({ propertyId }: { propertyId: Id<"properties
             feeBase={draft.draft.totals.feeBase}
           />
           <p className="mt-4 text-xs text-[#999]">
-            This number updates live as costs land. It will be finalized and locked when J&amp;A Ops issues the statement.
+            This number updates live as costs land. It will be finalized and locked when ChezSoiStays Ops issues the statement.
           </p>
         </section>
       )}
@@ -116,7 +116,7 @@ export function OwnerPropertyClient({ propertyId }: { propertyId: Id<"properties
           <Skeleton />
         ) : statements.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-[#e8e6e0] bg-white p-8 text-center text-sm text-[#999]">
-            No issued statements yet. Once J&amp;A Ops finalizes your first month, it will appear here.
+            No issued statements yet. Once ChezSoiStays Ops finalizes your first month, it will appear here.
           </div>
         ) : (
           <div className="space-y-2">

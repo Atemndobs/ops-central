@@ -24,7 +24,7 @@ export function OwnerDashboardClient() {
         <p className="text-lg font-medium">No properties yet</p>
         <p className="mt-2 text-sm text-[#666]">
           You&apos;ll see your properties here once they&apos;re added to the portal.
-          Contact J&amp;A Operations to get started.
+          Contact ChezSoiStays Operations to get started.
         </p>
       </div>
     );

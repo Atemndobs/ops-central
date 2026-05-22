@@ -124,7 +124,7 @@ export function OwnerApprovalDetailClient({
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="Add context for J&A Ops about your decision…"
+            placeholder="Add context for ChezSoiStays Ops about your decision…"
             className="mb-4 w-full rounded-lg border border-[#e8e6e0] bg-[#fafaf7] p-3 text-sm focus:border-[#1a237e] focus:outline-none"
             rows={3}
             disabled={submitting !== null}
