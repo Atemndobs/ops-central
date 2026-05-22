@@ -367,13 +367,6 @@ export function computeStatementForPeriod(
 
   // ── 4. operatingCosts (everything except platformFees + managementFee + capEx) ──
   // Monthly-settings overrides REPLACE bucket totals per spec §5.1.
-  const overrideMonths = new Set(
-    monthlySettings
-      .filter((s) =>
-        Array.from(periodMonths).some((m) => m === s.month),
-      )
-      .map((s) => s.month),
-  );
   // Map of bucket → which months have an override that EXCLUDES the underlying items.
   const cleaningOverriddenMonths = new Set<string>();
   const utilitiesOverriddenMonths = new Set<string>();
