@@ -23,6 +23,11 @@ import {
   monthRange,
   type FeeEngineInputs,
 } from "./feeEngine";
+import {
+  notifyApprovalDecided,
+  notifyApprovalRequest,
+  notifyStatementIssued,
+} from "./notify";
 
 // ─── Internal helper: load engine inputs (same as queries.loadEngineInputs) ─
 
@@ -266,6 +271,17 @@ export const issueOwnerStatement = mutation({
       statementId: id,
     });
 
+    // Notify all active owners (Wave 3c)
+    const property = await ctx.db.get(args.propertyId);
+    await notifyStatementIssued(ctx, {
+      statementId: id,
+      propertyId: args.propertyId,
+      month: args.month,
+      propertyName: property?.name ?? "your property",
+      ownerPayout: output.totals.ownerPayout,
+      currency: property?.currency ?? "USD",
+    });
+
     return { statementId: id };
   },
 });
@@ -379,6 +395,18 @@ export const createMaintenanceApprovalRequest = mutation({
       status: "pending",
       createdAt: now,
     });
+
+    // Notify primary approver (Wave 3c)
+    const property = await ctx.db.get(args.propertyId);
+    await notifyApprovalRequest(ctx, {
+      requestId: id,
+      propertyId: args.propertyId,
+      propertyName: property?.name ?? "your property",
+      proposedCost: args.proposedCost,
+      currency: property?.currency ?? "USD",
+      description: args.description,
+    });
+
     return { requestId: id };
   },
 });
@@ -449,6 +477,19 @@ export const decideMaintenanceApprovalRequest = mutation({
         updatedAt: now,
       });
     }
+
+    // Notify co-owners (Wave 3c, spec §11) — audit-trail only, no push for them
+    const property = await ctx.db.get(req.propertyId);
+    await notifyApprovalDecided(ctx, {
+      requestId: args.requestId,
+      propertyId: req.propertyId,
+      propertyName: property?.name ?? "your property",
+      deciderUserId: user._id,
+      decision: args.decision,
+      proposedCost: req.proposedCost,
+      currency: property?.currency ?? "USD",
+    });
+
     return { decided: args.decision };
   },
 });
