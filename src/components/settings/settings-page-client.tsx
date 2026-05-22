@@ -90,7 +90,7 @@ const placeholderSections: Record<
   ],
 };
 
-const roleOrder: UserRole[] = ["admin", "property_ops", "manager", "cleaner"];
+const roleOrder: UserRole[] = ["admin", "property_ops", "manager", "cleaner", "owner"];
 
 function formatRoleLabel(role: UserRole): string {
   switch (role) {
@@ -100,6 +100,8 @@ function formatRoleLabel(role: UserRole): string {
       return "Manager";
     case "cleaner":
       return "Cleaner";
+    case "owner":
+      return "Owner";
     case "admin":
     default:
       return "Admin";

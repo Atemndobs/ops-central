@@ -777,6 +777,7 @@ export default function TeamPage() {
                   <option value="cleaner">Cleaner</option>
                   <option value="manager">Manager</option>
                   <option value="property_ops">Property Ops</option>
+                  <option value="owner">Owner</option>
                 </select>
               ) : null}
               {mobileFilterPanel === "status" ? (
@@ -816,6 +817,7 @@ export default function TeamPage() {
                 <option value="cleaner">Cleaner</option>
                 <option value="manager">Manager</option>
                 <option value="property_ops">Property Ops</option>
+                <option value="owner">Owner</option>
               </select>
               <select
                 value={availabilityFilter}
@@ -1479,6 +1481,7 @@ export default function TeamPage() {
                   <option value="manager">Manager</option>
                   <option value="property_ops">Property Ops</option>
                   <option value="admin">Admin</option>
+                  <option value="owner">Owner</option>
                 </select>
               </label>
 
@@ -1703,6 +1706,7 @@ export default function TeamPage() {
                   <option value="manager">Manager</option>
                   <option value="property_ops">Property Ops</option>
                   <option value="admin">Admin</option>
+                  <option value="owner">Owner</option>
                 </select>
               </label>
 
@@ -2035,6 +2039,8 @@ function formatRoleLabel(role: UserRole): string {
       return "Admin";
     case "manager":
       return "Manager";
+    case "owner":
+      return "Owner";
     case "cleaner":
     default:
       return "Cleaner";
