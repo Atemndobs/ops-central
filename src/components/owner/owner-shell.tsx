@@ -5,6 +5,8 @@ import { UserButton } from "@clerk/nextjs";
 import { Building2 } from "lucide-react";
 import type { ReactNode } from "react";
 
+// Link is used by the home wordmark below; settings/help links land in a Wave 4b PR.
+
 /**
  * Owner-portal shell. Light, calm, money-focused. Single top nav with the
  * J&A wordmark + user menu. The product is the content, not the chrome.
@@ -19,12 +21,6 @@ export function OwnerShell({ children }: { children: ReactNode }) {
             <span className="text-lg">J&amp;A Owner</span>
           </Link>
           <div className="flex items-center gap-4 text-sm">
-            <Link
-              href="/owner/settings"
-              className="text-[#666] hover:text-[#1a1a1a]"
-            >
-              Settings
-            </Link>
             <UserButton />
           </div>
         </div>
