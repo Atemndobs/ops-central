@@ -1673,11 +1673,10 @@ const costCategories = defineTable({
   icon: v.optional(v.string()),
   isFixed: v.boolean(),
   sortOrder: v.number(),
-  // Owner-portal: bucket classification for statement rendering. Optional
-  // during Wave 1 — Wave 2 backfill assigns a value to every row, then a
-  // follow-up PR narrows to required. Until then, queries that need a bucket
-  // value treat undefined as "fallback to name-based mapping."
-  bucket: v.optional(v.union(
+  // Owner-portal: bucket classification for statement rendering. Required
+  // post-Wave-2 backfill (2026-05-22) — every prod row now has a value, and
+  // future writers MUST validate via `isBucket()` from `convex/owner/constants.ts`.
+  bucket: v.union(
     v.literal("lease"),
     v.literal("cleaning"),
     v.literal("supplies"),
@@ -1691,7 +1690,7 @@ const costCategories = defineTable({
     v.literal("taxes"),
     v.literal("managementFee"),
     v.literal("other"),
-  )),
+  ),
   createdAt: v.number(),
 })
   .index("by_name", ["name"])
