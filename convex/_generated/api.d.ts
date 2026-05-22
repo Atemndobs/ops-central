@@ -77,6 +77,7 @@ import type * as notifications_queries from "../notifications/queries.js";
 import type * as opsTasks_mutations from "../opsTasks/mutations.js";
 import type * as opsTasks_queries from "../opsTasks/queries.js";
 import type * as owner_auth from "../owner/auth.js";
+import type * as owner_backfill from "../owner/backfill.js";
 import type * as owner_constants from "../owner/constants.js";
 import type * as owner_feeEngine from "../owner/feeEngine.js";
 import type * as owner_mutations from "../owner/mutations.js";
@@ -195,6 +196,7 @@ declare const fullApi: ApiFromModules<{
   "opsTasks/mutations": typeof opsTasks_mutations;
   "opsTasks/queries": typeof opsTasks_queries;
   "owner/auth": typeof owner_auth;
+  "owner/backfill": typeof owner_backfill;
   "owner/constants": typeof owner_constants;
   "owner/feeEngine": typeof owner_feeEngine;
   "owner/mutations": typeof owner_mutations;
