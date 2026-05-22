@@ -12,11 +12,7 @@ import {
   type MutationCtx,
 } from "../_generated/server";
 import { requireRole } from "../lib/auth";
-import {
-  assertOwnerOfProperty,
-  assertPrimaryApprover,
-  requireOwnerUser,
-} from "./auth";
+import { assertOwnerOfProperty, requireOwnerUser } from "./auth";
 import { BUCKETS, isBucket } from "./constants";
 import {
   computeStatementForPeriod,
