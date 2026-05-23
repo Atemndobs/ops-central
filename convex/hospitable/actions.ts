@@ -35,6 +35,17 @@ interface NormalizedReservation {
   confirmationCode?: string;
   specialRequests?: string;
   status?: string;
+  /** Total guest-paid amount for the stay, in `currency`. Source of truth
+   *  for the owner-portal grossRevenue calculation. May be undefined for
+   *  reservations created before the financial-extraction wiring landed —
+   *  re-sync to backfill. */
+  totalAmount?: number;
+  currency?: string;
+  /** Set when the reservation status indicates cancellation; the upsert
+   *  mutation writes this to `stays.cancelledAt` so the fee engine
+   *  excludes it from grossRevenue. */
+  cancelledAt?: number;
+  cancellationSource?: string;
   metadata?: GenericRecord;
 }
 
@@ -323,6 +334,40 @@ export function normalizeReservation(
 
   const lateCheckout = new Date(checkOutAt).getHours() > 11;
 
+  // ─── Financial extraction (defensive — Hospitable's payload shape
+  // varies by API version + channel). Tries several conventional paths
+  // for guest-paid totals + currency; the first non-undefined wins. ───
+  const financials = isRecord(rawReservation.financials)
+    ? (rawReservation.financials as GenericRecord)
+    : undefined;
+  const totalAmount =
+    asNumber(rawReservation.total_amount) ??
+    asNumber(rawReservation.total_price) ??
+    asNumber((financials ?? {}).total_amount) ??
+    asNumber((financials ?? {}).guest_total) ??
+    asNumber((financials ?? {}).payout_to_host) ??
+    asNumber((financials ?? {}).host_payout) ??
+    asNumber(rawReservation.payout) ??
+    undefined;
+  const currency =
+    asString(rawReservation.currency) ??
+    asString((financials ?? {}).currency) ??
+    undefined;
+
+  // Cancellation: Hospitable reports status="cancelled" for cancelled stays.
+  // Capture cancelledAt as the cancellation-date when present, else "now"
+  // (best-effort timestamp; the field's primary purpose is "is this stay
+  // currently cancelled" — exact time matters less).
+  const status = asString(rawReservation.status);
+  const isCancelled =
+    status?.toLowerCase().includes("cancel") ?? false;
+  const cancelledAt = isCancelled
+    ? dateToEpochMs(rawReservation.cancelled_at) ??
+      dateToEpochMs(rawReservation.cancellation_date) ??
+      Date.now()
+    : undefined;
+  const cancellationSource = isCancelled ? "hospitable" : undefined;
+
   return {
     reservation: {
       reservationId,
@@ -338,7 +383,11 @@ export function normalizeReservation(
       platform: asString(rawReservation.platform),
       confirmationCode: asString(rawReservation.code),
       specialRequests,
-      status: asString(rawReservation.status),
+      status,
+      totalAmount,
+      currency,
+      cancelledAt,
+      cancellationSource,
       metadata: {
         nights: asNumber(rawReservation.nights),
         source: "hospitable",

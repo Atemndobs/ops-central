@@ -98,19 +98,23 @@ function currentMonthKey(): string {
  * /owner landing page in one round-trip.
  */
 export const getOwnerDashboard = query({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    /** "YYYY-MM" — defaults to current month. Pass past months to see
+     *  already-issued periods, or future months to scope to upcoming. */
+    month: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
     const user = await requireOwnerUser(ctx);
     const ownedPropertyIds = await listOwnedPropertyIds(ctx, user._id);
 
     if (ownedPropertyIds.length === 0) {
-      return { mode: "no_properties" as const, user: pickUser(user), properties: [] };
+      return { mode: "no_properties" as const, user: pickUser(user), properties: [], month: args.month ?? currentMonthKey() };
     }
 
     const properties = await Promise.all(
       ownedPropertyIds.map((id) => ctx.db.get(id)),
     );
-    const month = currentMonthKey();
+    const month = args.month ?? currentMonthKey();
     const { start, end } = monthRange(month);
 
     // Compute a live draft for every owned property so the dashboard can show
@@ -142,10 +146,28 @@ export const getOwnerDashboard = query({
       }),
     );
 
+    // Also surface whether a statement has been ISSUED for this property+month
+    // (so the dashboard can label the card "paid out" vs "live draft").
+    const perPropertyWithStatus = await Promise.all(
+      perProperty.map(async (p) => {
+        const issued = await ctx.db
+          .query("ownerStatements")
+          .withIndex("by_property_and_period", (q) =>
+            q.eq("propertyId", p.propertyId).eq("periodStart", start),
+          )
+          .first();
+        return {
+          ...p,
+          issuedStatementId: issued?.status === "issued" ? issued._id : null,
+        };
+      }),
+    );
+
     return {
-      mode: perProperty.length === 1 ? ("single" as const) : ("portfolio" as const),
+      mode: perPropertyWithStatus.length === 1 ? ("single" as const) : ("portfolio" as const),
       user: pickUser(user),
-      properties: perProperty,
+      properties: perPropertyWithStatus,
+      month,
     };
   },
 });

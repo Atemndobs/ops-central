@@ -706,6 +706,72 @@ export const seedOwnerDemo = internalMutation({
 });
 
 /**
+ * Diagnostic + repair: lists active owner rows per property and lets us
+ * close the duplicates we end up with when seedOwnerAcrossProperties is
+ * run on top of an earlier seed (the seedOwnerDemo run for Dallas-The
+ * Paris left an active row, and the bulk-seed inserted a SECOND active
+ * row, giving stakePct sum = 2.0 which the fee engine rejects).
+ *
+ * `dryRun=true` reports duplicates without writing. `dryRun=false` keeps
+ * the row inserted most recently (highest _creationTime) and closes the
+ * others with effectiveTo=now.
+ */
+export const repairDuplicateActiveOwners = internalMutation({
+  args: { dryRun: v.boolean() },
+  handler: async (ctx, args) => {
+    // Pick a probe date — any periodStart in 2025 or 2026 hits the seed window.
+    const probe = Date.UTC(2026, 4, 1); // May 1, 2026
+    const allOwners = await ctx.db.query("propertyOwners").collect();
+    const byProperty = new Map<Id<"properties">, typeof allOwners>();
+    for (const o of allOwners) {
+      // "active at probe" — same semantics as fee engine's pickOwnersForPeriod.
+      const activeAtProbe =
+        o.effectiveFrom <= probe &&
+        (o.effectiveTo === undefined || o.effectiveTo > probe);
+      if (!activeAtProbe) continue;
+      const list = byProperty.get(o.propertyId) ?? [];
+      list.push(o);
+      byProperty.set(o.propertyId, list);
+    }
+
+    const report: Array<{
+      propertyId: string;
+      keptId: string;
+      keptEffectiveFrom: number;
+      closedIds: string[];
+    }> = [];
+
+    for (const [propertyId, rows] of byProperty.entries()) {
+      const sum = rows.reduce((s, r) => s + r.stakePct, 0);
+      if (Math.abs(sum - 1.0) < 0.0001 && rows.length === 1) continue;
+      // Keep most recently created row; "close" the others such that they're
+      // no longer active at the probe period. Setting effectiveTo equal to
+      // their own effectiveFrom yields a zero-width interval that never
+      // covers any period — the cleanest "shadow-close" we can do without
+      // erasing audit history.
+      rows.sort((a, b) => b._creationTime - a._creationTime);
+      const keep = rows[0];
+      const close = rows.slice(1);
+      if (!args.dryRun) {
+        for (const r of close) {
+          await ctx.db.patch(r._id, {
+            effectiveTo: r.effectiveFrom, // zero-width interval
+            updatedAt: Date.now(),
+          });
+        }
+      }
+      report.push({
+        propertyId,
+        keptId: keep._id,
+        keptEffectiveFrom: keep.effectiveFrom,
+        closedIds: close.map((r) => r._id),
+      });
+    }
+    return { dryRun: args.dryRun, repaired: report };
+  },
+});
+
+/**
  * Bulk-seed a single owner across all (or a subset of) properties — used to
  * onboard a J&A partner who legally owns every J&A-managed property. Closes
  * any prior active ownership/fee-config rows per property and inserts new

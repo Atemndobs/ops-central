@@ -19,6 +19,12 @@ const normalizedReservationValidator = v.object({
   confirmationCode: v.optional(v.string()),
   specialRequests: v.optional(v.string()),
   status: v.optional(v.string()),
+  // Owner-portal financial fields. Optional because not every reservation
+  // payload includes them; the fee engine treats undefined as 0.
+  totalAmount: v.optional(v.number()),
+  currency: v.optional(v.string()),
+  cancelledAt: v.optional(v.number()),
+  cancellationSource: v.optional(v.string()),
   metadata: v.optional(v.any()),
 });
 
@@ -94,6 +100,15 @@ export async function upsertSingleReservation(
       partyRiskFlag: reservation.partyRiskFlag,
       platform: reservation.platform,
       confirmationCode: reservation.confirmationCode,
+      // Owner-portal financial fields. Wave 4b: extracted from Hospitable
+      // payload by normalizeReservation. Don't overwrite a previously-set
+      // value with undefined (avoids data loss on a partial re-sync).
+      ...(reservation.totalAmount !== undefined && { totalAmount: reservation.totalAmount }),
+      ...(reservation.currency !== undefined && { currency: reservation.currency }),
+      ...(reservation.cancelledAt !== undefined && {
+        cancelledAt: reservation.cancelledAt,
+        cancellationSource: reservation.cancellationSource,
+      }),
       metadata: stayMetadata,
       updatedAt: syncedAt,
     });
@@ -113,6 +128,10 @@ export async function upsertSingleReservation(
       partyRiskFlag: reservation.partyRiskFlag,
       platform: reservation.platform,
       confirmationCode: reservation.confirmationCode,
+      totalAmount: reservation.totalAmount,
+      currency: reservation.currency,
+      cancelledAt: reservation.cancelledAt,
+      cancellationSource: reservation.cancellationSource,
       metadata: stayMetadata,
       createdAt: syncedAt,
       updatedAt: syncedAt,
