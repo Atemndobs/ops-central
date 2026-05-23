@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useConvexAuth, useQuery } from "convex/react";
-import { ArrowLeft, Bell, CalendarDays, FileText, MapPin } from "lucide-react";
+import { ArrowLeft, Bell, CalendarDays, FileText, MapPin, Receipt } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { fmtDate, fmtMoney, fmtMonth } from "./owner-format";
+import { bucketLabel, fmtDate, fmtMoney, fmtMonth } from "./owner-format";
 
 export function OwnerPropertyClient({ propertyId }: { propertyId: Id<"properties"> }) {
   const { isAuthenticated, isLoading } = useConvexAuth();
@@ -85,7 +85,7 @@ export function OwnerPropertyClient({ propertyId }: { propertyId: Id<"properties
         >
           <div
             className="mb-2 flex items-center gap-2 font-medium"
-            style={{ color: "#7a4100" }}
+            style={{ color: "var(--color-amber-900,#7a4100)" }}
           >
             <Bell size={16} />
             {pendingApprovals.length} maintenance request
@@ -94,7 +94,7 @@ export function OwnerPropertyClient({ propertyId }: { propertyId: Id<"properties
           <ul className="space-y-2">
             {pendingApprovals.map((req) => (
               <li key={req._id} className="flex items-center justify-between text-sm">
-                <span className="truncate" style={{ color: "#5a3000" }}>
+                <span className="truncate" style={{ color: "var(--color-amber-950,#5a3000)" }}>
                   {req.description.slice(0, 60)}
                   {req.description.length > 60 && "…"}
                 </span>
@@ -104,7 +104,7 @@ export function OwnerPropertyClient({ propertyId }: { propertyId: Id<"properties
                     style={{
                       fontFamily: "var(--font-cleaner-mono)",
                       fontWeight: 700,
-                      color: "#5a3000",
+                      color: "var(--color-amber-950,#5a3000)",
                     }}
                   >
                     {fmtMoney(req.proposedCost, currency)}
@@ -112,7 +112,7 @@ export function OwnerPropertyClient({ propertyId }: { propertyId: Id<"properties
                   <Link
                     href={`/owner/properties/${propertyId}/approvals/${req._id}`}
                     className="rounded-lg px-3 py-1 text-xs font-medium text-white"
-                    style={{ background: "#7a4100" }}
+                    style={{ background: "var(--color-amber-900,#7a4100)" }}
                   >
                     Review
                   </Link>
@@ -222,7 +222,192 @@ export function OwnerPropertyClient({ propertyId }: { propertyId: Id<"properties
           </div>
         )}
       </section>
+
+      <CostsSection propertyId={propertyId} currency={currency} />
+      <BookingsSection propertyId={propertyId} currency={currency} />
     </div>
+  );
+}
+
+function CostsSection({
+  propertyId,
+  currency,
+}: {
+  propertyId: Id<"properties">;
+  currency: string;
+}) {
+  const items = useQuery(api.owner.queries.listOwnerCostItems, { propertyId });
+  if (items === undefined) return <Skeleton />;
+
+  // Group by bucket for readable rendering
+  const byBucket = new Map<string, typeof items>();
+  for (const it of items) {
+    const list = byBucket.get(it.bucket) ?? [];
+    list.push(it);
+    byBucket.set(it.bucket, list);
+  }
+  const sortedBuckets = Array.from(byBucket.keys()).sort();
+
+  return (
+    <section>
+      <h2
+        className="mb-3 flex items-center gap-2 text-lg"
+        style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700 }}
+      >
+        <Receipt size={18} /> Cost ledger
+      </h2>
+      {items.length === 0 ? (
+        <Card padding="p-8">
+          <p className="text-center text-sm" style={{ color: "var(--cleaner-muted)" }}>
+            No active cost items.
+          </p>
+        </Card>
+      ) : (
+        <Card padding="p-0">
+          <div className="divide-y divide-black/[0.04]">
+            {sortedBuckets.map((bucket) => (
+              <div key={bucket} className="p-4">
+                <div
+                  className="mb-2 text-[10px] uppercase tracking-wider"
+                  style={{ color: "var(--cleaner-muted)" }}
+                >
+                  {bucketLabel(bucket)}
+                </div>
+                <ul className="space-y-1.5">
+                  {byBucket.get(bucket)!.map((it) => (
+                    <li
+                      key={it._id}
+                      className="flex items-baseline justify-between text-sm"
+                    >
+                      <span className="flex items-center gap-2">
+                        <span>{it.name}</span>
+                        <span
+                          className="rounded px-1.5 py-0.5 text-[10px]"
+                          style={{
+                            background: "var(--cleaner-bg)",
+                            color: "var(--cleaner-muted)",
+                            fontFamily: "var(--font-cleaner-mono)",
+                          }}
+                        >
+                          {it.frequency === "revenue_percentage"
+                            ? `${((it.percentageRate ?? 0) * 100).toFixed(1)}% of revenue`
+                            : it.frequency.replace("_", " ")}
+                        </span>
+                        {it.receiptCount > 0 && (
+                          <span
+                            className="text-[10px]"
+                            style={{ color: "var(--cleaner-muted)" }}
+                          >
+                            · {it.receiptCount} receipt
+                            {it.receiptCount === 1 ? "" : "s"}
+                          </span>
+                        )}
+                      </span>
+                      <span
+                        className="tabular-nums"
+                        style={{ fontFamily: "var(--font-cleaner-mono)" }}
+                      >
+                        {it.frequency === "revenue_percentage"
+                          ? "— variable —"
+                          : fmtMoney(it.amount, currency)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </section>
+  );
+}
+
+function BookingsSection({
+  propertyId,
+  currency,
+}: {
+  propertyId: Id<"properties">;
+  currency: string;
+}) {
+  const stays = useQuery(api.owner.queries.listOwnerStays, {
+    propertyId,
+    lookbackDays: 90,
+  });
+  if (stays === undefined) return <Skeleton />;
+
+  return (
+    <section>
+      <h2
+        className="mb-3 flex items-center gap-2 text-lg"
+        style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700 }}
+      >
+        <CalendarDays size={18} /> Bookings (last 90 days)
+      </h2>
+      {stays.length === 0 ? (
+        <Card padding="p-8">
+          <p className="text-center text-sm" style={{ color: "var(--cleaner-muted)" }}>
+            No stays in the last 90 days.
+          </p>
+        </Card>
+      ) : (
+        <Card padding="p-0">
+          <div className="divide-y divide-black/[0.04]">
+            {stays.map((s) => (
+              <div
+                key={s._id}
+                className={`flex items-center justify-between p-4 text-sm ${
+                  s.cancelledAt ? "opacity-60" : ""
+                }`}
+              >
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{s.guestName}</span>
+                    {s.platform && (
+                      <span
+                        className="rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider"
+                        style={{
+                          background: "var(--cleaner-bg)",
+                          color: "var(--cleaner-muted)",
+                          fontFamily: "var(--font-cleaner-mono)",
+                        }}
+                      >
+                        {s.platform}
+                      </span>
+                    )}
+                    {s.cancelledAt && (
+                      <span
+                        className="rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider"
+                        style={{
+                          background: "var(--color-red-100,#fee2e2)",
+                          color: "var(--color-red-900,#7f1d1d)",
+                          fontFamily: "var(--font-cleaner-mono)",
+                        }}
+                      >
+                        cancelled
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    className="mt-0.5 text-xs"
+                    style={{ color: "var(--cleaner-muted)" }}
+                  >
+                    {fmtDate(s.checkInAt)} – {fmtDate(s.checkOutAt)}
+                    {s.numberOfGuests ? ` · ${s.numberOfGuests} guests` : ""}
+                  </div>
+                </div>
+                <div
+                  className="text-right tabular-nums"
+                  style={{ fontFamily: "var(--font-cleaner-mono)" }}
+                >
+                  {s.totalAmount != null && fmtMoney(s.totalAmount, currency)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </section>
   );
 }
 

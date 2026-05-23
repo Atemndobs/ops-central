@@ -55,7 +55,16 @@ export function OwnerShell({ children }: { children: ReactNode }) {
               </span>
             </span>
           </Link>
-          <UserButton />
+          <div className="flex items-center gap-4 text-sm">
+            <Link
+              href="/owner/settings"
+              className="hover:underline"
+              style={{ color: "var(--cleaner-muted)" }}
+            >
+              Settings
+            </Link>
+            <UserButton />
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>

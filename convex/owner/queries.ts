@@ -301,6 +301,77 @@ export const getOwnerNotificationPrefs = query({
   },
 });
 
+/**
+ * All active cost-items for a property, denormalized with their category
+ * name + bucket. Powers the Costs section on the property page — owners
+ * can audit what J&A is booking against their P&L line-by-line.
+ */
+export const listOwnerCostItems = query({
+  args: { propertyId: v.id("properties") },
+  handler: async (ctx, args) => {
+    await assertOwnerOfProperty(ctx, args.propertyId);
+    const items = await ctx.db
+      .query("propertyCostItems")
+      .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId))
+      .collect();
+    const cats = await ctx.db.query("costCategories").collect();
+    const catById = new Map(cats.map((c) => [c._id, c]));
+    return items
+      .filter((i) => i.isActive)
+      .map((i) => {
+        const cat = catById.get(i.categoryId);
+        return {
+          _id: i._id,
+          name: i.name,
+          amount: i.amount,
+          frequency: i.frequency,
+          percentageRate: i.percentageRate,
+          startDate: i.startDate,
+          endDate: i.endDate,
+          receiptCount: i.receiptStorageIds?.length ?? 0,
+          categoryName: cat?.name ?? "(uncategorized)",
+          bucket: cat?.bucket ?? "other",
+        };
+      })
+      .sort((a, b) => a.bucket.localeCompare(b.bucket) || a.name.localeCompare(b.name));
+  },
+});
+
+/**
+ * Recent stays for a property (default: last 90 days + future). Used for
+ * the Bookings section. Cancelled stays are returned with a flag so the UI
+ * can show them grayed-out — owners often want to know about cancellations.
+ */
+export const listOwnerStays = query({
+  args: {
+    propertyId: v.id("properties"),
+    lookbackDays: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await assertOwnerOfProperty(ctx, args.propertyId);
+    const lookback = (args.lookbackDays ?? 90) * 24 * 60 * 60 * 1000;
+    const cutoff = Date.now() - lookback;
+    const stays = await ctx.db
+      .query("stays")
+      .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId))
+      .collect();
+    return stays
+      .filter((s) => s.checkInAt >= cutoff)
+      .sort((a, b) => b.checkInAt - a.checkInAt)
+      .map((s) => ({
+        _id: s._id,
+        guestName: s.guestName,
+        platform: s.platform ?? null,
+        checkInAt: s.checkInAt,
+        checkOutAt: s.checkOutAt,
+        numberOfGuests: s.numberOfGuests ?? null,
+        totalAmount: s.totalAmount ?? null,
+        currency: s.currency ?? "USD",
+        cancelledAt: s.cancelledAt ?? null,
+      }));
+  },
+});
+
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 function pickUser(user: Doc<"users">) {

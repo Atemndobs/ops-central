@@ -116,7 +116,7 @@ function PropertyCard({ p }: PropertyCardProps) {
             className="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium"
             style={{
               background: "rgba(255,189,89,0.18)",
-              color: "#8a4a00",
+              color: "var(--color-amber-900,#8a4a00)",
             }}
             onClick={(e) => e.stopPropagation()}
           >
