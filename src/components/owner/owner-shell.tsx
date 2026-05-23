@@ -6,22 +6,60 @@ import { Building2 } from "lucide-react";
 import type { ReactNode } from "react";
 
 /**
- * Owner-portal shell. Light, calm, money-focused. Single top nav with the
- * J&A wordmark + user menu. The product is the content, not the chrome.
+ * Owner-portal shell. Consumes design-system tokens (cleaner palette) so the
+ * owner surface stays cohesive with the rest of the ChezSoiStays brand
+ * (cleaner PWA, mobile app). All colors via `--cleaner-*` CSS vars from
+ * design-system/tokens/colors.ts.
  */
 export function OwnerShell({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-[#fafaf7] text-[#1a1a1a]">
-      <header className="sticky top-0 z-10 border-b border-[#e8e6e0] bg-[#fafaf7]/95 backdrop-blur">
+    <div
+      className="min-h-screen"
+      style={{
+        background: "var(--cleaner-bg)",
+        color: "var(--cleaner-ink)",
+        fontFamily: "var(--font-cleaner-body), system-ui, sans-serif",
+      }}
+    >
+      <header
+        className="sticky top-0 z-10 backdrop-blur"
+        style={{
+          background: "color-mix(in oklab, var(--cleaner-bg) 90%, transparent)",
+          borderBottom: "1px solid rgba(0,0,0,0.06)",
+        }}
+      >
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-          <Link href="/owner" className="flex items-center gap-2 font-semibold tracking-tight">
-            <Building2 size={20} className="text-[#1a237e]" />
-            <span className="text-lg">J&amp;A Owner</span>
+          <Link href="/owner" className="flex items-center gap-2.5 tracking-tight">
+            <Building2 size={20} style={{ color: "var(--cleaner-primary)" }} />
+            <span className="flex items-baseline gap-2">
+              <span
+                className="text-xl"
+                style={{
+                  fontFamily: "var(--font-cleaner-display), serif",
+                  fontWeight: 700,
+                  letterSpacing: "-0.02em",
+                }}
+              >
+                ChezSoiStays
+              </span>
+              <span
+                className="text-[10px]"
+                style={{
+                  fontFamily: "var(--font-cleaner-mono), monospace",
+                  letterSpacing: "0.18em",
+                  textTransform: "uppercase",
+                  color: "var(--cleaner-muted)",
+                }}
+              >
+                Owner
+              </span>
+            </span>
           </Link>
           <div className="flex items-center gap-4 text-sm">
             <Link
               href="/owner/settings"
-              className="text-[#666] hover:text-[#1a1a1a]"
+              className="hover:underline"
+              style={{ color: "var(--cleaner-muted)" }}
             >
               Settings
             </Link>
@@ -30,8 +68,11 @@ export function OwnerShell({ children }: { children: ReactNode }) {
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>
-      <footer className="mx-auto max-w-5xl px-6 py-8 text-center text-xs text-[#999]">
-        J&amp;A Business Solutions — every line on this statement is a clickable receipt.
+      <footer
+        className="mx-auto max-w-5xl px-6 py-8 text-center text-xs"
+        style={{ color: "var(--cleaner-muted)" }}
+      >
+        ChezSoiStays — every line on this statement is a clickable receipt.
       </footer>
     </div>
   );

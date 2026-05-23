@@ -42,7 +42,7 @@ export function OwnerStatementDetailClient({
       <div>
         <Link
           href={`/owner/properties/${propertyId}`}
-          className="inline-flex items-center gap-1 text-xs text-[#999] hover:text-[#1a1a1a]"
+          className="inline-flex items-center gap-1 text-xs text-[var(--cleaner-muted)] hover:text-[var(--cleaner-ink)]"
         >
           <ArrowLeft size={12} /> {property.property.name}
         </Link>
@@ -51,7 +51,7 @@ export function OwnerStatementDetailClient({
             <h1 className="text-3xl font-semibold tracking-tight">
               Statement · {fmtDate(statement.periodStart)} – {fmtDate(statement.periodEnd - 1)}
             </h1>
-            <p className="mt-1 text-sm text-[#666]">
+            <p className="mt-1 text-sm text-[var(--cleaner-muted)]">
               Issued {statement.issuedAt ? fmtDate(statement.issuedAt) : "—"} ·{" "}
               <span className="font-mono">
                 {(t.feePct * 100).toFixed(1)}% × {t.feeBase}
@@ -64,15 +64,15 @@ export function OwnerStatementDetailClient({
       </div>
 
       {/* The big number */}
-      <section className="rounded-2xl border-2 border-[#1a237e]/20 bg-gradient-to-br from-white to-[#f5f5fa] p-8">
-        <div className="text-xs uppercase tracking-wide text-[#666]">Your payout</div>
-        <div className="mt-2 font-mono text-5xl font-bold tabular-nums text-[#1a237e]">
+      <section className="rounded-2xl border-2 border-[var(--cleaner-primary)]/20 bg-gradient-to-br from-white to-[var(--cleaner-bg)] p-8">
+        <div className="text-xs uppercase tracking-wide text-[var(--cleaner-muted)]">Your payout</div>
+        <div className="mt-2 font-mono text-5xl font-bold tabular-nums text-[var(--cleaner-primary)]">
           {fmtMoney(t.ownerPayout, currency)}
         </div>
         {t.perOwner.length > 1 && (
-          <div className="mt-3 text-xs text-[#666]">
+          <div className="mt-3 text-xs text-[var(--cleaner-muted)]">
             You hold{" "}
-            <span className="font-semibold text-[#1a1a1a]">
+            <span className="font-semibold text-[var(--cleaner-ink)]">
               {(property.ownership.stakePct * 100).toFixed(0)}%
             </span>{" "}
             stake. Total NOI after fee = {fmtMoney(t.ownerPayout / property.ownership.stakePct, currency)}.
@@ -81,7 +81,7 @@ export function OwnerStatementDetailClient({
       </section>
 
       {/* The waterfall */}
-      <section className="rounded-2xl border border-[#e8e6e0] bg-white p-6">
+      <section className="rounded-2xl border border-black/[0.06] bg-white p-6">
         <h2 className="mb-4 text-lg font-semibold">How we got there</h2>
 
         <Waterfall
@@ -135,14 +135,14 @@ export function OwnerStatementDetailClient({
       </section>
 
       {/* Source receipts */}
-      <section className="rounded-2xl border border-[#e8e6e0] bg-white p-6">
+      <section className="rounded-2xl border border-black/[0.06] bg-white p-6">
         <h2 className="mb-2 text-lg font-semibold">Source records</h2>
-        <p className="mb-4 text-xs text-[#666]">
+        <p className="mb-4 text-xs text-[var(--cleaner-muted)]">
           Every line above traces back to a specific record. The only number without a backing receipt is the management fee — that one shows the formula.
         </p>
-        <div className="max-h-96 overflow-y-auto rounded-lg border border-[#f0eee8]">
+        <div className="max-h-96 overflow-y-auto rounded-lg border border-black/[0.04]">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-[#fafaf7] text-xs uppercase tracking-wide text-[#999]">
+            <thead className="sticky top-0 bg-[var(--cleaner-bg)] text-xs uppercase tracking-wide text-[var(--cleaner-muted)]">
               <tr>
                 <th className="px-3 py-2 text-left font-medium">Source</th>
                 <th className="px-3 py-2 text-left font-medium">Bucket</th>
@@ -153,12 +153,12 @@ export function OwnerStatementDetailClient({
               {statement.sourceRefs.map((ref, idx) => (
                 <tr
                   key={`${ref.table}-${ref.rowId}-${idx}`}
-                  className="border-t border-[#f0eee8]"
+                  className="border-t border-black/[0.04]"
                 >
-                  <td className="px-3 py-2 font-mono text-xs text-[#666]">
+                  <td className="px-3 py-2 font-mono text-xs text-[var(--cleaner-muted)]">
                     {ref.table}
                   </td>
-                  <td className="px-3 py-2 text-xs text-[#666]">
+                  <td className="px-3 py-2 text-xs text-[var(--cleaner-muted)]">
                     {"bucket" in ref && ref.bucket ? bucketLabel(ref.bucket) : "—"}
                   </td>
                   <td className="px-3 py-2 text-right font-mono tabular-nums">
@@ -183,7 +183,7 @@ function PdfButton({
 }) {
   if (generating) {
     return (
-      <div className="flex items-center gap-2 rounded-lg border border-[#e8e6e0] bg-white px-4 py-2 text-sm text-[#666]">
+      <div className="flex items-center gap-2 rounded-lg border border-black/[0.06] bg-white px-4 py-2 text-sm text-[var(--cleaner-muted)]">
         <Loader2 size={14} className="animate-spin" />
         Generating PDF…
       </div>
@@ -191,7 +191,7 @@ function PdfButton({
   }
   if (!pdfUrl) {
     return (
-      <div className="flex items-center gap-2 rounded-lg border border-[#e8e6e0] bg-white px-4 py-2 text-sm text-[#666]">
+      <div className="flex items-center gap-2 rounded-lg border border-black/[0.06] bg-white px-4 py-2 text-sm text-[var(--cleaner-muted)]">
         PDF unavailable
       </div>
     );
@@ -201,7 +201,7 @@ function PdfButton({
       href={pdfUrl}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex items-center gap-2 rounded-lg bg-[#1a237e] px-4 py-2 text-sm font-medium text-white hover:bg-[#0d1547]"
+      className="flex items-center gap-2 rounded-lg bg-[var(--cleaner-primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--cleaner-primary-soft)]"
     >
       <Download size={14} />
       Download PDF
@@ -228,11 +228,11 @@ function Waterfall({ rows }: { rows: WaterfallRow[] }) {
         <div
           key={i}
           className={`flex items-baseline justify-between py-2 ${
-            r.divider ? "border-t-2 border-[#1a1a1a] mt-2 pt-3" : ""
-          } ${r.indent ? "pl-4" : ""} ${r.hero ? "mt-2 rounded-lg bg-[#1a237e] px-3 text-white" : ""}`}
+            r.divider ? "border-t-2 border-[var(--cleaner-ink)] mt-2 pt-3" : ""
+          } ${r.indent ? "pl-4" : ""} ${r.hero ? "mt-2 rounded-lg bg-[var(--cleaner-primary)] px-3 text-white" : ""}`}
         >
           <span
-            className={`${r.bold ? "font-semibold" : ""} ${r.accent && !r.hero ? "text-[#1a237e]" : ""} text-sm`}
+            className={`${r.bold ? "font-semibold" : ""} ${r.accent && !r.hero ? "text-[var(--cleaner-primary)]" : ""} text-sm`}
             title={r.tooltip}
           >
             {r.label}
@@ -247,7 +247,7 @@ function Waterfall({ rows }: { rows: WaterfallRow[] }) {
                 : r.bold
                   ? "text-base font-semibold"
                   : "text-sm"
-            } ${r.value < 0 && !r.hero ? "text-[#666]" : ""}`}
+            } ${r.value < 0 && !r.hero ? "text-[var(--cleaner-muted)]" : ""}`}
           >
             {fmtMoney(r.value, r.currency)}
           </span>

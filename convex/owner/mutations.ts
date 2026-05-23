@@ -592,6 +592,44 @@ export { assertStatementMutable };
  * the first owner-portal demo (e.g. Randalls on a Dallas property). NOT
  * exposed publicly — invoke via `npx convex run` with admin key.
  */
+/**
+ * One-shot internal mutation to backdate the effectiveFrom on existing
+ * propertyOwners + propertyFeeConfig rows for a property. Used when seed
+ * data was inserted mid-period and you want the engine to see the rows
+ * as active from the start of the period (so the live-draft works).
+ */
+export const backdateOwnerSeed = internalMutation({
+  args: {
+    propertyId: v.id("properties"),
+    effectiveFrom: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const ownerRows = await ctx.db
+      .query("propertyOwners")
+      .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId))
+      .collect();
+    const configRows = await ctx.db
+      .query("propertyFeeConfig")
+      .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId))
+      .collect();
+    let touchedOwners = 0;
+    let touchedConfigs = 0;
+    for (const row of ownerRows) {
+      if (row.effectiveTo === undefined) {
+        await ctx.db.patch(row._id, { effectiveFrom: args.effectiveFrom });
+        touchedOwners += 1;
+      }
+    }
+    for (const row of configRows) {
+      if (row.effectiveTo === undefined) {
+        await ctx.db.patch(row._id, { effectiveFrom: args.effectiveFrom });
+        touchedConfigs += 1;
+      }
+    }
+    return { touchedOwners, touchedConfigs, newEffectiveFrom: args.effectiveFrom };
+  },
+});
+
 export const seedOwnerDemo = internalMutation({
   args: {
     propertyId: v.id("properties"),
@@ -664,5 +702,100 @@ export const seedOwnerDemo = internalMutation({
     });
 
     return { ownerId, feeConfigId, property: property.name, user: user.name };
+  },
+});
+
+/**
+ * Bulk-seed a single owner across all (or a subset of) properties — used to
+ * onboard a J&A partner who legally owns every J&A-managed property. Closes
+ * any prior active ownership/fee-config rows per property and inserts new
+ * ones. Backdates effectiveFrom so live drafts compute correctly for the
+ * current period (and any historical period).
+ *
+ * Idempotent enough for re-runs: rows are closed via effectiveTo, never
+ * deleted, so the audit trail is preserved.
+ */
+export const seedOwnerAcrossProperties = internalMutation({
+  args: {
+    ownerUserId: v.id("users"),
+    propertyIds: v.array(v.id("properties")),
+    feePct: v.number(),
+    feeBase: v.union(
+      v.literal("grossRevenue"),
+      v.literal("netRevenue"),
+      v.literal("netOperatingProfit"),
+    ),
+    approvalThreshold: v.number(),
+    effectiveFrom: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.ownerUserId);
+    if (!user) throw new ConvexError(`User ${args.ownerUserId} not found`);
+    if (user.role !== "owner") {
+      throw new ConvexError(
+        `User ${args.ownerUserId} has role="${user.role}"; expected "owner"`,
+      );
+    }
+
+    const now = Date.now();
+    const results: Array<{ propertyName: string; ownerId: string; feeConfigId: string }> = [];
+
+    for (const propertyId of args.propertyIds) {
+      const property = await ctx.db.get(propertyId);
+      if (!property) {
+        results.push({ propertyName: `MISSING:${propertyId}`, ownerId: "", feeConfigId: "" });
+        continue;
+      }
+
+      // Close existing active ownership for this property
+      const existingOwners = await ctx.db
+        .query("propertyOwners")
+        .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
+        .collect();
+      for (const row of existingOwners) {
+        if (row.effectiveTo === undefined) {
+          await ctx.db.patch(row._id, { effectiveTo: now, updatedAt: now });
+        }
+      }
+
+      const ownerId = await ctx.db.insert("propertyOwners", {
+        propertyId,
+        userId: args.ownerUserId,
+        stakePct: 1.0,
+        role: "landlord",
+        isPrimaryApprover: true,
+        effectiveFrom: args.effectiveFrom,
+        createdAt: now,
+      });
+
+      // Close existing active fee config
+      const existingConfigs = await ctx.db
+        .query("propertyFeeConfig")
+        .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
+        .collect();
+      for (const row of existingConfigs) {
+        if (row.effectiveTo === undefined) {
+          await ctx.db.patch(row._id, { effectiveTo: now });
+        }
+      }
+
+      const feeConfigId = await ctx.db.insert("propertyFeeConfig", {
+        propertyId,
+        feePct: args.feePct,
+        feeBase: args.feeBase,
+        approvalThreshold: args.approvalThreshold,
+        effectiveFrom: args.effectiveFrom,
+        createdBy: args.ownerUserId,
+        createdAt: now,
+      });
+
+      results.push({
+        propertyName: property.name,
+        ownerId,
+        feeConfigId,
+      });
+    }
+
+    return { user: user.name, seeded: results };
   },
 });
