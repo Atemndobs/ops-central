@@ -64,12 +64,14 @@ export function OwnerPropertyClient({ propertyId }: { propertyId: Id<"properties
 
       {/* Tab nav */}
       <nav className="flex gap-1 border-b" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
-        <TabLink href={`/owner/properties/${propertyId}`} active>
+        {/* Tabs are in-page anchors — sections are inlined below, not separate routes.
+            Date Blocks IS a separate page since it's a cross-property surface. */}
+        <TabLink href="#overview" active>
           Overview
         </TabLink>
-        <TabLink href={`/owner/properties/${propertyId}/costs`}>Costs</TabLink>
-        <TabLink href={`/owner/properties/${propertyId}/bookings`}>Bookings</TabLink>
-        <TabLink href={`/owner/blocks`}>
+        <TabLink href="#costs">Costs</TabLink>
+        <TabLink href="#bookings">Bookings</TabLink>
+        <TabLink href="/owner/blocks">
           <CalendarDays size={12} className="mr-1 inline" />
           Date Blocks
         </TabLink>
@@ -159,7 +161,7 @@ export function OwnerPropertyClient({ propertyId }: { propertyId: Id<"properties
         </Card>
       )}
 
-      <section>
+      <section id="overview" className="scroll-mt-20">
         <h2
           className="mb-3 flex items-center gap-2 text-lg"
           style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700 }}
@@ -249,7 +251,7 @@ function CostsSection({
   const sortedBuckets = Array.from(byBucket.keys()).sort();
 
   return (
-    <section>
+    <section id="costs" className="scroll-mt-20">
       <h2
         className="mb-3 flex items-center gap-2 text-lg"
         style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700 }}
@@ -337,7 +339,7 @@ function BookingsSection({
   if (stays === undefined) return <Skeleton />;
 
   return (
-    <section>
+    <section id="bookings" className="scroll-mt-20">
       <h2
         className="mb-3 flex items-center gap-2 text-lg"
         style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700 }}
