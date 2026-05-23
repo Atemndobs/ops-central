@@ -134,4 +134,17 @@ crons.interval(
   {},
 );
 
+// Owner-portal financials backfill — the cron-driven list sync writes new
+// stays without totalAmount (Hospitable's list endpoint doesn't return
+// `?include=financials`). This nightly enrichment pass calls the detail
+// endpoint per stay on a rolling 30-day window so the owner dashboard
+// stays accurate going forward. Stays already enriched are skipped
+// (`listStaysMissingTotalAmount` filters them out).
+crons.cron(
+  "owner-hospitable-financials-backfill-daily",
+  "30 3 * * *", // 03:30 UTC daily, after orphan sweep
+  internal.hospitable.actions.backfillReservationFinancials,
+  { lookbackDays: 30, dryRun: false },
+);
+
 export default crons;

@@ -334,24 +334,66 @@ export function normalizeReservation(
 
   const lateCheckout = new Date(checkOutAt).getHours() > 11;
 
-  // ─── Financial extraction (defensive — Hospitable's payload shape
-  // varies by API version + channel). Tries several conventional paths
-  // for guest-paid totals + currency; the first non-undefined wins. ───
+  // ─── Financial extraction ───────────────────────────────────────────────
+  // Hospitable v2 returns financials ONLY when ?include=financials is set
+  // on the request. Shape (all amounts in CENTS):
+  //   data.financials.host.accommodation_breakdown[].amount  (nightly × N)
+  //   data.financials.host.guest_fees[].amount               (cleaning, etc.)
+  //   data.financials.host.accommodation_breakdown[].currency
+  //   data.financials.guest.average_nightly_rate.amount      (display only)
+  // totalAmount = host's gross revenue (what J&A / the owner actually got
+  // credited for). Sum accommodation + host-side guest_fees. /100 for $.
   const financials = isRecord(rawReservation.financials)
     ? (rawReservation.financials as GenericRecord)
     : undefined;
+  const host = financials && isRecord(financials.host)
+    ? (financials.host as GenericRecord)
+    : undefined;
+
+  function sumAmountCents(list: unknown): number | undefined {
+    if (!Array.isArray(list)) return undefined;
+    let sum = 0;
+    let any = false;
+    for (const item of list) {
+      if (!isRecord(item)) continue;
+      const amt = asNumber(item.amount);
+      if (amt !== undefined) {
+        sum += amt;
+        any = true;
+      }
+    }
+    return any ? sum : undefined;
+  }
+
+  const accommodationCents = sumAmountCents(host?.accommodation_breakdown);
+  const hostFeesCents = sumAmountCents(host?.guest_fees);
+  const totalCents =
+    accommodationCents !== undefined || hostFeesCents !== undefined
+      ? (accommodationCents ?? 0) + (hostFeesCents ?? 0)
+      : undefined;
+  // Convert cents → dollars
   const totalAmount =
-    asNumber(rawReservation.total_amount) ??
-    asNumber(rawReservation.total_price) ??
-    asNumber((financials ?? {}).total_amount) ??
-    asNumber((financials ?? {}).guest_total) ??
-    asNumber((financials ?? {}).payout_to_host) ??
-    asNumber((financials ?? {}).host_payout) ??
-    asNumber(rawReservation.payout) ??
-    undefined;
+    totalCents !== undefined
+      ? totalCents / 100
+      : // Fallback paths for non-financials payload shapes (other API
+        // versions / channels). First non-undefined wins.
+        asNumber(rawReservation.total_amount) ??
+        asNumber(rawReservation.total_price) ??
+        asNumber(rawReservation.payout) ??
+        undefined;
+  // Currency — try the first nested location, else top-level.
+  const firstAccommodation = Array.isArray(host?.accommodation_breakdown)
+    ? (host?.accommodation_breakdown as unknown[])[0]
+    : undefined;
+  const firstFee = Array.isArray(host?.guest_fees)
+    ? (host?.guest_fees as unknown[])[0]
+    : undefined;
   const currency =
+    (isRecord(firstAccommodation)
+      ? asString(firstAccommodation.currency)
+      : undefined) ??
+    (isRecord(firstFee) ? asString(firstFee.currency) : undefined) ??
     asString(rawReservation.currency) ??
-    asString((financials ?? {}).currency) ??
     undefined;
 
   // Cancellation: Hospitable reports status="cancelled" for cancelled stays.
@@ -1249,6 +1291,191 @@ export const bootstrapMissingProperties = internalAction({
       created,
       skipped: results.length - created,
       results,
+    };
+  },
+});
+
+// ─── DIAGNOSTIC: dump a single Hospitable reservation as JSON ──────────────
+// Helps figure out which financial-field path Hospitable actually uses for
+// stays where backfillReservationFinancials returns skippedNoChange. Pass
+// the stay's hospitableId; logs the full payload to console + returns the
+// extracted financial paths.
+
+export const inspectReservation = action({
+  args: { hospitableId: v.string() },
+  handler: async (_ctx, args): Promise<unknown> => {
+    const apiKey =
+      process.env.HOSPITABLE_API_KEY ?? process.env.HOSPITABLE_API_TOKEN;
+    if (!apiKey) throw new Error("Missing HOSPITABLE_API_KEY");
+    const baseUrl =
+      process.env.HOSPITABLE_API_URL ?? DEFAULT_HOSPITABLE_BASE_URL;
+    const r = await fetch(
+      `${baseUrl}/reservations/${encodeURIComponent(args.hospitableId)}`,
+      { headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" } },
+    );
+    if (!r.ok) throw new Error(`Hospitable HTTP ${r.status}: ${await r.text()}`);
+    const json = (await r.json()) as unknown;
+    return json;
+  },
+});
+
+/**
+ * Probe known Hospitable financial-data endpoints for a single reservation
+ * to find which one our account actually exposes. Tries each in turn and
+ * reports HTTP status + first 500 bytes of payload.
+ */
+export const probeReservationFinancialEndpoints = action({
+  args: { hospitableId: v.string() },
+  handler: async (
+    _ctx,
+    args,
+  ): Promise<Array<{ url: string; status: number; preview: string }>> => {
+    const apiKey =
+      process.env.HOSPITABLE_API_KEY ?? process.env.HOSPITABLE_API_TOKEN;
+    if (!apiKey) throw new Error("Missing HOSPITABLE_API_KEY");
+    const baseUrl =
+      process.env.HOSPITABLE_API_URL ?? DEFAULT_HOSPITABLE_BASE_URL;
+    const id = encodeURIComponent(args.hospitableId);
+    const endpoints = [
+      `${baseUrl}/reservations/${id}/financials`,
+      `${baseUrl}/reservations/${id}/transactions`,
+      `${baseUrl}/reservations/${id}/charges`,
+      `${baseUrl}/reservations/${id}/payouts`,
+      `${baseUrl}/reservations/${id}/payments`,
+      `${baseUrl}/reservations/${id}/quote`,
+      `${baseUrl}/reservations/${id}?include=financials`,
+      `${baseUrl}/reservations/${id}?include=transactions`,
+      `${baseUrl}/transactions?reservation_id=${id}`,
+    ];
+    const results: Array<{ url: string; status: number; preview: string }> = [];
+    for (const url of endpoints) {
+      try {
+        const r = await fetch(url, {
+          headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+        });
+        const body = await r.text();
+        results.push({ url, status: r.status, preview: body.slice(0, 500) });
+      } catch (e) {
+        results.push({
+          url,
+          status: -1,
+          preview: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+    return results;
+  },
+});
+
+// ─── Per-reservation financial backfill (Wave 4c) ──────────────────────────
+//
+// Historical stays from before the totalAmount-extraction fix have
+// totalAmount=undefined. The cron-driven /reservations LIST endpoint is
+// paginated and we don't follow pages, so it only heals the first page on
+// each sync window. This action explicitly refetches each stay by its
+// hospitableId via GET /reservations/{id} so we backfill in one shot.
+//
+// Default scope: last 90 days. Owner-portal demos work off rolling 1-3
+// months — backfilling further is rarely useful. Pass lookbackDays to
+// override.
+
+export const backfillReservationFinancials = internalAction({
+  args: {
+    lookbackDays: v.optional(v.number()),
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    scanned: number;
+    fetched: number;
+    patched: number;
+    skippedNoChange: number;
+    errors: string[];
+    dryRun: boolean;
+  }> => {
+    const apiKey = process.env.HOSPITABLE_API_KEY ?? process.env.HOSPITABLE_API_TOKEN;
+    if (!apiKey) {
+      throw new Error("Missing HOSPITABLE_API_KEY/HOSPITABLE_API_TOKEN.");
+    }
+    const baseUrl = process.env.HOSPITABLE_API_URL ?? DEFAULT_HOSPITABLE_BASE_URL;
+    // Defaults: 90 days back (user's "3 months max"). Pass explicit value to override.
+    const lookbackDays = args.lookbackDays ?? 90;
+    const dryRun = args.dryRun ?? false;
+    const cutoff = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
+
+    // Pull list of stay ids that need backfill (those missing totalAmount).
+    const candidates = await ctx.runQuery(
+      internal.hospitable.queries.listStaysMissingTotalAmount,
+      { sinceMs: cutoff },
+    );
+
+    let fetched = 0;
+    let patched = 0;
+    let skippedNoChange = 0;
+    const errors: string[] = [];
+
+    for (const c of candidates) {
+      if (!c.hospitableId) continue;
+      try {
+        // ?include=financials is REQUIRED for Hospitable v2 to return the
+        // host.accommodation_breakdown + host.guest_fees arrays. Without it
+        // the response has no money fields at all.
+        const raw = await fetchHospitableJson(
+          apiKey,
+          `${baseUrl}/reservations/${encodeURIComponent(c.hospitableId)}?include=financials`,
+          ctx,
+          "hospitable_reservation_backfill",
+        );
+        fetched += 1;
+        // Hospitable wraps single-resource responses in `{ data: {...} }`.
+        const data =
+          isRecord(raw) && isRecord((raw as GenericRecord).data)
+            ? (raw as GenericRecord).data
+            : raw;
+        const { reservation, error } = normalizeReservation(
+          data,
+          c.propertyHospitableId ?? "",
+        );
+        if (!reservation) {
+          if (error) errors.push(`${c.hospitableId}: ${error}`);
+          continue;
+        }
+        if (
+          reservation.totalAmount === undefined &&
+          reservation.currency === undefined &&
+          reservation.cancelledAt === undefined
+        ) {
+          skippedNoChange += 1;
+          continue;
+        }
+        if (dryRun) {
+          patched += 1;
+          continue;
+        }
+        await ctx.runMutation(internal.hospitable.mutations.patchStayFinancials, {
+          stayId: c._id,
+          totalAmount: reservation.totalAmount,
+          currency: reservation.currency,
+          cancelledAt: reservation.cancelledAt,
+          cancellationSource: reservation.cancellationSource,
+        });
+        patched += 1;
+      } catch (e) {
+        errors.push(
+          `${c.hospitableId}: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
+    return {
+      scanned: candidates.length,
+      fetched,
+      patched,
+      skippedNoChange,
+      errors,
+      dryRun,
     };
   },
 });
