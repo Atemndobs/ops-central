@@ -1,5 +1,27 @@
 import type { Metadata } from "next";
+import { Atkinson_Hyperlegible, Montserrat, Spectral } from "next/font/google";
 import { OwnerShell } from "@/components/owner/owner-shell";
+
+// Same font stack as the cleaner PWA (cross-platform ChezSoiStays brand) —
+// Spectral (display), Montserrat (body), Atkinson Hyperlegible (mono/meta).
+// Tokens declared in design-system/tokens/typography.ts.
+const ownerDisplay = Spectral({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  variable: "--font-cleaner-display",
+});
+
+const ownerBody = Montserrat({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-cleaner-body",
+});
+
+const ownerMono = Atkinson_Hyperlegible({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  variable: "--font-cleaner-mono",
+});
 
 export const metadata: Metadata = {
   title: "Owner Portal — J&A Business Solutions",
@@ -8,5 +30,9 @@ export const metadata: Metadata = {
 };
 
 export default function OwnerLayout({ children }: { children: React.ReactNode }) {
-  return <OwnerShell>{children}</OwnerShell>;
+  return (
+    <div className={`${ownerDisplay.variable} ${ownerBody.variable} ${ownerMono.variable}`}>
+      <OwnerShell>{children}</OwnerShell>
+    </div>
+  );
 }
