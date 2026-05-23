@@ -57,7 +57,7 @@ export function OwnerApprovalDetailClient({
       <div>
         <Link
           href={`/owner/properties/${propertyId}`}
-          className="inline-flex items-center gap-1 text-xs text-[#999] hover:text-[#1a1a1a]"
+          className="inline-flex items-center gap-1 text-xs text-[var(--cleaner-muted)] hover:text-[var(--cleaner-ink)]"
         >
           <ArrowLeft size={12} /> {property.property.name}
         </Link>
@@ -66,19 +66,19 @@ export function OwnerApprovalDetailClient({
         </h1>
       </div>
 
-      <section className="rounded-2xl border border-[#e8e6e0] bg-white p-6">
+      <section className="rounded-2xl border border-black/[0.06] bg-white p-6">
         <div className="mb-4 flex items-baseline justify-between">
-          <div className="text-xs uppercase tracking-wide text-[#999]">
+          <div className="text-xs uppercase tracking-wide text-[var(--cleaner-muted)]">
             Proposed cost
           </div>
-          <div className="font-mono text-3xl font-bold tabular-nums text-[#1a237e]">
+          <div className="font-mono text-3xl font-bold tabular-nums text-[var(--cleaner-primary)]">
             {fmtMoney(req.proposedCost, currency)}
           </div>
         </div>
-        <p className="whitespace-pre-wrap text-sm text-[#1a1a1a]">
+        <p className="whitespace-pre-wrap text-sm text-[var(--cleaner-ink)]">
           {req.description}
         </p>
-        <p className="mt-4 text-xs text-[#999]">
+        <p className="mt-4 text-xs text-[var(--cleaner-muted)]">
           Submitted {fmtDate(req.createdAt)}
         </p>
       </section>
@@ -111,7 +111,7 @@ export function OwnerApprovalDetailClient({
             on {req.decidedAt ? fmtDate(req.decidedAt) : "—"}
           </div>
           {req.decidedNote && (
-            <p className="mt-2 whitespace-pre-wrap text-sm text-[#444]">
+            <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--cleaner-ink)]">
               {req.decidedNote}
             </p>
           )}
@@ -119,13 +119,13 @@ export function OwnerApprovalDetailClient({
       )}
 
       {isPending && property.ownership.isPrimaryApprover && (
-        <section className="rounded-2xl border border-[#e8e6e0] bg-white p-6">
+        <section className="rounded-2xl border border-black/[0.06] bg-white p-6">
           <label className="mb-2 block text-sm font-medium">Note (optional)</label>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="Add context for J&A Ops about your decision…"
-            className="mb-4 w-full rounded-lg border border-[#e8e6e0] bg-[#fafaf7] p-3 text-sm focus:border-[#1a237e] focus:outline-none"
+            className="mb-4 w-full rounded-lg border border-black/[0.06] bg-[var(--cleaner-bg)] p-3 text-sm focus:border-[var(--cleaner-primary)] focus:outline-none"
             rows={3}
             disabled={submitting !== null}
           />
@@ -150,7 +150,7 @@ export function OwnerApprovalDetailClient({
               {submitting === "declined" ? "Declining…" : "Decline"}
             </button>
           </div>
-          <p className="mt-3 text-xs text-[#999]">
+          <p className="mt-3 text-xs text-[var(--cleaner-muted)]">
             Approving books this as a maintenance cost on your next statement. Declining means it will not be booked.
           </p>
         </section>
