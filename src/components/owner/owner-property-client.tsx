@@ -721,7 +721,11 @@ function BookingsSection({
                     : undefined
                 }
               >
-                <div className="grid grid-cols-[auto_auto_1fr_auto] items-center gap-3">
+                {/* Fixed-width grid: column widths are locked so the
+                     platform logo, dates, and total all align vertically
+                     across rows regardless of icon/wordmark width. Only
+                     the dates column flexes (1fr) to absorb spare space. */}
+                <div className="grid grid-cols-[44px_60px_1fr_88px] items-center gap-2">
                   {/* COL 1 — guest count (bigger icon now that it owns
                        a column on its own). */}
                   <span
@@ -736,8 +740,12 @@ function BookingsSection({
                     {s.numberOfGuests ?? "—"}
                   </span>
 
-                  {/* COL 2 — platform logo */}
-                  <PlatformBadge platform={s.platform ?? "direct"} />
+                  {/* COL 2 — platform logo (fixed slot; VRBO wordmark is
+                       the widest at ~50px, the Airbnb/Booking circles
+                       sit left-aligned inside the same 60px box). */}
+                  <span className="inline-flex justify-start">
+                    <PlatformBadge platform={s.platform ?? "direct"} />
+                  </span>
 
                   {/* COL 3 — stacked IN / OUT dates */}
                   <div
