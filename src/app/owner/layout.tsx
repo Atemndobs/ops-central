@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Atkinson_Hyperlegible, Montserrat, Spectral } from "next/font/google";
 import { OwnerShell } from "@/components/owner/owner-shell";
 
@@ -24,9 +24,34 @@ const ownerMono = Atkinson_Hyperlegible({
 });
 
 export const metadata: Metadata = {
-  title: "Owner Portal — J&A Business Solutions",
+  title: "ChezSoiStays — Owner",
   description:
     "Radical financial transparency for property owners. Every line on your statement is a clickable receipt.",
+  manifest: "/owner-manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "ChezSoi Owner",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  icons: {
+    icon: [
+      { url: "/icons/chezsoi-icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/chezsoi-icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/chezsoi-apple-touch-icon.png", sizes: "180x180" }],
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#f3f7ff",
 };
 
 export default function OwnerLayout({ children }: { children: React.ReactNode }) {

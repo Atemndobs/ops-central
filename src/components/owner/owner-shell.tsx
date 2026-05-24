@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { Home, Building2, CalendarDays, Settings as SettingsIcon } from "lucide-react";
 import { CleanerIconButton } from "@/components/cleaner/cleaner-ui";
+import { InstallPrompt } from "@/components/cleaner/install-prompt";
 import { OwnerBackButton } from "./back-button";
 
 const OWNER_NAV: Array<{
@@ -134,6 +135,9 @@ export function OwnerShell({ children }: { children: ReactNode }) {
           feels structural (always-on top-left chrome), not content. */}
       <div className="mx-auto max-w-5xl px-6 pt-4">
         <OwnerBackButton />
+        <div className="mt-2 md:hidden">
+          <InstallPrompt />
+        </div>
       </div>
       <main className="mx-auto max-w-5xl px-6 pb-32 pt-4 md:pb-8">{children}</main>
       <footer

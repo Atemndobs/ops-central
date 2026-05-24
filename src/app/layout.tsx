@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { NextIntlClientProvider } from "next-intl";
 import { getMessages, getLocale } from "next-intl/server";
 import { ClerkThemeProvider } from "@/components/providers/clerk-theme-provider";
@@ -20,6 +20,23 @@ export const metadata: Metadata = {
     apple: [{ url: "/icons/chezsoi-apple-touch-icon.png", sizes: "180x180" }],
   },
   manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "ChezSoi",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#7c3aed",
 };
 
 export default async function RootLayout({
