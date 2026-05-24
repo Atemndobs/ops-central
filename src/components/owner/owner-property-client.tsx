@@ -3,10 +3,22 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useConvexAuth, useQuery } from "convex/react";
-import { Bell, CalendarDays, ChevronLeft, ChevronRight, FileText, MapPin } from "lucide-react";
+import {
+  Bell,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  Globe,
+  LogIn,
+  LogOut,
+  MapPin,
+  User,
+  Users,
+} from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { bucketLabel, fmtDate, fmtMoney, fmtMonth } from "./owner-format";
+import { bucketLabel, fmtDate, fmtDateShort, fmtMoney, fmtMonth } from "./owner-format";
 import { MonthSwitcher } from "./month-switcher";
 import { useMonthFromUrl } from "./use-month-from-url";
 
@@ -558,17 +570,20 @@ function BookingsSection({
             </span>
           </div>
 
-          {/* Table */}
-          <div className="overflow-x-auto">
+          {/* Desktop table — full layout w/ separate check-in/check-out cols.
+              Hidden below md to make room for the dense mobile card layout
+              that fits comfortably in the 360-402px frame. */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr
                   className="text-left"
                   style={{ background: "var(--cleaner-bg)" }}
                 >
-                  <Th>Guest</Th>
-                  <Th>Platform</Th>
+                  <Th icon={<User size={11} />}>Guest</Th>
+                  <Th icon={<Globe size={11} />}>Platform</Th>
                   <Th
+                    icon={<LogIn size={11} />}
                     sortable
                     active={sortKey === "checkIn"}
                     dir={sortDir}
@@ -576,9 +591,10 @@ function BookingsSection({
                   >
                     Check-in
                   </Th>
-                  <Th>Check-out</Th>
+                  <Th icon={<LogOut size={11} />}>Check-out</Th>
                   <Th
                     align="right"
+                    icon={<Users size={11} />}
                     sortable
                     active={sortKey === "guests"}
                     dir={sortDir}
@@ -602,34 +618,32 @@ function BookingsSection({
                   <tr
                     key={s._id}
                     className={i > 0 ? "border-t border-black/[0.04]" : ""}
-                    style={s.cancelledAt ? { opacity: 0.55 } : undefined}
+                    title={s.cancelledAt ? "Cancelled — this booking did not generate revenue" : undefined}
+                    style={
+                      s.cancelledAt
+                        ? {
+                            color: "var(--color-red-700,#b91c1c)",
+                            background: "var(--color-red-50,rgba(254,226,226,0.4))",
+                          }
+                        : undefined
+                    }
                   >
                     <Td>
-                      <span className="font-medium">{s.guestName}</span>
+                      <div className="font-medium">{s.guestName}</div>
                       {s.cancelledAt && (
-                        <span
-                          className="ml-2 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider"
+                        <div
+                          className="mt-0.5 text-[10px] uppercase tracking-wider"
                           style={{
-                            background: "var(--color-red-100,#fee2e2)",
-                            color: "var(--color-red-900,#7f1d1d)",
+                            color: "var(--color-red-700,#b91c1c)",
                             fontFamily: "var(--font-cleaner-mono)",
                           }}
                         >
                           cancelled
-                        </span>
+                        </div>
                       )}
                     </Td>
                     <Td>
-                      <span
-                        className="rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider"
-                        style={{
-                          background: "var(--cleaner-bg)",
-                          color: "var(--cleaner-muted)",
-                          fontFamily: "var(--font-cleaner-mono)",
-                        }}
-                      >
-                        {s.platform ?? "direct"}
-                      </span>
+                      <PlatformBadge platform={s.platform ?? "direct"} />
                     </Td>
                     <Td>{fmtDate(s.checkInAt)}</Td>
                     <Td>{fmtDate(s.checkOutAt)}</Td>
@@ -678,6 +692,123 @@ function BookingsSection({
               </tfoot>
             </table>
           </div>
+
+          {/* Mobile compact list. Each booking renders as a 3-row stack:
+                row 1 — guest name | total
+                row 2 — platform logo · guests count
+                row 3 — 🛬 check-in date / 🛫 check-out date (stacked)
+              Cancelled rows: red tint + small "cancelled" tag + native
+              tooltip on long-press. No separate cancelled column. */}
+          <ul className="md:hidden divide-y divide-black/[0.04]">
+            {visible.map((s) => (
+              <li
+                key={s._id}
+                className="px-3 py-3"
+                title={s.cancelledAt ? "Cancelled — this booking did not generate revenue" : undefined}
+                style={
+                  s.cancelledAt
+                    ? {
+                        background: "var(--color-red-50,rgba(254,226,226,0.4))",
+                        color: "var(--color-red-800,#991b1b)",
+                      }
+                    : undefined
+                }
+              >
+                <div className="flex items-baseline justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <User size={12} className="shrink-0 opacity-60" />
+                      <span className="truncate font-medium">{s.guestName}</span>
+                      {s.cancelledAt && (
+                        <span
+                          className="shrink-0 rounded px-1.5 py-0.5 text-[9px] uppercase tracking-wider"
+                          style={{
+                            background: "var(--color-red-100,#fee2e2)",
+                            color: "var(--color-red-800,#991b1b)",
+                            fontFamily: "var(--font-cleaner-mono)",
+                          }}
+                        >
+                          cancelled
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div
+                    className="shrink-0 text-right tabular-nums"
+                    style={{
+                      fontFamily: "var(--font-cleaner-mono)",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {s.totalAmount != null ? fmtMoney(s.totalAmount, currency) : "—"}
+                  </div>
+                </div>
+
+                <div
+                  className="mt-1.5 flex items-center gap-3 text-[11px]"
+                  style={{ color: "var(--cleaner-muted)" }}
+                >
+                  <PlatformBadge platform={s.platform ?? "direct"} compact />
+                  <span className="inline-flex items-center gap-1">
+                    <Users size={11} />
+                    {s.numberOfGuests ?? "—"}
+                  </span>
+                </div>
+
+                <div
+                  className="mt-2 inline-flex flex-col gap-0.5 rounded-md border border-black/[0.04] px-2 py-1 text-[11px] tabular-nums"
+                  style={{
+                    background: "var(--cleaner-bg)",
+                    fontFamily: "var(--font-cleaner-mono)",
+                  }}
+                >
+                  <span className="inline-flex items-center gap-1.5">
+                    <LogIn size={11} className="opacity-60" />
+                    <span style={{ color: "var(--cleaner-muted)", fontSize: 9, letterSpacing: "0.1em" }}>
+                      IN
+                    </span>
+                    {fmtDateShort(s.checkInAt)}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <LogOut size={11} className="opacity-60" />
+                    <span style={{ color: "var(--cleaner-muted)", fontSize: 9, letterSpacing: "0.1em" }}>
+                      OUT
+                    </span>
+                    {fmtDateShort(s.checkOutAt)}
+                  </span>
+                </div>
+              </li>
+            ))}
+            <li
+              className="px-3 py-3 text-[11px]"
+              style={{
+                background: "var(--cleaner-bg)",
+                color: "var(--cleaner-muted)",
+              }}
+            >
+              <div className="flex items-baseline justify-between">
+                <span>
+                  {platformFilter === "all"
+                    ? `All platforms · ${filteredCount} bookings`
+                    : `${platformFilter} · ${filteredCount} bookings`}
+                </span>
+                <span
+                  className="tabular-nums"
+                  style={{ fontFamily: "var(--font-cleaner-mono)", fontWeight: 700, color: "var(--cleaner-ink)" }}
+                >
+                  {fmtMoney(filteredTotal, currency)}
+                </span>
+              </div>
+              {platformFilter !== "all" && filteredTotal !== grandTotal && (
+                <div className="mt-1 flex items-baseline justify-between opacity-70">
+                  <span>Grand total (all · {grandCount})</span>
+                  <span className="tabular-nums" style={{ fontFamily: "var(--font-cleaner-mono)" }}>
+                    {fmtMoney(grandTotal, currency)}
+                  </span>
+                </div>
+              )}
+            </li>
+          </ul>
         </Card>
       )}
     </section>
@@ -730,6 +861,7 @@ function Th({
   active,
   dir,
   onClick,
+  icon,
 }: {
   children: React.ReactNode;
   align?: "left" | "right" | "center";
@@ -737,6 +869,8 @@ function Th({
   active?: boolean;
   dir?: SortDir;
   onClick?: () => void;
+  /** Optional lucide icon rendered before the label for visual scanning. */
+  icon?: React.ReactNode;
 }) {
   return (
     <th
@@ -749,7 +883,11 @@ function Th({
         fontWeight: 500,
       }}
     >
-      <span className="inline-flex items-center gap-1">
+      <span
+        className="inline-flex items-center gap-1"
+        style={align === "right" ? { float: "right" } : undefined}
+      >
+        {icon}
         {children}
         {sortable && active && (
           <span style={{ fontSize: 9 }}>{dir === "desc" ? "▼" : "▲"}</span>
@@ -757,6 +895,43 @@ function Th({
       </span>
     </th>
   );
+}
+
+/**
+ * Compact platform identifier — colored monogram chip + optional name. On
+ * mobile (`compact`) the name is hidden so the chip alone communicates
+ * platform identity in tight space.
+ */
+function PlatformBadge({ platform, compact }: { platform: string; compact?: boolean }) {
+  const meta = platformMeta(platform);
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-1 py-0.5 text-[10px] uppercase tracking-wider"
+      style={{
+        color: "var(--cleaner-muted)",
+        fontFamily: "var(--font-cleaner-mono)",
+      }}
+    >
+      <span
+        aria-hidden
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold text-white"
+        style={{ background: meta.color }}
+        title={platform}
+      >
+        {meta.glyph}
+      </span>
+      {!compact && <span>{platform}</span>}
+    </span>
+  );
+}
+
+function platformMeta(platform: string): { color: string; glyph: string } {
+  const key = platform.toLowerCase();
+  if (key.includes("airbnb")) return { color: "#FF5A5F", glyph: "A" };
+  if (key.includes("vrbo")) return { color: "#245ABC", glyph: "V" };
+  if (key.includes("booking")) return { color: "#003580", glyph: "B" };
+  if (key.includes("direct")) return { color: "var(--cleaner-primary)", glyph: "•" };
+  return { color: "var(--cleaner-muted)", glyph: platform.charAt(0).toUpperCase() || "?" };
 }
 
 function Td({
