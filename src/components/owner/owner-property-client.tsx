@@ -32,10 +32,24 @@ export function OwnerPropertyClient({
     api.owner.queries.listMaintenanceApprovalRequests,
     isAuthenticated ? { propertyId, status: "pending" } : "skip",
   );
+  // Fetched at parent so the MonthSummary "Mortgage" card can show the
+  // RAW monthly lease amount (matching the Operational Costs ledger
+  // below). The fee engine's `costsByBucket.lease` is period-prorated
+  // (× days/30.44) which doesn't match owner intuition of "my monthly
+  // mortgage." Convex dedupes the subscription with CostsSection.
+  const costItems = useQuery(
+    api.owner.queries.listOwnerCostItems,
+    isAuthenticated ? { propertyId } : "skip",
+  );
 
   if (isLoading || prop === undefined) return <Skeleton />;
 
   const currency = prop.property.currency ?? "USD";
+  // Raw monthly-lease total — what an owner sees on their rent invoice.
+  // Falls back to 0 until costItems load.
+  const leaseRawMonthly = (costItems ?? [])
+    .filter((i) => i.bucket === "lease")
+    .reduce((s, i) => s + i.amount, 0);
 
   return (
     <div className="space-y-8">
@@ -146,9 +160,14 @@ export function OwnerPropertyClient({
             currency={currency}
             grossRevenue={draft.draft.totals.grossRevenue}
             ownerPayout={draft.draft.totals.ownerPayout}
+            // Use RAW monthly lease (matches Operational Costs ledger)
+            // not engine's period-prorated value. Falls back to engine
+            // value while costItems are loading.
             mortgageAmount={
-              draft.draft.totals.costsByBucket.find((b) => b.bucket === "lease")
-                ?.amount ?? 0
+              leaseRawMonthly > 0
+                ? leaseRawMonthly
+                : draft.draft.totals.costsByBucket.find((b) => b.bucket === "lease")
+                    ?.amount ?? 0
             }
             stakePct={prop.ownership.stakePct}
           />
@@ -253,16 +272,49 @@ function CostsSection({
     list.push(it);
     byBucket.set(it.bucket, list);
   }
-  const sortedBuckets = Array.from(byBucket.keys()).sort();
+  // Sort buckets by total cost DESC (biggest expense category first) — owners
+  // care about the largest line items, not alphabetical ordering. Revenue-
+  // percentage items (variable, no fixed amount) sort last as a stable tail.
+  const bucketTotals = new Map<string, number>();
+  for (const [bucket, list] of byBucket.entries()) {
+    const fixedTotal = list
+      .filter((i) => i.frequency !== "revenue_percentage")
+      .reduce((s, i) => s + i.amount, 0);
+    bucketTotals.set(bucket, fixedTotal);
+  }
+  const sortedBuckets = Array.from(byBucket.keys()).sort(
+    (a, b) => (bucketTotals.get(b) ?? 0) - (bucketTotals.get(a) ?? 0),
+  );
+  const grandTotal = Array.from(bucketTotals.values()).reduce((s, v) => s + v, 0);
 
   return (
     <section id="costs" className="scroll-mt-20">
-      <h2
-        className="mb-3 flex items-center gap-2 text-lg"
-        style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700 }}
-      >
-        <Receipt size={18} /> Cost ledger
-      </h2>
+      <div className="mb-3 flex items-baseline justify-between">
+        <h2
+          className="flex items-center gap-2 text-lg"
+          style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700 }}
+        >
+          <Receipt size={18} /> Operational Costs
+        </h2>
+        {grandTotal > 0 && (
+          <span
+            className="text-sm tabular-nums"
+            style={{
+              fontFamily: "var(--font-cleaner-mono)",
+              fontWeight: 700,
+              color: "var(--cleaner-ink)",
+            }}
+          >
+            {fmtMoney(grandTotal, currency)}
+            <span
+              className="ml-1 text-[10px] uppercase tracking-wider"
+              style={{ color: "var(--cleaner-muted)", fontWeight: 400 }}
+            >
+              total / mo
+            </span>
+          </span>
+        )}
+      </div>
       {items.length === 0 ? (
         <Card padding="p-8">
           <p className="text-center text-sm" style={{ color: "var(--cleaner-muted)" }}>
@@ -272,13 +324,41 @@ function CostsSection({
       ) : (
         <Card padding="p-0">
           <div className="divide-y divide-black/[0.04]">
-            {sortedBuckets.map((bucket) => (
+            {sortedBuckets.map((bucket) => {
+              const bucketTotal = bucketTotals.get(bucket) ?? 0;
+              const variableCount = byBucket
+                .get(bucket)!
+                .filter((i) => i.frequency === "revenue_percentage").length;
+              return (
               <div key={bucket} className="p-4">
-                <div
-                  className="mb-2 text-[10px] uppercase tracking-wider"
-                  style={{ color: "var(--cleaner-muted)" }}
-                >
-                  {bucketLabel(bucket)}
+                <div className="mb-2 flex items-baseline justify-between">
+                  <span
+                    className="text-[10px] uppercase tracking-wider"
+                    style={{ color: "var(--cleaner-muted)" }}
+                  >
+                    {bucketLabel(bucket)}
+                  </span>
+                  <span
+                    className="tabular-nums text-sm"
+                    style={{
+                      fontFamily: "var(--font-cleaner-mono)",
+                      fontWeight: 700,
+                      color: "var(--cleaner-ink)",
+                    }}
+                  >
+                    {bucketTotal > 0 ? fmtMoney(bucketTotal, currency) : "—"}
+                    {variableCount > 0 && (
+                      <span
+                        className="ml-1 text-[10px]"
+                        style={{
+                          color: "var(--cleaner-muted)",
+                          fontWeight: 400,
+                        }}
+                      >
+                        + {variableCount} variable
+                      </span>
+                    )}
+                  </span>
                 </div>
                 <ul className="space-y-1.5">
                   {byBucket.get(bucket)!.map((it) => (
@@ -322,7 +402,8 @@ function CostsSection({
                   ))}
                 </ul>
               </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
       )}
