@@ -200,6 +200,8 @@ export function OwnerPropertyClient({
             <MonthSwitcher month={month} onMonthChange={setMonth} />
           </div>
           <MonthSummary
+            propertyId={propertyId}
+            month={month}
             currency={currency}
             grossRevenue={draft.draft.totals.grossRevenue}
             ownerPayout={draft.draft.totals.ownerPayout}
@@ -1078,6 +1080,8 @@ function TabLink({
  * of revenue is the mortgage."
  */
 function MonthSummary({
+  propertyId,
+  month,
   currency,
   grossRevenue,
   ownerPayout,
@@ -1088,6 +1092,8 @@ function MonthSummary({
   mortgageAmount,
   stakePct,
 }: {
+  propertyId: Id<"properties">;
+  month: string;
   currency: string;
   grossRevenue: number;
   ownerPayout: number;
@@ -1132,12 +1138,20 @@ function MonthSummary({
         />
       </div>
       {myMortgage > 0 && (
-        <MortgageCoverageBar
-          currency={currency}
-          obligation={myMortgage}
-          grossRevenue={grossRevenue * stakePct}
-          variant="roomy"
-        />
+        // Drill-in: tap the bar to land on the full mortgage detail page
+        // (milestone marker, 12-month strip, streak, projected total).
+        <Link
+          href={`/owner/properties/${propertyId}/mortgage?month=${month}`}
+          className="block rounded-lg transition hover:bg-black/[0.02]"
+          aria-label="View mortgage coverage detail"
+        >
+          <MortgageCoverageBar
+            currency={currency}
+            obligation={myMortgage}
+            grossRevenue={grossRevenue * stakePct}
+            variant="roomy"
+          />
+        </Link>
       )}
     </div>
   );
