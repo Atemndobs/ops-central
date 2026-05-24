@@ -935,3 +935,45 @@ export const markAllOwnerNotificationsRead = mutation({
     return { updated };
   },
 });
+
+/**
+ * One-off internal mutation: find any `revenue_percentage` cost item with
+ * an insane percentageRate (>= 0.5 = 50%) and zero it out. These are
+ * almost certainly data-entry bugs — real platform fees are 3–20%,
+ * pricing-tool SaaS like PriceLabs is a flat monthly fee.
+ *
+ * Found 2026-05-24: PriceLabs configured at 100% on Dallas-The Scandi
+ * (and likely other J&A properties), causing platformFees to consume
+ * 100% of grossRevenue and ownerPayout to collapse to $0.
+ *
+ * dryRun=true reports without writing.
+ */
+export const repairInsaneRevenuePercentageRates = internalMutation({
+  args: { dryRun: v.boolean(), threshold: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const threshold = args.threshold ?? 0.5;
+    const items = await ctx.db.query("propertyCostItems").collect();
+    const broken = items.filter(
+      (i) =>
+        i.isActive &&
+        i.frequency === "revenue_percentage" &&
+        (i.percentageRate ?? 0) >= threshold,
+    );
+    const report = broken.map((i) => ({
+      _id: i._id,
+      propertyId: i.propertyId,
+      name: i.name,
+      percentageRate: i.percentageRate,
+    }));
+    if (!args.dryRun) {
+      const now = Date.now();
+      for (const i of broken) {
+        await ctx.db.patch(i._id, {
+          percentageRate: 0,
+          updatedAt: now,
+        });
+      }
+    }
+    return { dryRun: args.dryRun, found: broken.length, report };
+  },
+});
