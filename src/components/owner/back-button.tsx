@@ -76,11 +76,13 @@ function parentRouteFor(
 ): { href: string; label: string } | null {
   if (pathname === "/owner") return null;
 
-  // Statement / approval detail → property page
+  // Statement / approval / mortgage detail → property page
   const stmtMatch = pathname.match(/^(\/owner\/properties\/[^/]+)\/statements\/[^/]+$/);
   if (stmtMatch) return { href: stmtMatch[1], label: "Property" };
   const apprMatch = pathname.match(/^(\/owner\/properties\/[^/]+)\/approvals\/[^/]+$/);
   if (apprMatch) return { href: apprMatch[1], label: "Property" };
+  const mortgageMatch = pathname.match(/^(\/owner\/properties\/[^/]+)\/mortgage$/);
+  if (mortgageMatch) return { href: mortgageMatch[1], label: "Property" };
 
   // Property root → dashboard
   if (/^\/owner\/properties\/[^/]+$/.test(pathname)) {
