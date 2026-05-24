@@ -437,25 +437,47 @@ export const listOwnerCostItems = query({
 });
 
 /**
- * Recent stays for a property (default: last 90 days + future). Used for
- * the Bookings section. Cancelled stays are returned with a flag so the UI
- * can show them grayed-out — owners often want to know about cancellations.
+ * Stays for a property, scoped to a specific calendar month by default
+ * (the same month the dashboard draft is computed for). Owners can pass
+ * `lookbackDays` to override and get a rolling window instead — that's
+ * useful for "show me everything recent" admin/debug views, not the
+ * primary owner UX.
+ *
+ * Filter semantics MATCH the fee engine: a stay is "in" the month if its
+ * checkInAt falls in [periodStart, periodEnd). This is what flows into
+ * grossRevenue, so the booking list always reconciles to the headline
+ * revenue number on the dashboard.
+ *
+ * Cancelled stays are included (with cancelledAt flag) so owners can see
+ * the booking that fell through.
  */
 export const listOwnerStays = query({
   args: {
     propertyId: v.id("properties"),
+    /** "YYYY-MM" — when set, returns only stays with checkInAt in that month. */
+    month: v.optional(v.string()),
+    /** Alternative window: stays with checkInAt in the last N days. Ignored if `month` is set. */
     lookbackDays: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await assertOwnerOfProperty(ctx, args.propertyId);
-    const lookback = (args.lookbackDays ?? 90) * 24 * 60 * 60 * 1000;
-    const cutoff = Date.now() - lookback;
+    let windowStart: number;
+    let windowEnd: number;
+    if (args.month) {
+      const { start, end } = monthRange(args.month);
+      windowStart = start;
+      windowEnd = end;
+    } else {
+      const lookback = (args.lookbackDays ?? 90) * 24 * 60 * 60 * 1000;
+      windowStart = Date.now() - lookback;
+      windowEnd = Number.POSITIVE_INFINITY;
+    }
     const stays = await ctx.db
       .query("stays")
       .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId))
       .collect();
     return stays
-      .filter((s) => s.checkInAt >= cutoff)
+      .filter((s) => s.checkInAt >= windowStart && s.checkInAt < windowEnd)
       .sort((a, b) => b.checkInAt - a.checkInAt)
       .map((s) => ({
         _id: s._id,

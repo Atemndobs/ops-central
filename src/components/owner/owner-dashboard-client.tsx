@@ -76,9 +76,9 @@ export function OwnerDashboardClient() {
       />
 
       {viewMode === "card" ? (
-        <CardView properties={dashboard.properties} />
+        <CardView properties={dashboard.properties} month={month} />
       ) : (
-        <ListView properties={dashboard.properties} />
+        <ListView properties={dashboard.properties} month={month} />
       )}
     </div>
   );
@@ -227,24 +227,24 @@ function Toolbar({
 
 // ─── Card view (existing, slightly tightened) ──────────────────────────────
 
-function CardView({ properties }: { properties: PropertyRow[] }) {
+function CardView({ properties, month }: { properties: PropertyRow[]; month: string }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {properties.map((p) => (
-        <PropertyCard key={p.propertyId} p={p} />
+        <PropertyCard key={p.propertyId} p={p} month={month} />
       ))}
     </div>
   );
 }
 
-function PropertyCard({ p }: { p: PropertyRow }) {
+function PropertyCard({ p, month }: { p: PropertyRow; month: string }) {
   const totals = "totals" in p.draft ? p.draft.totals : null;
   const hasError = totals === null;
   const isPaid = p.issuedStatementId !== null;
 
   return (
     <Link
-      href={`/owner/properties/${p.propertyId}`}
+      href={`/owner/properties/${p.propertyId}?month=${month}`}
       className="group relative flex flex-col gap-4 rounded-2xl border border-black/[0.06] p-6 transition hover:border-[var(--cleaner-primary)]/40 hover:shadow-sm"
       style={{ background: "var(--cleaner-surface)" }}
     >
@@ -317,7 +317,7 @@ function PropertyCard({ p }: { p: PropertyRow }) {
 
 // ─── List view (scales to 30+) ─────────────────────────────────────────────
 
-function ListView({ properties }: { properties: PropertyRow[] }) {
+function ListView({ properties, month }: { properties: PropertyRow[]; month: string }) {
   // Sort by ownerPayout desc, errors last
   const sorted = useMemo(() => {
     return [...properties].sort((a, b) => {
@@ -353,7 +353,7 @@ function ListView({ properties }: { properties: PropertyRow[] }) {
               >
                 <Td>
                   <Link
-                    href={`/owner/properties/${p.propertyId}`}
+                    href={`/owner/properties/${p.propertyId}?month=${month}`}
                     className="hover:underline"
                     style={{ fontWeight: 500 }}
                   >
@@ -391,7 +391,7 @@ function ListView({ properties }: { properties: PropertyRow[] }) {
                 </Td>
                 <Td align="center">
                   <Link
-                    href={`/owner/properties/${p.propertyId}`}
+                    href={`/owner/properties/${p.propertyId}?month=${month}`}
                     className="text-xs hover:underline"
                     style={{ color: "var(--cleaner-primary)" }}
                   >
