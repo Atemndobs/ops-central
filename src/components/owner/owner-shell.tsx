@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { UserButton } from "@clerk/nextjs";
-import { Building2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { OwnerBackButton } from "./back-button";
 
@@ -30,30 +30,32 @@ export function OwnerShell({ children }: { children: ReactNode }) {
         }}
       >
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-          <Link href="/owner" className="flex items-center gap-2.5 tracking-tight">
-            <Building2 size={20} style={{ color: "var(--cleaner-primary)" }} />
-            <span className="flex items-baseline gap-2">
-              <span
-                className="text-xl"
-                style={{
-                  fontFamily: "var(--font-cleaner-display), serif",
-                  fontWeight: 700,
-                  letterSpacing: "-0.02em",
-                }}
-              >
-                ChezSoiStays
-              </span>
-              <span
-                className="text-[10px]"
-                style={{
-                  fontFamily: "var(--font-cleaner-mono), monospace",
-                  letterSpacing: "0.18em",
-                  textTransform: "uppercase",
-                  color: "var(--cleaner-muted)",
-                }}
-              >
-                Owner
-              </span>
+          {/* Brand mark = ChezSoiStays app logo (same asset the cleaner PWA
+              uses). Wordmark dropped — the logo IS the brand mark.
+              Tapping anywhere on the logo navigates back to /owner. */}
+          <Link
+            href="/owner"
+            className="flex items-center gap-2.5"
+            aria-label="ChezSoiStays — Owner home"
+          >
+            <Image
+              src="/icons/chezsoi-icon-192.png"
+              alt="ChezSoiStays"
+              width={32}
+              height={32}
+              priority
+              className="rounded-md"
+            />
+            <span
+              className="text-[10px]"
+              style={{
+                fontFamily: "var(--font-cleaner-mono), monospace",
+                letterSpacing: "0.18em",
+                textTransform: "uppercase",
+                color: "var(--cleaner-muted)",
+              }}
+            >
+              Owner
             </span>
           </Link>
           <div className="flex items-center gap-4 text-sm">
