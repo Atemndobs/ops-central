@@ -13,6 +13,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { PropertyFormValues, PropertyRecord } from "@/types/property";
 import { PropertyCriticalCheckpointsPanel } from "@/components/properties/property-critical-checkpoints-panel";
 import { PropertyRefillTrackingPanel } from "@/components/properties/property-refill-tracking-panel";
+import { PropertyOwnersCard } from "@/components/properties/property-owners-card";
 import { PropertyInstructionsPanel } from "@/components/properties/property-instructions-panel";
 import { PropertyRoomsPanel } from "@/components/properties/property-rooms-panel";
 import { InventoryImportModal } from "@/components/inventory/inventory-import-modal";
@@ -235,6 +236,8 @@ export function PropertyDetail({ id }: { id: string }) {
       <PropertyCriticalCheckpointsPanel propertyId={id} propertyRooms={property.rooms ?? []} />
 
       <PropertyRefillTrackingPanel propertyId={id} />
+
+      <PropertyOwnersCard propertyId={id as Id<"properties">} />
 
       <section className="rounded-2xl border bg-[var(--card)]">
         <div className="border-b px-4 py-3">
