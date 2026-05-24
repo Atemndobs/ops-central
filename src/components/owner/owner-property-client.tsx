@@ -243,6 +243,10 @@ export function OwnerPropertyClient({
             // Gross → Mgmt fee → Payout breakdown. Default OFF — fee
             // still appears on the issued PDF & statement detail.
             showMgmtFee={prop.flags.showMgmtFee}
+            // Admin-gated via `owner_show_payout`. Default ON — payout is
+            // the headline owner-facing number — toggle off to demo a
+            // "gross + fee only" view.
+            showPayout={prop.flags.showPayout}
             // Use RAW monthly lease (matches Operational Costs ledger)
             // not engine's period-prorated value. Falls back to engine
             // value while costItems are loading.
@@ -1127,6 +1131,7 @@ function MonthSummary({
   feePct,
   feeBase,
   showMgmtFee,
+  showPayout,
   mortgageAmount,
   stakePct,
 }: {
@@ -1140,18 +1145,21 @@ function MonthSummary({
   feeBase: string;
   /** Admin-gated via `owner_show_mgmt_fee` feature flag. */
   showMgmtFee: boolean;
+  /** Admin-gated via `owner_show_payout` feature flag. */
+  showPayout: boolean;
   /** Total lease/mortgage for the property in the period (J&A-side, full). */
   mortgageAmount: number;
   /** Owner's stake — used to scale both their payout/mortgage share. */
   stakePct: number;
 }) {
   const myMortgage = mortgageAmount * stakePct;
-  // Layout: numeric stats stay horizontal at every breakpoint (2 or 3
-  // columns depending on whether the mgmt-fee flag is on), with the
-  // mortgage progress bar always rendered full-width BELOW them. This
-  // mirrors the dashboard card pattern and keeps the headline numbers
-  // readable side-by-side on mobile where vertical real estate matters.
-  const statCols = showMgmtFee ? "grid-cols-3" : "grid-cols-2";
+  // Layout: numeric stats stay horizontal at every breakpoint. Column
+  // count tracks how many tiles the two admin flags currently expose:
+  //   gross (always) + mgmtFee? + payout? → 1..3
+  // Mortgage progress bar always renders full-width BELOW the stats.
+  const visibleCount = 1 + (showMgmtFee ? 1 : 0) + (showPayout ? 1 : 0);
+  const statCols =
+    visibleCount === 3 ? "grid-cols-3" : visibleCount === 2 ? "grid-cols-2" : "grid-cols-1";
   return (
     <div className="space-y-5">
       <div className={`grid ${statCols} gap-3`}>
@@ -1168,12 +1176,14 @@ function MonthSummary({
             compact
           />
         )}
-        <Stat
-          label="Your payout"
-          value={fmtMoney(ownerPayout * stakePct, currency)}
-          accent
-          compact
-        />
+        {showPayout && (
+          <Stat
+            label="Your payout"
+            value={fmtMoney(ownerPayout * stakePct, currency)}
+            accent
+            compact
+          />
+        )}
       </div>
       {myMortgage > 0 && (
         // Drill-in: tap the bar to land on the full mortgage detail page

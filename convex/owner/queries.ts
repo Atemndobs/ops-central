@@ -249,12 +249,20 @@ export const getOwnerProperty = query({
     const { user, ownership } = await assertOwnerOfProperty(ctx, args.propertyId);
     const property = await ctx.db.get(args.propertyId);
     if (!property) throw new ConvexError("Property not found");
-    // Owner-portal feature flags consumed by this page. Defaults to OFF when
-    // no flag row exists so new flags ship dark.
-    const showMgmtFeeFlag = await ctx.db
-      .query("featureFlags")
-      .withIndex("by_key", (q) => q.eq("key", "owner_show_mgmt_fee"))
-      .unique();
+    // Owner-portal feature flags consumed by this page.
+    //   - showMgmtFee defaults OFF (ships dark, admin opts in)
+    //   - showPayout  defaults ON (payout is the headline number;
+    //                  admin opts OUT to demo a "gross + fee only" view)
+    const [showMgmtFeeFlag, showPayoutFlag] = await Promise.all([
+      ctx.db
+        .query("featureFlags")
+        .withIndex("by_key", (q) => q.eq("key", "owner_show_mgmt_fee"))
+        .unique(),
+      ctx.db
+        .query("featureFlags")
+        .withIndex("by_key", (q) => q.eq("key", "owner_show_payout"))
+        .unique(),
+    ]);
     return {
       property,
       ownership: {
@@ -266,6 +274,7 @@ export const getOwnerProperty = query({
       user: pickUser(user),
       flags: {
         showMgmtFee: showMgmtFeeFlag?.enabled ?? false,
+        showPayout: showPayoutFlag?.enabled ?? true,
       },
     };
   },
