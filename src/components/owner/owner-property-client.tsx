@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useConvexAuth, useQuery } from "convex/react";
-import { ArrowLeft, Bell, CalendarDays, FileText, MapPin, Receipt } from "lucide-react";
+import { ArrowLeft, Bell, CalendarDays, FileText, MapPin } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { bucketLabel, fmtDate, fmtMoney, fmtMonth } from "./owner-format";
@@ -291,10 +291,10 @@ function CostsSection({
     <section id="costs" className="scroll-mt-20">
       <div className="mb-3 flex items-baseline justify-between">
         <h2
-          className="flex items-center gap-2 text-lg"
+          className="text-lg"
           style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700 }}
         >
-          <Receipt size={18} /> Operational Costs
+          Operational Costs
         </h2>
         {grandTotal > 0 && (
           <span
