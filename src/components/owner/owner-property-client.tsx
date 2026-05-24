@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useConvexAuth, useQuery } from "convex/react";
-import { Bell, CalendarDays, FileText, MapPin } from "lucide-react";
+import { Bell, CalendarDays, ChevronLeft, ChevronRight, FileText, MapPin } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { bucketLabel, fmtDate, fmtMoney, fmtMonth } from "./owner-format";
@@ -44,6 +44,13 @@ export function OwnerPropertyClient({
     api.owner.queries.listOwnerCostItems,
     isAuthenticated ? { propertyId } : "skip",
   );
+  // Sibling list for prev/next nav — lets the owner page through every
+  // property they own without bouncing back to the dashboard. Sorted by
+  // name for stable, predictable ordering (independent of dashboard sort).
+  const owned = useQuery(
+    api.owner.queries.listOwnedProperties,
+    isAuthenticated ? {} : "skip",
+  );
 
   if (isLoading || prop === undefined) return <Skeleton />;
 
@@ -54,17 +61,43 @@ export function OwnerPropertyClient({
     .filter((i) => i.bucket === "lease")
     .reduce((s, i) => s + i.amount, 0);
 
+  // Compute prev/next sibling for in-place property navigation.
+  const ordered = (owned ?? [])
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const currentIdx = ordered.findIndex((p) => p._id === propertyId);
+  const prevProp =
+    ordered.length > 1 && currentIdx >= 0
+      ? ordered[(currentIdx - 1 + ordered.length) % ordered.length]
+      : null;
+  const nextProp =
+    ordered.length > 1 && currentIdx >= 0
+      ? ordered[(currentIdx + 1) % ordered.length]
+      : null;
+  const showSiblingNav = ordered.length > 1;
+
   return (
     <div className="space-y-8">
       <div>
         {/* Back link removed — OwnerShell renders the universal back
             button at the top of the page chrome. */}
-        <h1
-          className="text-3xl tracking-tight"
-          style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700, letterSpacing: "-0.02em" }}
-        >
-          {prop.property.name}
-        </h1>
+        <div className="flex items-start justify-between gap-3">
+          <h1
+            className="text-3xl tracking-tight"
+            style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700, letterSpacing: "-0.02em" }}
+          >
+            {prop.property.name}
+          </h1>
+          {showSiblingNav && (
+            <SiblingNav
+              prev={prevProp}
+              next={nextProp}
+              month={month}
+              position={currentIdx + 1}
+              total={ordered.length}
+            />
+          )}
+        </div>
         <p
           className="mt-1 flex items-center gap-1.5 text-sm"
           style={{ color: "var(--cleaner-muted)" }}
@@ -773,6 +806,68 @@ function toggleSort(
 /** Tiny alias for local consistency with the other Section helpers. */
 function useStateLazy<T>(initial: T) {
   return useState<T>(initial);
+}
+
+/**
+ * Compact prev / "n of N" / next nav for paging through every property the
+ * owner holds without bouncing back to the dashboard. Wraps around — past
+ * the last property goes to the first. Preserves the current `?month=` so
+ * the period context follows the user across siblings.
+ *
+ * Hidden when the owner only holds one property (caller passes <=1 total).
+ */
+function SiblingNav({
+  prev,
+  next,
+  month,
+  position,
+  total,
+}: {
+  prev: { _id: Id<"properties">; name: string } | null;
+  next: { _id: Id<"properties">; name: string } | null;
+  month: string;
+  position: number;
+  total: number;
+}) {
+  return (
+    <div
+      className="flex shrink-0 items-center gap-0.5 rounded-full border border-black/[0.06] p-0.5 text-xs"
+      style={{ background: "var(--cleaner-surface)" }}
+    >
+      {prev && (
+        <Link
+          href={`/owner/properties/${prev._id}?month=${month}`}
+          className="flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-black/[0.04]"
+          aria-label={`Previous property: ${prev.name}`}
+          title={prev.name}
+          style={{ color: "var(--cleaner-muted)" }}
+        >
+          <ChevronLeft size={14} />
+        </Link>
+      )}
+      <span
+        className="px-2 tabular-nums"
+        style={{
+          fontFamily: "var(--font-cleaner-mono)",
+          color: "var(--cleaner-muted)",
+          letterSpacing: "0.04em",
+        }}
+      >
+        {position} <span className="opacity-60">/ {total}</span>
+      </span>
+      {next && (
+        <Link
+          href={`/owner/properties/${next._id}?month=${month}`}
+          className="flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-black/[0.04]"
+          aria-label={`Next property: ${next.name}`}
+          title={next.name}
+          style={{ color: "var(--cleaner-muted)" }}
+        >
+          <ChevronRight size={14} />
+        </Link>
+      )}
+    </div>
+  );
 }
 
 function TabLink({
