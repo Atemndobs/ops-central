@@ -1126,33 +1126,42 @@ function MonthSummary({
   stakePct: number;
 }) {
   const myMortgage = mortgageAmount * stakePct;
-  // Grid scales to 4 columns when the mgmt-fee tile is visible — keeps the
-  // visual rhythm so "Your payout" stays the rightmost emphasized number.
-  const cols = showMgmtFee ? "md:grid-cols-4" : "md:grid-cols-3";
+  // Layout: numeric stats stay horizontal at every breakpoint (2 or 3
+  // columns depending on whether the mgmt-fee flag is on), with the
+  // mortgage progress bar always rendered full-width BELOW them. This
+  // mirrors the dashboard card pattern and keeps the headline numbers
+  // readable side-by-side on mobile where vertical real estate matters.
+  const statCols = showMgmtFee ? "grid-cols-3" : "grid-cols-2";
   return (
-    <div className={`grid grid-cols-1 gap-4 ${cols}`}>
-      <Stat label="Gross revenue" value={fmtMoney(grossRevenue, currency)} />
-      {showMgmtFee && (
+    <div className="space-y-5">
+      <div className={`grid ${statCols} gap-3`}>
         <Stat
-          label="Mgmt fee"
-          value={fmtMoney(-mgmtFee * stakePct, currency)}
-          subtitle={`${(feePct * 100).toFixed(1)}% × ${feeBase}`}
+          label="Gross"
+          value={fmtMoney(grossRevenue, currency)}
+          compact
         />
-      )}
-      <Stat
-        label="Your payout"
-        value={fmtMoney(ownerPayout * stakePct, currency)}
-        accent
-      />
-      {myMortgage > 0 ? (
+        {showMgmtFee && (
+          <Stat
+            label="Mgmt fee"
+            value={fmtMoney(-mgmtFee * stakePct, currency)}
+            subtitle={`${(feePct * 100).toFixed(1)}% × ${feeBase}`}
+            compact
+          />
+        )}
+        <Stat
+          label="Your payout"
+          value={fmtMoney(ownerPayout * stakePct, currency)}
+          accent
+          compact
+        />
+      </div>
+      {myMortgage > 0 && (
         <MortgageCoverageBar
           currency={currency}
           obligation={myMortgage}
           grossRevenue={grossRevenue * stakePct}
           variant="roomy"
         />
-      ) : (
-        <Stat label="Mortgage" value="—" />
       )}
     </div>
   );
@@ -1163,11 +1172,14 @@ function Stat({
   value,
   subtitle,
   accent,
+  compact,
 }: {
   label: string;
   value: string;
   subtitle?: string;
   accent?: boolean;
+  /** Smaller value font + truncate so 3 stats fit side-by-side on mobile. */
+  compact?: boolean;
 }) {
   return (
     <div>
@@ -1183,12 +1195,15 @@ function Stat({
         {label}
       </div>
       <div
-        className="mt-1 text-xl tabular-nums"
+        className={`mt-1 truncate whitespace-nowrap tabular-nums ${
+          compact ? "text-base sm:text-xl" : "text-xl"
+        }`}
         style={{
           fontFamily: "var(--font-cleaner-mono)",
           fontWeight: accent ? 700 : 400,
           color: accent ? "var(--cleaner-primary)" : "var(--cleaner-ink)",
         }}
+        title={value}
       >
         {value}
       </div>
