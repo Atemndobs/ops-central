@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useConvexAuth, useQuery } from "convex/react";
 import {
   Bell,
+  Building2,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -18,7 +19,7 @@ import {
 } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { bucketLabel, fmtDate, fmtDateShort, fmtMoney, fmtMonth } from "./owner-format";
+import { bucketLabel, fmtDate, fmtDateShort, fmtMoney, fmtMonth, upgradeAirbnbImageQuality } from "./owner-format";
 import { MortgageCoverageBar } from "./mortgage-coverage";
 import { PlatformLogo } from "./platform-logo";
 import { MonthSwitcher } from "./month-switcher";
@@ -96,12 +97,55 @@ export function OwnerPropertyClient({
         {/* Back link removed — OwnerShell renders the universal back
             button at the top of the page chrome. */}
         <div className="flex items-start justify-between gap-3">
-          <h1
-            className="text-3xl tracking-tight"
-            style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700, letterSpacing: "-0.02em" }}
-          >
-            {prop.property.name}
-          </h1>
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            {/* Property thumbnail — mirrors the dashboard card pattern so
+                owners visually identify the property at the top of the
+                detail page. Falls back to a Building2 icon when the
+                property has no `imageUrl`. */}
+            <span
+              className="relative block h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-black/[0.06]"
+              style={{ background: "var(--cleaner-bg)" }}
+            >
+              {prop.property.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- external CDN with signed params
+                <img
+                  src={upgradeAirbnbImageQuality(prop.property.imageUrl)}
+                  alt={prop.property.name}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span
+                  className="flex h-full w-full items-center justify-center"
+                  style={{ color: "var(--cleaner-muted)" }}
+                >
+                  <Building2 size={20} />
+                </span>
+              )}
+            </span>
+            <div className="min-w-0 flex-1">
+              <h1
+                className="truncate text-3xl tracking-tight"
+                style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700, letterSpacing: "-0.02em" }}
+              >
+                {prop.property.name}
+              </h1>
+              <p
+                className="mt-1 flex items-center gap-1.5 text-sm"
+                style={{ color: "var(--cleaner-muted)" }}
+              >
+                <MapPin size={14} className="shrink-0" />
+                <span className="truncate">{prop.property.address}</span>
+              </p>
+              <p className="mt-2 text-xs" style={{ color: "var(--cleaner-muted)" }}>
+                You own{" "}
+                <span style={{ fontWeight: 700, color: "var(--cleaner-ink)" }}>
+                  {(prop.ownership.stakePct * 100).toFixed(0)}%
+                </span>{" "}
+                as {prop.ownership.role}
+                {prop.ownership.isPrimaryApprover && " · primary approver"}
+              </p>
+            </div>
+          </div>
           {showSiblingNav && (
             <SiblingNav
               prev={prevProp}
@@ -112,20 +156,6 @@ export function OwnerPropertyClient({
             />
           )}
         </div>
-        <p
-          className="mt-1 flex items-center gap-1.5 text-sm"
-          style={{ color: "var(--cleaner-muted)" }}
-        >
-          <MapPin size={14} /> {prop.property.address}
-        </p>
-        <p className="mt-2 text-xs" style={{ color: "var(--cleaner-muted)" }}>
-          You own{" "}
-          <span style={{ fontWeight: 700, color: "var(--cleaner-ink)" }}>
-            {(prop.ownership.stakePct * 100).toFixed(0)}%
-          </span>{" "}
-          as {prop.ownership.role}
-          {prop.ownership.isPrimaryApprover && " · primary approver"}
-        </p>
       </div>
 
       {/* Tab nav */}
