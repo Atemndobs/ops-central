@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useConvexAuth, useQuery } from "convex/react";
 import { ArrowLeft, Bell, CalendarDays, FileText, MapPin, Receipt } from "lucide-react";
@@ -342,6 +343,9 @@ function CostsSection({
   );
 }
 
+type SortKey = "checkIn" | "guests" | "total";
+type SortDir = "asc" | "desc";
+
 function BookingsSection({
   propertyId,
   currency,
@@ -357,7 +361,48 @@ function BookingsSection({
     propertyId,
     month,
   });
+
+  // Local state for platform filter + sort
+  const [platformFilter, setPlatformFilter] = useStateLazy<string | "all">("all");
+  const [sortKey, setSortKey] = useStateLazy<SortKey>("checkIn");
+  const [sortDir, setSortDir] = useStateLazy<SortDir>("desc");
+  const [includeCancelled, setIncludeCancelled] = useStateLazy<boolean>(true);
+
   if (stays === undefined) return <Skeleton />;
+
+  // Per-platform tallies (used for chip badges + filtered footer)
+  const platforms = new Map<string, { count: number; total: number }>();
+  for (const s of stays) {
+    if (s.cancelledAt && !includeCancelled) continue;
+    const key = s.platform ?? "direct";
+    const cur = platforms.get(key) ?? { count: 0, total: 0 };
+    cur.count += 1;
+    cur.total += s.totalAmount ?? 0;
+    platforms.set(key, cur);
+  }
+  const platformList = Array.from(platforms.entries()).sort(
+    (a, b) => b[1].total - a[1].total,
+  );
+  const grandCount = Array.from(platforms.values()).reduce((s, p) => s + p.count, 0);
+  const grandTotal = Array.from(platforms.values()).reduce((s, p) => s + p.total, 0);
+
+  const visible = stays
+    .filter((s) => (includeCancelled ? true : !s.cancelledAt))
+    .filter((s) => platformFilter === "all" || (s.platform ?? "direct") === platformFilter)
+    .sort((a, b) => {
+      const dir = sortDir === "desc" ? -1 : 1;
+      switch (sortKey) {
+        case "checkIn":
+          return (a.checkInAt - b.checkInAt) * dir;
+        case "guests":
+          return ((a.numberOfGuests ?? 0) - (b.numberOfGuests ?? 0)) * dir;
+        case "total":
+          return ((a.totalAmount ?? 0) - (b.totalAmount ?? 0)) * dir;
+      }
+    });
+
+  const filteredCount = visible.length;
+  const filteredTotal = visible.reduce((s, x) => s + (x.totalAmount ?? 0), 0);
 
   return (
     <section id="bookings" className="scroll-mt-20">
@@ -367,6 +412,7 @@ function BookingsSection({
       >
         <CalendarDays size={18} /> Bookings — {fmtMonth(month)}
       </h2>
+
       {stays.length === 0 ? (
         <Card padding="p-8">
           <p className="text-center text-sm" style={{ color: "var(--cleaner-muted)" }}>
@@ -375,18 +421,100 @@ function BookingsSection({
         </Card>
       ) : (
         <Card padding="p-0">
-          <div className="divide-y divide-black/[0.04]">
-            {stays.map((s) => (
-              <div
-                key={s._id}
-                className={`flex items-center justify-between p-4 text-sm ${
-                  s.cancelledAt ? "opacity-60" : ""
-                }`}
+          {/* Filter row */}
+          <div className="flex flex-wrap items-center gap-2 border-b border-black/[0.04] p-3">
+            <FilterChip
+              active={platformFilter === "all"}
+              onClick={() => setPlatformFilter("all")}
+            >
+              All · {grandCount}
+            </FilterChip>
+            {platformList.map(([name, { count, total }]) => (
+              <FilterChip
+                key={name}
+                active={platformFilter === name}
+                onClick={() => setPlatformFilter(name)}
+                hint={`${count} · ${fmtMoney(total, currency)}`}
               >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{s.guestName}</span>
-                    {s.platform && (
+                {name}
+              </FilterChip>
+            ))}
+            <span className="ml-auto flex items-center gap-2 text-xs"
+                  style={{ color: "var(--cleaner-muted)" }}>
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeCancelled}
+                  onChange={(e) => setIncludeCancelled(e.target.checked)}
+                  className="h-3 w-3 accent-[var(--cleaner-primary)]"
+                />
+                include cancelled
+              </label>
+            </span>
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr
+                  className="text-left"
+                  style={{ background: "var(--cleaner-bg)" }}
+                >
+                  <Th>Guest</Th>
+                  <Th>Platform</Th>
+                  <Th
+                    sortable
+                    active={sortKey === "checkIn"}
+                    dir={sortDir}
+                    onClick={() => toggleSort("checkIn", sortKey, sortDir, setSortKey, setSortDir)}
+                  >
+                    Check-in
+                  </Th>
+                  <Th>Check-out</Th>
+                  <Th
+                    align="right"
+                    sortable
+                    active={sortKey === "guests"}
+                    dir={sortDir}
+                    onClick={() => toggleSort("guests", sortKey, sortDir, setSortKey, setSortDir)}
+                  >
+                    Guests
+                  </Th>
+                  <Th
+                    align="right"
+                    sortable
+                    active={sortKey === "total"}
+                    dir={sortDir}
+                    onClick={() => toggleSort("total", sortKey, sortDir, setSortKey, setSortDir)}
+                  >
+                    Total
+                  </Th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((s, i) => (
+                  <tr
+                    key={s._id}
+                    className={i > 0 ? "border-t border-black/[0.04]" : ""}
+                    style={s.cancelledAt ? { opacity: 0.55 } : undefined}
+                  >
+                    <Td>
+                      <span className="font-medium">{s.guestName}</span>
+                      {s.cancelledAt && (
+                        <span
+                          className="ml-2 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider"
+                          style={{
+                            background: "var(--color-red-100,#fee2e2)",
+                            color: "var(--color-red-900,#7f1d1d)",
+                            fontFamily: "var(--font-cleaner-mono)",
+                          }}
+                        >
+                          cancelled
+                        </span>
+                      )}
+                    </Td>
+                    <Td>
                       <span
                         className="rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider"
                         style={{
@@ -395,43 +523,184 @@ function BookingsSection({
                           fontFamily: "var(--font-cleaner-mono)",
                         }}
                       >
-                        {s.platform}
+                        {s.platform ?? "direct"}
                       </span>
-                    )}
-                    {s.cancelledAt && (
-                      <span
-                        className="rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider"
-                        style={{
-                          background: "var(--color-red-100,#fee2e2)",
-                          color: "var(--color-red-900,#7f1d1d)",
-                          fontFamily: "var(--font-cleaner-mono)",
-                        }}
-                      >
-                        cancelled
-                      </span>
-                    )}
-                  </div>
-                  <div
-                    className="mt-0.5 text-xs"
-                    style={{ color: "var(--cleaner-muted)" }}
-                  >
-                    {fmtDate(s.checkInAt)} – {fmtDate(s.checkOutAt)}
-                    {s.numberOfGuests ? ` · ${s.numberOfGuests} guests` : ""}
-                  </div>
-                </div>
-                <div
-                  className="text-right tabular-nums"
-                  style={{ fontFamily: "var(--font-cleaner-mono)" }}
+                    </Td>
+                    <Td>{fmtDate(s.checkInAt)}</Td>
+                    <Td>{fmtDate(s.checkOutAt)}</Td>
+                    <Td align="right">{s.numberOfGuests ?? "—"}</Td>
+                    <Td align="right" mono>
+                      {s.totalAmount != null
+                        ? fmtMoney(s.totalAmount, currency)
+                        : "—"}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr
+                  className="border-t border-black/[0.04]"
+                  style={{ background: "var(--cleaner-bg)" }}
                 >
-                  {s.totalAmount != null && fmtMoney(s.totalAmount, currency)}
-                </div>
-              </div>
-            ))}
+                  <Td colSpan={4}>
+                    <span style={{ color: "var(--cleaner-muted)" }}>
+                      {platformFilter === "all"
+                        ? `All platforms · ${filteredCount} bookings`
+                        : `${platformFilter} · ${filteredCount} bookings`}
+                    </span>
+                  </Td>
+                  <Td align="right">
+                    <span style={{ color: "var(--cleaner-muted)", fontSize: 11 }}>
+                      subtotal
+                    </span>
+                  </Td>
+                  <Td align="right" mono bold>
+                    {fmtMoney(filteredTotal, currency)}
+                  </Td>
+                </tr>
+                {platformFilter !== "all" && filteredTotal !== grandTotal && (
+                  <tr style={{ background: "var(--cleaner-bg)" }}>
+                    <Td colSpan={5}>
+                      <span style={{ color: "var(--cleaner-muted)" }}>
+                        Grand total (all platforms · {grandCount} bookings)
+                      </span>
+                    </Td>
+                    <Td align="right" mono>
+                      {fmtMoney(grandTotal, currency)}
+                    </Td>
+                  </tr>
+                )}
+              </tfoot>
+            </table>
           </div>
         </Card>
       )}
     </section>
   );
+}
+
+function FilterChip({
+  active,
+  onClick,
+  hint,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition"
+      style={{
+        background: active ? "var(--cleaner-primary)" : "transparent",
+        color: active ? "white" : "var(--cleaner-ink)",
+        borderColor: active ? "var(--cleaner-primary)" : "rgba(0,0,0,0.1)",
+        fontFamily: "var(--font-cleaner-mono)",
+        letterSpacing: "0.04em",
+        textTransform: "uppercase",
+      }}
+    >
+      <span>{children}</span>
+      {hint && (
+        <span
+          style={{
+            color: active ? "rgba(255,255,255,0.85)" : "var(--cleaner-muted)",
+            fontSize: 10,
+          }}
+        >
+          {hint}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function Th({
+  children,
+  align = "left",
+  sortable,
+  active,
+  dir,
+  onClick,
+}: {
+  children: React.ReactNode;
+  align?: "left" | "right" | "center";
+  sortable?: boolean;
+  active?: boolean;
+  dir?: SortDir;
+  onClick?: () => void;
+}) {
+  return (
+    <th
+      className={`px-3 py-2 text-[10px] uppercase tracking-wider ${sortable ? "cursor-pointer select-none" : ""}`}
+      onClick={onClick}
+      style={{
+        textAlign: align,
+        color: "var(--cleaner-muted)",
+        fontFamily: "var(--font-cleaner-mono)",
+        fontWeight: 500,
+      }}
+    >
+      <span className="inline-flex items-center gap-1">
+        {children}
+        {sortable && active && (
+          <span style={{ fontSize: 9 }}>{dir === "desc" ? "▼" : "▲"}</span>
+        )}
+      </span>
+    </th>
+  );
+}
+
+function Td({
+  children,
+  align = "left",
+  mono,
+  bold,
+  colSpan,
+}: {
+  children: React.ReactNode;
+  align?: "left" | "right" | "center";
+  mono?: boolean;
+  bold?: boolean;
+  colSpan?: number;
+}) {
+  return (
+    <td
+      className="px-3 py-2.5"
+      colSpan={colSpan}
+      style={{
+        textAlign: align,
+        fontFamily: mono ? "var(--font-cleaner-mono)" : undefined,
+        fontVariantNumeric: mono ? "tabular-nums" : undefined,
+        fontWeight: bold ? 700 : undefined,
+      }}
+    >
+      {children}
+    </td>
+  );
+}
+
+function toggleSort(
+  clicked: SortKey,
+  currentKey: SortKey,
+  currentDir: SortDir,
+  setKey: (k: SortKey) => void,
+  setDir: (d: SortDir) => void,
+): void {
+  if (clicked === currentKey) {
+    setDir(currentDir === "desc" ? "asc" : "desc");
+  } else {
+    setKey(clicked);
+    setDir(clicked === "checkIn" ? "desc" : "desc");
+  }
+}
+
+/** Tiny alias for local consistency with the other Section helpers. */
+function useStateLazy<T>(initial: T) {
+  return useState<T>(initial);
 }
 
 function TabLink({
