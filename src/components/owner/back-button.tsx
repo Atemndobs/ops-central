@@ -49,10 +49,15 @@ export function OwnerBackButton() {
       onClick={handle}
       className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm hover:bg-black/[0.04]"
       style={{ color: "var(--cleaner-muted)" }}
-      aria-label={`Back to ${parentRoute.label}`}
+      // Generic label — the button always goes one step back, not
+      // necessarily to the named parent. The visual "Dashboard" label
+      // misled users into thinking it always jumped to the home page,
+      // when in fact it pops history. The shell logo is the canonical
+      // "back to dashboard" affordance.
+      aria-label="Back"
     >
       <ArrowLeft size={14} />
-      {parentRoute.label}
+      Back
     </button>
   );
 }
