@@ -7,6 +7,7 @@ import { ArrowLeft, Bell, CalendarDays, FileText, MapPin, Receipt } from "lucide
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { bucketLabel, fmtDate, fmtMoney, fmtMonth } from "./owner-format";
+import { OwnerMortgageCoverCard } from "./owner-mortgage-cover-card";
 
 export function OwnerPropertyClient({
   propertyId,
@@ -131,6 +132,13 @@ export function OwnerPropertyClient({
           </ul>
         </Card>
       )}
+
+      {/* The pitch surface — lease/mortgage cover meter. Hidden if no lease cost configured. */}
+      <OwnerMortgageCoverCard
+        propertyId={propertyId}
+        currency={currency}
+        month={draft?.month ?? month ?? currentMonthLocal()}
+      />
 
       {draft && (
         <Card padding="p-6">
@@ -840,4 +848,9 @@ function Skeleton() {
       style={{ background: "var(--cleaner-surface)" }}
     />
   );
+}
+
+function currentMonthLocal(): string {
+  const d = new Date();
+  return `${d.getUTCFullYear()}-${(d.getUTCMonth() + 1).toString().padStart(2, "0")}`;
 }
