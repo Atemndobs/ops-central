@@ -12,6 +12,7 @@ import type * as admin_cleanup from "../admin/cleanup.js";
 import type * as admin_featureFlags from "../admin/featureFlags.js";
 import type * as admin_fixSofiaRandallsRoles from "../admin/fixSofiaRandallsRoles.js";
 import type * as admin_mutations from "../admin/mutations.js";
+import type * as admin_ownerAssignment from "../admin/ownerAssignment.js";
 import type * as admin_queries from "../admin/queries.js";
 import type * as admin_userSync from "../admin/userSync.js";
 import type * as admin_wipeGoLiveData from "../admin/wipeGoLiveData.js";
@@ -134,6 +135,7 @@ declare const fullApi: ApiFromModules<{
   "admin/featureFlags": typeof admin_featureFlags;
   "admin/fixSofiaRandallsRoles": typeof admin_fixSofiaRandallsRoles;
   "admin/mutations": typeof admin_mutations;
+  "admin/ownerAssignment": typeof admin_ownerAssignment;
   "admin/queries": typeof admin_queries;
   "admin/userSync": typeof admin_userSync;
   "admin/wipeGoLiveData": typeof admin_wipeGoLiveData;

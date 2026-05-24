@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { mutation } from "../_generated/server";
+import { internal } from "../_generated/api";
 import { type Doc, type Id } from "../_generated/dataModel";
 import { requireRole } from "../lib/auth";
 import {
@@ -220,6 +221,17 @@ export const updateUser = mutation({
     }
 
     await ctx.db.patch(id, updates);
+
+    // If role changed, sync to Clerk publicMetadata + revoke active sessions
+    // so the new role takes effect on next request. Fire-and-forget — the
+    // mutation succeeds even if Clerk is down (eventual consistency).
+    // Without this, middleware reads stale role from JWT (cf. Randalls hot-fix).
+    if (fields.role !== undefined && fields.role !== user.role) {
+      await ctx.scheduler.runAfter(0, internal.clerk.actions.syncUserRoleToClerk, {
+        clerkId: user.clerkId,
+        role: fields.role,
+      });
+    }
 
     return { success: true };
   },
