@@ -695,17 +695,15 @@ function BookingsSection({
             </table>
           </div>
 
-          {/* Mobile compact card — 3 columns max 2 lines tall:
-                COL 1 (left)   COL 2 (middle)        COL 3 (right)
-                👥 N           🛬 IN  MM/DD/YY        $TOTAL
-                Platform name  🛫 OUT MM/DD/YY        [cancelled]
+          {/* Mobile compact card — 4 columns, single line tall:
+                COL 1     COL 2          COL 3                    COL 4
+                👥 N      [logo chip]    🛬 IN  MM/DD/YY           $TOTAL
+                                         🛫 OUT MM/DD/YY           [cancelled]
 
-              "Guest" word is intentionally dropped — every guest is
-              literally the string "Guest" (anonymized at the source) so
-              repeating it everywhere was noise. Platform name is now
-              spelled out alongside the colored monogram chip so the
-              chip is no longer a guessing game (user reported "A in a
-              circle" was confusing). */}
+              Spreads each field into its own column so the guest count and
+              platform logo each get the real estate to be readable. The
+              date stack stays one column. Cancelled rows render red-tinted
+              + small "cancelled" tag in COL 4. */}
           <ul className="md:hidden divide-y divide-black/[0.04]">
             {visible.map((s) => (
               <li
@@ -721,24 +719,25 @@ function BookingsSection({
                     : undefined
                 }
               >
-                <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3">
-                  {/* COL 1 — guest count + platform identifier */}
-                  <div className="flex flex-col gap-1">
-                    <span
-                      className="inline-flex items-center gap-1 tabular-nums"
-                      style={{
-                        fontFamily: "var(--font-cleaner-mono)",
-                        fontWeight: 700,
-                        fontSize: 13,
-                      }}
-                    >
-                      <Users size={12} className="opacity-60" />
-                      {s.numberOfGuests ?? "—"}
-                    </span>
-                    <PlatformBadge platform={s.platform ?? "direct"} />
-                  </div>
+                <div className="grid grid-cols-[auto_auto_1fr_auto] items-center gap-3">
+                  {/* COL 1 — guest count (bigger icon now that it owns
+                       a column on its own). */}
+                  <span
+                    className="inline-flex items-center gap-1.5 tabular-nums"
+                    style={{
+                      fontFamily: "var(--font-cleaner-mono)",
+                      fontWeight: 700,
+                      fontSize: 15,
+                    }}
+                  >
+                    <Users size={18} className="opacity-70" />
+                    {s.numberOfGuests ?? "—"}
+                  </span>
 
-                  {/* COL 2 — stacked IN / OUT dates */}
+                  {/* COL 2 — platform logo */}
+                  <PlatformBadge platform={s.platform ?? "direct"} />
+
+                  {/* COL 3 — stacked IN / OUT dates */}
                   <div
                     className="flex flex-col gap-0.5 text-[11px] tabular-nums"
                     style={{
@@ -776,7 +775,7 @@ function BookingsSection({
                     </span>
                   </div>
 
-                  {/* COL 3 — total + optional cancelled tag */}
+                  {/* COL 4 — total + optional cancelled tag */}
                   <div className="flex flex-col items-end gap-1">
                     <span
                       className="whitespace-nowrap tabular-nums"
