@@ -457,3 +457,31 @@ export const markSyncFailed = internalMutation({
     });
   },
 });
+
+/**
+ * Internal patch used by `backfillReservationFinancials` — writes only the
+ * financial fields (totalAmount, currency, cancelledAt, cancellationSource)
+ * onto an existing stay. Never overwrites a set field with undefined so a
+ * partial refetch can't clobber prior data.
+ */
+export const patchStayFinancials = internalMutation({
+  args: {
+    stayId: v.id("stays"),
+    totalAmount: v.optional(v.number()),
+    currency: v.optional(v.string()),
+    cancelledAt: v.optional(v.number()),
+    cancellationSource: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const patch: Record<string, unknown> = { updatedAt: Date.now() };
+    if (args.totalAmount !== undefined) patch.totalAmount = args.totalAmount;
+    if (args.currency !== undefined) patch.currency = args.currency;
+    if (args.cancelledAt !== undefined) {
+      patch.cancelledAt = args.cancelledAt;
+      patch.cancellationSource = args.cancellationSource;
+    }
+    if (Object.keys(patch).length === 1) return { patched: false };
+    await ctx.db.patch(args.stayId, patch);
+    return { patched: true };
+  },
+});
