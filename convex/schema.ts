@@ -1477,7 +1477,11 @@ const featureFlags = defineTable({
     // Owner portal: show the mgmt-fee row inside the MonthSummary card on
     // the per-property page. Default OFF — ops team A/B's whether owners
     // want to see "what J&A charged" inline vs. only on the issued PDF.
-    v.literal("owner_show_mgmt_fee")
+    v.literal("owner_show_mgmt_fee"),
+    // Owner portal: show the "Your payout" tile inside the MonthSummary
+    // card on the per-property page. Default ON — the payout is the
+    // headline number — toggle OFF to demo a "gross + fee only" view.
+    v.literal("owner_show_payout")
     // future flags go here
   ),
   enabled: v.boolean(),

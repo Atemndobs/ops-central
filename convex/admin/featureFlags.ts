@@ -28,7 +28,8 @@ const flagKeyValidator = v.union(
   v.literal("voice_audio_attachments"),
   v.literal("usage_dashboard"),
   v.literal("video_support"),
-  v.literal("owner_show_mgmt_fee")
+  v.literal("owner_show_mgmt_fee"),
+  v.literal("owner_show_payout")
   // future flags go here
 );
 
@@ -40,7 +41,8 @@ export type FeatureFlagKey =
   | "voice_audio_attachments"
   | "usage_dashboard"
   | "video_support"
-  | "owner_show_mgmt_fee";
+  | "owner_show_mgmt_fee"
+  | "owner_show_payout";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UI metadata — single source of truth for the admin Feature Flags card.
@@ -154,6 +156,20 @@ const FLAG_METADATA: Record<FeatureFlagKey, FlagMetadata> = {
       "Mgmt fee row is hidden from the per-property summary card. The fee " +
       "still computes and still appears on the statement detail page + PDF " +
       "— only the at-a-glance card hides it.",
+  },
+  owner_show_payout: {
+    key: "owner_show_payout",
+    label: "Owner portal: show payout inline",
+    description:
+      "Reveals the “Your payout” tile inside the MonthSummary " +
+      "card on the owner per-property page. Defaults ON since the payout " +
+      "is the headline owner-facing number. Toggle OFF to demo a " +
+      "“gross + fee only” view (e.g. when comparing landlord-side " +
+      "vs operator-side numbers in a pitch).",
+    offBehaviour:
+      "Payout tile is hidden from the per-property summary card. The " +
+      "payout still computes and still appears on the statement detail " +
+      "page + PDF — only the at-a-glance card hides it.",
   },
 };
 
