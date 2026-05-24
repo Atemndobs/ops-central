@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useConvexAuth, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
@@ -30,9 +30,37 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
  * owner page through history (already-issued statements) or peek
  * ahead at next month's draft.
  */
+/** localStorage key for the user's explicit view-mode override. Absence
+ *  of a value means "use the smart default based on portfolio size".
+ *  Smart defaults: ≤3 properties → cards (showcase aesthetic);
+ *  >3 → list (compact, scales). User toggle persists and wins. */
+const VIEW_MODE_KEY = "owner-dashboard-view-mode";
+
 export function OwnerDashboardClient() {
   const { isAuthenticated, isLoading } = useConvexAuth();
-  const [viewMode, setViewMode] = useState<"card" | "list">("card");
+  // `null` = no explicit user choice yet → fall back to the smart
+  // portfolio-size default. Once the user toggles, we lock in their
+  // preference and persist it.
+  const [viewOverride, setViewOverride] = useState<"card" | "list" | null>(null);
+  // Hydrate from localStorage on mount (client-only). SSR renders the
+  // null state → smart default → no layout flash since the toolbar
+  // toggle is the only thing that changes.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(VIEW_MODE_KEY);
+    // SSR/hydration-safe localStorage hydration: render server + first
+    // client paint with `null` (matches), then hydrate the stored value
+    // on mount. Avoids hydration mismatch warnings without
+    // suppressHydrationWarning.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (stored === "card" || stored === "list") setViewOverride(stored);
+  }, []);
+  function setViewMode(mode: "card" | "list") {
+    setViewOverride(mode);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(VIEW_MODE_KEY, mode);
+    }
+  }
   // URL-backed month — drill-ins preserve context, browser back/forward
   // navigate periods, deep-links share their state. See use-month-from-url.
   const [month, setMonth] = useMonthFromUrl();
@@ -51,6 +79,13 @@ export function OwnerDashboardClient() {
   );
 
   if (isLoading || dashboard === undefined) return <SkeletonCard />;
+
+  // Effective view mode: explicit user override wins, otherwise smart
+  // default by portfolio size (1-3 properties → cards, 4+ → list).
+  const propertyCount =
+    dashboard.mode === "no_properties" ? 0 : dashboard.properties.length;
+  const viewMode: "card" | "list" =
+    viewOverride ?? (propertyCount > 3 ? "list" : "card");
 
   if (dashboard.mode === "no_properties") {
     return (

@@ -694,12 +694,17 @@ function BookingsSection({
             </table>
           </div>
 
-          {/* Mobile compact list. Each booking renders as a 3-row stack:
-                row 1 — guest name | total
-                row 2 — platform logo · guests count
-                row 3 — 🛬 check-in date / 🛫 check-out date (stacked)
-              Cancelled rows: red tint + small "cancelled" tag + native
-              tooltip on long-press. No separate cancelled column. */}
+          {/* Mobile compact card — 3 columns max 2 lines tall:
+                COL 1 (left)   COL 2 (middle)        COL 3 (right)
+                👥 N           🛬 IN  MM/DD/YY        $TOTAL
+                Platform name  🛫 OUT MM/DD/YY        [cancelled]
+
+              "Guest" word is intentionally dropped — every guest is
+              literally the string "Guest" (anonymized at the source) so
+              repeating it everywhere was noise. Platform name is now
+              spelled out alongside the colored monogram chip so the
+              chip is no longer a guessing game (user reported "A in a
+              circle" was confusing). */}
           <ul className="md:hidden divide-y divide-black/[0.04]">
             {visible.map((s) => (
               <li
@@ -715,68 +720,85 @@ function BookingsSection({
                     : undefined
                 }
               >
-                <div className="flex items-baseline justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <User size={12} className="shrink-0 opacity-60" />
-                      <span className="truncate font-medium">{s.guestName}</span>
-                      {s.cancelledAt && (
-                        <span
-                          className="shrink-0 rounded px-1.5 py-0.5 text-[9px] uppercase tracking-wider"
-                          style={{
-                            background: "var(--color-red-100,#fee2e2)",
-                            color: "var(--color-red-800,#991b1b)",
-                            fontFamily: "var(--font-cleaner-mono)",
-                          }}
-                        >
-                          cancelled
-                        </span>
-                      )}
-                    </div>
+                <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3">
+                  {/* COL 1 — guest count + platform identifier */}
+                  <div className="flex flex-col gap-1">
+                    <span
+                      className="inline-flex items-center gap-1 tabular-nums"
+                      style={{
+                        fontFamily: "var(--font-cleaner-mono)",
+                        fontWeight: 700,
+                        fontSize: 13,
+                      }}
+                    >
+                      <Users size={12} className="opacity-60" />
+                      {s.numberOfGuests ?? "—"}
+                    </span>
+                    <PlatformBadge platform={s.platform ?? "direct"} />
                   </div>
+
+                  {/* COL 2 — stacked IN / OUT dates */}
                   <div
-                    className="shrink-0 text-right tabular-nums"
+                    className="flex flex-col gap-0.5 text-[11px] tabular-nums"
                     style={{
                       fontFamily: "var(--font-cleaner-mono)",
-                      fontWeight: 700,
+                      color: s.cancelledAt
+                        ? "var(--color-red-700,#b91c1c)"
+                        : "var(--cleaner-ink)",
                     }}
                   >
-                    {s.totalAmount != null ? fmtMoney(s.totalAmount, currency) : "—"}
+                    <span className="inline-flex items-center gap-1.5">
+                      <LogIn size={11} className="opacity-60" />
+                      <span
+                        style={{
+                          color: "var(--cleaner-muted)",
+                          fontSize: 9,
+                          letterSpacing: "0.1em",
+                        }}
+                      >
+                        IN
+                      </span>
+                      {fmtDateShort(s.checkInAt)}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <LogOut size={11} className="opacity-60" />
+                      <span
+                        style={{
+                          color: "var(--cleaner-muted)",
+                          fontSize: 9,
+                          letterSpacing: "0.1em",
+                        }}
+                      >
+                        OUT
+                      </span>
+                      {fmtDateShort(s.checkOutAt)}
+                    </span>
                   </div>
-                </div>
 
-                <div
-                  className="mt-1.5 flex items-center gap-3 text-[11px]"
-                  style={{ color: "var(--cleaner-muted)" }}
-                >
-                  <PlatformBadge platform={s.platform ?? "direct"} compact />
-                  <span className="inline-flex items-center gap-1">
-                    <Users size={11} />
-                    {s.numberOfGuests ?? "—"}
-                  </span>
-                </div>
-
-                <div
-                  className="mt-2 inline-flex flex-col gap-0.5 rounded-md border border-black/[0.04] px-2 py-1 text-[11px] tabular-nums"
-                  style={{
-                    background: "var(--cleaner-bg)",
-                    fontFamily: "var(--font-cleaner-mono)",
-                  }}
-                >
-                  <span className="inline-flex items-center gap-1.5">
-                    <LogIn size={11} className="opacity-60" />
-                    <span style={{ color: "var(--cleaner-muted)", fontSize: 9, letterSpacing: "0.1em" }}>
-                      IN
+                  {/* COL 3 — total + optional cancelled tag */}
+                  <div className="flex flex-col items-end gap-1">
+                    <span
+                      className="whitespace-nowrap tabular-nums"
+                      style={{
+                        fontFamily: "var(--font-cleaner-mono)",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {s.totalAmount != null ? fmtMoney(s.totalAmount, currency) : "—"}
                     </span>
-                    {fmtDateShort(s.checkInAt)}
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <LogOut size={11} className="opacity-60" />
-                    <span style={{ color: "var(--cleaner-muted)", fontSize: 9, letterSpacing: "0.1em" }}>
-                      OUT
-                    </span>
-                    {fmtDateShort(s.checkOutAt)}
-                  </span>
+                    {s.cancelledAt && (
+                      <span
+                        className="rounded px-1.5 py-0.5 text-[9px] uppercase tracking-wider"
+                        style={{
+                          background: "var(--color-red-100,#fee2e2)",
+                          color: "var(--color-red-800,#991b1b)",
+                          fontFamily: "var(--font-cleaner-mono)",
+                        }}
+                      >
+                        cancelled
+                      </span>
+                    )}
+                  </div>
                 </div>
               </li>
             ))}
