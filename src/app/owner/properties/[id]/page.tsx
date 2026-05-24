@@ -3,17 +3,11 @@ import type { Id } from "@convex/_generated/dataModel";
 
 export default async function OwnerPropertyPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ month?: string }>;
 }) {
   const { id } = await params;
-  const { month } = await searchParams;
-  return (
-    <OwnerPropertyClient
-      propertyId={id as Id<"properties">}
-      month={month}
-    />
-  );
+  // Month is read client-side from `?month=...` via useMonthFromUrl so the
+  // switcher can update the URL without a server round-trip.
+  return <OwnerPropertyClient propertyId={id as Id<"properties">} />;
 }

@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
-import { ArrowLeft, Bell, Mail, MessageSquare, Smartphone } from "lucide-react";
+import { Bell, Mail, MessageSquare, Smartphone } from "lucide-react";
 import { api } from "@convex/_generated/api";
 
 /**
@@ -30,15 +29,10 @@ export function OwnerSettingsClient() {
   return (
     <div className="space-y-8">
       <div>
-        <Link
-          href="/owner"
-          className="inline-flex items-center gap-1 text-xs hover:underline"
-          style={{ color: "var(--cleaner-muted)" }}
-        >
-          <ArrowLeft size={12} /> Dashboard
-        </Link>
+        {/* Inline back link removed — OwnerShell renders the universal
+            back button above the page chrome. */}
         <h1
-          className="mt-2 text-3xl tracking-tight"
+          className="text-3xl tracking-tight"
           style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700 }}
         >
           Settings

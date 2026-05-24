@@ -3,19 +3,22 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useConvexAuth, useQuery } from "convex/react";
-import { ArrowLeft, Bell, CalendarDays, FileText, MapPin } from "lucide-react";
+import { Bell, CalendarDays, FileText, MapPin } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { bucketLabel, fmtDate, fmtMoney, fmtMonth } from "./owner-format";
+import { MonthSwitcher } from "./month-switcher";
+import { useMonthFromUrl } from "./use-month-from-url";
 
 export function OwnerPropertyClient({
   propertyId,
-  month,
 }: {
   propertyId: Id<"properties">;
-  month?: string;
 }) {
   const { isAuthenticated, isLoading } = useConvexAuth();
+  // URL-backed month so navigation in/out of property pages preserves
+  // the period context, and back/forward navigate periods.
+  const [month, setMonth] = useMonthFromUrl();
   const prop = useQuery(
     api.owner.queries.getOwnerProperty,
     isAuthenticated ? { propertyId } : "skip",
@@ -54,15 +57,10 @@ export function OwnerPropertyClient({
   return (
     <div className="space-y-8">
       <div>
-        <Link
-          href="/owner"
-          className="inline-flex items-center gap-1 text-xs"
-          style={{ color: "var(--cleaner-muted)" }}
-        >
-          <ArrowLeft size={12} /> Dashboard
-        </Link>
+        {/* Back link removed — OwnerShell renders the universal back
+            button at the top of the page chrome. */}
         <h1
-          className="mt-2 text-3xl tracking-tight"
+          className="text-3xl tracking-tight"
           style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700, letterSpacing: "-0.02em" }}
         >
           {prop.property.name}
@@ -148,13 +146,11 @@ export function OwnerPropertyClient({
 
       {draft && (
         <Card padding="p-6">
+          {/* Month switcher lives in the summary card so the period
+              context is right next to the numbers it controls. Tapping
+              ◀/▶ here re-runs every property query for the new period. */}
           <div className="mb-5 flex items-baseline justify-between">
-            <h2
-              className="text-xl tracking-tight"
-              style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700 }}
-            >
-              {fmtMonth(draft.month)}
-            </h2>
+            <MonthSwitcher month={month} onMonthChange={setMonth} />
           </div>
           <MonthSummary
             currency={currency}
@@ -1015,7 +1011,4 @@ function Skeleton() {
   );
 }
 
-function currentMonthLocal(): string {
-  const d = new Date();
-  return `${d.getUTCFullYear()}-${(d.getUTCMonth() + 1).toString().padStart(2, "0")}`;
-}
+// (currentMonthLocal moved to ./month-switcher as currentMonthKey.)
