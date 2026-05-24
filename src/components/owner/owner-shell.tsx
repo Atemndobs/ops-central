@@ -5,7 +5,7 @@ import Image from "next/image";
 import { UserButton } from "@clerk/nextjs";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { Home, Building2, CalendarDays, Settings as SettingsIcon } from "lucide-react";
+import { Home, CalendarDays, Settings as SettingsIcon } from "lucide-react";
 import { CleanerIconButton } from "@/components/cleaner/cleaner-ui";
 import { InstallPrompt } from "@/components/cleaner/install-prompt";
 import { OwnerBackButton } from "./back-button";
@@ -20,13 +20,9 @@ const OWNER_NAV: Array<{
     href: "/owner",
     label: "Home",
     icon: Home,
-    matchPrefixes: ["/owner"],
-  },
-  {
-    href: "/owner/properties",
-    label: "Properties",
-    icon: Building2,
-    matchPrefixes: ["/owner/properties"],
+    // /owner is the property-list home; /owner/properties/:id drills in.
+    // Both share the Home tab — there is no standalone /owner/properties index.
+    matchPrefixes: ["/owner", "/owner/properties"],
   },
   {
     href: "/owner/blocks",
@@ -156,7 +152,7 @@ export function OwnerShell({ children }: { children: ReactNode }) {
         style={{ paddingBottom: "max(env(safe-area-inset-bottom), 6px)" }}
         aria-label="Owner navigation"
       >
-        <ul className="pointer-events-auto mx-auto grid max-w-[402px] grid-cols-4 items-center justify-items-center gap-x-3 px-9 pb-2">
+        <ul className="pointer-events-auto mx-auto grid max-w-[402px] grid-cols-3 items-center justify-items-center gap-x-3 px-12 pb-2">
           {OWNER_NAV.map((item) => {
             const isActive = isOwnerNavActive(item.href, pathname);
             return (
