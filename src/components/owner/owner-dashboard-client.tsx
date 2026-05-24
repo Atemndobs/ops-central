@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { fmtMoney, fmtMonth, upgradeAirbnbImageQuality } from "./owner-format";
+import { MortgageCoverageBar } from "./mortgage-coverage";
 import { MonthSwitcher } from "./month-switcher";
 import { useMonthFromUrl } from "./use-month-from-url";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -603,18 +604,19 @@ function PropertyCard({ p, month }: { p: PropertyRow; month: string }) {
             />
           </div>
           {/* Mortgage progress mini-card — at-a-glance "did this property
-              clear its rent/mortgage this month?". Hidden when no lease
-              obligation is configured (e.g. owned outright). Uses
-              ownerPayout (post-mgmt-fee, i.e. what the owner actually
-              keeps) vs the raw monthly lease, so the bar fills only when
-              the owner's net actually covers the obligation. */}
-          {p.leaseRawMonthly > 0 && (
-            <MortgageMiniBar
-              currency={p.currency}
-              obligation={p.leaseRawMonthly}
-              progress={Math.max(0, totals!.ownerPayout)}
-            />
-          )}
+              clear its rent/mortgage this month?". Uses the SHARED
+              MortgageCoverageBar primitive (mortgage-coverage.tsx) so the
+              dashboard mini-bar and the per-property-page indicator
+              ALWAYS use the same math + visual. Owner mental model:
+              "first dollar of revenue covers the mortgage" → progress =
+              grossRevenue, NOT post-fee payout. Hides itself when no
+              lease obligation is configured. */}
+          <MortgageCoverageBar
+            currency={p.currency}
+            obligation={p.leaseRawMonthly}
+            grossRevenue={totals!.grossRevenue}
+            variant="dense"
+          />
           <p
             className="text-xs"
             style={{ color: "var(--cleaner-muted)", fontFamily: "var(--font-cleaner-mono)" }}
@@ -792,93 +794,6 @@ function Td({
     >
       {children}
     </td>
-  );
-}
-
-/**
- * Compact horizontal progress bar showing payout-vs-mortgage coverage.
- * Three visual states:
- *   - covered (green ✓):    progress ≥ obligation
- *   - partial (amber bar):  0 < progress < obligation
- *   - empty (gray):         no revenue this period
- *
- * Mirrors the larger MortgageIndicator on the per-property page but
- * trimmed to fit two extra lines inside a dashboard card.
- */
-function MortgageMiniBar({
-  currency,
-  obligation,
-  progress,
-}: {
-  currency: string;
-  obligation: number;
-  progress: number;
-}) {
-  const ratio = obligation > 0 ? progress / obligation : 0;
-  const pct = Math.min(100, Math.max(0, ratio * 100));
-  const covered = ratio >= 1.0;
-  const color = covered
-    ? "rgb(34,197,94)"
-    : ratio > 0
-      ? "rgb(245,158,11)"
-      : "rgba(0,0,0,0.15)";
-  return (
-    <div className="rounded-lg border border-black/[0.04] p-3"
-         style={{ background: "var(--cleaner-bg)" }}>
-      <div
-        className="flex items-baseline justify-between text-[10px]"
-        style={{
-          fontFamily: "var(--font-cleaner-mono)",
-          letterSpacing: "0.18em",
-          textTransform: "uppercase",
-          color: "var(--cleaner-muted)",
-        }}
-      >
-        <span>Mortgage</span>
-        {covered ? (
-          <span
-            style={{
-              color: "rgb(21,128,61)",
-              fontWeight: 700,
-              letterSpacing: "0.04em",
-              textTransform: "none",
-            }}
-          >
-            Covered ✓
-          </span>
-        ) : (
-          <span
-            style={{
-              color: "var(--cleaner-ink)",
-              fontWeight: 700,
-              letterSpacing: "0.04em",
-              textTransform: "none",
-            }}
-          >
-            {Math.round(pct)}%
-          </span>
-        )}
-      </div>
-      <div
-        className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full"
-        style={{ background: "rgba(0,0,0,0.06)" }}
-      >
-        <div
-          className="h-full rounded-full transition-all"
-          style={{ width: `${pct}%`, background: color }}
-        />
-      </div>
-      <div
-        className="mt-1 text-[10px] tabular-nums"
-        style={{
-          fontFamily: "var(--font-cleaner-mono)",
-          color: "var(--cleaner-muted)",
-        }}
-      >
-        {fmtMoney(Math.min(progress, obligation), currency)} /{" "}
-        {fmtMoney(obligation, currency)}
-      </div>
-    </div>
   );
 }
 

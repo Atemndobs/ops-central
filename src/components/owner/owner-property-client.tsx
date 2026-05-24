@@ -19,6 +19,7 @@ import {
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { bucketLabel, fmtDate, fmtDateShort, fmtMoney, fmtMonth } from "./owner-format";
+import { MortgageCoverageBar } from "./mortgage-coverage";
 import { MonthSwitcher } from "./month-switcher";
 import { useMonthFromUrl } from "./use-month-from-url";
 
@@ -1122,106 +1123,15 @@ function MonthSummary({
         accent
       />
       {myMortgage > 0 ? (
-        <MortgageIndicator
+        <MortgageCoverageBar
           currency={currency}
-          mortgage={myMortgage}
+          obligation={myMortgage}
           grossRevenue={grossRevenue * stakePct}
+          variant="roomy"
         />
       ) : (
         <Stat label="Mortgage" value="—" />
       )}
-    </div>
-  );
-}
-
-/**
- * Inline mortgage cover indicator (the 3rd "stat" column).
- *
- * Math (owner mental model): "first dollar of revenue goes to the
- * mortgage." So we compare grossRevenue × stakePct against the owner's
- * share of the mortgage, NOT ownerPayout. This means past months with
- * any meaningful revenue typically show ✓ — which matches reality
- * (we wouldn't operate a property if it can't cover rent/mortgage).
- *
- * States:
- *   ratio ≥ 1.0  → green ✓ "Covered"
- *   0 < ratio < 1.0 → amber, partial fill
- *   ratio = 0   → empty, "TBD"
- */
-function MortgageIndicator({
-  currency,
-  mortgage,
-  grossRevenue,
-}: {
-  currency: string;
-  mortgage: number;
-  grossRevenue: number;
-}) {
-  const ratio = mortgage > 0 ? grossRevenue / mortgage : 0;
-  const pct = Math.min(100, Math.max(0, ratio * 100));
-  const covered = ratio >= 1.0;
-  const color = covered
-    ? "rgb(34,197,94)"
-    : ratio > 0.6
-      ? "rgb(245,158,11)"
-      : ratio > 0
-        ? "rgb(245,158,11)"
-        : "rgba(0,0,0,0.15)";
-  return (
-    <div>
-      <div
-        className="flex items-baseline justify-between text-[10px]"
-        style={{
-          fontFamily: "var(--font-cleaner-mono)",
-          letterSpacing: "0.18em",
-          textTransform: "uppercase",
-          color: "var(--cleaner-muted)",
-        }}
-      >
-        <span>Mortgage</span>
-        {covered ? (
-          <span
-            style={{
-              color: "rgb(21,128,61)",
-              fontWeight: 700,
-              letterSpacing: "0.04em",
-              textTransform: "none",
-            }}
-          >
-            Covered ✓
-          </span>
-        ) : (
-          <span
-            style={{
-              color: "var(--cleaner-ink)",
-              fontWeight: 700,
-              letterSpacing: "0.04em",
-              textTransform: "none",
-            }}
-          >
-            {Math.round(pct)}%
-          </span>
-        )}
-      </div>
-      <div
-        className="mt-2 h-2.5 w-full overflow-hidden rounded-full"
-        style={{ background: "rgba(0,0,0,0.06)" }}
-      >
-        <div
-          className="h-full rounded-full transition-all"
-          style={{ width: `${pct}%`, background: color }}
-        />
-      </div>
-      <div
-        className="mt-1 text-[10px] tabular-nums"
-        style={{
-          fontFamily: "var(--font-cleaner-mono)",
-          color: "var(--cleaner-muted)",
-        }}
-      >
-        {fmtMoney(Math.min(grossRevenue, mortgage), currency)} /{" "}
-        {fmtMoney(mortgage, currency)}
-      </div>
     </div>
   );
 }
