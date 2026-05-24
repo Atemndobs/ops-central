@@ -134,6 +134,30 @@ export const getOwnerDashboard = query({
             q.eq("propertyId", p._id).eq("status", "pending"),
           )
           .collect();
+
+        // Raw monthly lease/mortgage obligation (sum of active "lease"-bucket
+        // cost items, monthly normalized — matches the Operational Costs
+        // ledger total). Used by the dashboard's per-card mortgage mini-bar
+        // so the owner sees at a glance which properties cleared their
+        // mortgage this month. We pull it from the engine inputs we already
+        // loaded if the engine succeeded; otherwise compute from scratch.
+        let leaseRawMonthly = 0;
+        try {
+          const items = await ctx.db
+            .query("propertyCostItems")
+            .withIndex("by_property", (q) => q.eq("propertyId", p._id))
+            .collect();
+          const cats = await ctx.db.query("costCategories").collect();
+          const leaseCatIds = new Set(
+            cats.filter((c) => c.bucket === "lease").map((c) => c._id),
+          );
+          leaseRawMonthly = items
+            .filter((i) => i.isActive && leaseCatIds.has(i.categoryId))
+            .reduce((s, i) => s + (i.amount ?? 0), 0);
+        } catch {
+          /* leave as 0; UI will treat as no obligation */
+        }
+
         return {
           propertyId: p._id,
           propertyName: p.name,
@@ -146,6 +170,7 @@ export const getOwnerDashboard = query({
           currentMonth: month,
           draft,
           pendingApprovalCount: pendingApprovals.length,
+          leaseRawMonthly,
         };
       }),
     );
@@ -224,6 +249,12 @@ export const getOwnerProperty = query({
     const { user, ownership } = await assertOwnerOfProperty(ctx, args.propertyId);
     const property = await ctx.db.get(args.propertyId);
     if (!property) throw new ConvexError("Property not found");
+    // Owner-portal feature flags consumed by this page. Defaults to OFF when
+    // no flag row exists so new flags ship dark.
+    const showMgmtFeeFlag = await ctx.db
+      .query("featureFlags")
+      .withIndex("by_key", (q) => q.eq("key", "owner_show_mgmt_fee"))
+      .unique();
     return {
       property,
       ownership: {
@@ -233,6 +264,9 @@ export const getOwnerProperty = query({
         isPrimaryApprover: ownership.isPrimaryApprover,
       },
       user: pickUser(user),
+      flags: {
+        showMgmtFee: showMgmtFeeFlag?.enabled ?? false,
+      },
     };
   },
 });

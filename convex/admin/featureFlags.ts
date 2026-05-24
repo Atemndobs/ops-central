@@ -27,7 +27,8 @@ const flagKeyValidator = v.union(
   v.literal("messages_granola_composer"),
   v.literal("voice_audio_attachments"),
   v.literal("usage_dashboard"),
-  v.literal("video_support")
+  v.literal("video_support"),
+  v.literal("owner_show_mgmt_fee")
   // future flags go here
 );
 
@@ -38,7 +39,8 @@ export type FeatureFlagKey =
   | "messages_granola_composer"
   | "voice_audio_attachments"
   | "usage_dashboard"
-  | "video_support";
+  | "video_support"
+  | "owner_show_mgmt_fee";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UI metadata — single source of truth for the admin Feature Flags card.
@@ -136,6 +138,22 @@ const FLAG_METADATA: Record<FeatureFlagKey, FlagMetadata> = {
     offBehaviour:
       "Composer renders the current side-by-side mic + send layout with " +
       "Enter-to-send keyboard contract. No chips, no expand-to-fullscreen.",
+  },
+  owner_show_mgmt_fee: {
+    key: "owner_show_mgmt_fee",
+    label: "Owner portal: show management fee inline",
+    description:
+      "Reveals the management-fee row inside the MonthSummary card on the " +
+      "owner per-property page (the small “Your payout” block). " +
+      "When on, owners see Gross → NOI → Mgmt fee (×%) → " +
+      "Payout broken out inline. When off, only Gross and final Payout " +
+      "appear on the dashboard — the full fee breakdown still lives on " +
+      "the issued PDF statement and the detailed statement page. Used to A/B " +
+      "whether transparency on the dashboard helps or hurts owner reception.",
+    offBehaviour:
+      "Mgmt fee row is hidden from the per-property summary card. The fee " +
+      "still computes and still appears on the statement detail page + PDF " +
+      "— only the at-a-glance card hides it.",
   },
 };
 

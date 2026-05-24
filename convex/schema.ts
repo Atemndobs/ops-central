@@ -1473,7 +1473,11 @@ const featureFlags = defineTable({
     v.literal("voice_audio_attachments"),
     v.literal("usage_dashboard"),
     v.literal("video_support"),
-    v.literal("messages_granola_composer")
+    v.literal("messages_granola_composer"),
+    // Owner portal: show the mgmt-fee row inside the MonthSummary card on
+    // the per-property page. Default OFF — ops team A/B's whether owners
+    // want to see "what J&A charged" inline vs. only on the issued PDF.
+    v.literal("owner_show_mgmt_fee")
     // future flags go here
   ),
   enabled: v.boolean(),

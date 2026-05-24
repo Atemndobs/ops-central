@@ -156,6 +156,14 @@ export function OwnerPropertyClient({
             currency={currency}
             grossRevenue={draft.draft.totals.grossRevenue}
             ownerPayout={draft.draft.totals.ownerPayout}
+            mgmtFee={draft.draft.totals.mgmtFee}
+            feePct={draft.draft.totals.feePct}
+            feeBase={draft.draft.totals.feeBase}
+            // Admin-gated: when `owner_show_mgmt_fee` is enabled, the
+            // mgmt-fee line renders inline so owners see the full
+            // Gross → Mgmt fee → Payout breakdown. Default OFF — fee
+            // still appears on the issued PDF & statement detail.
+            showMgmtFee={prop.flags.showMgmtFee}
             // Use RAW monthly lease (matches Operational Costs ledger)
             // not engine's period-prorated value. Falls back to engine
             // value while costItems are loading.
@@ -804,21 +812,40 @@ function MonthSummary({
   currency,
   grossRevenue,
   ownerPayout,
+  mgmtFee,
+  feePct,
+  feeBase,
+  showMgmtFee,
   mortgageAmount,
   stakePct,
 }: {
   currency: string;
   grossRevenue: number;
   ownerPayout: number;
+  mgmtFee: number;
+  feePct: number;
+  feeBase: string;
+  /** Admin-gated via `owner_show_mgmt_fee` feature flag. */
+  showMgmtFee: boolean;
   /** Total lease/mortgage for the property in the period (J&A-side, full). */
   mortgageAmount: number;
   /** Owner's stake — used to scale both their payout/mortgage share. */
   stakePct: number;
 }) {
   const myMortgage = mortgageAmount * stakePct;
+  // Grid scales to 4 columns when the mgmt-fee tile is visible — keeps the
+  // visual rhythm so "Your payout" stays the rightmost emphasized number.
+  const cols = showMgmtFee ? "md:grid-cols-4" : "md:grid-cols-3";
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+    <div className={`grid grid-cols-1 gap-4 ${cols}`}>
       <Stat label="Gross revenue" value={fmtMoney(grossRevenue, currency)} />
+      {showMgmtFee && (
+        <Stat
+          label="Mgmt fee"
+          value={fmtMoney(-mgmtFee * stakePct, currency)}
+          subtitle={`${(feePct * 100).toFixed(1)}% × ${feeBase}`}
+        />
+      )}
       <Stat
         label="Your payout"
         value={fmtMoney(ownerPayout * stakePct, currency)}

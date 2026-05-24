@@ -5,12 +5,10 @@ import Link from "next/link";
 import { useConvexAuth, useQuery } from "convex/react";
 import {
   ArrowRight,
-  ArrowUpDown,
   Bell,
   Building2,
   FileText,
   Filter,
-  Group,
   LayoutGrid,
   MapPin,
   Rows3,
@@ -20,6 +18,7 @@ import { api } from "@convex/_generated/api";
 import { fmtMoney, fmtMonth } from "./owner-format";
 import { MonthSwitcher } from "./month-switcher";
 import { useMonthFromUrl } from "./use-month-from-url";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 /**
  * Owner dashboard. Two view modes (card / list) — list scales to 30+
@@ -347,39 +346,40 @@ function FilterBar({
           </button>
         )}
 
-        <select
-          value={sortKey}
-          onChange={(e) => onSortChange(e.target.value as SortKey)}
-          className="rounded-md border border-black/[0.06] bg-transparent px-2 py-1 text-[11px]"
-          aria-label="Sort by"
-          style={{ color: "var(--cleaner-ink)" }}
-        >
-          <option value="payout">↓ Payout</option>
-          <option value="gross">↓ Gross</option>
-          <option value="name">A→Z Name</option>
-          <option value="pendingFirst">Pending first</option>
-        </select>
+        <div className="w-[160px]">
+          <SearchableSelect
+            aria-label="Sort by"
+            value={sortKey}
+            onChange={(id) => id && onSortChange(id as SortKey)}
+            items={[
+              { id: "payout", label: "↓ Payout" },
+              { id: "gross", label: "↓ Gross" },
+              { id: "name", label: "A → Z Name" },
+              { id: "pendingFirst", label: "Pending first" },
+            ]}
+            placeholder="Sort by…"
+          />
+        </div>
 
         {(showCityFilter || showStateFilter) && (
-          <select
-            value={groupBy}
-            onChange={(e) => onGroupByChange(e.target.value as GroupBy)}
-            className="rounded-md border border-black/[0.06] bg-transparent px-2 py-1 text-[11px]"
-            aria-label="Group by"
-            style={{ color: "var(--cleaner-ink)" }}
-          >
-            <option value="none">No grouping</option>
-            {showCityFilter && <option value="city">Group by city</option>}
-            {showStateFilter && <option value="state">Group by state</option>}
-          </select>
+          <div className="w-[160px]">
+            <SearchableSelect
+              aria-label="Group by"
+              value={groupBy}
+              onChange={(id) => id && onGroupByChange(id as GroupBy)}
+              items={[
+                { id: "none", label: "No grouping" },
+                ...(showCityFilter
+                  ? [{ id: "city", label: "Group by city" }]
+                  : []),
+                ...(showStateFilter
+                  ? [{ id: "state", label: "Group by state" }]
+                  : []),
+              ]}
+              placeholder="Group by…"
+            />
+          </div>
         )}
-
-        <ArrowUpDown
-          size={12}
-          className="opacity-30"
-          aria-hidden
-        />
-        <Group size={12} className="opacity-30" aria-hidden />
       </div>
     </div>
   );
@@ -442,6 +442,8 @@ type PropertyRow = {
   currentMonth: string;
   pendingApprovalCount: number;
   issuedStatementId: string | null;
+  /** Raw monthly lease/mortgage obligation (sum of active lease-bucket cost items). 0 = no obligation configured. */
+  leaseRawMonthly: number;
   draft:
     | { error: string }
     | {
@@ -573,6 +575,19 @@ function PropertyCard({ p, month }: { p: PropertyRow; month: string }) {
               accent
             />
           </div>
+          {/* Mortgage progress mini-card — at-a-glance "did this property
+              clear its rent/mortgage this month?". Hidden when no lease
+              obligation is configured (e.g. owned outright). Uses
+              ownerPayout (post-mgmt-fee, i.e. what the owner actually
+              keeps) vs the raw monthly lease, so the bar fills only when
+              the owner's net actually covers the obligation. */}
+          {p.leaseRawMonthly > 0 && (
+            <MortgageMiniBar
+              currency={p.currency}
+              obligation={p.leaseRawMonthly}
+              progress={Math.max(0, totals!.ownerPayout)}
+            />
+          )}
           <p
             className="text-xs"
             style={{ color: "var(--cleaner-muted)", fontFamily: "var(--font-cleaner-mono)" }}
@@ -728,6 +743,93 @@ function Td({
     >
       {children}
     </td>
+  );
+}
+
+/**
+ * Compact horizontal progress bar showing payout-vs-mortgage coverage.
+ * Three visual states:
+ *   - covered (green ✓):    progress ≥ obligation
+ *   - partial (amber bar):  0 < progress < obligation
+ *   - empty (gray):         no revenue this period
+ *
+ * Mirrors the larger MortgageIndicator on the per-property page but
+ * trimmed to fit two extra lines inside a dashboard card.
+ */
+function MortgageMiniBar({
+  currency,
+  obligation,
+  progress,
+}: {
+  currency: string;
+  obligation: number;
+  progress: number;
+}) {
+  const ratio = obligation > 0 ? progress / obligation : 0;
+  const pct = Math.min(100, Math.max(0, ratio * 100));
+  const covered = ratio >= 1.0;
+  const color = covered
+    ? "rgb(34,197,94)"
+    : ratio > 0
+      ? "rgb(245,158,11)"
+      : "rgba(0,0,0,0.15)";
+  return (
+    <div className="rounded-lg border border-black/[0.04] p-3"
+         style={{ background: "var(--cleaner-bg)" }}>
+      <div
+        className="flex items-baseline justify-between text-[10px]"
+        style={{
+          fontFamily: "var(--font-cleaner-mono)",
+          letterSpacing: "0.18em",
+          textTransform: "uppercase",
+          color: "var(--cleaner-muted)",
+        }}
+      >
+        <span>Mortgage</span>
+        {covered ? (
+          <span
+            style={{
+              color: "rgb(21,128,61)",
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+              textTransform: "none",
+            }}
+          >
+            Covered ✓
+          </span>
+        ) : (
+          <span
+            style={{
+              color: "var(--cleaner-ink)",
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+              textTransform: "none",
+            }}
+          >
+            {Math.round(pct)}%
+          </span>
+        )}
+      </div>
+      <div
+        className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full"
+        style={{ background: "rgba(0,0,0,0.06)" }}
+      >
+        <div
+          className="h-full rounded-full transition-all"
+          style={{ width: `${pct}%`, background: color }}
+        />
+      </div>
+      <div
+        className="mt-1 text-[10px] tabular-nums"
+        style={{
+          fontFamily: "var(--font-cleaner-mono)",
+          color: "var(--cleaner-muted)",
+        }}
+      >
+        {fmtMoney(Math.min(progress, obligation), currency)} /{" "}
+        {fmtMoney(obligation, currency)}
+      </div>
+    </div>
   );
 }
 
