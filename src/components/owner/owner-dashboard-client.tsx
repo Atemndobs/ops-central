@@ -15,7 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { api } from "@convex/_generated/api";
-import { fmtMoney, fmtMonth } from "./owner-format";
+import { fmtMoney, fmtMonth, upgradeAirbnbImageQuality } from "./owner-format";
 import { MonthSwitcher } from "./month-switcher";
 import { useMonthFromUrl } from "./use-month-from-url";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -530,9 +530,9 @@ function PropertyCard({ p, month }: { p: PropertyRow; month: string }) {
       style={{ background: "var(--cleaner-surface)" }}
     >
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0 flex-1">
           <h2
-            className="text-xl tracking-tight"
+            className="truncate text-xl tracking-tight"
             style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700 }}
           >
             {p.propertyName}
@@ -544,20 +544,47 @@ function PropertyCard({ p, month }: { p: PropertyRow; month: string }) {
             {fmtMonth(p.currentMonth)} — {isPaid ? "paid out" : "in progress"}
           </p>
         </div>
-        {p.pendingApprovalCount > 0 && (
-          <Link
-            href={`/owner/properties/${p.propertyId}/approvals`}
-            className="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs"
-            style={{
-              background: "var(--color-amber-100,#fef3c7)",
-              color: "var(--color-amber-900,#8a4a00)",
-            }}
-            onClick={(e) => e.stopPropagation()}
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          {p.pendingApprovalCount > 0 && (
+            <Link
+              href={`/owner/properties/${p.propertyId}/approvals`}
+              className="flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px]"
+              style={{
+                background: "var(--color-amber-100,#fef3c7)",
+                color: "var(--color-amber-900,#8a4a00)",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Bell size={11} />
+              {p.pendingApprovalCount} pending
+            </Link>
+          )}
+          {/* Property thumbnail — top-right corner of every card. The whole
+              card is already a Link to the detail page, so this image
+              participates in that link (no nested anchor). Square 64px so
+              it stays compact even on mobile. Falls back to a Building2
+              placeholder when the property has no imageUrl set. */}
+          <div
+            className="relative h-16 w-16 overflow-hidden rounded-xl border border-black/[0.06]"
+            style={{ background: "var(--cleaner-bg)" }}
           >
-            <Bell size={12} />
-            {p.pendingApprovalCount} pending
-          </Link>
-        )}
+            {p.propertyImage ? (
+              // eslint-disable-next-line @next/next/no-img-element -- external CDN with signed params
+              <img
+                src={upgradeAirbnbImageQuality(p.propertyImage)}
+                alt={p.propertyName}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div
+                className="flex h-full w-full items-center justify-center"
+                style={{ color: "var(--cleaner-muted)" }}
+              >
+                <Building2 size={20} />
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {hasError ? (
@@ -648,10 +675,32 @@ function ListView({ properties, month }: { properties: PropertyRow[]; month: str
                 <Td>
                   <Link
                     href={`/owner/properties/${p.propertyId}?month=${month}`}
-                    className="hover:underline"
+                    className="flex items-center gap-3 hover:underline"
                     style={{ fontWeight: 500 }}
                   >
-                    {p.propertyName}
+                    {/* Tiny thumbnail so list view still surfaces property
+                        identity at a glance, matching the card view. */}
+                    <span
+                      className="relative block h-9 w-9 shrink-0 overflow-hidden rounded-md border border-black/[0.06]"
+                      style={{ background: "var(--cleaner-bg)" }}
+                    >
+                      {p.propertyImage ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={upgradeAirbnbImageQuality(p.propertyImage)}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span
+                          className="flex h-full w-full items-center justify-center"
+                          style={{ color: "var(--cleaner-muted)" }}
+                        >
+                          <Building2 size={14} />
+                        </span>
+                      )}
+                    </span>
+                    <span className="truncate">{p.propertyName}</span>
                   </Link>
                   {p.pendingApprovalCount > 0 && (
                     <span

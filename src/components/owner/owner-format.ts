@@ -30,6 +30,29 @@ export function fmtMonth(monthKey: string): string {
   });
 }
 
+/**
+ * Compact American MM/DD/YY for narrow columns (mobile bookings table, etc.).
+ * Example: 1747958400000 → "05/22/26"
+ */
+export function fmtDateShort(ms: number): string {
+  return new Date(ms).toLocaleDateString("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "2-digit",
+  });
+}
+
+/**
+ * Boost Airbnb CDN image quality from the default `aki_policy=large` to
+ * `x_large` so hero/thumbnail images aren't blurry. Pass-through for other
+ * URLs.
+ */
+export function upgradeAirbnbImageQuality(url: string): string {
+  return url.includes("aki_policy=")
+    ? url.replace(/aki_policy=[^&]+/, "aki_policy=x_large")
+    : url;
+}
+
 export function bucketLabel(bucket: string): string {
   const labels: Record<string, string> = {
     lease: "Lease / Rent",
