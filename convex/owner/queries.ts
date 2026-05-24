@@ -324,6 +324,83 @@ export const getOwnerNotificationPrefs = query({
 });
 
 /**
+ * Owner inbox — recent notifications for the authenticated owner, filtered
+ * to owner-portal event types. Returns the existing `notifications` table
+ * rows (the same ones the cleaners-app inbox renders), but only the
+ * owner_* types so the mobile owner surface stays uncluttered.
+ *
+ * Sorted newest-first. Default cap of 50; pass `limit` to override.
+ */
+export const listOwnerNotifications = query({
+  args: {
+    limit: v.optional(v.number()),
+    unreadOnly: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireOwnerUser(ctx);
+    const limit = Math.min(args.limit ?? 50, 200);
+
+    // Use by_user index for cheap scan; filter type + dismissed in memory
+    // (notification volume per owner is small — <100s/year).
+    const all = await ctx.db
+      .query("notifications")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .order("desc")
+      .collect();
+
+    const ownerTypes = new Set([
+      "owner_statement_issued",
+      "owner_approval_request",
+      "owner_incident_reported",
+    ]);
+
+    const filtered = all
+      .filter((n) => ownerTypes.has(n.type))
+      .filter((n) => n.dismissedAt === undefined)
+      .filter((n) => !args.unreadOnly || n.readAt === undefined)
+      .slice(0, limit);
+
+    return filtered.map((n) => ({
+      _id: n._id,
+      type: n.type,
+      title: n.title,
+      message: n.message,
+      data: n.data ?? null,
+      readAt: n.readAt ?? null,
+      createdAt: n.createdAt,
+    }));
+  },
+});
+
+/**
+ * Returns a signed URL for the statement PDF, after verifying the caller
+ * owns the property. Mobile uses this to `Linking.openURL(url)`; web uses
+ * it for the Download button. Returns null while the PDF is still
+ * generating (status="issued" but pdfStorageId not yet set).
+ */
+export const getOwnerStatementPdfUrl = query({
+  args: { statementId: v.id("ownerStatements") },
+  handler: async (ctx, args) => {
+    const statement = await ctx.db.get(args.statementId);
+    if (!statement) throw new ConvexError("Statement not found");
+    await assertOwnerOfProperty(ctx, statement.propertyId);
+    if (!statement.pdfStorageId) {
+      return {
+        url: null,
+        status: "generating" as const,
+        templateVersion: null,
+      };
+    }
+    const url = await ctx.storage.getUrl(statement.pdfStorageId);
+    return {
+      url,
+      status: "ready" as const,
+      templateVersion: statement.pdfTemplateVersion ?? null,
+    };
+  },
+});
+
+/**
  * All active cost-items for a property, denormalized with their category
  * name + bucket. Powers the Costs section on the property page — owners
  * can audit what J&A is booking against their P&L line-by-line.

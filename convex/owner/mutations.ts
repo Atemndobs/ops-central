@@ -865,3 +865,73 @@ export const seedOwnerAcrossProperties = internalMutation({
     return { user: user.name, seeded: results };
   },
 });
+
+// ─── Owner-inbox state mutations ───────────────────────────────────────────
+
+/**
+ * Mark a notification as read. Owner-scoped: verifies the notification
+ * belongs to the calling user before patching. Idempotent — re-marking a
+ * read notification leaves readAt unchanged.
+ */
+export const markOwnerNotificationRead = mutation({
+  args: { notificationId: v.id("notifications") },
+  handler: async (ctx, args) => {
+    const user = await requireOwnerUser(ctx);
+    const n = await ctx.db.get(args.notificationId);
+    if (!n) throw new ConvexError("Notification not found");
+    if (n.userId !== user._id) {
+      throw new ConvexError("Notification does not belong to caller");
+    }
+    if (n.readAt !== undefined) return { alreadyRead: true };
+    await ctx.db.patch(args.notificationId, { readAt: Date.now() });
+    return { alreadyRead: false };
+  },
+});
+
+/**
+ * Dismiss a notification (removes from inbox). Same auth semantics as
+ * markOwnerNotificationRead.
+ */
+export const dismissOwnerNotification = mutation({
+  args: { notificationId: v.id("notifications") },
+  handler: async (ctx, args) => {
+    const user = await requireOwnerUser(ctx);
+    const n = await ctx.db.get(args.notificationId);
+    if (!n) throw new ConvexError("Notification not found");
+    if (n.userId !== user._id) {
+      throw new ConvexError("Notification does not belong to caller");
+    }
+    if (n.dismissedAt !== undefined) return { alreadyDismissed: true };
+    await ctx.db.patch(args.notificationId, { dismissedAt: Date.now() });
+    return { alreadyDismissed: false };
+  },
+});
+
+/**
+ * Mark all undismissed owner-portal notifications as read. Convenience for
+ * the mobile "Mark all read" gesture.
+ */
+export const markAllOwnerNotificationsRead = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireOwnerUser(ctx);
+    const ownerTypes = new Set([
+      "owner_statement_issued",
+      "owner_approval_request",
+      "owner_incident_reported",
+    ]);
+    const rows = await ctx.db
+      .query("notifications")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .collect();
+    const now = Date.now();
+    let updated = 0;
+    for (const n of rows) {
+      if (!ownerTypes.has(n.type)) continue;
+      if (n.readAt !== undefined || n.dismissedAt !== undefined) continue;
+      await ctx.db.patch(n._id, { readAt: now });
+      updated += 1;
+    }
+    return { updated };
+  },
+});
