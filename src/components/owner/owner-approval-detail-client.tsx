@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
-import { ArrowLeft, CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2, XCircle } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { fmtDate, fmtMoney } from "./owner-format";
@@ -55,13 +54,9 @@ export function OwnerApprovalDetailClient({
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        <Link
-          href={`/owner/properties/${propertyId}`}
-          className="inline-flex items-center gap-1 text-xs text-[var(--cleaner-muted)] hover:text-[var(--cleaner-ink)]"
-        >
-          <ArrowLeft size={12} /> {property.property.name}
-        </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">
+        {/* Inline back link removed — OwnerShell renders the universal
+            back button above the page chrome. */}
+        <h1 className="text-2xl font-semibold tracking-tight">
           Maintenance approval
         </h1>
       </div>

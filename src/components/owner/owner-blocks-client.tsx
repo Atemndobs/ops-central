@@ -1,9 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
-import { ArrowLeft, CalendarX, Plus, Trash2 } from "lucide-react";
+import { CalendarX, Plus } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { fmtDate } from "./owner-format";
@@ -27,15 +26,10 @@ export function OwnerBlocksClient() {
   return (
     <div className="space-y-6">
       <div>
-        <Link
-          href="/owner"
-          className="inline-flex items-center gap-1 text-xs hover:underline"
-          style={{ color: "var(--cleaner-muted)" }}
-        >
-          <ArrowLeft size={12} /> Dashboard
-        </Link>
+        {/* Inline back link removed — OwnerShell renders the universal
+            back button above the page chrome. */}
         <h1
-          className="mt-2 text-3xl tracking-tight"
+          className="text-3xl tracking-tight"
           style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700 }}
         >
           Date blocks

@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useConvexAuth, useQuery } from "convex/react";
-import { ArrowLeft, Download, Info, Loader2 } from "lucide-react";
+import { Download, Info, Loader2 } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { bucketLabel, fmtDate, fmtMoney } from "./owner-format";
@@ -40,12 +39,8 @@ export function OwnerStatementDetailClient({
   return (
     <div className="space-y-8">
       <div>
-        <Link
-          href={`/owner/properties/${propertyId}`}
-          className="inline-flex items-center gap-1 text-xs text-[var(--cleaner-muted)] hover:text-[var(--cleaner-ink)]"
-        >
-          <ArrowLeft size={12} /> {property.property.name}
-        </Link>
+        {/* Inline back link removed — OwnerShell renders the universal
+            back button above the page chrome. */}
         <div className="mt-2 flex flex-wrap items-baseline justify-between gap-3">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">

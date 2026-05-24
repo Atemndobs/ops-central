@@ -8,8 +8,6 @@ import {
   ArrowUpDown,
   Bell,
   Building2,
-  ChevronLeft,
-  ChevronRight,
   FileText,
   Filter,
   Group,
@@ -20,6 +18,8 @@ import {
 } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { fmtMoney, fmtMonth } from "./owner-format";
+import { MonthSwitcher } from "./month-switcher";
+import { useMonthFromUrl } from "./use-month-from-url";
 
 /**
  * Owner dashboard. Two view modes (card / list) — list scales to 30+
@@ -30,7 +30,9 @@ import { fmtMoney, fmtMonth } from "./owner-format";
 export function OwnerDashboardClient() {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
-  const [month, setMonth] = useState<string>(currentMonthKey());
+  // URL-backed month — drill-ins preserve context, browser back/forward
+  // navigate periods, deep-links share their state. See use-month-from-url.
+  const [month, setMonth] = useMonthFromUrl();
   // Performance filters: empty Set = no filter (show all). Selecting a city
   // chip toggles it. Same for state. Multi-select within each axis is OR;
   // city ∩ state is AND. Default sort is "payout" DESC (best-performing
@@ -469,83 +471,9 @@ function Toolbar({
   viewMode: "card" | "list";
   onViewModeChange: (m: "card" | "list") => void;
 }) {
-  const cur = currentMonthKey();
-  const isCurrent = month === cur;
   return (
     <div className="flex items-center justify-between gap-3">
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => onMonthChange(shiftMonth(month, -1))}
-          className="rounded-md p-1.5 hover:bg-black/[0.04]"
-          aria-label="Previous month"
-        >
-          <ChevronLeft size={16} />
-        </button>
-        <div className="flex items-baseline gap-2">
-          <span
-            className="text-lg"
-            style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700 }}
-          >
-            {fmtMonth(month)}
-          </span>
-          {isCurrent ? (
-            <span
-              className="rounded-full px-2 py-0.5 text-[10px]"
-              style={{
-                background: "rgba(155,81,224,0.12)",
-                color: "var(--cleaner-primary)",
-                fontFamily: "var(--font-cleaner-mono)",
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-              }}
-            >
-              Live
-            </span>
-          ) : month < cur ? (
-            <span
-              className="rounded-full px-2 py-0.5 text-[10px]"
-              style={{
-                background: "var(--cleaner-bg)",
-                color: "var(--cleaner-muted)",
-                fontFamily: "var(--font-cleaner-mono)",
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-              }}
-            >
-              Past
-            </span>
-          ) : (
-            <span
-              className="rounded-full px-2 py-0.5 text-[10px]"
-              style={{
-                background: "var(--cleaner-bg)",
-                color: "var(--cleaner-muted)",
-                fontFamily: "var(--font-cleaner-mono)",
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-              }}
-            >
-              Future
-            </span>
-          )}
-        </div>
-        <button
-          onClick={() => onMonthChange(shiftMonth(month, 1))}
-          className="rounded-md p-1.5 hover:bg-black/[0.04]"
-          aria-label="Next month"
-        >
-          <ChevronRight size={16} />
-        </button>
-        {!isCurrent && (
-          <button
-            onClick={() => onMonthChange(cur)}
-            className="ml-1 text-xs hover:underline"
-            style={{ color: "var(--cleaner-muted)" }}
-          >
-            today
-          </button>
-        )}
-      </div>
+      <MonthSwitcher month={month} onMonthChange={onMonthChange} />
 
       <div
         className="flex items-center rounded-lg border border-black/[0.06] p-0.5"
@@ -874,15 +802,5 @@ function SkeletonCard() {
   );
 }
 
-// ─── Date helpers ───────────────────────────────────────────────────────────
-
-function currentMonthKey(): string {
-  const d = new Date();
-  return `${d.getUTCFullYear()}-${(d.getUTCMonth() + 1).toString().padStart(2, "0")}`;
-}
-
-function shiftMonth(month: string, delta: number): string {
-  const [y, m] = month.split("-").map(Number);
-  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
-  return `${d.getUTCFullYear()}-${(d.getUTCMonth() + 1).toString().padStart(2, "0")}`;
-}
+// Date helpers (currentMonthKey, shiftMonth) live in ./month-switcher to
+// stay co-located with the only component that needs them.

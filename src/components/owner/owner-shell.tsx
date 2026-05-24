@@ -4,6 +4,7 @@ import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
 import { Building2 } from "lucide-react";
 import type { ReactNode } from "react";
+import { OwnerBackButton } from "./back-button";
 
 /**
  * Owner-portal shell. Consumes design-system tokens (cleaner palette) so the
@@ -67,7 +68,13 @@ export function OwnerShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>
+      {/* Back-navigation bar — empty on /owner root, renders ← parent
+          everywhere else. Outside the main padding so the back affordance
+          feels structural (always-on top-left chrome), not content. */}
+      <div className="mx-auto max-w-5xl px-6 pt-4">
+        <OwnerBackButton />
+      </div>
+      <main className="mx-auto max-w-5xl px-6 pb-8 pt-4">{children}</main>
       <footer
         className="mx-auto max-w-5xl px-6 py-8 text-center text-xs"
         style={{ color: "var(--cleaner-muted)" }}
