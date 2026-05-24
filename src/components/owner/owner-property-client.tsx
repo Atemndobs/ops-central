@@ -557,7 +557,7 @@ function BookingsSection({
                 onClick={() => setPlatformFilter(name)}
                 hint={`${count} · ${fmtMoney(total, currency)}`}
               >
-                {name}
+                <PlatformLogo platform={name} size={18} />
               </FilterChip>
             ))}
             <span className="ml-auto flex items-center gap-2 text-xs"
