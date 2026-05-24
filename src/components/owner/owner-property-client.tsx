@@ -20,7 +20,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { bucketLabel, fmtDate, fmtDateShort, fmtMoney, fmtMonth } from "./owner-format";
 import { MortgageCoverageBar } from "./mortgage-coverage";
-import { PlatformLogo, platformDisplayName } from "./platform-logo";
+import { PlatformLogo } from "./platform-logo";
 import { MonthSwitcher } from "./month-switcher";
 import { useMonthFromUrl } from "./use-month-from-url";
 
@@ -922,25 +922,16 @@ function Th({
 }
 
 /**
- * Compact platform identifier — official brand mark on a brand-coloured
- * chip + optional name. On mobile (`compact`) the name is hidden so the
- * chip alone communicates platform identity in tight space. The chip
- * itself stays sized to match the previous monogram footprint so the
- * surrounding layouts don't shift.
+ * Platform identifier — official brand mark, no text label. Hover/long-press
+ * surfaces the brand name via the logo's native `title` attribute, so the
+ * name is still discoverable without taking up visible space.
+ *
+ * `compact` is kept on the API for callers that previously toggled it but
+ * is now a no-op (text was dropped everywhere) — preserved so the desktop
+ * table cell + mobile card both render the same chip.
  */
-function PlatformBadge({ platform, compact }: { platform: string; compact?: boolean }) {
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full px-1 py-0.5 text-[10px] uppercase tracking-wider"
-      style={{
-        color: "var(--cleaner-muted)",
-        fontFamily: "var(--font-cleaner-mono)",
-      }}
-    >
-      <PlatformLogo platform={platform} />
-      {!compact && <span>{platformDisplayName(platform)}</span>}
-    </span>
-  );
+function PlatformBadge({ platform }: { platform: string; compact?: boolean }) {
+  return <PlatformLogo platform={platform} size={24} />;
 }
 
 function Td({
