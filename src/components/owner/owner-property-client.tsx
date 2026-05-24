@@ -7,7 +7,13 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { bucketLabel, fmtDate, fmtMoney, fmtMonth } from "./owner-format";
 
-export function OwnerPropertyClient({ propertyId }: { propertyId: Id<"properties"> }) {
+export function OwnerPropertyClient({
+  propertyId,
+  month,
+}: {
+  propertyId: Id<"properties">;
+  month?: string;
+}) {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const prop = useQuery(
     api.owner.queries.getOwnerProperty,
@@ -15,7 +21,7 @@ export function OwnerPropertyClient({ propertyId }: { propertyId: Id<"properties
   );
   const draft = useQuery(
     api.owner.queries.getOwnerStatementDraft,
-    isAuthenticated ? { propertyId } : "skip",
+    isAuthenticated ? { propertyId, month } : "skip",
   );
   const statements = useQuery(
     api.owner.queries.listOwnerStatements,
@@ -226,7 +232,18 @@ export function OwnerPropertyClient({ propertyId }: { propertyId: Id<"properties
       </section>
 
       <CostsSection propertyId={propertyId} currency={currency} />
-      <BookingsSection propertyId={propertyId} currency={currency} />
+      <BookingsSection
+        propertyId={propertyId}
+        currency={currency}
+        month={
+          draft?.month ??
+          month ??
+          (() => {
+            const d = new Date();
+            return `${d.getUTCFullYear()}-${(d.getUTCMonth() + 1).toString().padStart(2, "0")}`;
+          })()
+        }
+      />
     </div>
   );
 }
@@ -328,13 +345,17 @@ function CostsSection({
 function BookingsSection({
   propertyId,
   currency,
+  month,
 }: {
   propertyId: Id<"properties">;
   currency: string;
+  month: string;
 }) {
+  // Scope bookings to the SAME month the draft is computed for, so the
+  // booking list reconciles to the headline revenue number above.
   const stays = useQuery(api.owner.queries.listOwnerStays, {
     propertyId,
-    lookbackDays: 90,
+    month,
   });
   if (stays === undefined) return <Skeleton />;
 
@@ -344,12 +365,12 @@ function BookingsSection({
         className="mb-3 flex items-center gap-2 text-lg"
         style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700 }}
       >
-        <CalendarDays size={18} /> Bookings (last 90 days)
+        <CalendarDays size={18} /> Bookings — {fmtMonth(month)}
       </h2>
       {stays.length === 0 ? (
         <Card padding="p-8">
           <p className="text-center text-sm" style={{ color: "var(--cleaner-muted)" }}>
-            No stays in the last 90 days.
+            No stays in {fmtMonth(month)}.
           </p>
         </Card>
       ) : (
