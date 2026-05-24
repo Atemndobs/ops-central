@@ -20,6 +20,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { bucketLabel, fmtDate, fmtDateShort, fmtMoney, fmtMonth } from "./owner-format";
 import { MortgageCoverageBar } from "./mortgage-coverage";
+import { PlatformLogo, platformDisplayName } from "./platform-logo";
 import { MonthSwitcher } from "./month-switcher";
 import { useMonthFromUrl } from "./use-month-from-url";
 
@@ -921,12 +922,13 @@ function Th({
 }
 
 /**
- * Compact platform identifier — colored monogram chip + optional name. On
- * mobile (`compact`) the name is hidden so the chip alone communicates
- * platform identity in tight space.
+ * Compact platform identifier — official brand mark on a brand-coloured
+ * chip + optional name. On mobile (`compact`) the name is hidden so the
+ * chip alone communicates platform identity in tight space. The chip
+ * itself stays sized to match the previous monogram footprint so the
+ * surrounding layouts don't shift.
  */
 function PlatformBadge({ platform, compact }: { platform: string; compact?: boolean }) {
-  const meta = platformMeta(platform);
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-full px-1 py-0.5 text-[10px] uppercase tracking-wider"
@@ -935,26 +937,10 @@ function PlatformBadge({ platform, compact }: { platform: string; compact?: bool
         fontFamily: "var(--font-cleaner-mono)",
       }}
     >
-      <span
-        aria-hidden
-        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold text-white"
-        style={{ background: meta.color }}
-        title={platform}
-      >
-        {meta.glyph}
-      </span>
-      {!compact && <span>{platform}</span>}
+      <PlatformLogo platform={platform} />
+      {!compact && <span>{platformDisplayName(platform)}</span>}
     </span>
   );
-}
-
-function platformMeta(platform: string): { color: string; glyph: string } {
-  const key = platform.toLowerCase();
-  if (key.includes("airbnb")) return { color: "#FF5A5F", glyph: "A" };
-  if (key.includes("vrbo")) return { color: "#245ABC", glyph: "V" };
-  if (key.includes("booking")) return { color: "#003580", glyph: "B" };
-  if (key.includes("direct")) return { color: "var(--cleaner-primary)", glyph: "•" };
-  return { color: "var(--cleaner-muted)", glyph: platform.charAt(0).toUpperCase() || "?" };
 }
 
 function Td({
