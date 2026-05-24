@@ -7,7 +7,6 @@ import { ArrowLeft, Bell, CalendarDays, FileText, MapPin, Receipt } from "lucide
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { bucketLabel, fmtDate, fmtMoney, fmtMonth } from "./owner-format";
-import { OwnerMortgageCoverCard } from "./owner-mortgage-cover-card";
 
 export function OwnerPropertyClient({
   propertyId,
@@ -133,46 +132,26 @@ export function OwnerPropertyClient({
         </Card>
       )}
 
-      {/* The pitch surface — lease/mortgage cover meter. Hidden if no lease cost configured. */}
-      <OwnerMortgageCoverCard
-        propertyId={propertyId}
-        currency={currency}
-        month={draft?.month ?? month ?? currentMonthLocal()}
-      />
-
       {draft && (
         <Card padding="p-6">
-          <div className="mb-4 flex items-baseline justify-between">
+          <div className="mb-5 flex items-baseline justify-between">
             <h2
-              className="text-lg"
+              className="text-xl tracking-tight"
               style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700 }}
             >
-              {fmtMonth(draft.month)} — live draft
+              {fmtMonth(draft.month)}
             </h2>
-            <span
-              className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-              style={{
-                background: "rgba(155,81,224,0.12)",
-                color: "var(--cleaner-primary)",
-                fontFamily: "var(--font-cleaner-mono)",
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-              }}
-            >
-              In progress
-            </span>
           </div>
-          <ThreeStat
+          <MonthSummary
             currency={currency}
             grossRevenue={draft.draft.totals.grossRevenue}
-            mgmtFee={draft.draft.totals.mgmtFee}
             ownerPayout={draft.draft.totals.ownerPayout}
-            feePct={draft.draft.totals.feePct}
-            feeBase={draft.draft.totals.feeBase}
+            mortgageAmount={
+              draft.draft.totals.costsByBucket.find((b) => b.bucket === "lease")
+                ?.amount ?? 0
+            }
+            stakePct={prop.ownership.stakePct}
           />
-          <p className="mt-4 text-xs" style={{ color: "var(--cleaner-muted)" }}>
-            This number updates live as costs land. It will be finalized and locked when ChezSoiStays Ops issues the statement.
-          </p>
         </Card>
       )}
 
@@ -736,34 +715,139 @@ function TabLink({
   );
 }
 
-function ThreeStat({
+/**
+ * Three core stats owner sees on the property landing — gross, payout, and
+ * the mortgage indicator. Management fee is intentionally HIDDEN here
+ * (it's a J&A-internal concept; owners see it on the breakdown drilldown
+ * later). Mortgage indicator uses GROSS REVENUE vs lease obligation
+ * because that matches owner mental model: "the first thing we pay out
+ * of revenue is the mortgage."
+ */
+function MonthSummary({
   currency,
   grossRevenue,
-  mgmtFee,
   ownerPayout,
-  feePct,
-  feeBase,
+  mortgageAmount,
+  stakePct,
 }: {
   currency: string;
   grossRevenue: number;
-  mgmtFee: number;
   ownerPayout: number;
-  feePct: number;
-  feeBase: string;
+  /** Total lease/mortgage for the property in the period (J&A-side, full). */
+  mortgageAmount: number;
+  /** Owner's stake — used to scale both their payout/mortgage share. */
+  stakePct: number;
 }) {
+  const myMortgage = mortgageAmount * stakePct;
   return (
-    <div className="grid grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
       <Stat label="Gross revenue" value={fmtMoney(grossRevenue, currency)} />
       <Stat
-        label="Management fee"
-        value={fmtMoney(-mgmtFee, currency)}
-        subtitle={`${(feePct * 100).toFixed(1)}% × ${feeBase}`}
-      />
-      <Stat
         label="Your payout"
-        value={fmtMoney(ownerPayout, currency)}
+        value={fmtMoney(ownerPayout * stakePct, currency)}
         accent
       />
+      {myMortgage > 0 ? (
+        <MortgageIndicator
+          currency={currency}
+          mortgage={myMortgage}
+          grossRevenue={grossRevenue * stakePct}
+        />
+      ) : (
+        <Stat label="Mortgage" value="—" />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Inline mortgage cover indicator (the 3rd "stat" column).
+ *
+ * Math (owner mental model): "first dollar of revenue goes to the
+ * mortgage." So we compare grossRevenue × stakePct against the owner's
+ * share of the mortgage, NOT ownerPayout. This means past months with
+ * any meaningful revenue typically show ✓ — which matches reality
+ * (we wouldn't operate a property if it can't cover rent/mortgage).
+ *
+ * States:
+ *   ratio ≥ 1.0  → green ✓ "Covered"
+ *   0 < ratio < 1.0 → amber, partial fill
+ *   ratio = 0   → empty, "TBD"
+ */
+function MortgageIndicator({
+  currency,
+  mortgage,
+  grossRevenue,
+}: {
+  currency: string;
+  mortgage: number;
+  grossRevenue: number;
+}) {
+  const ratio = mortgage > 0 ? grossRevenue / mortgage : 0;
+  const pct = Math.min(100, Math.max(0, ratio * 100));
+  const covered = ratio >= 1.0;
+  const color = covered
+    ? "rgb(34,197,94)"
+    : ratio > 0.6
+      ? "rgb(245,158,11)"
+      : ratio > 0
+        ? "rgb(245,158,11)"
+        : "rgba(0,0,0,0.15)";
+  return (
+    <div>
+      <div
+        className="flex items-baseline justify-between text-[10px]"
+        style={{
+          fontFamily: "var(--font-cleaner-mono)",
+          letterSpacing: "0.18em",
+          textTransform: "uppercase",
+          color: "var(--cleaner-muted)",
+        }}
+      >
+        <span>Mortgage</span>
+        {covered ? (
+          <span
+            style={{
+              color: "rgb(21,128,61)",
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+              textTransform: "none",
+            }}
+          >
+            Covered ✓
+          </span>
+        ) : (
+          <span
+            style={{
+              color: "var(--cleaner-ink)",
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+              textTransform: "none",
+            }}
+          >
+            {Math.round(pct)}%
+          </span>
+        )}
+      </div>
+      <div
+        className="mt-2 h-2.5 w-full overflow-hidden rounded-full"
+        style={{ background: "rgba(0,0,0,0.06)" }}
+      >
+        <div
+          className="h-full rounded-full transition-all"
+          style={{ width: `${pct}%`, background: color }}
+        />
+      </div>
+      <div
+        className="mt-1 text-[10px] tabular-nums"
+        style={{
+          fontFamily: "var(--font-cleaner-mono)",
+          color: "var(--cleaner-muted)",
+        }}
+      >
+        {fmtMoney(Math.min(grossRevenue, mortgage), currency)} /{" "}
+        {fmtMoney(mortgage, currency)}
+      </div>
     </div>
   );
 }
