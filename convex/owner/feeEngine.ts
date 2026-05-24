@@ -277,8 +277,24 @@ export function resolveCostItemAmount(
       return item.amount * count;
     }
 
-    case "revenue_percentage":
-      return grossRevenue * (item.percentageRate ?? 0);
+    case "revenue_percentage": {
+      // Guardrail: a single cost item taking ≥50% of revenue is almost
+      // certainly a misconfiguration (PriceLabs/PMS SaaS entered as
+      // percentage when it's actually a flat monthly fee, or a unit
+      // mix-up like "1.0 meaning 1%"). Skip the contribution but log,
+      // so a corrupt config can't silently zero out ownerPayout.
+      const rate = item.percentageRate ?? 0;
+      if (rate >= 0.5) {
+        console.warn(
+          `[feeEngine] Skipping cost item ${item._id} — percentageRate=${rate} ` +
+            `(>=50%) is implausible for a real platform fee. Fix the data, ` +
+            `then this item will contribute again. See ` +
+            `repairInsaneRevenuePercentageRates internal mutation.`,
+        );
+        return 0;
+      }
+      return grossRevenue * rate;
+    }
 
     default:
       // Exhaustive — TS catches missing cases.

@@ -5,13 +5,18 @@ import Link from "next/link";
 import { useConvexAuth, useQuery } from "convex/react";
 import {
   ArrowRight,
+  ArrowUpDown,
   Bell,
   Building2,
   ChevronLeft,
   ChevronRight,
   FileText,
+  Filter,
+  Group,
   LayoutGrid,
+  MapPin,
   Rows3,
+  X,
 } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { fmtMoney, fmtMonth } from "./owner-format";
@@ -26,6 +31,14 @@ export function OwnerDashboardClient() {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
   const [month, setMonth] = useState<string>(currentMonthKey());
+  // Performance filters: empty Set = no filter (show all). Selecting a city
+  // chip toggles it. Same for state. Multi-select within each axis is OR;
+  // city ∩ state is AND. Default sort is "payout" DESC (best-performing
+  // first) per owner's primary question: "how well is each property doing?"
+  const [selectedCities, setSelectedCities] = useState<Set<string>>(new Set());
+  const [selectedStates, setSelectedStates] = useState<Set<string>>(new Set());
+  const [sortKey, setSortKey] = useState<SortKey>("payout");
+  const [groupBy, setGroupBy] = useState<GroupBy>("none");
 
   const dashboard = useQuery(
     api.owner.queries.getOwnerDashboard,
@@ -75,11 +88,344 @@ export function OwnerDashboardClient() {
         onViewModeChange={setViewMode}
       />
 
-      {viewMode === "card" ? (
-        <CardView properties={dashboard.properties} month={month} />
-      ) : (
-        <ListView properties={dashboard.properties} month={month} />
+      <FilterBar
+        facets={dashboard.facets}
+        selectedCities={selectedCities}
+        selectedStates={selectedStates}
+        onToggleCity={(c) =>
+          setSelectedCities((prev) => {
+            const next = new Set(prev);
+            if (next.has(c)) next.delete(c);
+            else next.add(c);
+            return next;
+          })
+        }
+        onToggleState={(s) =>
+          setSelectedStates((prev) => {
+            const next = new Set(prev);
+            if (next.has(s)) next.delete(s);
+            else next.add(s);
+            return next;
+          })
+        }
+        onClearFilters={() => {
+          setSelectedCities(new Set());
+          setSelectedStates(new Set());
+        }}
+        sortKey={sortKey}
+        onSortChange={setSortKey}
+        groupBy={groupBy}
+        onGroupByChange={setGroupBy}
+      />
+
+      <FilteredPortfolio
+        properties={dashboard.properties}
+        selectedCities={selectedCities}
+        selectedStates={selectedStates}
+        sortKey={sortKey}
+        groupBy={groupBy}
+        viewMode={viewMode}
+        month={month}
+      />
+    </div>
+  );
+}
+
+// ─── Filter / sort / group orchestration ───────────────────────────────────
+
+function FilteredPortfolio({
+  properties,
+  selectedCities,
+  selectedStates,
+  sortKey,
+  groupBy,
+  viewMode,
+  month,
+}: {
+  properties: PropertyRow[];
+  selectedCities: Set<string>;
+  selectedStates: Set<string>;
+  sortKey: SortKey;
+  groupBy: GroupBy;
+  viewMode: "card" | "list";
+  month: string;
+}) {
+  const filteredAndSorted = useMemo(() => {
+    const filtered = properties.filter((p) => {
+      if (selectedCities.size > 0 && (!p.city || !selectedCities.has(p.city))) return false;
+      if (selectedStates.size > 0 && (!p.state || !selectedStates.has(p.state))) return false;
+      return true;
+    });
+    return [...filtered].sort((a, b) => compareBySortKey(a, b, sortKey));
+  }, [properties, selectedCities, selectedStates, sortKey]);
+
+  // Render either flat or grouped (by city or state).
+  if (groupBy === "none") {
+    if (filteredAndSorted.length === 0) return <EmptyFiltered />;
+    return viewMode === "card" ? (
+      <CardView properties={filteredAndSorted} month={month} />
+    ) : (
+      <ListView properties={filteredAndSorted} month={month} />
+    );
+  }
+
+  const groups = new Map<string, PropertyRow[]>();
+  for (const p of filteredAndSorted) {
+    const key = (groupBy === "city" ? p.city : p.state) ?? "(no " + groupBy + ")";
+    const list = groups.get(key) ?? [];
+    list.push(p);
+    groups.set(key, list);
+  }
+  // Sort groups by total payout descending (most lucrative city/state first)
+  const orderedGroups = Array.from(groups.entries()).sort((a, b) => {
+    const totalA = a[1].reduce(
+      (s, p) => s + ("totals" in p.draft ? p.draft.totals.ownerPayout : 0),
+      0,
+    );
+    const totalB = b[1].reduce(
+      (s, p) => s + ("totals" in p.draft ? p.draft.totals.ownerPayout : 0),
+      0,
+    );
+    return totalB - totalA;
+  });
+
+  if (orderedGroups.length === 0) return <EmptyFiltered />;
+
+  return (
+    <div className="space-y-8">
+      {orderedGroups.map(([groupName, rows]) => {
+        const totalPayout = rows.reduce(
+          (s, p) => s + ("totals" in p.draft ? p.draft.totals.ownerPayout : 0),
+          0,
+        );
+        const currency = rows[0]?.currency ?? "USD";
+        return (
+          <section key={groupName}>
+            <div className="mb-3 flex items-baseline justify-between">
+              <h2
+                className="flex items-center gap-2 text-base"
+                style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700 }}
+              >
+                <MapPin size={14} style={{ color: "var(--cleaner-primary)" }} />
+                {groupName}
+                <span
+                  className="text-xs"
+                  style={{ color: "var(--cleaner-muted)", fontWeight: 400 }}
+                >
+                  · {rows.length} {rows.length === 1 ? "property" : "properties"}
+                </span>
+              </h2>
+              <span
+                className="text-sm tabular-nums"
+                style={{ fontFamily: "var(--font-cleaner-mono)", fontWeight: 700 }}
+              >
+                {fmtMoney(totalPayout, currency)}{" "}
+                <span
+                  className="ml-1 text-[10px] uppercase tracking-wider"
+                  style={{ color: "var(--cleaner-muted)" }}
+                >
+                  group payout
+                </span>
+              </span>
+            </div>
+            {viewMode === "card" ? (
+              <CardView properties={rows} month={month} />
+            ) : (
+              <ListView properties={rows} month={month} />
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function compareBySortKey(a: PropertyRow, b: PropertyRow, key: SortKey): number {
+  const aPayout = "totals" in a.draft ? a.draft.totals.ownerPayout : -Infinity;
+  const bPayout = "totals" in b.draft ? b.draft.totals.ownerPayout : -Infinity;
+  const aGross = "totals" in a.draft ? a.draft.totals.grossRevenue : -Infinity;
+  const bGross = "totals" in b.draft ? b.draft.totals.grossRevenue : -Infinity;
+  switch (key) {
+    case "payout":
+      return bPayout - aPayout;
+    case "gross":
+      return bGross - aGross;
+    case "name":
+      return a.propertyName.localeCompare(b.propertyName);
+    case "pendingFirst":
+      // Pending approvals first, then payout desc within each bucket
+      if (a.pendingApprovalCount !== b.pendingApprovalCount) {
+        return b.pendingApprovalCount - a.pendingApprovalCount;
+      }
+      return bPayout - aPayout;
+  }
+}
+
+function EmptyFiltered() {
+  return (
+    <div
+      className="rounded-2xl border border-dashed border-black/[0.06] p-8 text-center"
+      style={{ background: "var(--cleaner-surface)" }}
+    >
+      <p className="text-sm" style={{ color: "var(--cleaner-muted)" }}>
+        No properties match the current filters.
+      </p>
+    </div>
+  );
+}
+
+// ─── FilterBar — chips for city/state + sort + group ───────────────────────
+
+function FilterBar({
+  facets,
+  selectedCities,
+  selectedStates,
+  onToggleCity,
+  onToggleState,
+  onClearFilters,
+  sortKey,
+  onSortChange,
+  groupBy,
+  onGroupByChange,
+}: {
+  facets: { cities: string[]; states: string[] };
+  selectedCities: Set<string>;
+  selectedStates: Set<string>;
+  onToggleCity: (c: string) => void;
+  onToggleState: (s: string) => void;
+  onClearFilters: () => void;
+  sortKey: SortKey;
+  onSortChange: (k: SortKey) => void;
+  groupBy: GroupBy;
+  onGroupByChange: (g: GroupBy) => void;
+}) {
+  // Don't bother rendering filter chips if there's only one option per axis
+  // (or none) — the chips would be pure noise on a single-property dashboard.
+  const showCityFilter = facets.cities.length > 1;
+  const showStateFilter = facets.states.length > 1;
+  const hasActive = selectedCities.size > 0 || selectedStates.size > 0;
+  // Hide the whole bar if no filters apply AND no sort/group choices matter
+  // (only 1 property in portfolio).
+  if (!showCityFilter && !showStateFilter && facets.cities.length <= 1) {
+    return null;
+  }
+
+  return (
+    <div
+      className="flex flex-wrap items-center gap-2 rounded-2xl border border-black/[0.06] p-3"
+      style={{ background: "var(--cleaner-surface)" }}
+    >
+      {showCityFilter && (
+        <ChipGroup
+          icon={<Filter size={12} />}
+          label="City"
+          values={facets.cities}
+          selected={selectedCities}
+          onToggle={onToggleCity}
+        />
       )}
+      {showStateFilter && (
+        <ChipGroup
+          icon={<MapPin size={12} />}
+          label="State"
+          values={facets.states}
+          selected={selectedStates}
+          onToggle={onToggleState}
+        />
+      )}
+
+      <div className="ml-auto flex items-center gap-2">
+        {hasActive && (
+          <button
+            onClick={onClearFilters}
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] hover:bg-black/[0.04]"
+            style={{ color: "var(--cleaner-muted)" }}
+          >
+            <X size={10} /> Clear
+          </button>
+        )}
+
+        <select
+          value={sortKey}
+          onChange={(e) => onSortChange(e.target.value as SortKey)}
+          className="rounded-md border border-black/[0.06] bg-transparent px-2 py-1 text-[11px]"
+          aria-label="Sort by"
+          style={{ color: "var(--cleaner-ink)" }}
+        >
+          <option value="payout">↓ Payout</option>
+          <option value="gross">↓ Gross</option>
+          <option value="name">A→Z Name</option>
+          <option value="pendingFirst">Pending first</option>
+        </select>
+
+        {(showCityFilter || showStateFilter) && (
+          <select
+            value={groupBy}
+            onChange={(e) => onGroupByChange(e.target.value as GroupBy)}
+            className="rounded-md border border-black/[0.06] bg-transparent px-2 py-1 text-[11px]"
+            aria-label="Group by"
+            style={{ color: "var(--cleaner-ink)" }}
+          >
+            <option value="none">No grouping</option>
+            {showCityFilter && <option value="city">Group by city</option>}
+            {showStateFilter && <option value="state">Group by state</option>}
+          </select>
+        )}
+
+        <ArrowUpDown
+          size={12}
+          className="opacity-30"
+          aria-hidden
+        />
+        <Group size={12} className="opacity-30" aria-hidden />
+      </div>
+    </div>
+  );
+}
+
+function ChipGroup({
+  icon,
+  label,
+  values,
+  selected,
+  onToggle,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  values: string[];
+  selected: Set<string>;
+  onToggle: (v: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span
+        className="flex items-center gap-1 text-[10px] uppercase tracking-wider"
+        style={{ color: "var(--cleaner-muted)", fontFamily: "var(--font-cleaner-mono)" }}
+      >
+        {icon} {label}
+      </span>
+      <div className="flex flex-wrap gap-1">
+        {values.map((v) => {
+          const isActive = selected.has(v);
+          return (
+            <button
+              key={v}
+              onClick={() => onToggle(v)}
+              className="rounded-full px-2 py-0.5 text-[11px] transition"
+              style={{
+                background: isActive
+                  ? "var(--cleaner-primary)"
+                  : "var(--cleaner-bg)",
+                color: isActive ? "white" : "var(--cleaner-ink)",
+                fontFamily: "var(--font-cleaner-mono)",
+              }}
+              aria-pressed={isActive}
+            >
+              {v}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -89,6 +435,8 @@ type PropertyRow = {
   propertyName: string;
   propertyImage: string | null;
   currency: string;
+  city: string | null;
+  state: string | null;
   currentMonth: string;
   pendingApprovalCount: number;
   issuedStatementId: string | null;
@@ -104,6 +452,9 @@ type PropertyRow = {
         };
       };
 };
+
+type SortKey = "payout" | "gross" | "name" | "pendingFirst";
+type GroupBy = "none" | "city" | "state";
 
 // ─── Toolbar (month picker + view toggle) ──────────────────────────────────
 

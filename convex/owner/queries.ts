@@ -15,7 +15,7 @@
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
-import { query, type QueryCtx } from "../_generated/server";
+import { internalQuery, query, type QueryCtx } from "../_generated/server";
 import {
   assertOwnerOfProperty,
   listOwnedPropertyIds,
@@ -139,6 +139,10 @@ export const getOwnerDashboard = query({
           propertyName: p.name,
           propertyImage: p.imageUrl ?? null,
           currency: p.currency ?? "USD",
+          // Surfaced so the client can render city/state filter chips,
+          // grouping, and column display in list view.
+          city: p.city ?? null,
+          state: p.state ?? null,
           currentMonth: month,
           draft,
           pendingApprovalCount: pendingApprovals.length,
@@ -163,11 +167,34 @@ export const getOwnerDashboard = query({
       }),
     );
 
+    // Default sort: payout DESC (best-performing first). Engine errors
+    // sink to the bottom so they don't dominate the top of the list when
+    // a config is broken. Client can re-sort if user wants.
+    perPropertyWithStatus.sort((a, b) => {
+      const aPayout = "totals" in a.draft ? a.draft.totals.ownerPayout : -Infinity;
+      const bPayout = "totals" in b.draft ? b.draft.totals.ownerPayout : -Infinity;
+      return bPayout - aPayout;
+    });
+
+    // Collect distinct city/state values for filter-chip UI.
+    const citySet = new Set<string>();
+    const stateSet = new Set<string>();
+    for (const p of perPropertyWithStatus) {
+      if (p.city) citySet.add(p.city);
+      if (p.state) stateSet.add(p.state);
+    }
+
     return {
       mode: perPropertyWithStatus.length === 1 ? ("single" as const) : ("portfolio" as const),
       user: pickUser(user),
       properties: perPropertyWithStatus,
       month,
+      // Distinct values so the client doesn't need a second roundtrip to
+      // populate filter dropdowns / chip groups.
+      facets: {
+        cities: Array.from(citySet).sort(),
+        states: Array.from(stateSet).sort(),
+      },
     };
   },
 });
@@ -818,6 +845,54 @@ function estimateProjectedCoverDay(
   const dailyRate = payoutToDate / daysElapsed;
   const daysToCover = myObligation / dailyRate;
   return periodStart + daysToCover * 86400000;
+}
+
+/**
+ * DEBUG (internal): full engine breakdown for a property+month so we can
+ * trace why ownerPayout collapses. Returns every cost item resolved
+ * amount + bucket attribution + final totals.
+ */
+export const debugEngineBreakdown = internalQuery({
+  args: { propertyId: v.id("properties"), month: v.string() },
+  handler: async (ctx, args) => {
+    const { start, end } = monthRange(args.month);
+    const inputs = await loadEngineInputs(ctx, args.propertyId, start, end);
+    let out;
+    try {
+      out = computeStatementForPeriod(inputs);
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e), inputs: summarizeInputs(inputs) };
+    }
+    return {
+      totals: out.totals,
+      feeConfigSnapshot: out.feeConfigSnapshot,
+      sourceRefs: out.sourceRefs,
+      inputsSummary: summarizeInputs(inputs),
+    };
+  },
+});
+
+function summarizeInputs(inputs: FeeEngineInputs) {
+  return {
+    staysCount: inputs.stays.length,
+    staysInPeriod: inputs.stays.filter(
+      (s) => s.checkInAt >= inputs.periodStart && s.checkInAt < inputs.periodEnd,
+    ).length,
+    costItemsCount: inputs.costItems.filter((c) => c.isActive).length,
+    feeConfigsCount: inputs.feeConfigs.length,
+    ownersCount: inputs.owners.length,
+    manualAdjCount: inputs.manualAdjustments.filter(
+      (a) => a.propertyId === inputs.propertyId,
+    ).length,
+    monthlySettings: inputs.monthlySettings.filter(
+      (s) => s.month === yyyyMm(inputs.periodStart),
+    ),
+  };
+}
+
+function yyyyMm(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getUTCFullYear()}-${(d.getUTCMonth() + 1).toString().padStart(2, "0")}`;
 }
 
 function lastNMonthKeys(n: number): string[] {
