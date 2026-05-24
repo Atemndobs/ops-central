@@ -119,6 +119,14 @@ export function Header() {
     setThemePreferenceRef.current = setThemePreference;
   }, [setThemePreference]);
 
+  // Mobile bottom-nav "More" tab opens this same drawer via a window event,
+  // so we don't have to lift drawer state into a shared parent.
+  useEffect(() => {
+    const open = () => setIsMobileMenuOpen(true);
+    window.addEventListener("opscentral:open-mobile-menu", open);
+    return () => window.removeEventListener("opscentral:open-mobile-menu", open);
+  }, []);
+
   const convexUser = useQuery(
     api.users.queries.getByClerkId,
     isLoaded && isSignedIn && userId ? { clerkId: userId } : "skip",
