@@ -3,10 +3,13 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useConvexAuth, useQuery } from "convex/react";
+import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   Bell,
   Building2,
+  ChevronsLeftRight,
+  ChevronsRightLeft,
   FileText,
   Filter,
   LayoutGrid,
@@ -641,6 +644,17 @@ function PropertyCard({ p, month }: { p: PropertyRow; month: string }) {
 // ─── List view (scales to 30+) ─────────────────────────────────────────────
 
 function ListView({ properties, month }: { properties: PropertyRow[]; month: string }) {
+  const router = useRouter();
+  // Default collapsed on mobile: hides the property NAME column so all four
+  // numeric columns (Gross / Mgmt / Payout / Status) fit inside the
+  // viewport with no horizontal scroll. The thumbnail stays, so visual
+  // identity is preserved (the Breezeway pattern from the screenshot).
+  // Toggle in the toolbar flips it; we persist nothing — sensible
+  // default is "collapsed on first visit", user can expand if they want
+  // names back. The Action ("View →") column was removed entirely; the
+  // whole row is clickable.
+  const [showNames, setShowNames] = useState(false);
+
   // Sort by ownerPayout desc, errors last
   const sorted = useMemo(() => {
     return [...properties].sort((a, b) => {
@@ -655,56 +669,95 @@ function ListView({ properties, month }: { properties: PropertyRow[]; month: str
       className="overflow-hidden rounded-2xl border border-black/[0.06]"
       style={{ background: "var(--cleaner-surface)" }}
     >
+      {/* Toolbar row — collapse/expand toggle. Mirrors the +Filter chip on
+          Breezeway's portfolio screen but kept minimal. */}
+      <div
+        className="flex items-center justify-between border-b border-black/[0.04] px-3 py-2"
+        style={{ background: "var(--cleaner-bg)" }}
+      >
+        <span
+          className="text-[10px] uppercase tracking-wider"
+          style={{ color: "var(--cleaner-muted)", fontFamily: "var(--font-cleaner-mono)" }}
+        >
+          {sorted.length} {sorted.length === 1 ? "property" : "properties"}
+        </span>
+        <button
+          onClick={() => setShowNames((v) => !v)}
+          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] hover:bg-black/[0.04]"
+          style={{ color: "var(--cleaner-muted)" }}
+          aria-label={showNames ? "Hide property names" : "Show property names"}
+          title={showNames ? "Hide property names" : "Show property names"}
+        >
+          {showNames ? (
+            <>
+              <ChevronsRightLeft size={12} /> Hide names
+            </>
+          ) : (
+            <>
+              <ChevronsLeftRight size={12} /> Show names
+            </>
+          )}
+        </button>
+      </div>
       <table className="w-full text-sm">
         <thead>
           <tr style={{ background: "var(--cleaner-bg)" }}>
-            <Th>Property</Th>
+            <Th>{showNames ? "Property" : ""}</Th>
             <Th align="right">Gross</Th>
             <Th align="right">Mgmt fee</Th>
             <Th align="right">Your payout</Th>
             <Th align="center">Status</Th>
-            <Th align="center">Action</Th>
           </tr>
         </thead>
         <tbody>
           {sorted.map((p, i) => {
             const totals = "totals" in p.draft ? p.draft.totals : null;
+            const href = `/owner/properties/${p.propertyId}?month=${month}`;
             return (
               <tr
                 key={p.propertyId}
-                className={i > 0 ? "border-t border-black/[0.04]" : ""}
+                onClick={() => router.push(href)}
+                className={`cursor-pointer transition hover:bg-black/[0.02] ${
+                  i > 0 ? "border-t border-black/[0.04]" : ""
+                }`}
               >
                 <Td>
                   <Link
-                    href={`/owner/properties/${p.propertyId}?month=${month}`}
-                    className="flex items-center gap-3 hover:underline"
+                    href={href}
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex items-center gap-3"
                     style={{ fontWeight: 500 }}
                   >
-                    {/* Tiny thumbnail so list view still surfaces property
-                        identity at a glance, matching the card view. */}
+                    {/* Thumbnail always renders — it's the visual identifier
+                        when the name is hidden. Image alt-text falls back
+                        to the property name so screen-readers still know. */}
                     <span
                       className="relative block h-9 w-9 shrink-0 overflow-hidden rounded-md border border-black/[0.06]"
                       style={{ background: "var(--cleaner-bg)" }}
+                      title={!showNames ? p.propertyName : undefined}
                     >
                       {p.propertyImage ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={upgradeAirbnbImageQuality(p.propertyImage)}
-                          alt=""
+                          alt={!showNames ? p.propertyName : ""}
                           className="h-full w-full object-cover"
                         />
                       ) : (
                         <span
                           className="flex h-full w-full items-center justify-center"
                           style={{ color: "var(--cleaner-muted)" }}
+                          title={p.propertyName}
                         >
                           <Building2 size={14} />
                         </span>
                       )}
                     </span>
-                    <span className="truncate">{p.propertyName}</span>
+                    {showNames && (
+                      <span className="truncate hover:underline">{p.propertyName}</span>
+                    )}
                   </Link>
-                  {p.pendingApprovalCount > 0 && (
+                  {showNames && p.pendingApprovalCount > 0 && (
                     <span
                       className="ml-2 rounded-full px-1.5 py-0.5 text-[10px]"
                       style={{
@@ -716,32 +769,23 @@ function ListView({ properties, month }: { properties: PropertyRow[]; month: str
                     </span>
                   )}
                 </Td>
-                <Td align="right" mono muted={totals === null}>
+                <Td align="right" mono muted={totals === null} nowrap>
                   {totals ? fmtMoney(totals.grossRevenue, p.currency) : "—"}
                 </Td>
-                <Td align="right" mono muted={totals === null}>
+                <Td align="right" mono muted={totals === null} nowrap>
                   {totals ? fmtMoney(-totals.mgmtFee, p.currency) : "—"}
                 </Td>
-                <Td align="right" mono bold>
+                <Td align="right" mono bold nowrap>
                   {totals ? fmtMoney(totals.ownerPayout, p.currency) : "—"}
                 </Td>
                 <Td align="center">
                   {totals === null ? (
                     <Badge tone="error">error</Badge>
                   ) : p.issuedStatementId ? (
-                    <Badge tone="success">paid out</Badge>
+                    <Badge tone="success">paid</Badge>
                   ) : (
-                    <Badge tone="info">in progress</Badge>
+                    <Badge tone="info">live</Badge>
                   )}
-                </Td>
-                <Td align="center">
-                  <Link
-                    href={`/owner/properties/${p.propertyId}?month=${month}`}
-                    className="text-xs hover:underline"
-                    style={{ color: "var(--cleaner-primary)" }}
-                  >
-                    View →
-                  </Link>
                 </Td>
               </tr>
             );
@@ -755,7 +799,7 @@ function ListView({ properties, month }: { properties: PropertyRow[]; month: str
 function Th({ children, align = "left" }: { children: React.ReactNode; align?: "left" | "right" | "center" }) {
   return (
     <th
-      className="px-4 py-2.5 text-[10px] uppercase tracking-wider"
+      className="px-3 py-2.5 text-[10px] uppercase tracking-wider sm:px-4"
       style={{
         textAlign: align,
         color: "var(--cleaner-muted)",
@@ -774,16 +818,21 @@ function Td({
   mono,
   bold,
   muted,
+  nowrap,
 }: {
   children: React.ReactNode;
   align?: "left" | "right" | "center";
   mono?: boolean;
   bold?: boolean;
   muted?: boolean;
+  /** Prevent the cell from wrapping — important for currency strings that
+   *  hit two lines when negative + thousands separator combine (e.g.
+   *  "-$1,233.76" was wrapping in narrow mobile columns). */
+  nowrap?: boolean;
 }) {
   return (
     <td
-      className="px-4 py-3"
+      className={`px-3 py-3 sm:px-4 ${nowrap ? "whitespace-nowrap" : ""}`}
       style={{
         textAlign: align,
         fontFamily: mono ? "var(--font-cleaner-mono)" : undefined,
