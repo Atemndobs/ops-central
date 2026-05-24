@@ -3,8 +3,66 @@
 import Link from "next/link";
 import Image from "next/image";
 import { UserButton } from "@clerk/nextjs";
+import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { Home, Building2, CalendarDays, Settings as SettingsIcon } from "lucide-react";
+import { CleanerIconButton } from "@/components/cleaner/cleaner-ui";
 import { OwnerBackButton } from "./back-button";
+
+const OWNER_NAV: Array<{
+  href: string;
+  label: string;
+  icon: typeof Home;
+  matchPrefixes: string[];
+}> = [
+  {
+    href: "/owner",
+    label: "Home",
+    icon: Home,
+    matchPrefixes: ["/owner"],
+  },
+  {
+    href: "/owner/properties",
+    label: "Properties",
+    icon: Building2,
+    matchPrefixes: ["/owner/properties"],
+  },
+  {
+    href: "/owner/blocks",
+    label: "Blocks",
+    icon: CalendarDays,
+    matchPrefixes: ["/owner/blocks"],
+  },
+  {
+    href: "/owner/settings",
+    label: "Settings",
+    icon: SettingsIcon,
+    matchPrefixes: ["/owner/settings"],
+  },
+];
+
+function matchLength(prefixes: string[], pathname: string): number {
+  let best = 0;
+  for (const prefix of prefixes) {
+    if (pathname === prefix || pathname.startsWith(`${prefix}/`)) {
+      if (prefix.length > best) best = prefix.length;
+    }
+  }
+  return best;
+}
+
+function isOwnerNavActive(itemHref: string, pathname: string): boolean {
+  let winnerHref: string | null = null;
+  let winnerLength = 0;
+  for (const candidate of OWNER_NAV) {
+    const length = matchLength(candidate.matchPrefixes, pathname);
+    if (length > winnerLength) {
+      winnerLength = length;
+      winnerHref = candidate.href;
+    }
+  }
+  return winnerHref === itemHref;
+}
 
 /**
  * Owner-portal shell. Consumes design-system tokens (cleaner palette) so the
@@ -13,6 +71,7 @@ import { OwnerBackButton } from "./back-button";
  * design-system/tokens/colors.ts.
  */
 export function OwnerShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname() ?? "";
   return (
     <div
       className="min-h-screen"
@@ -76,13 +135,42 @@ export function OwnerShell({ children }: { children: ReactNode }) {
       <div className="mx-auto max-w-5xl px-6 pt-4">
         <OwnerBackButton />
       </div>
-      <main className="mx-auto max-w-5xl px-6 pb-8 pt-4">{children}</main>
+      <main className="mx-auto max-w-5xl px-6 pb-32 pt-4 md:pb-8">{children}</main>
       <footer
         className="mx-auto max-w-5xl px-6 py-8 text-center text-xs"
         style={{ color: "var(--cleaner-muted)" }}
       >
         ChezSoiStays — every line on this statement is a clickable receipt.
       </footer>
+
+      {/* Mobile bottom nav — mirrors the cleaner PWA pattern so the owner
+          PWA on mobile gets native-app-style tabs instead of leaning on the
+          browser back button. Hidden on md+ where desktop chrome (header
+          links) is enough. */}
+      <nav
+        className="pointer-events-none fixed inset-x-0 bottom-0 z-40 bg-transparent md:hidden"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 6px)" }}
+        aria-label="Owner navigation"
+      >
+        <ul className="pointer-events-auto mx-auto grid max-w-[402px] grid-cols-4 items-center justify-items-center gap-x-3 px-9 pb-2">
+          {OWNER_NAV.map((item) => {
+            const isActive = isOwnerNavActive(item.href, pathname);
+            return (
+              <li key={item.href} className="list-none">
+                <Link href={item.href} aria-label={item.label} title={item.label} className="block">
+                  <CleanerIconButton
+                    icon={item.icon}
+                    label={item.label}
+                    active={isActive}
+                    size="nav"
+                    className="shadow-[0px_2px_8.2px_rgba(0,0,0,0.18)]"
+                  />
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
     </div>
   );
 }
