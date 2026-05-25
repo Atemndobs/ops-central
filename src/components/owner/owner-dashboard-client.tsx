@@ -716,6 +716,11 @@ function PropertyCard({
 
 // ─── List view (scales to 30+) ─────────────────────────────────────────────
 
+/** localStorage key for the list-view "show names" preference. Default
+ *  is ON (names visible) so the table is self-describing on first load;
+ *  user toggle persists across reloads. */
+const SHOW_NAMES_KEY = "owner-dashboard-list-show-names";
+
 function ListView({
   properties,
   month,
@@ -726,15 +731,23 @@ function ListView({
   flags: DashboardFlags;
 }) {
   const router = useRouter();
-  // Default collapsed on mobile: hides the property NAME column so all four
-  // numeric columns (Gross / Mgmt / Payout / Status) fit inside the
-  // viewport with no horizontal scroll. The thumbnail stays, so visual
-  // identity is preserved (the Breezeway pattern from the screenshot).
-  // Toggle in the toolbar flips it; we persist nothing — sensible
-  // default is "collapsed on first visit", user can expand if they want
-  // names back. The Action ("View →") column was removed entirely; the
-  // whole row is clickable.
-  const [showNames, setShowNames] = useState(false);
+  // Default ON (names visible). The toggle persists to localStorage so
+  // the user's choice is remembered across reloads. The Action ("View →")
+  // and Status columns were removed earlier; whole row is clickable.
+  const [showNames, setShowNamesState] = useState(true);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(SHOW_NAMES_KEY);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (stored === "0") setShowNamesState(false);
+    else if (stored === "1") setShowNamesState(true);
+  }, []);
+  function setShowNames(next: boolean) {
+    setShowNamesState(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(SHOW_NAMES_KEY, next ? "1" : "0");
+    }
+  }
 
   // Sort by ownerPayout desc, errors last
   const sorted = useMemo(() => {
@@ -745,15 +758,29 @@ function ListView({
     });
   }, [properties]);
 
+  // Aggregate revenue across the currently-displayed (already-filtered)
+  // rows. Currency follows the first property — same as the rest of the
+  // page; portfolios mixing currencies are extremely rare in practice.
+  const totalRevenue = useMemo(
+    () =>
+      sorted.reduce(
+        (s, p) => s + ("totals" in p.draft ? p.draft.totals.grossRevenue : 0),
+        0,
+      ),
+    [sorted],
+  );
+  const totalCurrency = sorted[0]?.currency ?? "USD";
+
   return (
     <div
       className="overflow-hidden rounded-2xl border border-black/[0.06]"
       style={{ background: "var(--cleaner-surface)" }}
     >
-      {/* Toolbar row — collapse/expand toggle. Mirrors the +Filter chip on
-          Breezeway's portfolio screen but kept minimal. */}
+      {/* Toolbar row — count + aggregate revenue total on the left, the
+          show/hide names toggle on the right. Total respects whatever
+          filters are active (rows already filtered upstream). */}
       <div
-        className="flex items-center justify-between border-b border-black/[0.04] px-3 py-2"
+        className="flex items-center justify-between gap-3 border-b border-black/[0.04] px-3 py-2"
         style={{ background: "var(--cleaner-bg)" }}
       >
         <span
@@ -761,9 +788,17 @@ function ListView({
           style={{ color: "var(--cleaner-muted)", fontFamily: "var(--font-cleaner-mono)" }}
         >
           {sorted.length} {sorted.length === 1 ? "property" : "properties"}
+          {totalRevenue > 0 && (
+            <>
+              <span className="mx-1.5 opacity-40">·</span>
+              <span style={{ color: "var(--cleaner-ink)" }}>
+                {fmtMoney(totalRevenue, totalCurrency)} revenue
+              </span>
+            </>
+          )}
         </span>
         <button
-          onClick={() => setShowNames((v) => !v)}
+          onClick={() => setShowNames(!showNames)}
           className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] hover:bg-black/[0.04]"
           style={{ color: "var(--cleaner-muted)" }}
           aria-label={showNames ? "Hide property names" : "Show property names"}
@@ -780,14 +815,16 @@ function ListView({
           )}
         </button>
       </div>
-      <table className="w-full text-sm">
+      {/* `table-fixed` so the name column truncates instead of pushing the
+          revenue/payout columns off the right edge when names are visible.
+          Widths: image+name flexes, numeric columns sized to their content. */}
+      <table className="w-full text-sm table-fixed">
         <thead>
           <tr style={{ background: "var(--cleaner-bg)" }}>
             <Th>{showNames ? "Property" : ""}</Th>
-            <Th align="right">Gross</Th>
+            <Th align="right">Revenue</Th>
             {flags.showMgmtFee && <Th align="right">Mgmt fee</Th>}
             {flags.showPayout && <Th align="right">Your payout</Th>}
-            <Th align="center">Status</Th>
           </tr>
         </thead>
         <tbody>
@@ -806,12 +843,12 @@ function ListView({
                   <Link
                     href={href}
                     onClick={(e) => e.stopPropagation()}
-                    className="flex items-center gap-3"
+                    className="flex min-w-0 items-center gap-3"
                     style={{ fontWeight: 500 }}
                   >
-                    {/* Thumbnail always renders — it's the visual identifier
-                        when the name is hidden. Image alt-text falls back
-                        to the property name so screen-readers still know. */}
+                    {/* Thumbnail always renders — visual identifier when
+                        names are hidden. Alt-text falls back to the
+                        property name so screen-readers still know. */}
                     <span
                       className="relative block h-9 w-9 shrink-0 overflow-hidden rounded-md border border-black/[0.06]"
                       style={{ background: "var(--cleaner-bg)" }}
@@ -835,7 +872,12 @@ function ListView({
                       )}
                     </span>
                     {showNames && (
-                      <span className="truncate hover:underline">{p.propertyName}</span>
+                      <span
+                        className="min-w-0 flex-1 truncate hover:underline"
+                        title={p.propertyName}
+                      >
+                        {p.propertyName}
+                      </span>
                     )}
                   </Link>
                   {showNames && p.pendingApprovalCount > 0 && (
@@ -863,15 +905,6 @@ function ListView({
                     {totals ? fmtMoney(totals.ownerPayout, p.currency) : "—"}
                   </Td>
                 )}
-                <Td align="center">
-                  {totals === null ? (
-                    <Badge tone="error">error</Badge>
-                  ) : p.issuedStatementId ? (
-                    <Badge tone="success">paid</Badge>
-                  ) : (
-                    <Badge tone="info">live</Badge>
-                  )}
-                </Td>
               </tr>
             );
           })}
@@ -931,27 +964,8 @@ function Td({
   );
 }
 
-function Badge({ children, tone }: { children: React.ReactNode; tone: "info" | "success" | "error" }) {
-  const palette = {
-    info: { bg: "rgba(155,81,224,0.12)", fg: "var(--cleaner-primary)" },
-    success: { bg: "rgba(34,197,94,0.12)", fg: "rgb(21,128,61)" },
-    error: { bg: "rgba(239,68,68,0.12)", fg: "rgb(153,27,27)" },
-  }[tone];
-  return (
-    <span
-      className="rounded-full px-2 py-0.5 text-[10px]"
-      style={{
-        background: palette.bg,
-        color: palette.fg,
-        fontFamily: "var(--font-cleaner-mono)",
-        letterSpacing: "0.08em",
-        textTransform: "uppercase",
-      }}
-    >
-      {children}
-    </span>
-  );
-}
+// `Badge` was retired when the Status column was dropped from ListView.
+// No callers remain in this file.
 
 // ─── Shared bits ────────────────────────────────────────────────────────────
 
