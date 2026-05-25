@@ -97,54 +97,28 @@ export function OwnerPropertyClient({
         {/* Back link removed — OwnerShell renders the universal back
             button at the top of the page chrome. */}
         <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 flex-1 items-start gap-3">
-            {/* Property thumbnail — mirrors the dashboard card pattern so
-                owners visually identify the property at the top of the
-                detail page. Falls back to a Building2 icon when the
-                property has no `imageUrl`. */}
-            <span
-              className="relative block h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-black/[0.06]"
-              style={{ background: "var(--cleaner-bg)" }}
+          <div className="min-w-0 flex-1">
+            <h1
+              className="text-3xl tracking-tight"
+              style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700, letterSpacing: "-0.02em" }}
             >
-              {prop.property.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element -- external CDN with signed params
-                <img
-                  src={upgradeAirbnbImageQuality(prop.property.imageUrl)}
-                  alt={prop.property.name}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <span
-                  className="flex h-full w-full items-center justify-center"
-                  style={{ color: "var(--cleaner-muted)" }}
-                >
-                  <Building2 size={20} />
-                </span>
-              )}
-            </span>
-            <div className="min-w-0 flex-1">
-              <h1
-                className="truncate text-3xl tracking-tight"
-                style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700, letterSpacing: "-0.02em" }}
-              >
-                {prop.property.name}
-              </h1>
-              <p
-                className="mt-1 flex items-center gap-1.5 text-sm"
-                style={{ color: "var(--cleaner-muted)" }}
-              >
-                <MapPin size={14} className="shrink-0" />
-                <span className="truncate">{prop.property.address}</span>
-              </p>
-              <p className="mt-2 text-xs" style={{ color: "var(--cleaner-muted)" }}>
-                You own{" "}
-                <span style={{ fontWeight: 700, color: "var(--cleaner-ink)" }}>
-                  {(prop.ownership.stakePct * 100).toFixed(0)}%
-                </span>{" "}
-                as {prop.ownership.role}
-                {prop.ownership.isPrimaryApprover && " · primary approver"}
-              </p>
-            </div>
+              {prop.property.name}
+            </h1>
+            <p
+              className="mt-1 flex items-center gap-1.5 text-sm"
+              style={{ color: "var(--cleaner-muted)" }}
+            >
+              <MapPin size={14} className="shrink-0" />
+              <span className="truncate">{prop.property.address}</span>
+            </p>
+            <p className="mt-2 text-xs" style={{ color: "var(--cleaner-muted)" }}>
+              You own{" "}
+              <span style={{ fontWeight: 700, color: "var(--cleaner-ink)" }}>
+                {(prop.ownership.stakePct * 100).toFixed(0)}%
+              </span>{" "}
+              as {prop.ownership.role}
+              {prop.ownership.isPrimaryApprover && " · primary approver"}
+            </p>
           </div>
           {showSiblingNav && (
             <SiblingNav
@@ -225,13 +199,36 @@ export function OwnerPropertyClient({
         <Card padding="p-6">
           {/* Month switcher lives in the summary card so the period
               context is right next to the numbers it controls. Tapping
-              ◀/▶ here re-runs every property query for the new period. */}
-          <div className="mb-5 flex items-baseline justify-between">
+              ◀/▶ here re-runs every property query for the new period.
+              Thumbnail anchors top-right — mirrors the dashboard card so
+              owners get the same at-a-glance property identity here. */}
+          <div className="mb-5 flex items-start justify-between gap-3">
             <MonthSwitcher
               month={month}
               onMonthChange={setMonth}
               minMonth={prop.firstActivityMonth ?? undefined}
             />
+            <span
+              className="relative block h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-black/[0.06]"
+              style={{ background: "var(--cleaner-bg)" }}
+              aria-hidden="true"
+            >
+              {prop.property.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- external CDN with signed params
+                <img
+                  src={upgradeAirbnbImageQuality(prop.property.imageUrl)}
+                  alt={prop.property.name}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span
+                  className="flex h-full w-full items-center justify-center"
+                  style={{ color: "var(--cleaner-muted)" }}
+                >
+                  <Building2 size={20} />
+                </span>
+              )}
+            </span>
           </div>
           <MonthSummary
             propertyId={propertyId}
