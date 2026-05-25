@@ -1868,7 +1868,13 @@ const ownerStatements = defineTable({
   propertyId: v.id("properties"),
   periodStart: v.number(),
   periodEnd: v.number(),
-  status: v.union(v.literal("draft"), v.literal("issued")),
+  status: v.union(
+    v.literal("draft"),
+    v.literal("ready"),
+    v.literal("issued"),
+    v.literal("sent"),
+    v.literal("recalled"),
+  ),
   snapshotTotals: v.object({
     grossRevenue: v.number(),
     platformFees: v.number(),
@@ -1931,6 +1937,27 @@ const ownerStatements = defineTable({
   // action scheduled by the issuance mutation. undefined ≡ still generating.
   pdfStorageId: v.optional(v.id("_storage")),
   pdfTemplateVersion: v.optional(v.number()),
+  // Admin Owner Overview (Wave 5 — 2026-05-25): per-statement editor state.
+  // All optional/additive so pre-Wave-5 rows still validate.
+  overrides: v.optional(v.object({
+    show_mortgage: v.optional(v.boolean()),
+    show_mgmt_fee: v.optional(v.boolean()),
+    show_payout: v.optional(v.boolean()),
+    show_cost_line_items: v.optional(v.boolean()),
+  })),
+  excludedStayIds: v.optional(v.array(v.id("stays"))),
+  excludedCostItemIds: v.optional(v.array(v.id("propertyCostItems"))),
+  costBucketOverrides: v.optional(v.array(v.object({
+    costItemId: v.id("propertyCostItems"),
+    bucket: v.string(),
+  }))),
+  notes: v.optional(v.string()),
+  auditTrail: v.optional(v.array(v.object({
+    at: v.number(),
+    actorUserId: v.id("users"),
+    action: v.string(),
+    note: v.optional(v.string()),
+  }))),
   createdAt: v.number(),
   updatedAt: v.optional(v.number()),
 })

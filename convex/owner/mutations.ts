@@ -14,74 +14,13 @@ import {
 import { requireRole } from "../lib/auth";
 import { assertOwnerOfProperty, requireOwnerUser } from "./auth";
 import { BUCKETS, isBucket } from "./constants";
-import {
-  computeStatementForPeriod,
-  monthRange,
-  type FeeEngineInputs,
-} from "./feeEngine";
+import { loadEngineInputs } from "./engineInputs";
+import { computeStatementForPeriod, monthRange } from "./feeEngine";
 import {
   notifyApprovalDecided,
   notifyApprovalRequest,
   notifyStatementIssued,
 } from "./notify";
-
-// ─── Internal helper: load engine inputs (same as queries.loadEngineInputs) ─
-
-async function loadEngineInputs(
-  ctx: MutationCtx,
-  propertyId: Id<"properties">,
-  periodStart: number,
-  periodEnd: number,
-): Promise<FeeEngineInputs> {
-  const [stays, costItems, costCategories, manualAdjustments, capEx, owners, feeConfigs] =
-    await Promise.all([
-      ctx.db
-        .query("stays")
-        .withIndex("by_property_dates", (q) => q.eq("propertyId", propertyId))
-        .collect(),
-      ctx.db
-        .query("propertyCostItems")
-        .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
-        .collect(),
-      ctx.db.query("costCategories").collect(),
-      ctx.db.query("manualAdjustments").collect(),
-      ctx.db
-        .query("capitalExpenditures")
-        .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
-        .collect(),
-      ctx.db
-        .query("propertyOwners")
-        .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
-        .collect(),
-      ctx.db
-        .query("propertyFeeConfig")
-        .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
-        .collect(),
-    ]);
-  const monthlySettings = await ctx.db
-    .query("propertyMonthlySettings")
-    .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
-    .collect();
-
-  return {
-    propertyId,
-    periodStart,
-    periodEnd,
-    stays,
-    costItems,
-    costCategories: costCategories
-      .filter((c) => c.bucket !== undefined)
-      .map((c) => ({
-        _id: c._id,
-        bucket: c.bucket as FeeEngineInputs["costCategories"][number]["bucket"],
-      })),
-    manualAdjustments,
-    capitalExpenditures: capEx,
-    owners,
-    feeConfigs,
-    monthlySettings,
-  };
-}
 
 /** Throws if statement is already issued. Use before EVERY write to ownerStatements. */
 async function assertStatementMutable(

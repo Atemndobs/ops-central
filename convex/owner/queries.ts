@@ -21,6 +21,7 @@ import {
   listOwnedPropertyIds,
   requireOwnerUser,
 } from "./auth";
+import { loadEngineInputs } from "./engineInputs";
 import {
   computeStatementForPeriod,
   monthRange,
@@ -29,61 +30,6 @@ import {
 } from "./feeEngine";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-/** Load all engine inputs for a (property, period). */
-async function loadEngineInputs(
-  ctx: QueryCtx,
-  propertyId: Id<"properties">,
-  periodStart: number,
-  periodEnd: number,
-): Promise<FeeEngineInputs> {
-  const [stays, costItems, costCategories, manualAdjustments, capEx, owners, feeConfigs] =
-    await Promise.all([
-      ctx.db
-        .query("stays")
-        .withIndex("by_property_dates", (q) => q.eq("propertyId", propertyId))
-        .collect(),
-      ctx.db
-        .query("propertyCostItems")
-        .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
-        .collect(),
-      ctx.db.query("costCategories").collect(),
-      ctx.db.query("manualAdjustments").collect(),
-      ctx.db
-        .query("capitalExpenditures")
-        .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
-        .collect(),
-      ctx.db
-        .query("propertyOwners")
-        .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
-        .collect(),
-      ctx.db
-        .query("propertyFeeConfig")
-        .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
-        .collect(),
-    ]);
-  const monthlySettings = await ctx.db
-    .query("propertyMonthlySettings")
-    .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
-    .collect();
-
-  return {
-    propertyId,
-    periodStart,
-    periodEnd,
-    stays,
-    costItems,
-    // Cast: schema enum is wider than what reaches the engine. Engine only reads `.bucket`.
-    costCategories: costCategories
-      .filter((c) => c.bucket !== undefined)
-      .map((c) => ({ _id: c._id, bucket: c.bucket as FeeEngineInputs["costCategories"][number]["bucket"] })),
-    manualAdjustments,
-    capitalExpenditures: capEx,
-    owners,
-    feeConfigs,
-    monthlySettings,
-  };
-}
 
 /** Current calendar month in property's TZ (v1 = UTC; spec §13a-3 keeps this simple). */
 function currentMonthKey(): string {
