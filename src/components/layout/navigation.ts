@@ -9,6 +9,7 @@ import {
   Building2,
   Building,
   Users,
+  UserCog,
   Package,
   AlertTriangle,
   BarChart3,
@@ -77,6 +78,12 @@ export const navigation: NavigationItem[] = [
     href: "/team",
     icon: Users,
     roles: ["admin", "property_ops", "manager"],
+  },
+  {
+    nameKey: "nav.ownerOverview",
+    href: "/admin/owner-overview",
+    icon: UserCog,
+    roles: ["admin", "property_ops"],
   },
   {
     nameKey: "common.inventory",

@@ -4,6 +4,16 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
+### TASK-OWNER-OVERVIEW-PHASE-2
+- Branch: feat/admin-owner-overview-ui
+- Worktree: ~/sites/opscentral-admin-owner-overview-ui
+- PR: https://github.com/Atemndobs/ops-central/pull/159
+- Schema impact: none
+- Convex impact: none (consumes Phase 1 queries)
+- Risk: low (UI-only, admin-gated nav)
+- Ready since: 2026-05-25
+- Handoff: .harness/handoffs/TASK-OWNER-OVERVIEW-PHASE-2/worktree-handoff.md
+
 ### TASK-OWNER-OVERVIEW-PHASE-1
 - Branch: feat/admin-owner-overview
 - Worktree: ~/sites/opscentral-admin-owner-overview
