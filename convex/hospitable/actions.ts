@@ -424,14 +424,23 @@ export function normalizeReservation(
   const lateCheckout = new Date(checkOutAt).getHours() > 11;
 
   // ─── Financial extraction ───────────────────────────────────────────────
-  // Hospitable v2 returns financials ONLY when ?include=financials is set
-  // on the request. Shape (all amounts in CENTS):
-  //   data.financials.host.accommodation_breakdown[].amount  (nightly × N)
-  //   data.financials.host.guest_fees[].amount               (cleaning, etc.)
-  //   data.financials.host.accommodation_breakdown[].currency
-  //   data.financials.guest.average_nightly_rate.amount      (display only)
-  // totalAmount = host's gross revenue (what J&A / the owner actually got
-  // credited for). Sum accommodation + host-side guest_fees. /100 for $.
+  // Hospitable v2 returns financials ONLY when ?include=financials is set.
+  // The canonical "what the host actually earned" number is exposed as a
+  // single computed field — `data.financials.host.revenue.amount` (cents).
+  // That value already nets:
+  //     + accommodation (nightly × N)
+  //     − discounts (non-refundable, length-of-stay, etc.)
+  //     + guest_fees (cleaning, host's own mgmt fee, …)
+  //     − host_fees  (Airbnb / channel service fee taken from the host)
+  // Matches what Hospitable's own reporting screen shows as "Net Revenue".
+  //
+  // Earlier we summed `accommodation + guest_fees` manually, which ignored
+  // discounts AND the channel commission — inflating totalAmount by ~28%
+  // on Airbnb stays (verified against the reporting screen for Houston-
+  // The Lisboa, Mar 2026: ours $7,973.91 vs Hospitable $5,744.00).
+  //
+  // If `host.revenue` isn't in the payload (older API version / no
+  // financials include), fall back to the manual sum.
   const financials = isRecord(rawReservation.financials)
     ? (rawReservation.financials as GenericRecord)
     : undefined;
@@ -454,12 +463,16 @@ export function normalizeReservation(
     return any ? sum : undefined;
   }
 
+  const hostRevenueCents =
+    host && isRecord(host.revenue) ? asNumber(host.revenue.amount) : undefined;
   const accommodationCents = sumAmountCents(host?.accommodation_breakdown);
   const hostFeesCents = sumAmountCents(host?.guest_fees);
   const totalCents =
-    accommodationCents !== undefined || hostFeesCents !== undefined
-      ? (accommodationCents ?? 0) + (hostFeesCents ?? 0)
-      : undefined;
+    hostRevenueCents !== undefined
+      ? hostRevenueCents
+      : accommodationCents !== undefined || hostFeesCents !== undefined
+        ? (accommodationCents ?? 0) + (hostFeesCents ?? 0)
+        : undefined;
   // Convert cents → dollars
   const totalAmount =
     totalCents !== undefined
@@ -1475,6 +1488,14 @@ export const backfillReservationFinancials = internalAction({
   args: {
     lookbackDays: v.optional(v.number()),
     dryRun: v.optional(v.boolean()),
+    /** When true, re-fetches EVERY stay in the window (not just those
+     *  missing totalAmount) and overwrites. Use after fixing the
+     *  extraction formula to correct previously-stored buggy values —
+     *  e.g. the 2026-05-26 fix that switched from `accommodation +
+     *  guest_fees` (which over-counted by ~28% on Airbnb) to
+     *  `host.revenue.amount` (which already nets discounts + Airbnb
+     *  service fee). Default false. */
+    forceRefresh: v.optional(v.boolean()),
   },
   handler: async (
     ctx,
@@ -1495,12 +1516,14 @@ export const backfillReservationFinancials = internalAction({
     // Defaults: 90 days back (user's "3 months max"). Pass explicit value to override.
     const lookbackDays = args.lookbackDays ?? 90;
     const dryRun = args.dryRun ?? false;
+    const forceRefresh = args.forceRefresh ?? false;
     const cutoff = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
 
-    // Pull list of stay ids that need backfill (those missing totalAmount).
+    // Pull candidates: by default only stays missing totalAmount, OR all
+    // stays in the window when `forceRefresh` is true.
     const candidates = await ctx.runQuery(
       internal.hospitable.queries.listStaysMissingTotalAmount,
-      { sinceMs: cutoff },
+      { sinceMs: cutoff, includeAlreadyPopulated: forceRefresh },
     );
 
     let fetched = 0;

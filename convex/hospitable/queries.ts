@@ -57,12 +57,20 @@ export const listStaysMissingPlatform = internalQuery({
 });
 
 export const listStaysMissingTotalAmount = internalQuery({
-  args: { sinceMs: v.number() },
+  args: {
+    sinceMs: v.number(),
+    /** When true, returns ALL stays in the window with a hospitableId
+     *  (regardless of whether totalAmount is already set). Used by the
+     *  backfill action's `forceRefresh` mode to correct values that were
+     *  stored with a buggy extraction formula. Default false → original
+     *  "only missing" behaviour. */
+    includeAlreadyPopulated: v.optional(v.boolean()),
+  },
   handler: async (ctx, args) => {
     const stays = await ctx.db.query("stays").collect();
     const candidates = stays.filter(
       (s) =>
-        s.totalAmount === undefined &&
+        (args.includeAlreadyPopulated || s.totalAmount === undefined) &&
         s.checkInAt >= args.sinceMs &&
         s.hospitableId !== undefined,
     );
