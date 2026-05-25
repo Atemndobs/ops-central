@@ -45,6 +45,7 @@ import type * as files_orphanCleanup from "../files/orphanCleanup.js";
 import type * as files_orphanCleanupState from "../files/orphanCleanupState.js";
 import type * as files_queries from "../files/queries.js";
 import type * as hospitable_actions from "../hospitable/actions.js";
+import type * as hospitable_diagnostics from "../hospitable/diagnostics.js";
 import type * as hospitable_mutations from "../hospitable/mutations.js";
 import type * as hospitable_queries from "../hospitable/queries.js";
 import type * as hospitable_webhooks from "../hospitable/webhooks.js";
@@ -168,6 +169,7 @@ declare const fullApi: ApiFromModules<{
   "files/orphanCleanupState": typeof files_orphanCleanupState;
   "files/queries": typeof files_queries;
   "hospitable/actions": typeof hospitable_actions;
+  "hospitable/diagnostics": typeof hospitable_diagnostics;
   "hospitable/mutations": typeof hospitable_mutations;
   "hospitable/queries": typeof hospitable_queries;
   "hospitable/webhooks": typeof hospitable_webhooks;
