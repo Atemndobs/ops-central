@@ -606,20 +606,24 @@ export const listOwnerStays = query({
  * Mortgage / lease coverage for the property in a given month. The pitch
  * surface: "by day X you'd already have made the lease/mortgage."
  *
- * Reuses the existing `bucket="lease"` cost items as the monthly
- * obligation — no new schema. For owners on a rental-arbitrage property
- * (J&A's current model), that bucket holds the rent J&A pays the
- * landlord; for owners on an owned property, the same bucket holds the
- * mortgage payment to the bank. Same math either way.
+ * Math contract (MUST match `src/components/owner/mortgage-coverage.tsx`):
+ *   - obligation = RAW monthly lease (sum of active `bucket="lease"` cost
+ *                  items) × stakePct. Same number the Operational Costs
+ *                  ledger shows; NOT the engine's period-prorated value.
+ *   - progress   = grossRevenue × stakePct. Owner mental model is "first
+ *                  dollar of revenue covers rent." Using post-fee payout
+ *                  here was the bug that made the detail page contradict
+ *                  the dashboard's `MortgageCoverageBar`.
  *
- * Per-owner share = obligation × stakePct vs payout × stakePct.
- * Cover threshold = ownerPayout (after mgmt fee) — most defensible.
+ * Past-month signal: we still use the engine to detect whether a lease
+ * cost item was ACTIVE in that period (start/end-date aware). If the
+ * engine produces zero lease bucket for the period → no_obligation.
  *
  * Status:
- *   - "no_obligation"  → no lease cost items configured; meter hidden
- *   - "covered"        → payoutToDate ≥ obligation (yes-celebration state)
- *   - "on_track"       → projectedPayout ≥ obligation (with projected date)
- *   - "shortfall"      → projectedPayout < obligation
+ *   - "no_obligation"  → no active lease this month; meter hidden
+ *   - "covered"        → grossToDate ≥ obligation
+ *   - "on_track"       → projectedGross ≥ obligation (current month only)
+ *   - "shortfall"      → projectedGross < obligation
  */
 export const getOwnerMortgageCoverage = query({
   args: {
@@ -643,11 +647,13 @@ export const getOwnerMortgageCoverage = query({
       };
     }
 
-    // Full-period obligation (lease bucket sum)
-    const obligationFull =
+    // Engine-prorated lease bucket — used ONLY as the "is a lease active
+    // this period?" signal (start/end-date aware). The actual obligation
+    // shown to the owner is the raw monthly amount, computed separately.
+    const engineLeaseThisPeriod =
       engineOutput.totals.costsByBucket.find((c) => c.bucket === "lease")
         ?.amount ?? 0;
-    if (obligationFull === 0) {
+    if (engineLeaseThisPeriod === 0) {
       return {
         status: "no_obligation" as const,
         month,
@@ -655,7 +661,8 @@ export const getOwnerMortgageCoverage = query({
       };
     }
 
-    // Re-load stays to compute payoutToDate (sum of stays where checkInAt ≤ now)
+    const rawMonthlyLease = await loadRawMonthlyLease(ctx, args.propertyId);
+
     const stays = await ctx.db
       .query("stays")
       .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId))
@@ -664,50 +671,52 @@ export const getOwnerMortgageCoverage = query({
     const isCurrentMonth = now >= start && now < end;
     const isPastMonth = now >= end;
 
-    const payoutToDate = isPastMonth
-      ? engineOutput.totals.ownerPayout
-      : computePayoutToDate(stays, args.propertyId, start, end, now, engineOutput);
-
     const stakePct = ownership.stakePct;
-    const myObligation = obligationFull * stakePct;
-    const myPayoutToDate = payoutToDate * stakePct;
-    const myProjectedPayout = isPastMonth
-      ? myPayoutToDate
-      : projectPayout(myPayoutToDate, start, end, now);
+    const myObligation = rawMonthlyLease * stakePct;
 
-    // Status
-    if (myPayoutToDate >= myObligation) {
+    // Gross revenue accumulated so far (or full period if past).
+    const grossToDate = isPastMonth
+      ? engineOutput.totals.grossRevenue
+      : computeGrossToDate(stays, args.propertyId, start, end, now);
+    const myGrossToDate = grossToDate * stakePct;
+
+    const myProjectedGross = isPastMonth
+      ? myGrossToDate
+      : projectLinear(myGrossToDate, start, end, now);
+
+    if (myGrossToDate >= myObligation) {
       return {
         status: "covered" as const,
         month,
         obligation: myObligation,
-        payoutToDate: myPayoutToDate,
-        projectedPayout: myProjectedPayout,
-        amountAhead: myPayoutToDate - myObligation,
-        coveredOn: estimateCoveredDate(
+        // Keep the response-shape keys the client already reads — they
+        // now describe gross-vs-lease instead of payout-vs-lease.
+        payoutToDate: myGrossToDate,
+        projectedPayout: myProjectedGross,
+        amountAhead: myGrossToDate - myObligation,
+        coveredOn: estimateCoveredDateFromGross(
           stays,
           args.propertyId,
           start,
           end,
           stakePct,
           myObligation,
-          engineOutput,
         ),
         stakePct,
         isCurrentMonth,
       };
     }
 
-    if (myProjectedPayout >= myObligation && isCurrentMonth) {
+    if (myProjectedGross >= myObligation && isCurrentMonth) {
       return {
         status: "on_track" as const,
         month,
         obligation: myObligation,
-        payoutToDate: myPayoutToDate,
-        projectedPayout: myProjectedPayout,
-        amountShortToDate: myObligation - myPayoutToDate,
+        payoutToDate: myGrossToDate,
+        projectedPayout: myProjectedGross,
+        amountShortToDate: myObligation - myGrossToDate,
         projectedCoverDay: estimateProjectedCoverDay(
-          myPayoutToDate,
+          myGrossToDate,
           myObligation,
           start,
           now,
@@ -721,9 +730,9 @@ export const getOwnerMortgageCoverage = query({
       status: "shortfall" as const,
       month,
       obligation: myObligation,
-      payoutToDate: myPayoutToDate,
-      projectedPayout: myProjectedPayout,
-      projectedShortfall: myObligation - myProjectedPayout,
+      payoutToDate: myGrossToDate,
+      projectedPayout: myProjectedGross,
+      projectedShortfall: myObligation - myProjectedGross,
       stakePct,
       isCurrentMonth,
     };
@@ -753,16 +762,26 @@ export const getOwnerCoverageHistory = query({
       payout: number;
     }> = [];
 
+    // Raw monthly lease — the SAME number the dashboard mini-bar +
+    // summary-card indicator + getOwnerMortgageCoverage all use. Loaded
+    // once and reused across every month's row.
+    const rawMonthlyLease = await loadRawMonthlyLease(ctx, args.propertyId);
+
     for (const m of months) {
       const { start, end } = monthRange(m);
       try {
         const inputs = await loadEngineInputs(ctx, args.propertyId, start, end);
         const out = computeStatementForPeriod(inputs);
-        const obligationFull =
-          out.totals.costsByBucket.find((c) => c.bucket === "lease")?.amount ??
-          0;
-        const obligation = obligationFull * stakePct;
-        const payout = out.totals.ownerPayout * stakePct;
+        // Engine output's lease bucket is the start/end-date-aware
+        // "was a lease active this month" signal. If zero → no obligation
+        // configured for that period (matches getOwnerMortgageCoverage).
+        const engineLeaseThisPeriod =
+          out.totals.costsByBucket.find((c) => c.bucket === "lease")?.amount ?? 0;
+        const obligation = engineLeaseThisPeriod > 0 ? rawMonthlyLease * stakePct : 0;
+        // Coverage source is GROSS revenue × stake, matching the dashboard
+        // mini-bar + summary-card indicator. Key stays `payout` so the
+        // existing client renderer doesn't need to be rewired.
+        const payout = out.totals.grossRevenue * stakePct;
         if (obligation === 0) {
           results.push({ month: m, status: "no_obligation", obligation: 0, payout });
         } else {
@@ -826,24 +845,44 @@ function pickUser(user: Doc<"users">) {
 }
 
 /**
- * Compute the ownerPayout "as of now" for the current month — sum of
- * stay revenue with checkInAt ≤ now, minus prorated period costs.
- *
- * Approximation: scales the full-period operatingCosts + platformFees +
- * mgmtFee by (gross-to-date / gross-full). This is honest because:
- *   - platformFees on revenue-percentage scale exactly with gross
- *   - operating costs amortize linearly over the period (close enough)
- *   - mgmtFee scales with the feeBase (which is gross/net/NOI)
+ * Sum of `bucket="lease"` cost items that are currently active for the
+ * property — the SAME number the dashboard mortgage mini-bar and the
+ * summary-card indicator use (it's also what the Operational Costs
+ * ledger shows). Drives the obligation displayed to the owner so the
+ * detail page can't drift away from the rest of the surface.
  */
-function computePayoutToDate(
+async function loadRawMonthlyLease(
+  ctx: QueryCtx,
+  propertyId: Id<"properties">,
+): Promise<number> {
+  const [items, cats] = await Promise.all([
+    ctx.db
+      .query("propertyCostItems")
+      .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
+      .collect(),
+    ctx.db.query("costCategories").collect(),
+  ]);
+  const leaseCatIds = new Set(
+    cats.filter((c) => c.bucket === "lease").map((c) => c._id),
+  );
+  return items
+    .filter((i) => i.isActive && leaseCatIds.has(i.categoryId))
+    .reduce((s, i) => s + (i.amount ?? 0), 0);
+}
+
+/**
+ * Gross revenue accrued so far in the period — sum of stays with
+ * checkInAt in [periodStart, now], excluding cancellations. This is the
+ * "first dollar of revenue" the mortgage-cover surface measures against.
+ */
+function computeGrossToDate(
   stays: Doc<"stays">[],
   propertyId: Id<"properties">,
   periodStart: number,
   periodEnd: number,
   now: number,
-  full: FeeEngineOutput,
 ): number {
-  const grossToDate = stays
+  return stays
     .filter(
       (s) =>
         s.propertyId === propertyId &&
@@ -853,42 +892,37 @@ function computePayoutToDate(
         s.cancelledAt === undefined,
     )
     .reduce((sum, s) => sum + (s.totalAmount ?? 0), 0);
-
-  if (full.totals.grossRevenue === 0) return 0;
-  const proportion = grossToDate / full.totals.grossRevenue;
-  // PayoutToDate = ownerPayoutFull × (gross-to-date / gross-full)
-  // This rolls up all the cost interactions proportionally.
-  return full.totals.ownerPayout * proportion;
 }
 
 /**
- * Linear projection: at today's daily rate, what would ownerPayout be by
- * end of month?
+ * Linear projection: at today's daily run-rate, what would `valueToDate`
+ * be by end of period? Used to estimate end-of-month gross.
  */
-function projectPayout(
-  payoutToDate: number,
+function projectLinear(
+  valueToDate: number,
   periodStart: number,
   periodEnd: number,
   now: number,
 ): number {
   const daysElapsed = Math.max(1, (now - periodStart) / 86400000);
   const totalDays = (periodEnd - periodStart) / 86400000;
-  const dailyRate = payoutToDate / daysElapsed;
+  const dailyRate = valueToDate / daysElapsed;
   return dailyRate * totalDays;
 }
 
 /**
- * Walk stays in checkInAt order, compute running payout, find first day
- * cumulative payout crosses obligation. Returns unix ms.
+ * Walk stays in checkInAt order, accumulating gross × stake, find the
+ * first stay whose cumulative gross crosses the obligation. Returns the
+ * checkInAt timestamp of that stay (unix ms). Falls back to periodEnd-1
+ * if the threshold is never crossed within the period.
  */
-function estimateCoveredDate(
+function estimateCoveredDateFromGross(
   stays: Doc<"stays">[],
   propertyId: Id<"properties">,
   periodStart: number,
   periodEnd: number,
   stakePct: number,
   myObligation: number,
-  full: FeeEngineOutput,
 ): number {
   const periodStays = stays
     .filter(
@@ -900,31 +934,24 @@ function estimateCoveredDate(
     )
     .sort((a, b) => a.checkInAt - b.checkInAt);
 
-  if (periodStays.length === 0 || full.totals.grossRevenue === 0) {
-    return periodEnd - 1;
-  }
-  let cumulativeGross = 0;
+  if (periodStays.length === 0) return periodEnd - 1;
+  let cumGross = 0;
   for (const s of periodStays) {
-    cumulativeGross += s.totalAmount ?? 0;
-    const proportion = cumulativeGross / full.totals.grossRevenue;
-    const cumPayout = full.totals.ownerPayout * proportion * stakePct;
-    if (cumPayout >= myObligation) {
-      // The day this stay's checkInAt fell on
-      return s.checkInAt;
-    }
+    cumGross += s.totalAmount ?? 0;
+    if (cumGross * stakePct >= myObligation) return s.checkInAt;
   }
   return periodEnd - 1;
 }
 
 function estimateProjectedCoverDay(
-  payoutToDate: number,
+  valueToDate: number,
   myObligation: number,
   periodStart: number,
   now: number,
 ): number {
-  if (payoutToDate <= 0) return periodStart; // unknown
+  if (valueToDate <= 0) return periodStart; // unknown
   const daysElapsed = Math.max(1, (now - periodStart) / 86400000);
-  const dailyRate = payoutToDate / daysElapsed;
+  const dailyRate = valueToDate / daysElapsed;
   const daysToCover = myObligation / dailyRate;
   return periodStart + daysToCover * 86400000;
 }
