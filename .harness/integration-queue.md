@@ -4,6 +4,16 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
+### TASK-OWNER-OVERVIEW-PHASE-1
+- Branch: feat/admin-owner-overview
+- Worktree: ~/sites/opscentral-admin-owner-overview
+- PR: https://github.com/Atemndobs/ops-central/pull/150
+- Schema impact: backward-compatible
+- Convex impact: main-dev-once-required (deploy new schema fields + admin/ownerOverview module)
+- Risk: low (additive schema, queries gated, no callers yet)
+- Ready since: 2026-05-25
+- Handoff: .harness/handoffs/TASK-OWNER-OVERVIEW-PHASE-1/worktree-handoff.md
+
 ### TASK-MANAGER-SCOPE-001
 - Branch: claude/gracious-borg-3d5a6e
 - Worktree: ~/sites/jnabusiness_solutions/apps-ja/opscentral-admin/.claude/worktrees/gracious-borg-3d5a6e
