@@ -282,6 +282,21 @@ export const getOwnerProperty = query({
         .withIndex("by_key", (q) => q.eq("key", "owner_show_payout"))
         .unique(),
     ]);
+    // First-activity month — earliest non-cancelled stay on this
+    // property. Used by the per-property month picker to clamp `←` so
+    // users can't page back into months that pre-date the property's
+    // presence on the platform. `null` when there are no stays yet.
+    const stays = await ctx.db
+      .query("stays")
+      .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId))
+      .collect();
+    const earliestCheckIn = stays
+      .filter((s) => s.cancelledAt === undefined)
+      .reduce((min, s) => Math.min(min, s.checkInAt), Infinity);
+    const firstActivityMonth: string | null = Number.isFinite(earliestCheckIn)
+      ? `${new Date(earliestCheckIn).getUTCFullYear()}-${(new Date(earliestCheckIn).getUTCMonth() + 1).toString().padStart(2, "0")}`
+      : null;
+
     return {
       property,
       ownership: {
@@ -291,6 +306,7 @@ export const getOwnerProperty = query({
         isPrimaryApprover: ownership.isPrimaryApprover,
       },
       user: pickUser(user),
+      firstActivityMonth,
       flags: {
         showMgmtFee: showMgmtFeeFlag?.enabled ?? false,
         showPayout: showPayoutFlag?.enabled ?? true,
@@ -783,6 +799,7 @@ export const getOwnerCoverageHistory = query({
     if (realStays.length === 0) {
       return {
         months: results,
+        firstActivityMonth: null as string | null,
         summary: {
           sampledMonths: 0,
           coveredCount: 0,
@@ -798,20 +815,24 @@ export const getOwnerCoverageHistory = query({
       (min, s) => Math.min(min, s.checkInAt),
       Infinity,
     );
-
-    // Month list: [earliest-stay-month .. last-complete-month] inclusive.
-    const months = monthKeysBetween(earliestCheckIn, startOfCurrentMonthMs());
+    const firstActivityMonth = yyyyMm(earliestCheckIn);
 
     const rawMonthlyLease = await loadRawMonthlyLease(ctx, args.propertyId);
     const obligationPerMonth = rawMonthlyLease * stakePct;
 
-    for (const m of months) {
-      const { start, end } = monthRange(m);
-      // Per-month gross = sum of stays whose checkInAt falls in [start,end),
-      // excluding cancellations. Same convention as the fee engine.
-      const monthGross = realStays
-        .filter((s) => s.checkInAt >= start && s.checkInAt < end)
-        .reduce((sum, s) => sum + (s.totalAmount ?? 0), 0);
+    // Bucket non-cancelled stays into months. We only render months that
+    // actually had ≥1 stay — gaps in the timeline aren't filled with
+    // empty placeholders ("if there's no data, don't show the month").
+    const monthGrossMap = new Map<string, number>();
+    for (const s of realStays) {
+      if (s.checkInAt >= startOfCurrentMonthMs()) continue; // skip current/future months
+      const key = yyyyMm(s.checkInAt);
+      monthGrossMap.set(key, (monthGrossMap.get(key) ?? 0) + (s.totalAmount ?? 0));
+    }
+    const monthsWithActivity = Array.from(monthGrossMap.keys()).sort(); // oldest → newest
+
+    for (const m of monthsWithActivity) {
+      const monthGross = monthGrossMap.get(m) ?? 0;
       const payout = monthGross * stakePct;
 
       if (obligationPerMonth === 0) {
@@ -849,6 +870,10 @@ export const getOwnerCoverageHistory = query({
 
     return {
       months: results,
+      // First month with any real activity — used by the per-property
+      // month picker to clamp `←` so users can't page back into months
+      // that pre-date the property's presence on the platform.
+      firstActivityMonth,
       summary: {
         sampledMonths: withObligation.length,
         coveredCount,
@@ -1042,23 +1067,7 @@ function startOfCurrentMonthMs(): number {
   return d.getTime();
 }
 
-/**
- * "YYYY-MM" keys for every month from the month containing `fromMs`
- * (inclusive) up to but NOT including the month containing `untilMs`.
- * Returns oldest → newest. Used by getOwnerCoverageHistory to walk every
- * month since the property's first booking through the last completed
- * month.
- */
-function monthKeysBetween(fromMs: number, untilMs: number): string[] {
-  const out: string[] = [];
-  const d = new Date(fromMs);
-  d.setUTCDate(1);
-  d.setUTCHours(0, 0, 0, 0);
-  while (d.getTime() < untilMs) {
-    out.push(
-      `${d.getUTCFullYear()}-${(d.getUTCMonth() + 1).toString().padStart(2, "0")}`,
-    );
-    d.setUTCMonth(d.getUTCMonth() + 1);
-  }
-  return out;
-}
+// `monthKeysBetween` was retired alongside the change that made
+// getOwnerCoverageHistory bucket stays directly into months it actually
+// has data for, rather than walking every month from earliest-stay to
+// today and filling gaps with empty placeholders. No callers remain.

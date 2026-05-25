@@ -227,7 +227,11 @@ export function OwnerPropertyClient({
               context is right next to the numbers it controls. Tapping
               ◀/▶ here re-runs every property query for the new period. */}
           <div className="mb-5 flex items-baseline justify-between">
-            <MonthSwitcher month={month} onMonthChange={setMonth} />
+            <MonthSwitcher
+              month={month}
+              onMonthChange={setMonth}
+              minMonth={prop.firstActivityMonth ?? undefined}
+            />
           </div>
           <MonthSummary
             propertyId={propertyId}

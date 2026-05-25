@@ -88,102 +88,81 @@ function CoverHeader({
 }) {
   const monthLabel = fmtMonth(month);
 
+  // Single neutral framing per spec: "Earnings summary". The status
+  // still drives the icon + tint so the at-a-glance signal stays, but
+  // we drop the alarming "Projected shortfall" / triumphant "Lease
+  // covered ✓" headlines in favour of a consistent section title with
+  // a short factual subtitle.
+  const tint: { bg: string; icon: React.ReactNode } =
+    coverage.status === "covered"
+      ? {
+          bg: "rgba(34,197,94,0.15)",
+          icon: <CheckCircle2 size={22} color="rgb(21,128,61)" />,
+        }
+      : coverage.status === "on_track"
+        ? {
+            bg: "rgba(155,81,224,0.15)",
+            icon: <TrendingUp size={22} color="var(--cleaner-primary)" />,
+          }
+        : {
+            bg: "rgba(245,158,11,0.15)",
+            icon: <AlertTriangle size={22} color="rgb(180,83,9)" />,
+          };
+
+  let subtitle: React.ReactNode;
   if (coverage.status === "covered") {
-    return (
-      <div className="mb-4 flex items-start gap-3">
-        <div
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
-          style={{ background: "rgba(34,197,94,0.15)" }}
-        >
-          <CheckCircle2 size={22} color="rgb(21,128,61)" />
-        </div>
-        <div>
-          <h2
-            className="text-xl tracking-tight"
-            style={{
-              fontFamily: "var(--font-cleaner-display)",
-              fontWeight: 700,
-              color: "rgb(21,128,61)",
-            }}
-          >
-            Lease covered ✓
-          </h2>
-          <p className="mt-0.5 text-sm" style={{ color: "var(--cleaner-muted)" }}>
-            {coverage.isCurrentMonth ? (
-              <>
-                Your {monthLabel} lease was made by{" "}
-                <span style={{ color: "var(--cleaner-ink)", fontWeight: 600 }}>
-                  {fmtDate(coverage.coveredOn)}
-                </span>
-                {" — "}
-                <span style={{ color: "var(--cleaner-ink)", fontWeight: 600 }}>
-                  {fmtMoney(coverage.amountAhead, currency)} ahead
-                </span>
-                .
-              </>
-            ) : (
-              <>
-                {monthLabel} lease covered — {fmtMoney(coverage.amountAhead, currency)} ahead.
-              </>
-            )}
-          </p>
-        </div>
-      </div>
+    subtitle = coverage.isCurrentMonth ? (
+      <>
+        {monthLabel} lease covered by{" "}
+        <span style={{ color: "var(--cleaner-ink)", fontWeight: 600 }}>
+          {fmtDate(coverage.coveredOn)}
+        </span>
+        {" — "}
+        <span style={{ color: "var(--cleaner-ink)", fontWeight: 600 }}>
+          {fmtMoney(coverage.amountAhead, currency)} ahead
+        </span>
+        .
+      </>
+    ) : (
+      <>
+        {monthLabel} lease covered — {fmtMoney(coverage.amountAhead, currency)} ahead.
+      </>
     );
+  } else if (coverage.status === "on_track") {
+    subtitle = (
+      <>
+        On track to cover {monthLabel} lease by{" "}
+        <span style={{ color: "var(--cleaner-ink)", fontWeight: 600 }}>
+          {fmtDate(coverage.projectedCoverDay)}
+        </span>
+        .
+      </>
+    );
+  } else {
+    // shortfall — describe earnings vs lease, no scary headline number.
+    const short = ("projectedShortfall" in coverage ? coverage.projectedShortfall : 0) ?? 0;
+    subtitle = coverage.isCurrentMonth
+      ? `${monthLabel} earnings on pace to fall ${fmtMoney(short, currency)} short of the lease.`
+      : `${monthLabel} earnings fell ${fmtMoney(short, currency)} short of the lease.`;
   }
 
-  if (coverage.status === "on_track") {
-    return (
-      <div className="mb-4 flex items-start gap-3">
-        <div
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
-          style={{ background: "rgba(155,81,224,0.15)" }}
-        >
-          <TrendingUp size={22} color="var(--cleaner-primary)" />
-        </div>
-        <div>
-          <h2
-            className="text-xl tracking-tight"
-            style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700 }}
-          >
-            On track for {monthLabel}
-          </h2>
-          <p className="mt-0.5 text-sm" style={{ color: "var(--cleaner-muted)" }}>
-            Projected to cover lease by{" "}
-            <span style={{ color: "var(--cleaner-ink)", fontWeight: 600 }}>
-              {fmtDate(coverage.projectedCoverDay)}
-            </span>
-            .
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // shortfall
   return (
     <div className="mb-4 flex items-start gap-3">
       <div
         className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
-        style={{ background: "rgba(245,158,11,0.15)" }}
+        style={{ background: tint.bg }}
       >
-        <AlertTriangle size={22} color="rgb(180,83,9)" />
+        {tint.icon}
       </div>
       <div>
         <h2
           className="text-xl tracking-tight"
-          style={{
-            fontFamily: "var(--font-cleaner-display)",
-            fontWeight: 700,
-            color: "rgb(180,83,9)",
-          }}
+          style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700 }}
         >
-          Projected shortfall: {fmtMoney(("projectedShortfall" in coverage ? coverage.projectedShortfall : 0) ?? 0, currency)}
+          Earnings summary
         </h2>
         <p className="mt-0.5 text-sm" style={{ color: "var(--cleaner-muted)" }}>
-          {coverage.isCurrentMonth
-            ? `This month is on pace below your ${monthLabel} lease obligation.`
-            : `${monthLabel} closed below the lease obligation.`}
+          {subtitle}
         </p>
       </div>
     </div>

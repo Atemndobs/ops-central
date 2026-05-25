@@ -16,18 +16,26 @@ import { fmtMonth } from "./owner-format";
 export function MonthSwitcher({
   month,
   onMonthChange,
+  minMonth,
 }: {
   month: string;
   onMonthChange: (m: string) => void;
+  /** Optional floor — usually the property's first-activity month so
+   *  users can't page back into months that pre-date the property's
+   *  presence on the platform. Inclusive: month === minMonth → ← disabled. */
+  minMonth?: string;
 }) {
   const cur = currentMonthKey();
   const isCurrent = month === cur;
+  const atMin = minMonth !== undefined && month <= minMonth;
   return (
     <div className="flex items-center gap-2">
       <button
         onClick={() => onMonthChange(shiftMonth(month, -1))}
-        className="rounded-md p-1.5 hover:bg-black/[0.04]"
+        disabled={atMin}
+        className="rounded-md p-1.5 hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
         aria-label="Previous month"
+        title={atMin ? "No earlier data for this property" : "Previous month"}
       >
         <ChevronLeft size={16} />
       </button>
