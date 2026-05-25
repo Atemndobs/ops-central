@@ -18,6 +18,44 @@ export const getSyncStatus = query({
  * `hospitableId` is denormalized into each row so the action doesn't need
  * a second lookup per stay.
  */
+/**
+ * Used by `backfillReservationPlatforms` — returns stays whose `platform`
+ * is undefined. Joins each property's `hospitableId` so the action can
+ * call Hospitable directly without a second lookup.
+ */
+export const listStaysMissingPlatform = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const stays = await ctx.db.query("stays").collect();
+    const candidates = stays.filter(
+      (s) => s.platform === undefined && s.hospitableId !== undefined,
+    );
+    const out: Array<{
+      _id: typeof candidates[number]["_id"];
+      hospitableId: string;
+      propertyHospitableId: string | undefined;
+    }> = [];
+    const propCache = new Map<
+      typeof stays[number]["propertyId"],
+      string | undefined
+    >();
+    for (const s of candidates) {
+      let propertyHospitableId = propCache.get(s.propertyId);
+      if (propertyHospitableId === undefined) {
+        const p = await ctx.db.get(s.propertyId);
+        propertyHospitableId = p?.hospitableId ?? undefined;
+        propCache.set(s.propertyId, propertyHospitableId);
+      }
+      out.push({
+        _id: s._id,
+        hospitableId: s.hospitableId!,
+        propertyHospitableId,
+      });
+    }
+    return out;
+  },
+});
+
 export const listStaysMissingTotalAmount = internalQuery({
   args: { sinceMs: v.number() },
   handler: async (ctx, args) => {

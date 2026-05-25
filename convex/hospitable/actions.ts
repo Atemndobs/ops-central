@@ -77,6 +77,41 @@ function asNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+/**
+ * Hospitable's reservation payload exposes the booking channel under
+ * several different field names across API versions / channels:
+ *   - `platform` (legacy / some webhook payloads)
+ *   - `channel` (V2 — sometimes a string, sometimes a nested object)
+ *   - `channel.name` / `channel.id`
+ *   - `source` / `source.name`
+ *
+ * Trying each in order means we capture the platform even when
+ * Hospitable changes which field they populate — first non-empty wins.
+ */
+function extractPlatform(reservation: GenericRecord): string | undefined {
+  // Direct string fields, in priority order.
+  const direct =
+    asString(reservation.platform) ??
+    asString(reservation.source) ??
+    asString(reservation.channel);
+  if (direct) return direct;
+
+  // Nested object shapes: { channel: { name, id }, source: { name } }
+  const channel = reservation.channel;
+  if (isRecord(channel)) {
+    const fromChannel =
+      asString(channel.name) ?? asString(channel.id) ?? asString(channel.slug);
+    if (fromChannel) return fromChannel;
+  }
+  const source = reservation.source;
+  if (isRecord(source)) {
+    const fromSource =
+      asString(source.name) ?? asString(source.id) ?? asString(source.slug);
+    if (fromSource) return fromSource;
+  }
+  return undefined;
+}
+
 function dateToEpochMs(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value > 1_000_000_000_000 ? value : value * 1000;
@@ -476,7 +511,7 @@ export function normalizeReservation(
       checkOutAt,
       lateCheckout,
       partyRiskFlag: assessPartyRisk(numberOfGuests, specialRequests),
-      platform: asString(rawReservation.platform),
+      platform: extractPlatform(rawReservation),
       confirmationCode: asString(rawReservation.code),
       specialRequests,
       status,
@@ -1517,6 +1552,95 @@ export const backfillReservationFinancials = internalAction({
           currency: reservation.currency,
           cancelledAt: reservation.cancelledAt,
           cancellationSource: reservation.cancellationSource,
+        });
+        patched += 1;
+      } catch (e) {
+        errors.push(
+          `${c.hospitableId}: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
+    return {
+      scanned: candidates.length,
+      fetched,
+      patched,
+      skippedNoChange,
+      errors,
+      dryRun,
+    };
+  },
+});
+
+/**
+ * One-shot backfill for stays whose `platform` was dropped during ingest
+ * (Hospitable swaps which field carries the channel name across API
+ * versions — see `extractPlatform`). Re-fetches each missing stay and
+ * patches the platform field only. Safe to re-run.
+ */
+export const backfillReservationPlatforms = internalAction({
+  args: { dryRun: v.optional(v.boolean()) },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    scanned: number;
+    fetched: number;
+    patched: number;
+    skippedNoChange: number;
+    errors: string[];
+    dryRun: boolean;
+  }> => {
+    const apiKey = process.env.HOSPITABLE_API_KEY ?? process.env.HOSPITABLE_API_TOKEN;
+    if (!apiKey) {
+      throw new Error("Missing HOSPITABLE_API_KEY/HOSPITABLE_API_TOKEN.");
+    }
+    const baseUrl = process.env.HOSPITABLE_API_URL ?? DEFAULT_HOSPITABLE_BASE_URL;
+    const dryRun = args.dryRun ?? false;
+
+    const candidates = await ctx.runQuery(
+      internal.hospitable.queries.listStaysMissingPlatform,
+      {},
+    );
+
+    let fetched = 0;
+    let patched = 0;
+    let skippedNoChange = 0;
+    const errors: string[] = [];
+
+    for (const c of candidates) {
+      if (!c.hospitableId) continue;
+      try {
+        const raw = await fetchHospitableJson(
+          apiKey,
+          `${baseUrl}/reservations/${encodeURIComponent(c.hospitableId)}?include=financials`,
+          ctx,
+          "hospitable_reservation_platform_backfill",
+        );
+        fetched += 1;
+        const data =
+          isRecord(raw) && isRecord((raw as GenericRecord).data)
+            ? (raw as GenericRecord).data
+            : raw;
+        const { reservation, error } = normalizeReservation(
+          data,
+          c.propertyHospitableId ?? "",
+        );
+        if (!reservation) {
+          if (error) errors.push(`${c.hospitableId}: ${error}`);
+          continue;
+        }
+        if (reservation.platform === undefined) {
+          skippedNoChange += 1;
+          continue;
+        }
+        if (dryRun) {
+          patched += 1;
+          continue;
+        }
+        await ctx.runMutation(internal.hospitable.mutations.patchStayPlatform, {
+          stayId: c._id,
+          platform: reservation.platform,
         });
         patched += 1;
       } catch (e) {
