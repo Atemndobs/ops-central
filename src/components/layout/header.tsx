@@ -27,6 +27,7 @@ const pageTitleKeys: Record<string, string> = {
   "/properties": "common.properties",
   "/companies": "nav.companies",
   "/team": "common.team",
+  "/admin/owner-overview": "nav.ownerOverview",
   "/inventory": "common.inventory",
   "/work-orders": "common.workOrders",
   "/reports": "common.reports",
