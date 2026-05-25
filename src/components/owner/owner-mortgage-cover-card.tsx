@@ -31,7 +31,10 @@ export function OwnerMortgageCoverCard({
   );
   const history = useQuery(
     api.owner.queries.getOwnerCoverageHistory,
-    isAuthenticated ? { propertyId, monthsBack: 12 } : "skip",
+    // Strip now walks every month since the property's first Hospitable
+    // booking through the last fully-completed month (the current month
+    // is shown live on the meter above). No monthsBack arg.
+    isAuthenticated ? { propertyId } : "skip",
   );
 
   if (coverage === undefined) {

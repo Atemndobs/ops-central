@@ -740,19 +740,30 @@ export const getOwnerMortgageCoverage = query({
 });
 
 /**
- * Trailing N months of mortgage/lease coverage for the property. Powers
- * the 12-month strip + avg + streak below the cover meter. Months without
- * any obligation configured are returned as `status: "no_obligation"`.
+ * "Since you joined ChezSoiStays" mortgage/lease coverage track-record.
+ *
+ * Months covered run from the FIRST Hospitable stay on this property
+ * through the LAST FULLY COMPLETED month (current month skipped — it's
+ * still in progress and shown live on the meter above). No fixed
+ * trailing-N window: the strip grows naturally with how long the
+ * property has been on the platform, which is the story the owner is
+ * looking at ("look, we covered rent every month we've worked together").
+ *
+ * Obligation per month = current raw monthly lease × stake. We do NOT
+ * try to historicise the rent — what the owner cares about is the
+ * apples-to-apples comparison "could the revenue we made then cover the
+ * rent we owe now". Per-month payout = grossRevenue × stake (same
+ * math as getOwnerMortgageCoverage + MortgageCoverageBar).
+ *
+ * If the property has no stays in Hospitable yet → empty months[]; the
+ * client hides the strip.
  */
 export const getOwnerCoverageHistory = query({
   args: {
     propertyId: v.id("properties"),
-    monthsBack: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const { ownership } = await assertOwnerOfProperty(ctx, args.propertyId);
-    const n = Math.min(args.monthsBack ?? 12, 24);
-    const months = lastNMonthKeys(n + 1).slice(0, n); // skip current month
     const stakePct = ownership.stakePct;
 
     const results: Array<{
@@ -762,38 +773,56 @@ export const getOwnerCoverageHistory = query({
       payout: number;
     }> = [];
 
-    // Raw monthly lease — the SAME number the dashboard mini-bar +
-    // summary-card indicator + getOwnerMortgageCoverage all use. Loaded
-    // once and reused across every month's row.
+    // Find the earliest non-cancelled stay on this property. That's
+    // when the property effectively joined the platform.
+    const allStays = await ctx.db
+      .query("stays")
+      .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId))
+      .collect();
+    const realStays = allStays.filter((s) => s.cancelledAt === undefined);
+    if (realStays.length === 0) {
+      return {
+        months: results,
+        summary: {
+          sampledMonths: 0,
+          coveredCount: 0,
+          avgPayout: 0,
+          avgObligation: 0,
+          avgBuffer: 0,
+          streak: 0,
+        },
+        stakePct,
+      };
+    }
+    const earliestCheckIn = realStays.reduce(
+      (min, s) => Math.min(min, s.checkInAt),
+      Infinity,
+    );
+
+    // Month list: [earliest-stay-month .. last-complete-month] inclusive.
+    const months = monthKeysBetween(earliestCheckIn, startOfCurrentMonthMs());
+
     const rawMonthlyLease = await loadRawMonthlyLease(ctx, args.propertyId);
+    const obligationPerMonth = rawMonthlyLease * stakePct;
 
     for (const m of months) {
       const { start, end } = monthRange(m);
-      try {
-        const inputs = await loadEngineInputs(ctx, args.propertyId, start, end);
-        const out = computeStatementForPeriod(inputs);
-        // Engine output's lease bucket is the start/end-date-aware
-        // "was a lease active this month" signal. If zero → no obligation
-        // configured for that period (matches getOwnerMortgageCoverage).
-        const engineLeaseThisPeriod =
-          out.totals.costsByBucket.find((c) => c.bucket === "lease")?.amount ?? 0;
-        const obligation = engineLeaseThisPeriod > 0 ? rawMonthlyLease * stakePct : 0;
-        // Coverage source is GROSS revenue × stake, matching the dashboard
-        // mini-bar + summary-card indicator. Key stays `payout` so the
-        // existing client renderer doesn't need to be rewired.
-        const payout = out.totals.grossRevenue * stakePct;
-        if (obligation === 0) {
-          results.push({ month: m, status: "no_obligation", obligation: 0, payout });
-        } else {
-          results.push({
-            month: m,
-            status: payout >= obligation ? "covered" : "shortfall",
-            obligation,
-            payout,
-          });
-        }
-      } catch {
-        results.push({ month: m, status: "engine_error", obligation: 0, payout: 0 });
+      // Per-month gross = sum of stays whose checkInAt falls in [start,end),
+      // excluding cancellations. Same convention as the fee engine.
+      const monthGross = realStays
+        .filter((s) => s.checkInAt >= start && s.checkInAt < end)
+        .reduce((sum, s) => sum + (s.totalAmount ?? 0), 0);
+      const payout = monthGross * stakePct;
+
+      if (obligationPerMonth === 0) {
+        results.push({ month: m, status: "no_obligation", obligation: 0, payout });
+      } else {
+        results.push({
+          month: m,
+          status: payout >= obligationPerMonth ? "covered" : "shortfall",
+          obligation: obligationPerMonth,
+          payout,
+        });
       }
     }
 
@@ -1004,15 +1033,32 @@ function yyyyMm(ms: number): string {
   return `${d.getUTCFullYear()}-${(d.getUTCMonth() + 1).toString().padStart(2, "0")}`;
 }
 
-function lastNMonthKeys(n: number): string[] {
-  const out: string[] = [];
+/** First-of-current-month at UTC midnight. Acts as the exclusive upper
+ *  bound when listing "completed" months (current month is still live). */
+function startOfCurrentMonthMs(): number {
   const d = new Date();
   d.setUTCDate(1);
-  for (let i = 0; i < n; i++) {
-    out.unshift(
+  d.setUTCHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+/**
+ * "YYYY-MM" keys for every month from the month containing `fromMs`
+ * (inclusive) up to but NOT including the month containing `untilMs`.
+ * Returns oldest → newest. Used by getOwnerCoverageHistory to walk every
+ * month since the property's first booking through the last completed
+ * month.
+ */
+function monthKeysBetween(fromMs: number, untilMs: number): string[] {
+  const out: string[] = [];
+  const d = new Date(fromMs);
+  d.setUTCDate(1);
+  d.setUTCHours(0, 0, 0, 0);
+  while (d.getTime() < untilMs) {
+    out.push(
       `${d.getUTCFullYear()}-${(d.getUTCMonth() + 1).toString().padStart(2, "0")}`,
     );
-    d.setUTCMonth(d.getUTCMonth() - 1);
+    d.setUTCMonth(d.getUTCMonth() + 1);
   }
   return out;
 }
