@@ -512,18 +512,25 @@ function BookingsSection({
   const [platformFilter, setPlatformFilter] = useStateLazy<string | "all">("all");
   const [sortKey, setSortKey] = useStateLazy<SortKey>("checkIn");
   const [sortDir, setSortDir] = useStateLazy<SortDir>("desc");
-  const [includeCancelled, setIncludeCancelled] = useStateLazy<boolean>(true);
+  // Default OFF: cancelled stays never produced revenue, so showing them
+  // by default makes the totals look fictional. Owner can opt in for
+  // stats / context but the toggle no longer affects any money math.
+  const [includeCancelled, setIncludeCancelled] = useStateLazy<boolean>(false);
 
   if (stays === undefined) return <Skeleton />;
 
-  // Per-platform tallies (used for chip badges + filtered footer)
+  // Per-platform tallies. Cancelled stays NEVER contribute to `total` —
+  // the owner never saw that money, so including it in any sum would
+  // mislead. `count` follows the visibility toggle so the chip number
+  // matches the rows the user actually sees.
   const platforms = new Map<string, { count: number; total: number }>();
   for (const s of stays) {
-    if (s.cancelledAt && !includeCancelled) continue;
+    const isCancelled = Boolean(s.cancelledAt);
+    if (isCancelled && !includeCancelled) continue;
     const key = s.platform ?? "direct";
     const cur = platforms.get(key) ?? { count: 0, total: 0 };
     cur.count += 1;
-    cur.total += s.totalAmount ?? 0;
+    if (!isCancelled) cur.total += s.totalAmount ?? 0;
     platforms.set(key, cur);
   }
   const platformList = Array.from(platforms.entries()).sort(
@@ -548,7 +555,11 @@ function BookingsSection({
     });
 
   const filteredCount = visible.length;
-  const filteredTotal = visible.reduce((s, x) => s + (x.totalAmount ?? 0), 0);
+  // Same rule for the footer total: cancelled rows never add up.
+  const filteredTotal = visible.reduce(
+    (s, x) => s + (x.cancelledAt ? 0 : x.totalAmount ?? 0),
+    0,
+  );
 
   return (
     <section id="bookings" className="scroll-mt-20">
