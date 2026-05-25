@@ -29,7 +29,8 @@ const flagKeyValidator = v.union(
   v.literal("usage_dashboard"),
   v.literal("video_support"),
   v.literal("owner_show_mgmt_fee"),
-  v.literal("owner_show_payout")
+  v.literal("owner_show_payout"),
+  v.literal("owner_overview_auto_drafts")
   // future flags go here
 );
 
@@ -42,7 +43,8 @@ export type FeatureFlagKey =
   | "usage_dashboard"
   | "video_support"
   | "owner_show_mgmt_fee"
-  | "owner_show_payout";
+  | "owner_show_payout"
+  | "owner_overview_auto_drafts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UI metadata — single source of truth for the admin Feature Flags card.
@@ -170,6 +172,19 @@ const FLAG_METADATA: Record<FeatureFlagKey, FlagMetadata> = {
       "Payout tile is hidden from the per-property summary card. The " +
       "payout still computes and still appears on the statement detail " +
       "page + PDF — only the at-a-glance card hides it.",
+  },
+  owner_overview_auto_drafts: {
+    key: "owner_overview_auto_drafts",
+    label: "Admin Owner Overview: auto-create monthly drafts",
+    description:
+      "When ON, a monthly cron runs on the 1st of each month and creates " +
+      "a DRAFT statement for every (active owner, property, previous " +
+      "month) pair that doesn't already have one. Admins still have to " +
+      "explicitly Issue from the editor — this just removes the manual " +
+      "step of typing in a period to materialize the draft.",
+    offBehaviour:
+      "Cron is inert. Admins must open the property split view and click " +
+      "Save draft to create the first statement row for any period.",
   },
 };
 
