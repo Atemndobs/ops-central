@@ -209,6 +209,21 @@ export const getOwnerDashboard = query({
       if (p.state) stateSet.add(p.state);
     }
 
+    // Owner-portal feature flags shared with the per-property page so the
+    // dashboard cards/list honour the same admin toggles.
+    //   - showMgmtFee defaults OFF (ships dark)
+    //   - showPayout  defaults ON  (payout is the headline number)
+    const [showMgmtFeeFlag, showPayoutFlag] = await Promise.all([
+      ctx.db
+        .query("featureFlags")
+        .withIndex("by_key", (q) => q.eq("key", "owner_show_mgmt_fee"))
+        .unique(),
+      ctx.db
+        .query("featureFlags")
+        .withIndex("by_key", (q) => q.eq("key", "owner_show_payout"))
+        .unique(),
+    ]);
+
     return {
       mode: perPropertyWithStatus.length === 1 ? ("single" as const) : ("portfolio" as const),
       user: pickUser(user),
@@ -219,6 +234,10 @@ export const getOwnerDashboard = query({
       facets: {
         cities: Array.from(citySet).sort(),
         states: Array.from(stateSet).sort(),
+      },
+      flags: {
+        showMgmtFee: showMgmtFeeFlag?.enabled ?? false,
+        showPayout: showPayoutFlag?.enabled ?? true,
       },
     };
   },
