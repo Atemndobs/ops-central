@@ -13,6 +13,7 @@
 // Owner-side surfaces are unchanged.
 
 import { ConvexError, v } from "convex/values";
+import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import {
   mutation,
@@ -27,6 +28,7 @@ import {
   monthRange,
   type FeeEngineOutput,
 } from "../owner/feeEngine";
+import { notifyStatementIssued } from "../owner/notify";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -428,3 +430,109 @@ export const upsertDraft = mutation({
     return { statementId: id, created: true };
   },
 });
+
+/**
+ * Promote a draft → ready. No data change; just gates the Issue button.
+ */
+export const markReady = mutation({
+  args: { statementId: v.id("ownerStatements") },
+  handler: async (ctx, args) => {
+    const caller = await requireRole(ctx, ["admin", "property_ops"]);
+    const s = await ctx.db.get(args.statementId);
+    if (!s) throw new ConvexError("Statement not found");
+    if (s.status !== "draft") {
+      throw new ConvexError(`Cannot mark ready: status=${s.status}`);
+    }
+    const now = Date.now();
+    await ctx.db.patch(args.statementId, {
+      status: "ready",
+      auditTrail: [
+        ...(s.auditTrail ?? []),
+        { at: now, actorUserId: caller._id, action: "marked_ready" },
+      ],
+      updatedAt: now,
+    });
+    return { statementId: args.statementId };
+  },
+});
+
+/**
+ * Issue a draft/ready statement. Re-computes the snapshot inside the
+ * mutation transaction (TOCTOU safety), flips status → "issued", schedules
+ * PDF render + notifies owners. Matches `owner.mutations.issueOwnerStatement`
+ * behavior but works on an existing draft row with all admin overrides
+ * applied (plan §"Phase 4").
+ */
+export const issueStatement = mutation({
+  args: { statementId: v.id("ownerStatements") },
+  handler: async (ctx, args) => {
+    const caller = await requireRole(ctx, ["admin", "property_ops"]);
+    const s = await ctx.db.get(args.statementId);
+    if (!s) throw new ConvexError("Statement not found");
+    if (s.status !== "draft" && s.status !== "ready") {
+      throw new ConvexError(`Cannot issue: status=${s.status}`);
+    }
+
+    // Re-compute snapshot at click-time with current overrides applied.
+    const excludedStayIds = new Set<string>(s.excludedStayIds ?? []);
+    const excludedCostItemIds = new Set<string>(s.excludedCostItemIds ?? []);
+    const bucketOverrides = new Map<string, string>(
+      (s.costBucketOverrides ?? []).map((b) => [b.costItemId, b.bucket]),
+    );
+    const rawInputs = await loadEngineInputs(
+      ctx,
+      s.propertyId,
+      s.periodStart,
+      s.periodEnd,
+    );
+    const filtered = applyAdminOverrides(rawInputs, {
+      excludedStayIds,
+      excludedCostItemIds,
+      bucketOverrides,
+    });
+    const output = computeStatementForPeriod(filtered);
+
+    const now = Date.now();
+    await ctx.db.patch(args.statementId, {
+      status: "issued",
+      snapshotTotals: output.totals,
+      feeConfigSnapshot: output.feeConfigSnapshot,
+      sourceRefs: output.sourceRefs,
+      issuedAt: now,
+      issuedBy: caller._id,
+      auditTrail: [
+        ...(s.auditTrail ?? []),
+        { at: now, actorUserId: caller._id, action: "issued" },
+      ],
+      updatedAt: now,
+    });
+
+    // Fire-and-forget PDF render (Wave 3b pipeline).
+    await ctx.scheduler.runAfter(
+      0,
+      internal.owner.pdf.renderOwnerStatementPdf,
+      { statementId: args.statementId },
+    );
+
+    // Notify all active owners (Wave 3c).
+    const property = await ctx.db.get(s.propertyId);
+    const month = formatMonthKey(s.periodStart);
+    await notifyStatementIssued(ctx, {
+      statementId: args.statementId,
+      propertyId: s.propertyId,
+      month,
+      propertyName: property?.name ?? "your property",
+      ownerPayout: output.totals.ownerPayout,
+      currency: property?.currency ?? "USD",
+    });
+
+    return { statementId: args.statementId };
+  },
+});
+
+function formatMonthKey(periodStart: number): string {
+  const d = new Date(periodStart);
+  return `${d.getUTCFullYear()}-${(d.getUTCMonth() + 1)
+    .toString()
+    .padStart(2, "0")}`;
+}
