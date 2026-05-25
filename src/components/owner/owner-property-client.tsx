@@ -22,7 +22,7 @@ import type { Id } from "@convex/_generated/dataModel";
 import { bucketLabel, fmtDate, fmtDateShort, fmtMoney, fmtMonth, upgradeAirbnbImageQuality } from "./owner-format";
 import { MortgageCoverageBar } from "./mortgage-coverage";
 import { PlatformLogo } from "./platform-logo";
-import { MonthSwitcher } from "./month-switcher";
+import { MonthSwitcher, currentMonthKey } from "./month-switcher";
 import { useMonthFromUrl } from "./use-month-from-url";
 
 export function OwnerPropertyClient({
@@ -263,21 +263,30 @@ export function OwnerPropertyClient({
       )}
 
       <section id="overview" className="scroll-mt-20">
-        <h2
-          className="mb-3 flex items-center gap-2 text-lg"
-          style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700 }}
-        >
-          <FileText size={18} /> Statements
-        </h2>
+        {/* Header row: title + inline status chip for the month the user
+            is currently viewing. The chip is the affordance to OPEN the
+            statement when it's ready ("Ready · View →"), and a plain
+            info tag otherwise ("Preparing…", "Live", "Not yet"). No
+            empty-state card below — historical list still shows if any
+            statements have been issued. */}
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <h2
+            className="flex items-center gap-2 text-lg"
+            style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700 }}
+          >
+            <FileText size={18} /> Statements
+          </h2>
+          {statements !== undefined && (
+            <StatementStatusChip
+              statements={statements}
+              viewedMonth={month}
+              propertyId={propertyId}
+            />
+          )}
+        </div>
         {statements === undefined ? (
           <Skeleton />
-        ) : statements.length === 0 ? (
-          <Card padding="p-8">
-            <p className="text-center text-sm" style={{ color: "var(--cleaner-muted)" }}>
-              No issued statements yet. Once ChezSoiStays Ops finalizes your first month, it will appear here.
-            </p>
-          </Card>
-        ) : (
+        ) : statements.length === 0 ? null : (
           <div className="space-y-2">
             {statements.map((s) => (
               <Link
@@ -1041,6 +1050,76 @@ function useStateLazy<T>(initial: T) {
  *
  * Hidden when the owner only holds one property (caller passes <=1 total).
  */
+/**
+ * Inline status chip rendered beside the "Statements" section heading.
+ * Reflects the state of the statement for the currently viewed month:
+ *
+ *   - issued  → clickable "Ready · View →" chip → opens statement detail
+ *   - current → "Live — finalises after month-end"
+ *   - past    → "Preparing…" (ops still finalising the previous month)
+ *   - future  → "Not yet"
+ *
+ * Replaces the previous full-width "No issued statements yet" card.
+ */
+function StatementStatusChip({
+  statements,
+  viewedMonth,
+  propertyId,
+}: {
+  statements: ReadonlyArray<{ _id: Id<"ownerStatements">; periodStart: number }>;
+  viewedMonth: string;
+  propertyId: Id<"properties">;
+}) {
+  const matching = statements.find(
+    (s) => yyyyMmFromMs(s.periodStart) === viewedMonth,
+  );
+
+  if (matching) {
+    return (
+      <Link
+        href={`/owner/properties/${propertyId}/statements/${matching._id}`}
+        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition hover:opacity-80"
+        style={{
+          background: "rgba(155,81,224,0.12)",
+          color: "var(--cleaner-primary)",
+        }}
+        aria-label={`View ${fmtMonth(viewedMonth)} statement`}
+      >
+        Ready · View →
+      </Link>
+    );
+  }
+
+  const cur = currentMonthKey();
+  const label =
+    viewedMonth > cur
+      ? "Not yet"
+      : viewedMonth === cur
+        ? "Live — finalises after month-end"
+        : "Preparing…";
+
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] uppercase tracking-wider"
+      style={{
+        background: "var(--cleaner-bg)",
+        color: "var(--cleaner-muted)",
+        fontFamily: "var(--font-cleaner-mono)",
+        letterSpacing: "0.08em",
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+/** "YYYY-MM" key from a UTC millisecond timestamp. Periods are stored
+ *  at UTC midnight on day 1 by the fee engine, so getUTC* is correct. */
+function yyyyMmFromMs(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getUTCFullYear()}-${(d.getUTCMonth() + 1).toString().padStart(2, "0")}`;
+}
+
 function SiblingNav({
   prev,
   next,

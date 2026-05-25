@@ -118,7 +118,7 @@ function CoverHeader({
     const shortMonth = fmtShortMonth(month);
     subtitle = coverage.isCurrentMonth ? (
       <>
-        Your {shortMonth} Mortgage was covered by{" "}
+        {shortMonth} Mortgage was covered by{" "}
         <span style={{ color: "var(--cleaner-ink)", fontWeight: 600 }}>
           {coveredOnLabel}
         </span>
