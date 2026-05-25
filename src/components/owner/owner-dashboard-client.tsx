@@ -6,6 +6,7 @@ import { useConvexAuth, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
+  ArrowUpDown,
   Bell,
   Building2,
   ChevronDown,
@@ -13,6 +14,7 @@ import {
   ChevronsRightLeft,
   FileText,
   Filter,
+  Layers,
   LayoutGrid,
   MapPin,
   Rows3,
@@ -391,7 +393,7 @@ function FilterBar({
       {/* Always-visible single-row toolbar. Each trigger toggles its
           panel below. Active filter counts shown as small badges so
           you can see what's applied without expanding. */}
-      <div className="flex flex-wrap items-center gap-1.5 p-2">
+      <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto p-2">
         {showCityFilter && (
           <FilterTrigger
             icon={<Filter size={12} />}
@@ -410,14 +412,23 @@ function FilterBar({
             onClick={() => toggle("state")}
           />
         )}
+        {/* Sort + Group: icon-only on mobile, icon + selection on sm+.
+            Drop the redundant "No grouping" label — when the group icon
+            is alone (no chip after it) the user knows nothing is grouped. */}
         <FilterTrigger
-          label={`Sort: ${sortLabel}`}
+          icon={<ArrowUpDown size={12} />}
+          label={sortLabel}
+          hideLabelOnMobile
           active={open === "sort"}
           onClick={() => toggle("sort")}
         />
         {(showCityFilter || showStateFilter) && (
           <FilterTrigger
-            label={`Group: ${groupLabel}`}
+            icon={<Layers size={12} />}
+            // Only show the group label when actually grouping by
+            // something — "No grouping" is just visual noise.
+            label={groupBy === "none" ? "" : groupLabel}
+            hideLabelOnMobile
             active={open === "group"}
             onClick={() => toggle("group")}
           />
@@ -506,18 +517,25 @@ function FilterTrigger({
   count,
   active,
   onClick,
+  hideLabelOnMobile,
 }: {
   icon?: React.ReactNode;
   label: string;
   count?: number;
   active: boolean;
   onClick: () => void;
+  /** When true, the text label is hidden below the sm breakpoint —
+   *  only the icon + count + chevron render. Used for Sort/Group on
+   *  narrow viewports to keep all triggers on one row. */
+  hideLabelOnMobile?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
       aria-expanded={active}
-      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] transition"
+      aria-label={label}
+      title={label}
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] transition sm:px-3"
       style={{
         background: active ? "var(--cleaner-primary)" : "transparent",
         color: active ? "white" : "var(--cleaner-ink)",
@@ -529,7 +547,11 @@ function FilterTrigger({
       }}
     >
       {icon}
-      <span>{label}</span>
+      {label && (
+        <span className={hideLabelOnMobile ? "hidden sm:inline" : undefined}>
+          {label}
+        </span>
+      )}
       {count !== undefined && count > 0 && (
         <span
           className="rounded-full px-1.5 text-[10px]"
@@ -919,10 +941,12 @@ function ListView({
           )}
         </button>
       </div>
-      {/* `table-fixed` so the name column truncates instead of pushing the
-          revenue/payout columns off the right edge when names are visible.
-          Widths: image+name flexes, numeric columns sized to their content. */}
-      <table className="w-full text-sm table-fixed">
+      {/* Auto layout — name column flexes to whatever space is left after
+          the fixed-width numeric columns. The earlier `table-fixed`
+          attempt evenly distributed widths and cropped names even when
+          there was plenty of room. Name span still has `truncate` for
+          the genuinely-narrow case. */}
+      <table className="w-full text-sm">
         <thead>
           <tr style={{ background: "var(--cleaner-bg)" }}>
             <Th>{showNames ? "Property" : ""}</Th>
