@@ -21,6 +21,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { bucketLabel, fmtDate, fmtDateShort, fmtMoney, fmtMonth, upgradeAirbnbImageQuality } from "./owner-format";
 import { MortgageCoverageBar } from "./mortgage-coverage";
+import { OwnerMortgageCoverCard } from "./owner-mortgage-cover-card";
 import { PlatformLogo } from "./platform-logo";
 import { MonthSwitcher, currentMonthKey } from "./month-switcher";
 import { useMonthFromUrl } from "./use-month-from-url";
@@ -195,72 +196,46 @@ export function OwnerPropertyClient({
         </Card>
       )}
 
-      {draft && (
-        <Card padding="p-6">
-          {/* Month switcher lives in the summary card so the period
-              context is right next to the numbers it controls. Tapping
-              ◀/▶ here re-runs every property query for the new period.
-              Thumbnail anchors top-right — mirrors the dashboard card so
-              owners get the same at-a-glance property identity here. */}
-          <div className="mb-5 flex items-start justify-between gap-3">
-            <MonthSwitcher
-              month={month}
-              onMonthChange={setMonth}
-              minMonth={prop.firstActivityMonth ?? undefined}
-            />
-            <span
-              className="relative block h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-black/[0.06]"
-              style={{ background: "var(--cleaner-bg)" }}
-              aria-hidden="true"
-            >
-              {prop.property.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element -- external CDN with signed params
-                <img
-                  src={upgradeAirbnbImageQuality(prop.property.imageUrl)}
-                  alt={prop.property.name}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <span
-                  className="flex h-full w-full items-center justify-center"
-                  style={{ color: "var(--cleaner-muted)" }}
-                >
-                  <Building2 size={20} />
-                </span>
-              )}
-            </span>
-          </div>
-          <MonthSummary
-            propertyId={propertyId}
+      {/* Month picker + property thumbnail sit in their own slim card —
+          period context first, then the full Earnings-summary card below
+          (the SAME OwnerMortgageCoverCard the mortgage drilldown page
+          uses, so the visual is consistent across surfaces). */}
+      <Card padding="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <MonthSwitcher
             month={month}
-            currency={currency}
-            grossRevenue={draft.draft.totals.grossRevenue}
-            ownerPayout={draft.draft.totals.ownerPayout}
-            mgmtFee={draft.draft.totals.mgmtFee}
-            feePct={draft.draft.totals.feePct}
-            feeBase={draft.draft.totals.feeBase}
-            // Admin-gated: when `owner_show_mgmt_fee` is enabled, the
-            // mgmt-fee line renders inline so owners see the full
-            // Gross → Mgmt fee → Payout breakdown. Default OFF — fee
-            // still appears on the issued PDF & statement detail.
-            showMgmtFee={prop.flags.showMgmtFee}
-            // Admin-gated via `owner_show_payout`. Default ON — payout is
-            // the headline owner-facing number — toggle off to demo a
-            // "gross + fee only" view.
-            showPayout={prop.flags.showPayout}
-            // Use RAW monthly lease (matches Operational Costs ledger)
-            // not engine's period-prorated value. Falls back to engine
-            // value while costItems are loading.
-            mortgageAmount={
-              leaseRawMonthly > 0
-                ? leaseRawMonthly
-                : draft.draft.totals.costsByBucket.find((b) => b.bucket === "lease")
-                    ?.amount ?? 0
-            }
-            stakePct={prop.ownership.stakePct}
+            onMonthChange={setMonth}
+            minMonth={prop.firstActivityMonth ?? undefined}
           />
-        </Card>
-      )}
+          <span
+            className="relative block h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-black/[0.06]"
+            style={{ background: "var(--cleaner-bg)" }}
+            aria-hidden="true"
+          >
+            {prop.property.imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- external CDN with signed params
+              <img
+                src={upgradeAirbnbImageQuality(prop.property.imageUrl)}
+                alt={prop.property.name}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <span
+                className="flex h-full w-full items-center justify-center"
+                style={{ color: "var(--cleaner-muted)" }}
+              >
+                <Building2 size={20} />
+              </span>
+            )}
+          </span>
+        </div>
+      </Card>
+
+      <OwnerMortgageCoverCard
+        propertyId={propertyId}
+        currency={currency}
+        month={month}
+      />
 
       <section id="overview" className="scroll-mt-20">
         {/* Header row: title + inline status chip for the month the user
