@@ -297,28 +297,34 @@ export function OwnerPropertyClient({
                     {!s.pdfStorageId && " · PDF generating"}
                   </div>
                 </div>
-                <div className="text-right">
-                  <div
-                    className="text-lg tabular-nums"
-                    style={{
-                      fontFamily: "var(--font-cleaner-mono)",
-                      fontWeight: 700,
-                    }}
-                  >
-                    {fmtMoney(s.ownerPayout, currency)}
+                {/* Right-side payout + label honour the
+                    `owner_show_payout` admin flag, same as the per-property
+                    summary card. Hidden when flag is off — the date range
+                    is still a clickable Link into the full statement. */}
+                {prop.flags.showPayout && (
+                  <div className="text-right">
+                    <div
+                      className="text-lg tabular-nums"
+                      style={{
+                        fontFamily: "var(--font-cleaner-mono)",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {fmtMoney(s.ownerPayout, currency)}
+                    </div>
+                    <div
+                      className="text-[10px]"
+                      style={{
+                        fontFamily: "var(--font-cleaner-mono)",
+                        letterSpacing: "0.12em",
+                        textTransform: "uppercase",
+                        color: "var(--cleaner-muted)",
+                      }}
+                    >
+                      your payout
+                    </div>
                   </div>
-                  <div
-                    className="text-[10px]"
-                    style={{
-                      fontFamily: "var(--font-cleaner-mono)",
-                      letterSpacing: "0.12em",
-                      textTransform: "uppercase",
-                      color: "var(--cleaner-muted)",
-                    }}
-                  >
-                    your payout
-                  </div>
-                </div>
+                )}
               </Link>
             ))}
           </div>

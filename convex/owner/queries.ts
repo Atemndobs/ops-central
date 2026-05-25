@@ -322,7 +322,27 @@ export const getOwnerStatement = query({
     const statement = await ctx.db.get(args.statementId);
     if (!statement) throw new ConvexError("Statement not found");
     await assertOwnerOfProperty(ctx, statement.propertyId);
-    return statement;
+    // Surface the owner-portal flags this page consumes so the statement
+    // detail surface stays in sync with the dashboard + summary card
+    // (single source of truth: the featureFlags table). Defaults match
+    // getOwnerProperty: showMgmtFee OFF, showPayout ON.
+    const [showMgmtFeeFlag, showPayoutFlag] = await Promise.all([
+      ctx.db
+        .query("featureFlags")
+        .withIndex("by_key", (q) => q.eq("key", "owner_show_mgmt_fee"))
+        .unique(),
+      ctx.db
+        .query("featureFlags")
+        .withIndex("by_key", (q) => q.eq("key", "owner_show_payout"))
+        .unique(),
+    ]);
+    return {
+      statement,
+      flags: {
+        showMgmtFee: showMgmtFeeFlag?.enabled ?? false,
+        showPayout: showPayoutFlag?.enabled ?? true,
+      },
+    };
   },
 });
 
