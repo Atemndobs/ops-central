@@ -250,11 +250,6 @@ function FilteredPortfolio({
   return (
     <div className="space-y-8">
       {orderedGroups.map(([groupName, rows]) => {
-        const totalPayout = rows.reduce(
-          (s, p) => s + ("totals" in p.draft ? p.draft.totals.ownerPayout : 0),
-          0,
-        );
-        const currency = rows[0]?.currency ?? "USD";
         return (
           <section key={groupName}>
             <div className="mb-3 flex items-baseline justify-between">
@@ -271,18 +266,9 @@ function FilteredPortfolio({
                   · {rows.length} {rows.length === 1 ? "property" : "properties"}
                 </span>
               </h2>
-              <span
-                className="text-sm tabular-nums"
-                style={{ fontFamily: "var(--font-cleaner-mono)", fontWeight: 700 }}
-              >
-                {fmtMoney(totalPayout, currency)}{" "}
-                <span
-                  className="ml-1 text-[10px] uppercase tracking-wider"
-                  style={{ color: "var(--cleaner-muted)" }}
-                >
-                  group payout
-                </span>
-              </span>
+              {/* Group payout total hidden 2026-05-25 — owners found the
+                  city-level aggregate confusing alongside per-property
+                  payouts. Per-property payouts remain on each card below. */}
             </div>
             {viewMode === "card" ? (
               <CardView properties={rows} month={month} flags={flags} />
