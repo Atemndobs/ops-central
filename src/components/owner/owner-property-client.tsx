@@ -19,9 +19,8 @@ import {
 } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { bucketLabel, fmtDate, fmtDateShort, fmtMoney, fmtMonth, upgradeAirbnbImageQuality } from "./owner-format";
+import { bucketLabel, fmtDate, fmtDateShort, fmtMonth, fmtMonthDayPadded, fmtMoney, upgradeAirbnbImageQuality } from "./owner-format";
 import { MortgageCoverageBar } from "./mortgage-coverage";
-import { OwnerMortgageCoverCard } from "./owner-mortgage-cover-card";
 import { PlatformLogo } from "./platform-logo";
 import { MonthSwitcher, currentMonthKey } from "./month-switcher";
 import { useMonthFromUrl } from "./use-month-from-url";
@@ -231,11 +230,26 @@ export function OwnerPropertyClient({
         </div>
       </Card>
 
-      <OwnerMortgageCoverCard
-        propertyId={propertyId}
-        currency={currency}
-        month={month}
-      />
+      {/* Compact overview card — gross + mortgage bar + "covered on day X".
+          Whole card is a Link to the mortgage drilldown page where the
+          full Earnings-summary (past-12-month strip, lease/payout breakdown,
+          confidence line) lives. Owner intent: "snapshot here, drill in
+          there". */}
+      {draft && (
+        <OverviewSummaryCard
+          propertyId={propertyId}
+          currency={currency}
+          month={month}
+          grossRevenue={draft.draft.totals.grossRevenue}
+          stakePct={prop.ownership.stakePct}
+          mortgageAmount={
+            leaseRawMonthly > 0
+              ? leaseRawMonthly
+              : draft.draft.totals.costsByBucket.find((b) => b.bucket === "lease")
+                  ?.amount ?? 0
+          }
+        />
+      )}
 
       <section id="overview" className="scroll-mt-20">
         {/* Header row: title + inline status chip for the month the user
@@ -1181,6 +1195,115 @@ function TabLink({
       }}
     >
       {children}
+    </Link>
+  );
+}
+
+/**
+ * Compact overview card on the property page — gross revenue + mortgage
+ * coverage bar + "covered on day X" caption. The WHOLE card is a Link
+ * to the mortgage drilldown page where the full Earnings-summary
+ * (12-month strip, lease/payout/projected breakdown, confidence line)
+ * lives. Two surfaces, two depths: snapshot here, detail there.
+ */
+function OverviewSummaryCard({
+  propertyId,
+  currency,
+  month,
+  grossRevenue,
+  stakePct,
+  mortgageAmount,
+}: {
+  propertyId: Id<"properties">;
+  currency: string;
+  month: string;
+  grossRevenue: number;
+  stakePct: number;
+  mortgageAmount: number;
+}) {
+  const { isAuthenticated } = useConvexAuth();
+  const coverage = useQuery(
+    api.owner.queries.getOwnerMortgageCoverage,
+    isAuthenticated ? { propertyId, month } : "skip",
+  );
+  const myGross = grossRevenue * stakePct;
+  const myMortgage = mortgageAmount * stakePct;
+
+  // Date the lease was crossed — only present in `covered` status.
+  const coveredOnLabel =
+    coverage && coverage.status === "covered"
+      ? fmtMonthDayPadded(coverage.coveredOn)
+      : null;
+
+  return (
+    <Link
+      href={`/owner/properties/${propertyId}/mortgage?month=${month}`}
+      className="block rounded-2xl transition hover:bg-black/[0.02]"
+      aria-label="View mortgage coverage detail"
+    >
+      <Card padding="p-5">
+        <div className="space-y-4">
+          {/* Gross — the headline number the owner cares about. */}
+          <div>
+            <div
+              className="text-[10px] uppercase tracking-wider"
+              style={{
+                color: "var(--cleaner-muted)",
+                fontFamily: "var(--font-cleaner-mono)",
+              }}
+            >
+              Gross
+            </div>
+            <div
+              className="mt-1 text-3xl tabular-nums"
+              style={{
+                fontFamily: "var(--font-cleaner-display)",
+                fontWeight: 700,
+                letterSpacing: "-0.02em",
+              }}
+            >
+              {fmtMoney(myGross, currency)}
+            </div>
+          </div>
+
+          {/* Mortgage progress + covered-on caption. */}
+          {myMortgage > 0 && (
+            <div className="space-y-2">
+              <MortgageCoverageBar
+                currency={currency}
+                obligation={myMortgage}
+                grossRevenue={myGross}
+                variant="roomy"
+              />
+              {coveredOnLabel && (
+                <p
+                  className="text-xs"
+                  style={{ color: "var(--cleaner-muted)" }}
+                >
+                  Mortgage covered on{" "}
+                  <span
+                    style={{
+                      color: "var(--cleaner-ink)",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {coveredOnLabel}
+                  </span>{" "}
+                  · tap for history →
+                </p>
+              )}
+              {!coveredOnLabel && coverage && coverage.status !== "covered" && (
+                <p
+                  className="text-xs"
+                  style={{ color: "var(--cleaner-muted)" }}
+                >
+                  Tap for history →
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </Card>
     </Link>
   );
 }
