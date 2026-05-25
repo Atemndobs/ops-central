@@ -166,12 +166,23 @@ export function OwnerDashboardClient() {
         groupBy={groupBy}
         viewMode={viewMode}
         month={month}
+        flags={dashboard.flags}
       />
     </div>
   );
 }
 
 // ─── Filter / sort / group orchestration ───────────────────────────────────
+
+/**
+ * Admin-toggleable visibility for the per-property tiles in the dashboard
+ * card + list views. Mirrors the same flags the per-property summary card
+ * honours (see convex/owner/queries.ts → getOwnerProperty / getOwnerDashboard).
+ */
+export type DashboardFlags = {
+  showMgmtFee: boolean;
+  showPayout: boolean;
+};
 
 function FilteredPortfolio({
   properties,
@@ -181,6 +192,7 @@ function FilteredPortfolio({
   groupBy,
   viewMode,
   month,
+  flags,
 }: {
   properties: PropertyRow[];
   selectedCities: Set<string>;
@@ -189,6 +201,7 @@ function FilteredPortfolio({
   groupBy: GroupBy;
   viewMode: "card" | "list";
   month: string;
+  flags: DashboardFlags;
 }) {
   const filteredAndSorted = useMemo(() => {
     const filtered = properties.filter((p) => {
@@ -203,9 +216,9 @@ function FilteredPortfolio({
   if (groupBy === "none") {
     if (filteredAndSorted.length === 0) return <EmptyFiltered />;
     return viewMode === "card" ? (
-      <CardView properties={filteredAndSorted} month={month} />
+      <CardView properties={filteredAndSorted} month={month} flags={flags} />
     ) : (
-      <ListView properties={filteredAndSorted} month={month} />
+      <ListView properties={filteredAndSorted} month={month} flags={flags} />
     );
   }
 
@@ -269,9 +282,9 @@ function FilteredPortfolio({
               </span>
             </div>
             {viewMode === "card" ? (
-              <CardView properties={rows} month={month} />
+              <CardView properties={rows} month={month} flags={flags} />
             ) : (
-              <ListView properties={rows} month={month} />
+              <ListView properties={rows} month={month} flags={flags} />
             )}
           </section>
         );
@@ -547,20 +560,41 @@ function Toolbar({
 
 // ─── Card view (existing, slightly tightened) ──────────────────────────────
 
-function CardView({ properties, month }: { properties: PropertyRow[]; month: string }) {
+function CardView({
+  properties,
+  month,
+  flags,
+}: {
+  properties: PropertyRow[];
+  month: string;
+  flags: DashboardFlags;
+}) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {properties.map((p) => (
-        <PropertyCard key={p.propertyId} p={p} month={month} />
+        <PropertyCard key={p.propertyId} p={p} month={month} flags={flags} />
       ))}
     </div>
   );
 }
 
-function PropertyCard({ p, month }: { p: PropertyRow; month: string }) {
+function PropertyCard({
+  p,
+  month,
+  flags,
+}: {
+  p: PropertyRow;
+  month: string;
+  flags: DashboardFlags;
+}) {
   const totals = "totals" in p.draft ? p.draft.totals : null;
   const hasError = totals === null;
   const isPaid = p.issuedStatementId !== null;
+  // Stat grid column count tracks how many tiles the flags expose:
+  //   gross (always) + mgmtFee? + payout?  →  1..3
+  const visibleStats = 1 + (flags.showMgmtFee ? 1 : 0) + (flags.showPayout ? 1 : 0);
+  const statGridCols =
+    visibleStats === 3 ? "grid-cols-3" : visibleStats === 2 ? "grid-cols-2" : "grid-cols-1";
 
   return (
     <Link
@@ -632,14 +666,18 @@ function PropertyCard({ p, month }: { p: PropertyRow; month: string }) {
         </p>
       ) : (
         <>
-          <div className="grid grid-cols-3 gap-4 border-t border-black/[0.04] pt-4">
+          <div className={`grid ${statGridCols} gap-4 border-t border-black/[0.04] pt-4`}>
             <Stat label="Gross" value={fmtMoney(totals!.grossRevenue, p.currency)} muted />
-            <Stat label="Mgmt fee" value={fmtMoney(-totals!.mgmtFee, p.currency)} muted />
-            <Stat
-              label={isPaid ? "Paid out" : "Your payout"}
-              value={fmtMoney(totals!.ownerPayout, p.currency)}
-              accent
-            />
+            {flags.showMgmtFee && (
+              <Stat label="Mgmt fee" value={fmtMoney(-totals!.mgmtFee, p.currency)} muted />
+            )}
+            {flags.showPayout && (
+              <Stat
+                label={isPaid ? "Paid out" : "Your payout"}
+                value={fmtMoney(totals!.ownerPayout, p.currency)}
+                accent
+              />
+            )}
           </div>
           {/* Mortgage progress mini-card — at-a-glance "did this property
               clear its rent/mortgage this month?". Uses the SHARED
@@ -678,7 +716,15 @@ function PropertyCard({ p, month }: { p: PropertyRow; month: string }) {
 
 // ─── List view (scales to 30+) ─────────────────────────────────────────────
 
-function ListView({ properties, month }: { properties: PropertyRow[]; month: string }) {
+function ListView({
+  properties,
+  month,
+  flags,
+}: {
+  properties: PropertyRow[];
+  month: string;
+  flags: DashboardFlags;
+}) {
   const router = useRouter();
   // Default collapsed on mobile: hides the property NAME column so all four
   // numeric columns (Gross / Mgmt / Payout / Status) fit inside the
@@ -739,8 +785,8 @@ function ListView({ properties, month }: { properties: PropertyRow[]; month: str
           <tr style={{ background: "var(--cleaner-bg)" }}>
             <Th>{showNames ? "Property" : ""}</Th>
             <Th align="right">Gross</Th>
-            <Th align="right">Mgmt fee</Th>
-            <Th align="right">Your payout</Th>
+            {flags.showMgmtFee && <Th align="right">Mgmt fee</Th>}
+            {flags.showPayout && <Th align="right">Your payout</Th>}
             <Th align="center">Status</Th>
           </tr>
         </thead>
@@ -807,12 +853,16 @@ function ListView({ properties, month }: { properties: PropertyRow[]; month: str
                 <Td align="right" mono muted={totals === null} nowrap>
                   {totals ? fmtMoney(totals.grossRevenue, p.currency) : "—"}
                 </Td>
-                <Td align="right" mono muted={totals === null} nowrap>
-                  {totals ? fmtMoney(-totals.mgmtFee, p.currency) : "—"}
-                </Td>
-                <Td align="right" mono bold nowrap>
-                  {totals ? fmtMoney(totals.ownerPayout, p.currency) : "—"}
-                </Td>
+                {flags.showMgmtFee && (
+                  <Td align="right" mono muted={totals === null} nowrap>
+                    {totals ? fmtMoney(-totals.mgmtFee, p.currency) : "—"}
+                  </Td>
+                )}
+                {flags.showPayout && (
+                  <Td align="right" mono bold nowrap>
+                    {totals ? fmtMoney(totals.ownerPayout, p.currency) : "—"}
+                  </Td>
+                )}
                 <Td align="center">
                   {totals === null ? (
                     <Badge tone="error">error</Badge>
