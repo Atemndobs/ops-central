@@ -31,6 +31,30 @@ export function fmtMonth(monthKey: string): string {
 }
 
 /**
+ * Short month + zero-padded day, no year — e.g. "May 08". Used by the
+ * mortgage coverage subtitle so the line fits the mobile frame.
+ */
+export function fmtMonthDayPadded(ms: number): string {
+  return new Date(ms).toLocaleDateString("en-US", {
+    month: "short",
+    day: "2-digit",
+  });
+}
+
+/**
+ * Just the short month name from a "YYYY-MM" key — e.g. "2026-05" → "May".
+ * Year is dropped intentionally (used in copy where "Your May Mortgage…"
+ * implies the current period without needing the year stamp).
+ */
+export function fmtShortMonth(monthKey: string): string {
+  const [y, m] = monthKey.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleString("en-US", {
+    month: "short",
+    timeZone: "UTC",
+  });
+}
+
+/**
  * Compact American MM/DD/YY for narrow columns (mobile bookings table, etc.).
  * Example: 1747958400000 → "05/22/26"
  */

@@ -4,7 +4,7 @@ import { useConvexAuth, useQuery } from "convex/react";
 import { CheckCircle2, AlertTriangle, TrendingUp, Calendar } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { fmtDate, fmtMonth, fmtMoney } from "./owner-format";
+import { fmtDate, fmtMonth, fmtMonthDayPadded, fmtMoney, fmtShortMonth } from "./owner-format";
 
 /**
  * The pitch surface: "by day X you'd already have made the
@@ -111,21 +111,26 @@ function CoverHeader({
 
   let subtitle: React.ReactNode;
   if (coverage.status === "covered") {
+    // Tighter copy so the subtitle fits on one line on a 360-402px
+    // mobile frame. Drop the "$X ahead" tail (still implied by the
+    // green fill on the progress bar) and the redundant year.
+    const coveredOnLabel = fmtMonthDayPadded(coverage.coveredOn);
+    const shortMonth = fmtShortMonth(month);
     subtitle = coverage.isCurrentMonth ? (
       <>
-        {monthLabel} lease covered by{" "}
+        Your {shortMonth} Mortgage was covered by{" "}
         <span style={{ color: "var(--cleaner-ink)", fontWeight: 600 }}>
-          {fmtDate(coverage.coveredOn)}
-        </span>
-        {" — "}
-        <span style={{ color: "var(--cleaner-ink)", fontWeight: 600 }}>
-          {fmtMoney(coverage.amountAhead, currency)} ahead
+          {coveredOnLabel}
         </span>
         .
       </>
     ) : (
       <>
-        {monthLabel} lease covered — {fmtMoney(coverage.amountAhead, currency)} ahead.
+        {monthLabel} Mortgage was covered by{" "}
+        <span style={{ color: "var(--cleaner-ink)", fontWeight: 600 }}>
+          {coveredOnLabel}
+        </span>
+        .
       </>
     );
   } else if (coverage.status === "on_track") {
