@@ -136,12 +136,10 @@ export function OwnerDashboardClient() {
         selectedCities={selectedCities}
         selectedStates={selectedStates}
         onToggleCity={(c) =>
-          setSelectedCities((prev) => {
-            const next = new Set(prev);
-            if (next.has(c)) next.delete(c);
-            else next.add(c);
-            return next;
-          })
+          // Single-select: clicking a new city replaces the selection;
+          // clicking the currently-selected city clears it. Owners found
+          // multi-select confusing when their portfolio spans 2+ cities.
+          setSelectedCities((prev) => (prev.has(c) ? new Set() : new Set([c])))
         }
         onToggleState={(s) =>
           setSelectedStates((prev) => {
