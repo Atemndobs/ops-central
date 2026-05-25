@@ -8,6 +8,7 @@ import {
   ArrowRight,
   Bell,
   Building2,
+  ChevronDown,
   ChevronsLeftRight,
   ChevronsRightLeft,
   FileText,
@@ -327,7 +328,16 @@ function EmptyFiltered() {
   );
 }
 
-// ─── FilterBar — chips for city/state + sort + group ───────────────────────
+// ─── FilterBar — collapsible buttons that unfold inline panels ─────────────
+
+type FilterPanel = null | "city" | "state" | "sort" | "group";
+
+const SORT_OPTIONS: Array<{ id: SortKey; label: string }> = [
+  { id: "payout", label: "↓ Payout" },
+  { id: "gross", label: "↓ Gross" },
+  { id: "name", label: "A → Z Name" },
+  { id: "pendingFirst", label: "Pending first" },
+];
 
 function FilterBar({
   facets,
@@ -352,137 +362,231 @@ function FilterBar({
   groupBy: GroupBy;
   onGroupByChange: (g: GroupBy) => void;
 }) {
+  // One panel open at a time; click the same trigger again to collapse.
+  const [open, setOpen] = useState<FilterPanel>(null);
+
   // Don't bother rendering filter chips if there's only one option per axis
   // (or none) — the chips would be pure noise on a single-property dashboard.
   const showCityFilter = facets.cities.length > 1;
   const showStateFilter = facets.states.length > 1;
   const hasActive = selectedCities.size > 0 || selectedStates.size > 0;
-  // Hide the whole bar if no filters apply AND no sort/group choices matter
-  // (only 1 property in portfolio).
-  if (!showCityFilter && !showStateFilter && facets.cities.length <= 1) {
+  // Hide the whole bar if nothing useful to render.
+  if (!showCityFilter && !showStateFilter) {
     return null;
   }
 
+  function toggle(panel: FilterPanel) {
+    setOpen((cur) => (cur === panel ? null : panel));
+  }
+
+  const sortLabel = SORT_OPTIONS.find((o) => o.id === sortKey)?.label ?? "Sort";
+  const groupLabel =
+    groupBy === "none" ? "No grouping" : groupBy === "city" ? "Group by city" : "Group by state";
+
   return (
     <div
-      className="flex flex-wrap items-center gap-2 rounded-2xl border border-black/[0.06] p-3"
+      className="rounded-2xl border border-black/[0.06]"
       style={{ background: "var(--cleaner-surface)" }}
     >
-      {showCityFilter && (
-        <ChipGroup
-          icon={<Filter size={12} />}
-          label="City"
-          values={facets.cities}
-          selected={selectedCities}
-          onToggle={onToggleCity}
+      {/* Always-visible single-row toolbar. Each trigger toggles its
+          panel below. Active filter counts shown as small badges so
+          you can see what's applied without expanding. */}
+      <div className="flex flex-wrap items-center gap-1.5 p-2">
+        {showCityFilter && (
+          <FilterTrigger
+            icon={<Filter size={12} />}
+            label="City"
+            count={selectedCities.size}
+            active={open === "city"}
+            onClick={() => toggle("city")}
+          />
+        )}
+        {showStateFilter && (
+          <FilterTrigger
+            icon={<MapPin size={12} />}
+            label="State"
+            count={selectedStates.size}
+            active={open === "state"}
+            onClick={() => toggle("state")}
+          />
+        )}
+        <FilterTrigger
+          label={`Sort: ${sortLabel}`}
+          active={open === "sort"}
+          onClick={() => toggle("sort")}
         />
-      )}
-      {showStateFilter && (
-        <ChipGroup
-          icon={<MapPin size={12} />}
-          label="State"
-          values={facets.states}
-          selected={selectedStates}
-          onToggle={onToggleState}
-        />
-      )}
-
-      <div className="ml-auto flex items-center gap-2">
+        {(showCityFilter || showStateFilter) && (
+          <FilterTrigger
+            label={`Group: ${groupLabel}`}
+            active={open === "group"}
+            onClick={() => toggle("group")}
+          />
+        )}
         {hasActive && (
           <button
             onClick={onClearFilters}
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] hover:bg-black/[0.04]"
+            className="ml-auto flex items-center gap-1 rounded-md px-2 py-1 text-[11px] hover:bg-black/[0.04]"
             style={{ color: "var(--cleaner-muted)" }}
           >
             <X size={10} /> Clear
           </button>
         )}
-
-        <div className="w-[160px]">
-          <SearchableSelect
-            aria-label="Sort by"
-            value={sortKey}
-            onChange={(id) => id && onSortChange(id as SortKey)}
-            items={[
-              { id: "payout", label: "↓ Payout" },
-              { id: "gross", label: "↓ Gross" },
-              { id: "name", label: "A → Z Name" },
-              { id: "pendingFirst", label: "Pending first" },
-            ]}
-            placeholder="Sort by…"
-          />
-        </div>
-
-        {(showCityFilter || showStateFilter) && (
-          <div className="w-[160px]">
-            <SearchableSelect
-              aria-label="Group by"
-              value={groupBy}
-              onChange={(id) => id && onGroupByChange(id as GroupBy)}
-              items={[
-                { id: "none", label: "No grouping" },
-                ...(showCityFilter
-                  ? [{ id: "city", label: "Group by city" }]
-                  : []),
-                ...(showStateFilter
-                  ? [{ id: "state", label: "Group by state" }]
-                  : []),
-              ]}
-              placeholder="Group by…"
-            />
-          </div>
-        )}
       </div>
+
+      {/* Unfolded panel — chips for city/state, dropdown for sort/group. */}
+      {open !== null && (
+        <div
+          className="border-t border-black/[0.04] p-3"
+          style={{ background: "var(--cleaner-bg)" }}
+        >
+          {open === "city" && (
+            <ChipPanel
+              values={facets.cities}
+              selected={selectedCities}
+              onToggle={onToggleCity}
+            />
+          )}
+          {open === "state" && (
+            <ChipPanel
+              values={facets.states}
+              selected={selectedStates}
+              onToggle={onToggleState}
+            />
+          )}
+          {open === "sort" && (
+            <div className="w-full max-w-[260px]">
+              <SearchableSelect
+                aria-label="Sort by"
+                value={sortKey}
+                onChange={(id) => {
+                  if (id) onSortChange(id as SortKey);
+                  setOpen(null);
+                }}
+                items={SORT_OPTIONS}
+                placeholder="Sort by…"
+              />
+            </div>
+          )}
+          {open === "group" && (
+            <div className="w-full max-w-[260px]">
+              <SearchableSelect
+                aria-label="Group by"
+                value={groupBy}
+                onChange={(id) => {
+                  if (id) onGroupByChange(id as GroupBy);
+                  setOpen(null);
+                }}
+                items={[
+                  { id: "none", label: "No grouping" },
+                  ...(showCityFilter
+                    ? [{ id: "city", label: "Group by city" }]
+                    : []),
+                  ...(showStateFilter
+                    ? [{ id: "state", label: "Group by state" }]
+                    : []),
+                ]}
+                placeholder="Group by…"
+              />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-function ChipGroup({
+/**
+ * Single trigger button in the FilterBar toolbar. Renders an icon (optional),
+ * label, an active-count badge (e.g. "(2)") when applicable, and a chevron
+ * that rotates when the panel is open.
+ */
+function FilterTrigger({
   icon,
   label,
+  count,
+  active,
+  onClick,
+}: {
+  icon?: React.ReactNode;
+  label: string;
+  count?: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-expanded={active}
+      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] transition"
+      style={{
+        background: active ? "var(--cleaner-primary)" : "transparent",
+        color: active ? "white" : "var(--cleaner-ink)",
+        border: active
+          ? "1px solid var(--cleaner-primary)"
+          : "1px solid rgba(0,0,0,0.1)",
+        fontFamily: "var(--font-cleaner-mono)",
+        letterSpacing: "0.04em",
+      }}
+    >
+      {icon}
+      <span>{label}</span>
+      {count !== undefined && count > 0 && (
+        <span
+          className="rounded-full px-1.5 text-[10px]"
+          style={{
+            background: active ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.08)",
+          }}
+        >
+          {count}
+        </span>
+      )}
+      <ChevronDown
+        size={10}
+        className="transition-transform"
+        style={{ transform: active ? "rotate(180deg)" : undefined }}
+      />
+    </button>
+  );
+}
+
+/** Chip list rendered inside an unfolded City or State panel. */
+function ChipPanel({
   values,
   selected,
   onToggle,
 }: {
-  icon: React.ReactNode;
-  label: string;
   values: string[];
   selected: Set<string>;
   onToggle: (v: string) => void;
 }) {
   return (
-    <div className="flex items-center gap-1.5">
-      <span
-        className="flex items-center gap-1 text-[10px] uppercase tracking-wider"
-        style={{ color: "var(--cleaner-muted)", fontFamily: "var(--font-cleaner-mono)" }}
-      >
-        {icon} {label}
-      </span>
-      <div className="flex flex-wrap gap-1">
-        {values.map((v) => {
-          const isActive = selected.has(v);
-          return (
-            <button
-              key={v}
-              onClick={() => onToggle(v)}
-              className="rounded-full px-2 py-0.5 text-[11px] transition"
-              style={{
-                background: isActive
-                  ? "var(--cleaner-primary)"
-                  : "var(--cleaner-bg)",
-                color: isActive ? "white" : "var(--cleaner-ink)",
-                fontFamily: "var(--font-cleaner-mono)",
-              }}
-              aria-pressed={isActive}
-            >
-              {v}
-            </button>
-          );
-        })}
-      </div>
+    <div className="flex flex-wrap gap-1.5">
+      {values.map((v) => {
+        const isActive = selected.has(v);
+        return (
+          <button
+            key={v}
+            onClick={() => onToggle(v)}
+            className="rounded-full px-2.5 py-1 text-[11px] transition"
+            style={{
+              background: isActive ? "var(--cleaner-primary)" : "var(--cleaner-surface)",
+              color: isActive ? "white" : "var(--cleaner-ink)",
+              border: "1px solid rgba(0,0,0,0.06)",
+              fontFamily: "var(--font-cleaner-mono)",
+            }}
+            aria-pressed={isActive}
+          >
+            {v}
+          </button>
+        );
+      })}
     </div>
   );
 }
+
+// `ChipGroup` retired — replaced by `ChipPanel` rendered inside the
+// FilterBar's collapsible panel. The old inline chip list is no longer
+// shown by default; it now lives behind the City/State trigger buttons.
 
 type PropertyRow = {
   propertyId: string;
