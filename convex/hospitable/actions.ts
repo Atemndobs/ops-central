@@ -92,6 +92,60 @@ function dateToEpochMs(value: unknown): number | undefined {
   return undefined;
 }
 
+/**
+ * Follow Hospitable's pagination. The API uses a Laravel-style envelope:
+ *   { data: [...], meta: { current_page, last_page, per_page, total },
+ *     links: { next, prev, first, last } }
+ *
+ * We send `per_page=100` to minimise round-trips, then keep paging until
+ * we hit `meta.last_page` (or `links.next === null`, as a fallback).
+ * Bounded by `maxPages` (50 × 100 = 5000 reservations) so a misconfigured
+ * loop can never run away.
+ *
+ * Returns the concatenated `data[]` arrays. Caller still passes the
+ * result through `getArrayFromApiPayload` semantics if needed (we do
+ * here).
+ */
+async function fetchAllHospitablePages(
+  apiKey: string,
+  url: string,
+  ctx?: UsageLogCtx,
+  feature: string = "hospitable_sync",
+  maxPages: number = 50,
+): Promise<unknown[]> {
+  const accumulated: unknown[] = [];
+  const u = new URL(url);
+  if (!u.searchParams.has("per_page")) u.searchParams.set("per_page", "100");
+
+  let page = 1;
+  while (page <= maxPages) {
+    u.searchParams.set("page", String(page));
+    const payload = await fetchHospitableJson(apiKey, u.toString(), ctx, feature);
+    const rows = getArrayFromApiPayload(payload);
+    accumulated.push(...rows);
+
+    // Decide whether to keep going.
+    if (rows.length === 0) break;
+    if (isRecord(payload)) {
+      const meta = isRecord(payload.meta) ? payload.meta : null;
+      const links = isRecord(payload.links) ? payload.links : null;
+      const lastPage = meta && typeof meta.last_page === "number" ? meta.last_page : null;
+      const nextLink = links && typeof links.next === "string" ? links.next : null;
+      if (lastPage !== null) {
+        if (page >= lastPage) break;
+      } else if (nextLink === null) {
+        // No meta and no next link → assume single page or done.
+        break;
+      }
+    } else {
+      // Non-envelope response → can't paginate further.
+      break;
+    }
+    page += 1;
+  }
+  return accumulated;
+}
+
 function getArrayFromApiPayload(payload: unknown): unknown[] {
   if (Array.isArray(payload)) {
     return payload;
@@ -588,13 +642,15 @@ export const syncReservations = internalAction({
       const checkOutFrom = windowStart.toISOString().split("T")[0];
       const checkOutTo = windowEnd.toISOString().split("T")[0];
 
-      const propertiesPayload = await fetchHospitableJson(
+      // Page through ALL properties — previously we only got page 1
+      // (~3 properties) and silently skipped the rest of the portfolio
+      // for reservation sync.
+      const properties = await fetchAllHospitablePages(
         apiKey,
         `${baseUrl}/properties`,
         ctx,
         "hospitable_reservations_sync",
       );
-      const properties = getArrayFromApiPayload(propertiesPayload);
 
       const reservations: NormalizedReservation[] = [];
       const sourceErrors: string[] = [];
@@ -614,14 +670,15 @@ export const syncReservations = internalAction({
         params.set("check_out_to", checkOutTo);
         params.append("properties[]", propertyId);
 
-        const reservationPayload = await fetchHospitableJson(
+        // Page through ALL reservations matching the window — Hospitable
+        // paginates at ~10/page by default, which is why a 3-year backfill
+        // was previously returning only the first page's worth.
+        const propertyReservations = await fetchAllHospitablePages(
           apiKey,
           `${baseUrl}/reservations?${params.toString()}`,
           ctx,
           "hospitable_reservations_sync",
         );
-
-        const propertyReservations = getArrayFromApiPayload(reservationPayload);
 
         for (const rawReservation of propertyReservations) {
           const { reservation, error } = normalizeReservation(rawReservation, propertyId);
