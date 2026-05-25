@@ -5,7 +5,7 @@ import { useConvexAuth, useQuery } from "convex/react";
 import { CheckCircle2, AlertTriangle, TrendingUp, Calendar } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { fmtDate, fmtMonth, fmtMonthDayPadded, fmtMoney, fmtShortMonth } from "./owner-format";
+import { fmtDate, fmtMonth, fmtMonthDayPadded, fmtMoney } from "./owner-format";
 
 /**
  * The pitch surface: "by day X you'd already have made the
@@ -116,18 +116,12 @@ function CoverHeader({
     // mobile frame. Drop the "$X ahead" tail (still implied by the
     // green fill on the progress bar) and the redundant year.
     const coveredOnLabel = fmtMonthDayPadded(coverage.coveredOn);
-    const shortMonth = fmtShortMonth(month);
-    subtitle = coverage.isCurrentMonth ? (
+    // Drop the leading month label — context (card is scoped to the
+    // current period anyway) made "April 2026 Mortgage was covered…"
+    // feel redundant. Start straight with "Mortgage was covered by…".
+    subtitle = (
       <>
-        {shortMonth} Mortgage was covered by{" "}
-        <span style={{ color: "var(--cleaner-ink)", fontWeight: 600 }}>
-          {coveredOnLabel}
-        </span>
-        .
-      </>
-    ) : (
-      <>
-        {monthLabel} Mortgage was covered by{" "}
+        Mortgage was covered by{" "}
         <span style={{ color: "var(--cleaner-ink)", fontWeight: 600 }}>
           {coveredOnLabel}
         </span>
