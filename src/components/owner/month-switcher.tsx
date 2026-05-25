@@ -59,33 +59,10 @@ export function MonthSwitcher({
           >
             Live
           </span>
-        ) : month < cur ? (
-          <span
-            className="rounded-full px-2 py-0.5 text-[10px]"
-            style={{
-              background: "var(--cleaner-bg)",
-              color: "var(--cleaner-muted)",
-              fontFamily: "var(--font-cleaner-mono)",
-              letterSpacing: "0.12em",
-              textTransform: "uppercase",
-            }}
-          >
-            Past
-          </span>
-        ) : (
-          <span
-            className="rounded-full px-2 py-0.5 text-[10px]"
-            style={{
-              background: "var(--cleaner-bg)",
-              color: "var(--cleaner-muted)",
-              fontFamily: "var(--font-cleaner-mono)",
-              letterSpacing: "0.12em",
-              textTransform: "uppercase",
-            }}
-          >
-            Future
-          </span>
-        )}
+        ) : null}
+        {/* Past / Future badges dropped — they pushed the switcher onto
+            two lines on narrow mobile widths and the chevrons + month
+            label already make time direction obvious. */}
       </div>
       <button
         onClick={() => onMonthChange(shiftMonth(month, 1))}
