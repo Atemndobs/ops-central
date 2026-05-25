@@ -63,7 +63,14 @@ export function OwnerMortgagePageClient({
       </div>
 
       <div className="rounded-2xl border border-black/[0.06] bg-[var(--cleaner-surface)] p-4">
-        <MonthSwitcher month={month} onMonthChange={setMonth} />
+        {/* Floor the month picker at the property's first-activity month
+            so users can't page back into months that pre-date the
+            property's presence on the platform. */}
+        <MonthSwitcher
+          month={month}
+          onMonthChange={setMonth}
+          minMonth={prop.firstActivityMonth ?? undefined}
+        />
       </div>
 
       <OwnerMortgageCoverCard
