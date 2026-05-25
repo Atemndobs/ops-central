@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useConvexAuth, useQuery } from "convex/react";
 import { CheckCircle2, AlertTriangle, TrendingUp, Calendar } from "lucide-react";
 import { api } from "@convex/_generated/api";
@@ -366,10 +367,16 @@ function HistoryTile({
             currency,
           )} lease`;
 
+  // Clicking a tile drops the user into that month — same page, just
+  // rewrites ?month=YYYY-MM. Lets owners jump straight to "what
+  // happened in February?" without paging through the picker.
   return (
-    <div
+    <Link
+      href={`?month=${m.month}`}
+      scroll={false}
       title={tooltip}
-      className="flex h-9 w-12 cursor-help flex-col items-center justify-center rounded-md"
+      aria-label={tooltip}
+      className="flex h-9 w-12 flex-col items-center justify-center rounded-md transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cleaner-primary)]"
       style={{
         background: palette.bg,
         color: palette.fg,
@@ -381,7 +388,7 @@ function HistoryTile({
       <div style={{ opacity: 0.7, fontSize: 9 }}>
         {m.status === "covered" ? "✓" : m.status === "shortfall" ? "—" : "·"}
       </div>
-    </div>
+    </Link>
   );
 }
 
