@@ -111,14 +111,10 @@ export function OwnerPropertyClient({
               <MapPin size={14} className="shrink-0" />
               <span className="truncate">{prop.property.address}</span>
             </p>
-            <p className="mt-2 text-xs" style={{ color: "var(--cleaner-muted)" }}>
-              You own{" "}
-              <span style={{ fontWeight: 700, color: "var(--cleaner-ink)" }}>
-                {(prop.ownership.stakePct * 100).toFixed(0)}%
-              </span>{" "}
-              as {prop.ownership.role}
-              {prop.ownership.isPrimaryApprover && " · primary approver"}
-            </p>
+            {/* Stake + approver line hidden 2026-05-25 — owners found
+                the "You own 100% as landlord · primary approver"
+                reminder noisy. Restore via git history if multi-owner
+                portfolios need it later. */}
           </div>
           {showSiblingNav && (
             <SiblingNav
