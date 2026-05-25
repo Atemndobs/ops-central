@@ -633,31 +633,30 @@ function Toolbar({
     <div className="flex items-center justify-between gap-3">
       <MonthSwitcher month={month} onMonthChange={onMonthChange} />
 
-      <div
-        className="flex items-center rounded-lg border border-black/[0.06] p-0.5"
-        style={{ background: "var(--cleaner-surface)" }}
+      {/* Single toggle button — click flips between the two view modes.
+          Shows the icon + label of the CURRENT mode so the affordance is
+          self-describing (no second tab to compare against). Hovering or
+          long-pressing surfaces the alternate mode in the tooltip. */}
+      <button
+        onClick={() => onViewModeChange(viewMode === "card" ? "list" : "card")}
+        className="flex items-center gap-1.5 rounded-lg border border-black/[0.06] px-3 py-1 text-xs hover:bg-black/[0.02]"
+        style={{
+          background: "var(--cleaner-surface)",
+          color: "var(--cleaner-ink)",
+        }}
+        aria-label={viewMode === "card" ? "Switch to list view" : "Switch to card view"}
+        title={viewMode === "card" ? "Switch to list view" : "Switch to card view"}
       >
-        <button
-          onClick={() => onViewModeChange("card")}
-          className="flex items-center gap-1 rounded-md px-2 py-1 text-xs"
-          style={{
-            background: viewMode === "card" ? "var(--cleaner-bg)" : "transparent",
-            color: viewMode === "card" ? "var(--cleaner-ink)" : "var(--cleaner-muted)",
-          }}
-        >
-          <LayoutGrid size={12} /> Cards
-        </button>
-        <button
-          onClick={() => onViewModeChange("list")}
-          className="flex items-center gap-1 rounded-md px-2 py-1 text-xs"
-          style={{
-            background: viewMode === "list" ? "var(--cleaner-bg)" : "transparent",
-            color: viewMode === "list" ? "var(--cleaner-ink)" : "var(--cleaner-muted)",
-          }}
-        >
-          <Rows3 size={12} /> List
-        </button>
-      </div>
+        {viewMode === "card" ? (
+          <>
+            <LayoutGrid size={12} /> Cards
+          </>
+        ) : (
+          <>
+            <Rows3 size={12} /> List
+          </>
+        )}
+      </button>
     </div>
   );
 }
