@@ -464,6 +464,26 @@ export const markSyncFailed = internalMutation({
  * onto an existing stay. Never overwrites a set field with undefined so a
  * partial refetch can't clobber prior data.
  */
+/**
+ * Internal patch used by `backfillReservationPlatforms` — sets the
+ * booking platform (e.g. "airbnb", "booking", "homeaway") on an existing
+ * stay. No-op if undefined — never clobbers a known platform.
+ */
+export const patchStayPlatform = internalMutation({
+  args: {
+    stayId: v.id("stays"),
+    platform: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (args.platform === undefined) return { patched: false };
+    await ctx.db.patch(args.stayId, {
+      platform: args.platform,
+      updatedAt: Date.now(),
+    });
+    return { patched: true };
+  },
+});
+
 export const patchStayFinancials = internalMutation({
   args: {
     stayId: v.id("stays"),
