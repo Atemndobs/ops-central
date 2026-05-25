@@ -1481,7 +1481,11 @@ const featureFlags = defineTable({
     // Owner portal: show the "Your payout" tile inside the MonthSummary
     // card on the per-property page. Default ON — the payout is the
     // headline number — toggle OFF to demo a "gross + fee only" view.
-    v.literal("owner_show_payout")
+    v.literal("owner_show_payout"),
+    // Admin Owner Overview: if ON, a monthly cron auto-creates a DRAFT
+    // statement for every (owner, property, prev-month). Default OFF —
+    // admins opt in once they trust the flow.
+    v.literal("owner_overview_auto_drafts")
     // future flags go here
   ),
   enabled: v.boolean(),

@@ -16,6 +16,7 @@ import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import {
+  internalMutation,
   mutation,
   query,
   type MutationCtx,
@@ -536,3 +537,141 @@ function formatMonthKey(periodStart: number): string {
     .toString()
     .padStart(2, "0")}`;
 }
+
+/**
+ * Recall an issued/sent statement. Flips status → "recalled". The PDF
+ * artifact is retained (immutable history per plan §"Open questions");
+ * a follow-up draft can be created via upsertDraft for the same period.
+ */
+export const recallStatement = mutation({
+  args: {
+    statementId: v.id("ownerStatements"),
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireRole(ctx, ["admin", "property_ops"]);
+    const s = await ctx.db.get(args.statementId);
+    if (!s) throw new ConvexError("Statement not found");
+    if (s.status !== "issued" && s.status !== "sent") {
+      throw new ConvexError(`Cannot recall: status=${s.status}`);
+    }
+    if (!args.reason.trim()) {
+      throw new ConvexError("Recall requires a non-empty reason");
+    }
+    const now = Date.now();
+    await ctx.db.patch(args.statementId, {
+      status: "recalled",
+      auditTrail: [
+        ...(s.auditTrail ?? []),
+        {
+          at: now,
+          actorUserId: caller._id,
+          action: "recalled",
+          note: args.reason.slice(0, 500),
+        },
+      ],
+      updatedAt: now,
+    });
+    return { statementId: args.statementId };
+  },
+});
+
+// ─── Auto-create monthly drafts (cron-driven) ──────────────────────────────
+
+/**
+ * Internal mutation called on the 1st of each month. For every (active
+ * owner, property) pair, upsert a DRAFT statement for the previous month
+ * if one does not already exist. Pre-populates with no exclusions / no
+ * overrides — admins still have to explicitly issue.
+ *
+ * Default-OFF behind a feature flag per plan §"Auto-create cron".
+ * Toggle via `adminFeatureFlags.owner_overview_auto_drafts = true`.
+ */
+export const autoCreateMonthlyDrafts = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    // Feature-flag gate — default OFF so the cron is inert until the user
+    // flips the flag in Settings. The featureFlags table already exists.
+    const flagRow = await ctx.db
+      .query("featureFlags")
+      .withIndex("by_key", (q) =>
+        q.eq("key", "owner_overview_auto_drafts"),
+      )
+      .first();
+    if (!flagRow || !flagRow.enabled) {
+      return { skipped: "flag_off" as const };
+    }
+
+    // Previous calendar month, UTC.
+    const now = new Date();
+    const prevMonthDate = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1),
+    );
+    const periodStart = prevMonthDate.getTime();
+    const periodEnd = Date.UTC(
+      prevMonthDate.getUTCFullYear(),
+      prevMonthDate.getUTCMonth() + 1,
+      1,
+    );
+
+    const ownerships = await loadActiveOwnerships(ctx);
+    const propertyIds = new Set(ownerships.map((o) => o.propertyId));
+
+    let created = 0;
+    let skipped = 0;
+    for (const propertyId of propertyIds) {
+      const existing = await ctx.db
+        .query("ownerStatements")
+        .withIndex("by_property_and_period", (q) =>
+          q.eq("propertyId", propertyId).eq("periodStart", periodStart),
+        )
+        .collect();
+      if (existing.length > 0) {
+        skipped += 1;
+        continue;
+      }
+      try {
+        const rawInputs = await loadEngineInputs(
+          ctx,
+          propertyId,
+          periodStart,
+          periodEnd,
+        );
+        const output = computeStatementForPeriod(rawInputs);
+        const auditEntry = {
+          at: Date.now(),
+          // Cron-created drafts have no human actor — attribute to a
+          // synthetic ID by reusing the first owner of the property as
+          // placeholder so the auditTrail.actorUserId field stays a valid
+          // user id. The "action" string makes intent clear.
+          actorUserId: ownerships.find((o) => o.propertyId === propertyId)!
+            .userId,
+          action: "draft_created_by_cron",
+        };
+        await ctx.db.insert("ownerStatements", {
+          propertyId,
+          periodStart,
+          periodEnd,
+          status: "draft",
+          snapshotTotals: output.totals,
+          feeConfigSnapshot: output.feeConfigSnapshot,
+          sourceRefs: output.sourceRefs,
+          excludedStayIds: [],
+          excludedCostItemIds: [],
+          costBucketOverrides: [],
+          auditTrail: [auditEntry],
+          createdAt: Date.now(),
+        });
+        created += 1;
+      } catch (err) {
+        // Engine threw (e.g. missing fee config) — skip and continue
+        // sweeping. Admin will see "no draft" + can manually upsertDraft.
+        skipped += 1;
+        console.warn(
+          `autoCreateMonthlyDrafts: skipped ${propertyId}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+    return { created, skipped, period: formatMonthKey(periodStart) };
+  },
+});

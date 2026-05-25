@@ -147,4 +147,15 @@ crons.cron(
   { lookbackDays: 30, dryRun: false },
 );
 
+// Admin Owner Overview — auto-create monthly DRAFT statements on the 1st
+// of each month for the previous period. Default OFF behind the
+// `owner_overview_auto_drafts` feature flag, mirroring Wave 3b auto-approve.
+// See Docs/2026-05-25-admin-owner-overview-plan.md §"Phase 5".
+crons.cron(
+  "owner-overview-auto-create-monthly-drafts",
+  "0 4 1 * *", // 04:00 UTC on the 1st of each month
+  internal.admin.ownerOverview.autoCreateMonthlyDrafts,
+  {},
+);
+
 export default crons;

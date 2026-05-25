@@ -10,7 +10,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { Loader2, Save, Send, CheckCircle2 } from "lucide-react";
+import { Loader2, Save, Send, CheckCircle2, Undo2 } from "lucide-react";
 
 type EditorBooking = {
   _id: Id<"stays">;
@@ -130,6 +130,7 @@ export function StatementEditor({
   const upsertDraft = useMutation(api.admin.ownerOverview.upsertDraft);
   const markReady = useMutation(api.admin.ownerOverview.markReady);
   const issueStatement = useMutation(api.admin.ownerOverview.issueStatement);
+  const recallStatement = useMutation(api.admin.ownerOverview.recallStatement);
 
   // Dirty = any local change diverges from server-seeded initial.
   const dirty = useMemo(() => {
@@ -220,7 +221,7 @@ export function StatementEditor({
     }
     if (
       !confirm(
-        "Issue this statement? The owner will be notified and a PDF will be generated. This is irreversible (use Recall in Phase 5).",
+        "Issue this statement? The owner will be notified and a PDF will be generated. To amend later, use Recall.",
       )
     ) {
       return;
@@ -229,6 +230,23 @@ export function StatementEditor({
     setError(null);
     try {
       await issueStatement({ statementId: draftId });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRecall() {
+    if (!draftId) return;
+    const reason = prompt(
+      "Why are you recalling this statement? (shown in audit trail)",
+    );
+    if (!reason || !reason.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await recallStatement({ statementId: draftId, reason: reason.trim() });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -290,6 +308,17 @@ export function StatementEditor({
               <Send className="h-3 w-3" />
               Issue statement
             </button>
+            {locked && (
+              <button
+                type="button"
+                onClick={handleRecall}
+                disabled={saving}
+                className="inline-flex items-center gap-1 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs text-red-700 hover:bg-red-500/20 disabled:opacity-40 dark:text-red-300"
+              >
+                <Undo2 className="h-3 w-3" />
+                Recall
+              </button>
+            )}
           </div>
         </div>
         {error && (
@@ -299,8 +328,8 @@ export function StatementEditor({
         )}
         {locked && (
           <p className="mt-2 text-xs text-muted-foreground">
-            This statement is {status} — immutable. Use Recall in a later
-            phase to amend.
+            This statement is {status} — immutable. Recall to flip status to{" "}
+            <code>recalled</code>; then create a fresh draft for the period.
           </p>
         )}
       </div>
