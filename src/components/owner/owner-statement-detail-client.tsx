@@ -14,7 +14,10 @@ export function OwnerStatementDetailClient({
   statementId: Id<"ownerStatements">;
 }) {
   const { isAuthenticated, isLoading } = useConvexAuth();
-  const statement = useQuery(
+  // Query now returns `{ statement, flags }` so the statement detail page
+  // can honour the same owner-portal admin flags as the dashboard +
+  // summary card (single source of truth: featureFlags table).
+  const result = useQuery(
     api.owner.queries.getOwnerStatement,
     isAuthenticated ? { statementId } : "skip",
   );
@@ -24,15 +27,16 @@ export function OwnerStatementDetailClient({
   );
   const pdfUrl = useQuery(
     api.files.queries.getFileUrl,
-    isAuthenticated && statement?.pdfStorageId
-      ? { storageId: statement.pdfStorageId }
+    isAuthenticated && result?.statement.pdfStorageId
+      ? { storageId: result.statement.pdfStorageId }
       : "skip",
   );
 
-  if (isLoading || statement === undefined || property === undefined) {
+  if (isLoading || result === undefined || property === undefined) {
     return <div className="h-96 animate-pulse rounded-2xl bg-white" />;
   }
 
+  const { statement, flags } = result;
   const currency = property.property.currency ?? "USD";
   const t = statement.snapshotTotals;
 
@@ -58,22 +62,26 @@ export function OwnerStatementDetailClient({
         </div>
       </div>
 
-      {/* The big number */}
-      <section className="rounded-2xl border-2 border-[var(--cleaner-primary)]/20 bg-gradient-to-br from-white to-[var(--cleaner-bg)] p-8">
-        <div className="text-xs uppercase tracking-wide text-[var(--cleaner-muted)]">Your payout</div>
-        <div className="mt-2 font-mono text-5xl font-bold tabular-nums text-[var(--cleaner-primary)]">
-          {fmtMoney(t.ownerPayout, currency)}
-        </div>
-        {t.perOwner.length > 1 && (
-          <div className="mt-3 text-xs text-[var(--cleaner-muted)]">
-            You hold{" "}
-            <span className="font-semibold text-[var(--cleaner-ink)]">
-              {(property.ownership.stakePct * 100).toFixed(0)}%
-            </span>{" "}
-            stake. Total NOI after fee = {fmtMoney(t.ownerPayout / property.ownership.stakePct, currency)}.
+      {/* The big number — admin-gated via `owner_show_payout`. When the
+          flag is off, the hero collapses and the waterfall below still
+          tells the story without the headline payout. */}
+      {flags.showPayout && (
+        <section className="rounded-2xl border-2 border-[var(--cleaner-primary)]/20 bg-gradient-to-br from-white to-[var(--cleaner-bg)] p-8">
+          <div className="text-xs uppercase tracking-wide text-[var(--cleaner-muted)]">Your payout</div>
+          <div className="mt-2 font-mono text-5xl font-bold tabular-nums text-[var(--cleaner-primary)]">
+            {fmtMoney(t.ownerPayout, currency)}
           </div>
-        )}
-      </section>
+          {t.perOwner.length > 1 && (
+            <div className="mt-3 text-xs text-[var(--cleaner-muted)]">
+              You hold{" "}
+              <span className="font-semibold text-[var(--cleaner-ink)]">
+                {(property.ownership.stakePct * 100).toFixed(0)}%
+              </span>{" "}
+              stake. Total NOI after fee = {fmtMoney(t.ownerPayout / property.ownership.stakePct, currency)}.
+            </div>
+          )}
+        </section>
+      )}
 
       {/* The waterfall */}
       <section className="rounded-2xl border border-black/[0.06] bg-white p-6">
@@ -110,14 +118,21 @@ export function OwnerStatementDetailClient({
               accent: true,
               tooltip: `Formula: max(0, ${t.feeBase}) × ${t.feePct}. Locked at issuance.`,
             },
-            {
-              label: "Owner payout",
-              value: t.ownerPayout,
-              currency,
-              divider: true,
-              bold: true,
-              hero: true,
-            },
+            // Final hero row — admin-gated via `owner_show_payout`. NOI
+            // and the mgmt-fee line above already give the full picture
+            // when the payout itself is hidden.
+            ...(flags.showPayout
+              ? [
+                  {
+                    label: "Owner payout",
+                    value: t.ownerPayout,
+                    currency,
+                    divider: true,
+                    bold: true,
+                    hero: true,
+                  },
+                ]
+              : []),
           ]}
         />
 
