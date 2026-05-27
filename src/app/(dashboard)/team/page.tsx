@@ -57,6 +57,7 @@ const TEAM_VIEW_MODE_STORAGE_KEY = "opscentral.team.defaultViewMode";
 const TEAM_DENSITY_STORAGE_KEY = "opscentral.team.density";
 const TEAM_GROUP_BY_STORAGE_KEY = "opscentral.team.groupBy";
 const TEAM_RAIL_OPEN_STORAGE_KEY = "opscentral.team.railOpen";
+const TEAM_UNASSIGNED_ONLY_STORAGE_KEY = "opscentral.team.unassignedOnly";
 
 type TeamDensity = "comfortable" | "compact";
 type TeamGroupBy = "none" | "company";
@@ -82,6 +83,7 @@ export default function TeamPage() {
   const [density, setDensity] = useState<TeamDensity>("compact");
   const [groupBy, setGroupBy] = useState<TeamGroupBy>("none");
   const [railOpen, setRailOpen] = useState<boolean>(false);
+  const [onlyUnassigned, setOnlyUnassigned] = useState<boolean>(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [mobileFilterPanel, setMobileFilterPanel] = useState<MobileFilterPanel>(null);
   const [openMenuForUserId, setOpenMenuForUserId] = useState<Id<"users"> | null>(
@@ -218,7 +220,22 @@ export default function TeamPage() {
     if (g === "company" || g === "none") setGroupBy(g);
     const r = window.localStorage.getItem(TEAM_RAIL_OPEN_STORAGE_KEY);
     if (r === "true") setRailOpen(true);
+    const u = window.localStorage.getItem(TEAM_UNASSIGNED_ONLY_STORAGE_KEY);
+    if (u === "true") setOnlyUnassigned(true);
   }, []);
+
+  function toggleOnlyUnassigned() {
+    setOnlyUnassigned((prev) => {
+      const next = !prev;
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(
+          TEAM_UNASSIGNED_ONLY_STORAGE_KEY,
+          String(next),
+        );
+      }
+      return next;
+    });
+  }
 
   function setViewPreference(nextMode: TeamViewMode) {
     setViewMode(nextMode);
@@ -275,11 +292,17 @@ export default function TeamPage() {
         !q ||
         member.name?.toLowerCase().includes(q) ||
         member.email?.toLowerCase().includes(q);
-      return roleMatches && availabilityMatches && textMatches;
+      const unassignedMatches = !onlyUnassigned || !member.companyId;
+      return roleMatches && availabilityMatches && textMatches && unassignedMatches;
     });
 
     return filtered;
-  }, [availabilityFilter, roleFilter, search, teamMetrics]);
+  }, [availabilityFilter, onlyUnassigned, roleFilter, search, teamMetrics]);
+
+  const unassignedCount = useMemo(
+    () => (teamMetrics?.members ?? []).filter((m) => !m.companyId).length,
+    [teamMetrics],
+  );
 
   const groupedMembers = useMemo(() => {
     if (groupBy !== "company") return null;
@@ -369,21 +392,6 @@ export default function TeamPage() {
       avgQuality,
     };
   }, [members, teamMetrics]);
-
-  const companyMembershipRows = useMemo(() => {
-    return [...(teamMetrics?.members ?? [])]
-      .filter((member) => member.role === "cleaner" || member.role === "manager")
-      .sort((a, b) => {
-        const companyRank =
-          Number(Boolean(a.companyId)) - Number(Boolean(b.companyId));
-        if (companyRank !== 0) {
-          return companyRank;
-        }
-        const nameA = (a.name?.trim() || a.email || "").toLowerCase();
-        const nameB = (b.name?.trim() || b.email || "").toLowerCase();
-        return nameA.localeCompare(nameB);
-      });
-  }, [teamMetrics]);
 
   const leaderboard = useMemo(() => {
     return [...members]
@@ -931,6 +939,30 @@ export default function TeamPage() {
                 <option value="available">Available</option>
                 <option value="off">Off</option>
               </select>
+              {canManageTeam ? (
+                <button
+                  type="button"
+                  onClick={toggleOnlyUnassigned}
+                  className={`inline-flex items-center gap-1.5 rounded-none border px-3 py-1.5 text-xs font-medium ${
+                    onlyUnassigned
+                      ? "border-amber-500 bg-amber-500/10 text-amber-700"
+                      : "bg-[var(--card)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+                  }`}
+                  aria-pressed={onlyUnassigned}
+                  title="Show only members not attached to a company"
+                >
+                  Unassigned
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                      unassignedCount > 0
+                        ? "bg-amber-500 text-white"
+                        : "bg-[var(--muted)]/40 text-[var(--muted-foreground)]"
+                    }`}
+                  >
+                    {unassignedCount}
+                  </span>
+                </button>
+              ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <div className="inline-flex w-full overflow-hidden rounded-none border bg-[var(--card)] sm:w-auto">
@@ -1043,68 +1075,7 @@ export default function TeamPage() {
             />
           </div>
 
-          {canManageTeam ? (
-            <section className="rounded-none border bg-[var(--card)]">
-              <div className="flex flex-col gap-2 border-b border-[var(--border)] p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-base font-semibold">Company Membership</h2>
-                  <p className="text-sm text-[var(--muted-foreground)]">
-                    Attach cleaners and managers to the company their manager will dispatch.
-                  </p>
-                </div>
-                <span className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-                  {companyMembershipRows.filter((member) => !member.companyId).length} unassigned
-                </span>
-              </div>
-              <div className="divide-y divide-[var(--border)]">
-                {companyMembershipRows.length === 0 ? (
-                  <div className="p-4 text-sm text-[var(--muted-foreground)]">
-                    Add cleaners or managers before assigning company membership.
-                  </div>
-                ) : (
-                  companyMembershipRows.map((member) => (
-                    <div
-                      key={member._id}
-                      className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] sm:items-center"
-                    >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <ProfileImage
-                          avatarUrl={member.avatarUrl}
-                          label={member.name || member.email || "Member"}
-                          className="h-10 w-10"
-                        />
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold">
-                            {member.name || member.email || "Unknown"}
-                          </p>
-                          <p className="truncate text-xs text-[var(--muted-foreground)]">
-                            {member.email || "No email"} · {formatRoleLabel(member.role)}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm">
-                          {member.companyName ?? "No company assigned"}
-                        </p>
-                        <p className="text-xs text-[var(--muted-foreground)]">
-                          {member.companyMemberRole
-                            ? formatCompanyRoleLabel(member.companyMemberRole)
-                            : "Not visible to any manager"}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => openCompanyEditor(toMemberActionTarget(member))}
-                        className="inline-flex items-center justify-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-[var(--accent)]"
-                      >
-                        {member.companyId ? "Change" : "Attach"}
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
-          ) : null}
+          {/* Company Membership section removed in PR 2 — assignment now happens inline via the Company column in the table below. Unassigned filter pill in the toolbar surfaces the gap. */}
 
           <div id="team-members-section">
             {loading ? (
@@ -1444,8 +1415,28 @@ export default function TeamPage() {
                         {formatRoleLabel(member.role)}
                       </td>
                       {groupBy !== "company" ? (
-                        <td className={`${cellPad} truncate text-xs text-[var(--muted-foreground)]`}>
-                          {member.companyName ?? "—"}
+                        <td className={`${cellPad} truncate text-xs`}>
+                          {canManageTeam ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openCompanyEditor(toMemberActionTarget(member));
+                              }}
+                              className={`rounded-md px-1.5 py-0.5 text-left hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40 ${
+                                member.companyId
+                                  ? "text-[var(--muted-foreground)]"
+                                  : "font-semibold text-amber-600"
+                              }`}
+                              title={member.companyId ? "Change company" : "Attach to a company"}
+                            >
+                              {member.companyName ?? "— Attach"}
+                            </button>
+                          ) : (
+                            <span className="text-[var(--muted-foreground)]">
+                              {member.companyName ?? "—"}
+                            </span>
+                          )}
                         </td>
                       ) : null}
                       <td className={cellPad}>
