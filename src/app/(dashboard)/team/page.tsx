@@ -1,6 +1,6 @@
 "use client";
 
-import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, type FormEvent, Fragment, useEffect, useMemo, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { api } from "@convex/_generated/api";
@@ -54,6 +54,12 @@ const ROLE_FILTER_ITEMS: { id: UserRole; label: string }[] = [
 ];
 
 const TEAM_VIEW_MODE_STORAGE_KEY = "opscentral.team.defaultViewMode";
+const TEAM_DENSITY_STORAGE_KEY = "opscentral.team.density";
+const TEAM_GROUP_BY_STORAGE_KEY = "opscentral.team.groupBy";
+const TEAM_RAIL_OPEN_STORAGE_KEY = "opscentral.team.railOpen";
+
+type TeamDensity = "comfortable" | "compact";
+type TeamGroupBy = "none" | "company";
 
 type MemberActionTarget = {
   userId: Id<"users">;
@@ -73,6 +79,10 @@ export default function TeamPage() {
   const [availabilityFilter, setAvailabilityFilter] =
     useState<AvailabilityFilter>("all");
   const [viewMode, setViewMode] = useState<TeamViewMode>("list");
+  const [density, setDensity] = useState<TeamDensity>("compact");
+  const [groupBy, setGroupBy] = useState<TeamGroupBy>("none");
+  const [railOpen, setRailOpen] = useState<boolean>(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [mobileFilterPanel, setMobileFilterPanel] = useState<MobileFilterPanel>(null);
   const [openMenuForUserId, setOpenMenuForUserId] = useState<Id<"users"> | null>(
     null,
@@ -200,12 +210,55 @@ export default function TeamPage() {
     setViewMode(mobileDefault);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const d = window.localStorage.getItem(TEAM_DENSITY_STORAGE_KEY) as TeamDensity | null;
+    if (d === "compact" || d === "comfortable") setDensity(d);
+    const g = window.localStorage.getItem(TEAM_GROUP_BY_STORAGE_KEY) as TeamGroupBy | null;
+    if (g === "company" || g === "none") setGroupBy(g);
+    const r = window.localStorage.getItem(TEAM_RAIL_OPEN_STORAGE_KEY);
+    if (r === "true") setRailOpen(true);
+  }, []);
+
   function setViewPreference(nextMode: TeamViewMode) {
     setViewMode(nextMode);
     if (typeof window === "undefined") {
       return;
     }
     window.localStorage.setItem(TEAM_VIEW_MODE_STORAGE_KEY, nextMode);
+  }
+
+  function setDensityPreference(next: TeamDensity) {
+    setDensity(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(TEAM_DENSITY_STORAGE_KEY, next);
+    }
+  }
+
+  function setGroupByPreference(next: TeamGroupBy) {
+    setGroupBy(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(TEAM_GROUP_BY_STORAGE_KEY, next);
+    }
+  }
+
+  function toggleRail() {
+    setRailOpen((prev) => {
+      const next = !prev;
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(TEAM_RAIL_OPEN_STORAGE_KEY, String(next));
+      }
+      return next;
+    });
+  }
+
+  function toggleGroupCollapsed(key: string) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   }
 
   const members = useMemo(() => {
@@ -227,6 +280,33 @@ export default function TeamPage() {
 
     return filtered;
   }, [availabilityFilter, roleFilter, search, teamMetrics]);
+
+  const groupedMembers = useMemo(() => {
+    if (groupBy !== "company") return null;
+    const groups = new Map<
+      string,
+      { key: string; label: string; companyId: string | null; rows: typeof members }
+    >();
+    for (const m of members) {
+      const cid = (m.companyId as string | null | undefined) ?? null;
+      const key = cid ?? "__unassigned__";
+      const label =
+        m.companyName ?? (cid ? "Unknown company" : "Unassigned");
+      const existing = groups.get(key);
+      if (existing) {
+        existing.rows.push(m);
+      } else {
+        groups.set(key, { key, label, companyId: cid, rows: [m] });
+      }
+    }
+    // Sort: Unassigned first, then alphabetical
+    return Array.from(groups.values()).sort((a, b) => {
+      if (a.key === "__unassigned__") return -1;
+      if (b.key === "__unassigned__") return 1;
+      return a.label.localeCompare(b.label);
+    });
+  }, [groupBy, members]);
+
   const assignableJobs = useMemo(
     () =>
       (allJobs ?? [])
@@ -852,53 +932,102 @@ export default function TeamPage() {
                 <option value="off">Off</option>
               </select>
             </div>
-            <div className="inline-flex w-full overflow-hidden rounded-none border bg-[var(--card)] sm:w-auto">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex w-full overflow-hidden rounded-none border bg-[var(--card)] sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setViewPreference("card")}
+                  className={`inline-flex flex-1 items-center justify-center gap-2 px-3 py-1.5 text-sm sm:flex-none ${
+                    viewMode === "card"
+                      ? "bg-[var(--accent)] text-[var(--foreground)]"
+                      : "text-[var(--muted-foreground)]"
+                  }`}
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                  Card
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewPreference("list")}
+                  className={`inline-flex flex-1 items-center justify-center gap-2 border-l px-3 py-1.5 text-sm sm:flex-none ${
+                    viewMode === "list"
+                      ? "bg-[var(--accent)] text-[var(--foreground)]"
+                      : "text-[var(--muted-foreground)]"
+                  }`}
+                >
+                  <List className="h-4 w-4" />
+                  List
+                </button>
+              </div>
+              {viewMode === "list" ? (
+                <div className="inline-flex overflow-hidden rounded-none border bg-[var(--card)]">
+                  <button
+                    type="button"
+                    onClick={() => setDensityPreference("comfortable")}
+                    className={`px-3 py-1.5 text-xs ${
+                      density === "comfortable"
+                        ? "bg-[var(--accent)] text-[var(--foreground)]"
+                        : "text-[var(--muted-foreground)]"
+                    }`}
+                    aria-pressed={density === "comfortable"}
+                    title="Comfortable rows"
+                  >
+                    Comfortable
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDensityPreference("compact")}
+                    className={`border-l px-3 py-1.5 text-xs ${
+                      density === "compact"
+                        ? "bg-[var(--accent)] text-[var(--foreground)]"
+                        : "text-[var(--muted-foreground)]"
+                    }`}
+                    aria-pressed={density === "compact"}
+                    title="Compact rows"
+                  >
+                    Compact
+                  </button>
+                </div>
+              ) : null}
               <button
                 type="button"
-                onClick={() => setViewPreference("card")}
-                className={`inline-flex flex-1 items-center justify-center gap-2 px-3 py-1.5 text-sm sm:flex-none ${
-                  viewMode === "card"
+                onClick={() =>
+                  setGroupByPreference(groupBy === "company" ? "none" : "company")
+                }
+                className={`inline-flex items-center gap-1 rounded-none border px-3 py-1.5 text-xs ${
+                  groupBy === "company"
                     ? "bg-[var(--accent)] text-[var(--foreground)]"
-                    : "text-[var(--muted-foreground)]"
+                    : "bg-[var(--card)] text-[var(--muted-foreground)]"
                 }`}
+                aria-pressed={groupBy === "company"}
+                title="Group by company"
               >
-                <LayoutGrid className="h-4 w-4" />
-                Card
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewPreference("list")}
-                className={`inline-flex flex-1 items-center justify-center gap-2 border-l px-3 py-1.5 text-sm sm:flex-none ${
-                  viewMode === "list"
-                    ? "bg-[var(--accent)] text-[var(--foreground)]"
-                    : "text-[var(--muted-foreground)]"
-                }`}
-              >
-                <List className="h-4 w-4" />
-                List
+                Group: {groupBy === "company" ? "Company" : "None"}
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-2 md:gap-4">
-            <StatBox
-              label="Total Cleaners"
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-y border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm">
+            <StatChip
+              label="Cleaners"
               value={summary.totalCleaners}
               tone="text-orange-600"
               onClick={() =>
                 drillToMembers({ role: "cleaner", availability: "all" })
               }
             />
-            <StatBox
-              label="Active Now"
+            <span className="text-[var(--border)]">·</span>
+            <StatChip
+              label="Active"
               value={summary.activeNow}
               tone="text-emerald-600"
               onClick={() =>
                 drillToMembers({ role: "all", availability: "active" })
               }
             />
-            <StatBox
-              label="On-Time Avg"
+            <span className="text-[var(--border)]">·</span>
+            <StatChip
+              label="On-time"
               value={
                 summary.avgOnTime === null ? "—" : `${summary.avgOnTime}%`
               }
@@ -906,8 +1035,9 @@ export default function TeamPage() {
                 drillToMembers({ role: "cleaner", availability: "all" })
               }
             />
-            <StatBox
-              label="Avg Quality"
+            <span className="text-[var(--border)]">·</span>
+            <StatChip
+              label="Quality"
               value={summary.avgQuality === null ? "—" : `${summary.avgQuality}/5`}
               onClick={() => scrollToSection("team-leaderboard-section")}
             />
@@ -1247,21 +1377,15 @@ export default function TeamPage() {
                 ))}
               </div>
               <div className="hidden overflow-x-auto md:block">
-                <table className="w-full min-w-[760px] text-left text-sm">
-                <thead className="bg-[var(--accent)] text-xs uppercase tracking-wider text-[var(--muted-foreground)]">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">Member</th>
-                    <th className="px-4 py-3 font-medium">Role</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 font-medium">Quality</th>
-                    <th className="px-4 py-3 font-medium">On-Time</th>
-                    <th className="px-4 py-3 font-medium">Assignments</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {members.map((member) => (
-                    <tr key={member._id} className="border-t">
-                      <td className="px-4 py-3">
+                {(() => {
+                  const isCompact = density === "compact";
+                  const cellPad = isCompact ? "px-3 py-1.5" : "px-4 py-3";
+                  const headPad = isCompact ? "px-3 py-2" : "px-4 py-3";
+                  const avatarCls = isCompact ? "h-7 w-7" : "h-10 w-10";
+
+                  const renderMemberRow = (member: (typeof members)[number]) => (
+                    <tr key={member._id} className="border-t hover:bg-[var(--accent)]/40">
+                      <td className={cellPad}>
                         {canManageTeam || canDispatchMember(member) ? (
                           <button
                             type="button"
@@ -1272,18 +1396,22 @@ export default function TeamPage() {
                               <ProfileImage
                                 avatarUrl={member.avatarUrl}
                                 label={member.name || member.email || "Member"}
-                                className="h-10 w-10"
+                                className={avatarCls}
                               />
                               <div className="min-w-0">
                                 <p className="truncate font-semibold text-[var(--foreground)]">
                                   {member.name || member.email || "Unknown"}
                                 </p>
-                                <p className="truncate text-xs text-[var(--muted-foreground)]">
-                                  {member.email || "—"}
-                                </p>
-                                <p className="text-[10px] uppercase tracking-wider text-[var(--primary)]">
-                                  {canManageTeam ? "Click to edit or dispatch" : "Click to dispatch"}
-                                </p>
+                                {isCompact ? null : (
+                                  <p className="truncate text-xs text-[var(--muted-foreground)]">
+                                    {member.email || "—"}
+                                  </p>
+                                )}
+                                {isCompact ? null : (
+                                  <p className="text-[10px] uppercase tracking-wider text-[var(--primary)]">
+                                    {canManageTeam ? "Click to edit or dispatch" : "Click to dispatch"}
+                                  </p>
+                                )}
                               </div>
                             </div>
                           </button>
@@ -1292,23 +1420,35 @@ export default function TeamPage() {
                             <ProfileImage
                               avatarUrl={member.avatarUrl}
                               label={member.name || member.email || "Member"}
-                              className="h-10 w-10"
+                              className={avatarCls}
                             />
                             <div className="min-w-0">
                               <p className="truncate font-semibold text-[var(--foreground)]">
                                 {member.name || member.email || "Unknown"}
                               </p>
-                              <p className="truncate text-xs text-[var(--muted-foreground)]">
-                                {member.email || "—"}
-                              </p>
+                              {isCompact ? null : (
+                                <p className="truncate text-xs text-[var(--muted-foreground)]">
+                                  {member.email || "—"}
+                                </p>
+                              )}
                             </div>
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-[var(--muted-foreground)]">
+                      {isCompact ? (
+                        <td className={`${cellPad} truncate text-xs text-[var(--muted-foreground)]`}>
+                          {member.email || "—"}
+                        </td>
+                      ) : null}
+                      <td className={`${cellPad} text-[var(--muted-foreground)]`}>
                         {formatRoleLabel(member.role)}
                       </td>
-                      <td className="px-4 py-3">
+                      {groupBy !== "company" ? (
+                        <td className={`${cellPad} truncate text-xs text-[var(--muted-foreground)]`}>
+                          {member.companyName ?? "—"}
+                        </td>
+                      ) : null}
+                      <td className={cellPad}>
                         <span
                           className={`text-xs font-semibold uppercase tracking-wider ${
                             member.availability === "working"
@@ -1321,11 +1461,11 @@ export default function TeamPage() {
                           {member.availability}
                         </span>
                       </td>
-                      <td className="px-4 py-3 font-semibold">
+                      <td className={`${cellPad} font-semibold`}>
                         {formatQualityScore(member.qualityScore)}
                       </td>
-                      <td className="px-4 py-3">{formatPercent(member.onTimePct)}</td>
-                      <td className="px-4 py-3">
+                      <td className={cellPad}>{formatPercent(member.onTimePct)}</td>
+                      <td className={cellPad}>
                         {member.activeAssignmentsCount > 0 ? (
                           <span className="rounded-none border border-orange-500/30 bg-orange-500/10 px-2 py-1 text-[11px] font-medium uppercase tracking-wider text-orange-400">
                             {member.activeAssignmentsCount} Active
@@ -1335,16 +1475,103 @@ export default function TeamPage() {
                         )}
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  );
+
+                  const columnsCount =
+                    1 /* Member */ +
+                    (isCompact ? 1 : 0) /* Email */ +
+                    1 /* Role */ +
+                    (groupBy !== "company" ? 1 : 0) /* Company */ +
+                    1 /* Status */ +
+                    1 /* Quality */ +
+                    1 /* On-Time */ +
+                    1; /* Assignments */
+
+                  return (
+                    <table className="w-full min-w-[760px] text-left text-sm">
+                      <thead className="bg-[var(--accent)] text-xs uppercase tracking-wider text-[var(--muted-foreground)]">
+                        <tr>
+                          <th className={`${headPad} font-medium`}>Member</th>
+                          {isCompact ? (
+                            <th className={`${headPad} font-medium`}>Email</th>
+                          ) : null}
+                          <th className={`${headPad} font-medium`}>Role</th>
+                          {groupBy !== "company" ? (
+                            <th className={`${headPad} font-medium`}>Company</th>
+                          ) : null}
+                          <th className={`${headPad} font-medium`}>Status</th>
+                          <th className={`${headPad} font-medium`}>Quality</th>
+                          <th className={`${headPad} font-medium`}>On-Time</th>
+                          <th className={`${headPad} font-medium`}>Assignments</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {groupedMembers ? (
+                          groupedMembers.map((group) => {
+                            const collapsed = collapsedGroups.has(group.key);
+                            const isUnassigned = group.key === "__unassigned__";
+                            return (
+                              <Fragment key={group.key}>
+                                <tr className="bg-[var(--accent)]/60">
+                                  <td
+                                    colSpan={columnsCount}
+                                    className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider"
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleGroupCollapsed(group.key)}
+                                      className="inline-flex items-center gap-2 hover:underline"
+                                      aria-expanded={!collapsed}
+                                    >
+                                      <span className="inline-block w-3 text-center">
+                                        {collapsed ? "▸" : "▾"}
+                                      </span>
+                                      <span
+                                        className={
+                                          isUnassigned
+                                            ? "text-amber-600"
+                                            : "text-[var(--foreground)]"
+                                        }
+                                      >
+                                        {group.label}
+                                      </span>
+                                      <span className="text-[var(--muted-foreground)]">
+                                        ({group.rows.length})
+                                      </span>
+                                    </button>
+                                  </td>
+                                </tr>
+                                {collapsed ? null : group.rows.map(renderMemberRow)}
+                              </Fragment>
+                            );
+                          })
+                        ) : (
+                          members.map(renderMemberRow)
+                        )}
+                      </tbody>
+                    </table>
+                  );
+                })()}
               </div>
             </div>
           )}
           </div>
         </div>
 
-        <aside className="xl:col-span-4 space-y-6">
+        <aside
+          className={`xl:col-span-4 ${railOpen ? "space-y-6" : "space-y-2"}`}
+        >
+          <button
+            type="button"
+            onClick={toggleRail}
+            className="flex w-full items-center justify-between rounded-none border bg-[var(--card)] px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+            aria-expanded={railOpen}
+          >
+            <span>Insights & Leaderboard</span>
+            <span aria-hidden>{railOpen ? "▾" : "▸"}</span>
+          </button>
+          {railOpen ? (
+          <>
           <section id="team-leaderboard-section" className="rounded-none border bg-[var(--card)]">
             <div className="border-b border-[var(--border)] p-6">
               <div className="flex items-center gap-3">
@@ -1394,6 +1621,8 @@ export default function TeamPage() {
               </div>
             </div>
           </section>
+          </>
+          ) : null}
         </aside>
       </div>
 
@@ -1910,7 +2139,7 @@ export default function TeamPage() {
   );
 }
 
-function StatBox({
+function StatChip({
   label,
   value,
   tone,
@@ -1921,39 +2150,28 @@ function StatBox({
   tone?: string;
   onClick?: () => void;
 }) {
-  const content = (
+  const inner = (
     <>
-      <p className="text-[9px] font-medium uppercase tracking-wide text-[var(--muted-foreground)] md:text-[11px] md:tracking-wider">
+      <span className="text-[10px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
         {label}
-      </p>
-      <p className={`mt-1 text-lg font-semibold md:mt-2 md:text-3xl ${tone ?? "text-[var(--foreground)]"}`}>
+      </span>
+      <span className={`text-sm font-semibold ${tone ?? "text-[var(--foreground)]"}`}>
         {value}
-      </p>
-      {onClick ? (
-        <p className="mt-2 hidden text-xs font-semibold text-[var(--primary)] opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100 md:block">
-          View details
-        </p>
-      ) : null}
+      </span>
     </>
   );
-
   if (onClick) {
     return (
       <button
         type="button"
         onClick={onClick}
-        className="group rounded-none border bg-[var(--card)] p-2 text-left transition hover:border-[var(--primary)]/40 hover:bg-[var(--accent)]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40 md:p-4"
+        className="inline-flex items-center gap-1.5 rounded-none px-1 py-0.5 hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
       >
-        {content}
+        {inner}
       </button>
     );
   }
-
-  return (
-    <div className="rounded-none border bg-[var(--card)] p-2 md:p-4">
-      {content}
-    </div>
-  );
+  return <span className="inline-flex items-center gap-1.5">{inner}</span>;
 }
 
 function MiniMetric({ label, value }: { label: string; value: string | number }) {
