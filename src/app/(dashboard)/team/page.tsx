@@ -1043,13 +1043,22 @@ export default function TeamPage() {
             />
           </div>
 
-          {canManageTeam ? (
+          {canManageTeam && groupBy !== "company" ? (
             <section className="rounded-none border bg-[var(--card)]">
               <div className="flex flex-col gap-2 border-b border-[var(--border)] p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-base font-semibold">Company Membership</h2>
                   <p className="text-sm text-[var(--muted-foreground)]">
                     Attach cleaners and managers to the company their manager will dispatch.
+                    {" "}
+                    <button
+                      type="button"
+                      onClick={() => setGroupByPreference("company")}
+                      className="underline underline-offset-2 hover:text-[var(--foreground)]"
+                    >
+                      Group by company
+                    </button>
+                    {" "}to see members grouped in the table below.
                   </p>
                 </div>
                 <span className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
@@ -1062,45 +1071,54 @@ export default function TeamPage() {
                     Add cleaners or managers before assigning company membership.
                   </div>
                 ) : (
-                  companyMembershipRows.map((member) => (
+                  companyMembershipRows.map((member) => {
+                    const isCompact = density === "compact";
+                    return (
                     <div
                       key={member._id}
-                      className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] sm:items-center"
+                      className={`grid gap-3 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] sm:items-center ${
+                        isCompact ? "px-3 py-1.5" : "p-4"
+                      }`}
                     >
                       <div className="flex min-w-0 items-center gap-3">
                         <ProfileImage
                           avatarUrl={member.avatarUrl}
                           label={member.name || member.email || "Member"}
-                          className="h-10 w-10"
+                          className={isCompact ? "h-7 w-7" : "h-10 w-10"}
                         />
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold">
+                          <p className={`truncate font-semibold ${isCompact ? "text-xs" : "text-sm"}`}>
                             {member.name || member.email || "Unknown"}
                           </p>
-                          <p className="truncate text-xs text-[var(--muted-foreground)]">
+                          <p className={`truncate text-[var(--muted-foreground)] ${isCompact ? "text-[11px]" : "text-xs"}`}>
                             {member.email || "No email"} · {formatRoleLabel(member.role)}
                           </p>
                         </div>
                       </div>
                       <div className="min-w-0">
-                        <p className="truncate text-sm">
+                        <p className={`truncate ${isCompact ? "text-xs" : "text-sm"}`}>
                           {member.companyName ?? "No company assigned"}
                         </p>
-                        <p className="text-xs text-[var(--muted-foreground)]">
-                          {member.companyMemberRole
-                            ? formatCompanyRoleLabel(member.companyMemberRole)
-                            : "Not visible to any manager"}
-                        </p>
+                        {!isCompact ? (
+                          <p className="text-xs text-[var(--muted-foreground)]">
+                            {member.companyMemberRole
+                              ? formatCompanyRoleLabel(member.companyMemberRole)
+                              : "Not visible to any manager"}
+                          </p>
+                        ) : null}
                       </div>
                       <button
                         type="button"
                         onClick={() => openCompanyEditor(toMemberActionTarget(member))}
-                        className="inline-flex items-center justify-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-[var(--accent)]"
+                        className={`inline-flex items-center justify-center rounded-md border font-medium hover:bg-[var(--accent)] ${
+                          isCompact ? "px-2 py-1 text-xs" : "px-3 py-2 text-sm"
+                        }`}
                       >
                         {member.companyId ? "Change" : "Attach"}
                       </button>
                     </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </section>
