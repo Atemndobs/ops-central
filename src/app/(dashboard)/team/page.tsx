@@ -8,6 +8,7 @@ import type { Id } from "@convex/_generated/dataModel";
 import Image from "next/image";
 import { useToast } from "@/components/ui/toast-provider";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { TeamDetailDrawer, type DrawerMember } from "@/components/team/team-detail-drawer";
 import { uploadImageFile } from "@/lib/upload-image";
 import {
   getRoleFromMetadata,
@@ -56,6 +57,8 @@ const ROLE_FILTER_ITEMS: { id: UserRole; label: string }[] = [
 const TEAM_VIEW_MODE_STORAGE_KEY = "opscentral.team.defaultViewMode";
 const TEAM_DENSITY_STORAGE_KEY = "opscentral.team.density";
 const TEAM_GROUP_BY_STORAGE_KEY = "opscentral.team.groupBy";
+const TEAM_FILTER_CHIP_KEY = "opscentral.team.filterChip";
+type FilterChip = "none" | "unassignedRole" | "unassignedCompany" | "inactive30d";
 const TEAM_RAIL_OPEN_STORAGE_KEY = "opscentral.team.railOpen";
 
 type TeamDensity = "comfortable" | "compact";
@@ -69,6 +72,7 @@ type MemberActionTarget = {
   avatarUrl?: string;
   role: UserRole;
   companyId: Id<"cleaningCompanies"> | null;
+  companyName?: string | null;
   companyMemberRole: CompanyMemberRole | null;
 };
 
@@ -83,10 +87,8 @@ export default function TeamPage() {
   const [groupBy, setGroupBy] = useState<TeamGroupBy>("none");
   const [railOpen, setRailOpen] = useState<boolean>(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [filterChip, setFilterChip] = useState<FilterChip>("none");
   const [mobileFilterPanel, setMobileFilterPanel] = useState<MobileFilterPanel>(null);
-  const [openMenuForUserId, setOpenMenuForUserId] = useState<Id<"users"> | null>(
-    null,
-  );
 
   const [roleEditor, setRoleEditor] = useState<MemberActionTarget | null>(null);
   const [roleDraft, setRoleDraft] = useState<UserRole>("cleaner");
@@ -130,6 +132,7 @@ export default function TeamPage() {
     email: "",
     role: "cleaner" as UserRole,
     phone: "",
+    companyId: "" as string,
   });
 
   const { isLoaded: isClerkLoaded, isSignedIn, sessionClaims, userId } = useAuth();
@@ -179,21 +182,6 @@ export default function TeamPage() {
   const assignPropertyToCompany = useMutation(api.admin.mutations.assignPropertyToCompany);
 
   useEffect(() => {
-    if (!openMenuForUserId) {
-      return;
-    }
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target?.closest("[data-team-member-menu]")) {
-        return;
-      }
-      setOpenMenuForUserId(null);
-    };
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, [openMenuForUserId]);
-
-  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
@@ -218,7 +206,22 @@ export default function TeamPage() {
     if (g === "company" || g === "none") setGroupBy(g);
     const r = window.localStorage.getItem(TEAM_RAIL_OPEN_STORAGE_KEY);
     if (r === "true") setRailOpen(true);
+    const f = window.localStorage.getItem(TEAM_FILTER_CHIP_KEY) as FilterChip | null;
+    if (
+      f === "unassignedRole" ||
+      f === "unassignedCompany" ||
+      f === "inactive30d" ||
+      f === "none"
+    )
+      setFilterChip(f);
   }, []);
+
+  function setFilterChipPreference(next: FilterChip) {
+    setFilterChip(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(TEAM_FILTER_CHIP_KEY, next);
+    }
+  }
 
   function setViewPreference(nextMode: TeamViewMode) {
     setViewMode(nextMode);
@@ -265,6 +268,7 @@ export default function TeamPage() {
     const combined = [...(teamMetrics?.members ?? [])];
     const q = search.trim().toLowerCase();
 
+    const inactiveCutoff = Date.now() - 30 * 86_400_000;
     const filtered = combined.filter((member) => {
       const roleMatches = roleFilter === "all" || member.role === roleFilter;
       const availabilityMatches =
@@ -275,11 +279,37 @@ export default function TeamPage() {
         !q ||
         member.name?.toLowerCase().includes(q) ||
         member.email?.toLowerCase().includes(q);
-      return roleMatches && availabilityMatches && textMatches;
+      const chipMatches = (() => {
+        if (filterChip === "none") return true;
+        if (filterChip === "unassignedRole")
+          return !member.role || (member.role as string) === "unassigned";
+        if (filterChip === "unassignedCompany") return !member.companyId;
+        if (filterChip === "inactive30d") {
+          const last = (member as { lastActiveAt?: number }).lastActiveAt;
+          return !last || last < inactiveCutoff;
+        }
+        return true;
+      })();
+      return roleMatches && availabilityMatches && textMatches && chipMatches;
     });
 
     return filtered;
-  }, [availabilityFilter, roleFilter, search, teamMetrics]);
+  }, [availabilityFilter, roleFilter, search, teamMetrics, filterChip]);
+
+  const chipCounts = useMemo(() => {
+    const all = teamMetrics?.members ?? [];
+    const inactiveCutoff = Date.now() - 30 * 86_400_000;
+    return {
+      unassignedRole: all.filter(
+        (m) => !m.role || (m.role as string) === "unassigned",
+      ).length,
+      unassignedCompany: all.filter((m) => !m.companyId).length,
+      inactive30d: all.filter((m) => {
+        const last = (m as { lastActiveAt?: number }).lastActiveAt;
+        return !last || last < inactiveCutoff;
+      }).length,
+    };
+  }, [teamMetrics]);
 
   const groupedMembers = useMemo(() => {
     if (groupBy !== "company") return null;
@@ -328,6 +358,7 @@ export default function TeamPage() {
       avatarUrl: member.avatarUrl,
       role: member.role,
       companyId: member.companyId,
+      companyName: member.companyName,
       companyMemberRole: member.companyMemberRole,
     };
   }
@@ -434,7 +465,6 @@ export default function TeamPage() {
     setRoleEditor(member);
     setRoleDraft(member.role);
     setMemberActionSheet(null);
-    setOpenMenuForUserId(null);
   }
 
   function openProfileEditor(member: MemberActionTarget) {
@@ -445,7 +475,6 @@ export default function TeamPage() {
       avatarUrl: member.avatarUrl ?? "",
     });
     setMemberActionSheet(null);
-    setOpenMenuForUserId(null);
   }
 
   function openCompanyEditor(member: MemberActionTarget) {
@@ -456,21 +485,18 @@ export default function TeamPage() {
         (member.role === "manager" ? "manager" : "cleaner"),
     );
     setMemberActionSheet(null);
-    setOpenMenuForUserId(null);
   }
 
   function openJobEditor(member: MemberActionTarget) {
     setJobEditor(member);
     setJobDraft("");
     setMemberActionSheet(null);
-    setOpenMenuForUserId(null);
   }
 
   function openPropertyEditor(member: MemberActionTarget) {
     setPropertyEditor(member);
     setPropertyDraft("");
     setMemberActionSheet(null);
-    setOpenMenuForUserId(null);
   }
 
   async function handleRoleUpdate(event: FormEvent<HTMLFormElement>) {
@@ -1007,6 +1033,45 @@ export default function TeamPage() {
             </div>
           </div>
 
+          <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+            {(
+              [
+                { id: "unassignedRole" as const, label: "Unassigned role", count: chipCounts.unassignedRole },
+                { id: "unassignedCompany" as const, label: "No company", count: chipCounts.unassignedCompany },
+                { id: "inactive30d" as const, label: "Inactive 30d", count: chipCounts.inactive30d },
+              ]
+            ).map((chip) => {
+              const active = filterChip === chip.id;
+              return (
+                <button
+                  key={chip.id}
+                  type="button"
+                  onClick={() => setFilterChipPreference(active ? "none" : chip.id)}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition ${
+                    active
+                      ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]"
+                      : "bg-[var(--card)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+                  }`}
+                  aria-pressed={active}
+                >
+                  {chip.label}
+                  <span className="rounded-full bg-[var(--accent)] px-1.5 text-[10px] font-semibold">
+                    {chip.count}
+                  </span>
+                </button>
+              );
+            })}
+            {filterChip !== "none" ? (
+              <button
+                type="button"
+                onClick={() => setFilterChipPreference("none")}
+                className="text-xs text-[var(--muted-foreground)] underline underline-offset-2 hover:text-[var(--foreground)]"
+              >
+                Clear filter
+              </button>
+            ) : null}
+          </div>
+
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-y border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm">
             <StatChip
               label="Cleaners"
@@ -1043,68 +1108,7 @@ export default function TeamPage() {
             />
           </div>
 
-          {canManageTeam ? (
-            <section className="rounded-none border bg-[var(--card)]">
-              <div className="flex flex-col gap-2 border-b border-[var(--border)] p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-base font-semibold">Company Membership</h2>
-                  <p className="text-sm text-[var(--muted-foreground)]">
-                    Attach cleaners and managers to the company their manager will dispatch.
-                  </p>
-                </div>
-                <span className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-                  {companyMembershipRows.filter((member) => !member.companyId).length} unassigned
-                </span>
-              </div>
-              <div className="divide-y divide-[var(--border)]">
-                {companyMembershipRows.length === 0 ? (
-                  <div className="p-4 text-sm text-[var(--muted-foreground)]">
-                    Add cleaners or managers before assigning company membership.
-                  </div>
-                ) : (
-                  companyMembershipRows.map((member) => (
-                    <div
-                      key={member._id}
-                      className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] sm:items-center"
-                    >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <ProfileImage
-                          avatarUrl={member.avatarUrl}
-                          label={member.name || member.email || "Member"}
-                          className="h-10 w-10"
-                        />
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold">
-                            {member.name || member.email || "Unknown"}
-                          </p>
-                          <p className="truncate text-xs text-[var(--muted-foreground)]">
-                            {member.email || "No email"} · {formatRoleLabel(member.role)}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm">
-                          {member.companyName ?? "No company assigned"}
-                        </p>
-                        <p className="text-xs text-[var(--muted-foreground)]">
-                          {member.companyMemberRole
-                            ? formatCompanyRoleLabel(member.companyMemberRole)
-                            : "Not visible to any manager"}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => openCompanyEditor(toMemberActionTarget(member))}
-                        className="inline-flex items-center justify-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-[var(--accent)]"
-                      >
-                        {member.companyId ? "Change" : "Attach"}
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
-          ) : null}
+          {/* Company Membership management moved to /companies → click a company → Members section. */}
 
           <div id="team-members-section">
             {loading ? (
@@ -1157,67 +1161,13 @@ export default function TeamPage() {
                       </div>
                     </div>
                     {canManageTeam || canDispatchMember(member) ? (
-                      <div className="relative" data-team-member-menu>
-                        <button
-                          className="text-2xl leading-none"
-                          onClick={() =>
-                            setOpenMenuForUserId((current) =>
-                              current === member._id ? null : member._id,
-                            )
-                          }
-                          aria-haspopup="menu"
-                          aria-expanded={openMenuForUserId === member._id}
-                        >
-                          ⋮
-                        </button>
-                        {openMenuForUserId === member._id ? (
-                          <div className="absolute right-0 top-8 z-20 w-44 rounded-none border bg-[var(--card)] py-1 shadow-lg">
-                            {canManageTeam ? (
-                              <>
-                                <button
-                                  type="button"
-                                  className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                                  onClick={() => openProfileEditor(toMemberActionTarget(member))}
-                                >
-                                  Edit Profile
-                                </button>
-                                <button
-                                  type="button"
-                                  className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                                  onClick={() => openRoleEditor(toMemberActionTarget(member))}
-                                >
-                                  Assign Role
-                                </button>
-                                <button
-                                  type="button"
-                                  className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                                  onClick={() => openCompanyEditor(toMemberActionTarget(member))}
-                                >
-                                  Assign Company
-                                </button>
-                              </>
-                            ) : null}
-                            {canDispatchMember(member) ? (
-                              <button
-                                type="button"
-                                className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                                onClick={() => openJobEditor(toMemberActionTarget(member))}
-                              >
-                                Dispatch to Job
-                              </button>
-                            ) : null}
-                            {canManageTeam ? (
-                              <button
-                                type="button"
-                                className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                                onClick={() => openPropertyEditor(toMemberActionTarget(member))}
-                              >
-                                Assign Property
-                              </button>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setMemberActionSheet(toMemberActionTarget(member))}
+                        className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-[var(--accent)]"
+                      >
+                        Manage
+                      </button>
                     ) : null}
                   </div>
 
@@ -1291,87 +1241,15 @@ export default function TeamPage() {
                           {formatRoleLabel(member.role)} · {member.availability}
                         </p>
                       </div>
-                      <div className="relative" data-team-member-menu>
+                      {canManageTeam || canDispatchMember(member) ? (
                         <button
                           type="button"
-                          className="rounded-md border px-2 py-1 text-sm leading-none"
-                          onClick={() =>
-                            setOpenMenuForUserId((current) =>
-                              current === member._id ? null : member._id,
-                            )
-                          }
-                          aria-haspopup="menu"
-                          aria-expanded={openMenuForUserId === member._id}
+                          onClick={() => setMemberActionSheet(toMemberActionTarget(member))}
+                          className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-[var(--accent)]"
                         >
-                          ⋮
+                          Manage
                         </button>
-                        {openMenuForUserId === member._id ? (
-                          <div className="absolute right-0 top-9 z-20 w-64 rounded-none border bg-[var(--card)] p-2 shadow-lg">
-                            <div className="space-y-1 border-b pb-2 text-xs text-[var(--muted-foreground)]">
-                              <p className="truncate">{member.email || "—"}</p>
-                              <p className="truncate">
-                                {member.companyName
-                                  ? `${member.companyName}${
-                                      member.companyMemberRole
-                                        ? ` · ${formatCompanyRoleLabel(member.companyMemberRole)}`
-                                        : ""
-                                    }`
-                                  : "No company assigned"}
-                              </p>
-                              <p>Quality: {formatQualityScore(member.qualityScore)}</p>
-                              <p>On-Time: {formatPercent(member.onTimePct)}</p>
-                              <p>Assignments: {member.activeAssignmentsCount}</p>
-                            </div>
-                            {canManageTeam || canDispatchMember(member) ? (
-                              <div className="mt-2 grid gap-1">
-                                {canManageTeam ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                      onClick={() => openProfileEditor(toMemberActionTarget(member))}
-                                    >
-                                      Edit Profile
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                      onClick={() => openRoleEditor(toMemberActionTarget(member))}
-                                    >
-                                      Assign Role
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                      onClick={() => openCompanyEditor(toMemberActionTarget(member))}
-                                    >
-                                      Assign Company
-                                    </button>
-                                  </>
-                                ) : null}
-                                {canDispatchMember(member) ? (
-                                  <button
-                                    type="button"
-                                    className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                    onClick={() => openJobEditor(toMemberActionTarget(member))}
-                                  >
-                                    Dispatch to Job
-                                  </button>
-                                ) : null}
-                                {canManageTeam ? (
-                                  <button
-                                    type="button"
-                                    className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                    onClick={() => openPropertyEditor(toMemberActionTarget(member))}
-                                  >
-                                    Assign Property
-                                  </button>
-                                ) : null}
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </div>
+                      ) : null}
                     </div>
                   </article>
                 ))}
@@ -1675,6 +1553,7 @@ export default function TeamPage() {
                     email: "",
                     role: "cleaner",
                     phone: "",
+                    companyId: "",
                   });
                   setIsCreateOpen(false);
                 } catch (error) {
@@ -1742,6 +1621,27 @@ export default function TeamPage() {
                 />
               </label>
 
+              {newMember.role === "cleaner" || newMember.role === "manager" ? (
+                <label className="block text-sm">
+                  <span className="mb-1 block text-[var(--muted-foreground)]">
+                    Attach to company (optional)
+                  </span>
+                  <SearchableSelect
+                    value={newMember.companyId || null}
+                    onChange={(id) =>
+                      setNewMember((prev) => ({ ...prev, companyId: id ?? "" }))
+                    }
+                    items={[
+                      { id: "", label: "— Skip (assign later) —" },
+                      ...(companies ?? []).map((c) => ({ id: c._id, label: c.name })),
+                    ]}
+                    placeholder="Skip (assign later)"
+                    searchPlaceholder="Search companies…"
+                    aria-label="Company"
+                  />
+                </label>
+              ) : null}
+
               {createError ? (
                 <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
                   {createError}
@@ -1760,71 +1660,35 @@ export default function TeamPage() {
         </div>
       ) : null}
 
-      {memberActionSheet ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-xl border bg-[var(--card)] p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-bold">Manage Member</h2>
-              <button
-                className="rounded-md px-2 py-1 text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
-                onClick={() => setMemberActionSheet(null)}
-              >
-                Close
-              </button>
-            </div>
-
-            <p className="mb-4 text-sm text-[var(--muted-foreground)]">
-              {memberActionSheet.name || memberActionSheet.email || "Selected user"}
-            </p>
-
-            <div className="grid gap-2">
-              {canManageTeam ? (
-                <>
-                  <button
-                    type="button"
-                    className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                    onClick={() => openProfileEditor(memberActionSheet)}
-                  >
-                    Edit Profile
-                  </button>
-                  <button
-                    type="button"
-                    className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                    onClick={() => openRoleEditor(memberActionSheet)}
-                  >
-                    Edit Role
-                  </button>
-                  <button
-                    type="button"
-                    className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                    onClick={() => openCompanyEditor(memberActionSheet)}
-                  >
-                    Assign Company
-                  </button>
-                </>
-              ) : null}
-              {canDispatchMember(memberActionSheet) ? (
-                <button
-                  type="button"
-                  className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                  onClick={() => openJobEditor(memberActionSheet)}
-                >
-                  Dispatch to Job
-                </button>
-              ) : null}
-              {canManageTeam ? (
-                <button
-                  type="button"
-                  className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                  onClick={() => openPropertyEditor(memberActionSheet)}
-                >
-                  Assign Property
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <TeamDetailDrawer
+        member={
+          memberActionSheet
+            ? ({
+                userId: memberActionSheet.userId,
+                name: memberActionSheet.name,
+                email: memberActionSheet.email,
+                avatarUrl: memberActionSheet.avatarUrl,
+                role: memberActionSheet.role,
+                companyId: memberActionSheet.companyId,
+                companyName: memberActionSheet.companyName ?? null,
+                companyMemberRole: memberActionSheet.companyMemberRole,
+              } satisfies DrawerMember)
+            : null
+        }
+        open={!!memberActionSheet}
+        onClose={() => setMemberActionSheet(null)}
+        canManageTeam={canManageTeam}
+        canDispatch={memberActionSheet ? canDispatchMember(memberActionSheet) : false}
+        onEditProfile={() => memberActionSheet && openProfileEditor(memberActionSheet)}
+        onEditRole={() => memberActionSheet && openRoleEditor(memberActionSheet)}
+        onEditCompany={() => memberActionSheet && openCompanyEditor(memberActionSheet)}
+        onDispatchJob={() => memberActionSheet && openJobEditor(memberActionSheet)}
+        onAssignProperty={() => memberActionSheet && openPropertyEditor(memberActionSheet)}
+        formatRoleLabel={(r) => formatRoleLabel((r as UserRole) ?? "cleaner")}
+        formatCompanyRoleLabel={(r) =>
+          r ? formatCompanyRoleLabel(r as CompanyMemberRole) : "Not visible to any manager"
+        }
+      />
 
       {profileEditor ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
