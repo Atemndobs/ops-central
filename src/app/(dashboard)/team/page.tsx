@@ -57,6 +57,8 @@ const ROLE_FILTER_ITEMS: { id: UserRole; label: string }[] = [
 const TEAM_VIEW_MODE_STORAGE_KEY = "opscentral.team.defaultViewMode";
 const TEAM_DENSITY_STORAGE_KEY = "opscentral.team.density";
 const TEAM_GROUP_BY_STORAGE_KEY = "opscentral.team.groupBy";
+const TEAM_FILTER_CHIP_KEY = "opscentral.team.filterChip";
+type FilterChip = "none" | "unassignedRole" | "unassignedCompany" | "inactive30d";
 const TEAM_RAIL_OPEN_STORAGE_KEY = "opscentral.team.railOpen";
 
 type TeamDensity = "comfortable" | "compact";
@@ -85,6 +87,7 @@ export default function TeamPage() {
   const [groupBy, setGroupBy] = useState<TeamGroupBy>("none");
   const [railOpen, setRailOpen] = useState<boolean>(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [filterChip, setFilterChip] = useState<FilterChip>("none");
   const [mobileFilterPanel, setMobileFilterPanel] = useState<MobileFilterPanel>(null);
   const [openMenuForUserId, setOpenMenuForUserId] = useState<Id<"users"> | null>(
     null,
@@ -220,7 +223,22 @@ export default function TeamPage() {
     if (g === "company" || g === "none") setGroupBy(g);
     const r = window.localStorage.getItem(TEAM_RAIL_OPEN_STORAGE_KEY);
     if (r === "true") setRailOpen(true);
+    const f = window.localStorage.getItem(TEAM_FILTER_CHIP_KEY) as FilterChip | null;
+    if (
+      f === "unassignedRole" ||
+      f === "unassignedCompany" ||
+      f === "inactive30d" ||
+      f === "none"
+    )
+      setFilterChip(f);
   }, []);
+
+  function setFilterChipPreference(next: FilterChip) {
+    setFilterChip(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(TEAM_FILTER_CHIP_KEY, next);
+    }
+  }
 
   function setViewPreference(nextMode: TeamViewMode) {
     setViewMode(nextMode);
@@ -267,6 +285,7 @@ export default function TeamPage() {
     const combined = [...(teamMetrics?.members ?? [])];
     const q = search.trim().toLowerCase();
 
+    const inactiveCutoff = Date.now() - 30 * 86_400_000;
     const filtered = combined.filter((member) => {
       const roleMatches = roleFilter === "all" || member.role === roleFilter;
       const availabilityMatches =
@@ -277,11 +296,37 @@ export default function TeamPage() {
         !q ||
         member.name?.toLowerCase().includes(q) ||
         member.email?.toLowerCase().includes(q);
-      return roleMatches && availabilityMatches && textMatches;
+      const chipMatches = (() => {
+        if (filterChip === "none") return true;
+        if (filterChip === "unassignedRole")
+          return !member.role || (member.role as string) === "unassigned";
+        if (filterChip === "unassignedCompany") return !member.companyId;
+        if (filterChip === "inactive30d") {
+          const last = (member as { lastActiveAt?: number }).lastActiveAt;
+          return !last || last < inactiveCutoff;
+        }
+        return true;
+      })();
+      return roleMatches && availabilityMatches && textMatches && chipMatches;
     });
 
     return filtered;
-  }, [availabilityFilter, roleFilter, search, teamMetrics]);
+  }, [availabilityFilter, roleFilter, search, teamMetrics, filterChip]);
+
+  const chipCounts = useMemo(() => {
+    const all = teamMetrics?.members ?? [];
+    const inactiveCutoff = Date.now() - 30 * 86_400_000;
+    return {
+      unassignedRole: all.filter(
+        (m) => !m.role || (m.role as string) === "unassigned",
+      ).length,
+      unassignedCompany: all.filter((m) => !m.companyId).length,
+      inactive30d: all.filter((m) => {
+        const last = (m as { lastActiveAt?: number }).lastActiveAt;
+        return !last || last < inactiveCutoff;
+      }).length,
+    };
+  }, [teamMetrics]);
 
   const groupedMembers = useMemo(() => {
     if (groupBy !== "company") return null;
@@ -1008,6 +1053,45 @@ export default function TeamPage() {
                 Group: {groupBy === "company" ? "Company" : "None"}
               </button>
             </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+            {(
+              [
+                { id: "unassignedRole" as const, label: "Unassigned role", count: chipCounts.unassignedRole },
+                { id: "unassignedCompany" as const, label: "No company", count: chipCounts.unassignedCompany },
+                { id: "inactive30d" as const, label: "Inactive 30d", count: chipCounts.inactive30d },
+              ]
+            ).map((chip) => {
+              const active = filterChip === chip.id;
+              return (
+                <button
+                  key={chip.id}
+                  type="button"
+                  onClick={() => setFilterChipPreference(active ? "none" : chip.id)}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition ${
+                    active
+                      ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]"
+                      : "bg-[var(--card)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+                  }`}
+                  aria-pressed={active}
+                >
+                  {chip.label}
+                  <span className="rounded-full bg-[var(--accent)] px-1.5 text-[10px] font-semibold">
+                    {chip.count}
+                  </span>
+                </button>
+              );
+            })}
+            {filterChip !== "none" ? (
+              <button
+                type="button"
+                onClick={() => setFilterChipPreference("none")}
+                className="text-xs text-[var(--muted-foreground)] underline underline-offset-2 hover:text-[var(--foreground)]"
+              >
+                Clear filter
+              </button>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-y border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm">
