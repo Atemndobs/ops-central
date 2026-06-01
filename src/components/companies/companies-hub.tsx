@@ -73,6 +73,13 @@ export function CompaniesHub() {
   const removePropertyCompanyAssignment = useMutation(
     api.admin.mutations.removePropertyCompanyAssignment,
   );
+  const assignUserCompanyMembership = useMutation(
+    api.admin.mutations.assignUserCompanyMembership,
+  );
+  const allUsersData = useQuery(api.admin.queries.getAllUsers, {});
+  const [memberAttachUserId, setMemberAttachUserId] = useState<string>("");
+  const [isAttachingMember, setIsAttachingMember] = useState(false);
+  const [detachingMemberUserId, setDetachingMemberUserId] = useState<string | null>(null);
 
   const allCompanies = useMemo(() => {
     const newestByName = new Map<string, NonNullable<typeof companies>[number]>();
@@ -722,20 +729,98 @@ export function CompaniesHub() {
                   <h2 className="text-sm font-bold uppercase tracking-wide">Members</h2>
                 </div>
               </div>
-              <div className="max-h-64 overflow-y-auto px-4 py-3">
+              {companyDetail ? (
+                <div className="border-b px-4 py-3">
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+                    Attach user to this company
+                  </label>
+                  <div className="flex gap-2">
+                    <select
+                      value={memberAttachUserId}
+                      onChange={(e) => setMemberAttachUserId(e.target.value)}
+                      className="flex-1 rounded-md border bg-[var(--card)] px-3 py-2 text-sm"
+                      disabled={isAttachingMember}
+                    >
+                      <option value="">Select a user...</option>
+                      {(allUsersData?.users ?? [])
+                        .filter(
+                          (u) =>
+                            (u.role === "cleaner" || u.role === "manager") &&
+                            !(companyDetail.members ?? []).some(
+                              (m) => m.userId === u._id && m.isActive,
+                            ),
+                        )
+                        .map((u) => (
+                          <option key={u._id} value={u._id}>
+                            {u.name ?? u.email ?? "Unknown"} · {u.role}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={!memberAttachUserId || isAttachingMember}
+                      onClick={async () => {
+                        if (!memberAttachUserId || !companyDetail?._id) return;
+                        setIsAttachingMember(true);
+                        try {
+                          await assignUserCompanyMembership({
+                            userId: memberAttachUserId as Id<"users">,
+                            companyId: companyDetail._id,
+                          });
+                          setMemberAttachUserId("");
+                        } finally {
+                          setIsAttachingMember(false);
+                        }
+                      }}
+                      className="rounded-md border border-[var(--primary)] bg-[var(--primary)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] disabled:opacity-50"
+                    >
+                      {isAttachingMember ? "Attaching..." : "Attach"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              <div className="max-h-80 overflow-y-auto px-4 py-3">
                 {companyDetail?.members?.length ? (
                   <div className="space-y-2">
                     {companyDetail.members
                       .slice()
                       .sort((a, b) => b.joinedAt - a.joinedAt)
                       .map((member) => (
-                        <div key={member._id} className="rounded-lg border px-3 py-2 text-sm">
-                          <p className="font-semibold">
-                            {member.user?.name ?? member.user?.email ?? "Unknown user"}
-                          </p>
-                          <p className="text-xs text-[var(--muted-foreground)]">
-                            {member.role} · {member.isActive ? "active" : "inactive"}
-                          </p>
+                        <div
+                          key={member._id}
+                          className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold">
+                              {member.user?.name ?? member.user?.email ?? "Unknown user"}
+                            </p>
+                            <p className="text-xs text-[var(--muted-foreground)]">
+                              {member.role} · {member.isActive ? "active" : "inactive"}
+                            </p>
+                          </div>
+                          {member.isActive && member.user?._id ? (
+                            <button
+                              type="button"
+                              disabled={detachingMemberUserId === member.user._id}
+                              onClick={async () => {
+                                if (!member.user?._id) return;
+                                setDetachingMemberUserId(member.user._id);
+                                try {
+                                  await assignUserCompanyMembership({
+                                    userId: member.user._id,
+                                    companyId: null,
+                                  });
+                                } finally {
+                                  setDetachingMemberUserId(null);
+                                }
+                              }}
+                              className="rounded-md border px-2 py-1 text-xs hover:bg-[var(--accent)] disabled:opacity-50"
+                            >
+                              {detachingMemberUserId === member.user._id
+                                ? "Removing..."
+                                : "Detach"}
+                            </button>
+                          ) : null}
                         </div>
                       ))}
                   </div>

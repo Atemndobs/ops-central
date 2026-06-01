@@ -1046,68 +1046,7 @@ export default function TeamPage() {
             />
           </div>
 
-          {canManageTeam ? (
-            <section className="rounded-none border bg-[var(--card)]">
-              <div className="flex flex-col gap-2 border-b border-[var(--border)] p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-base font-semibold">Company Membership</h2>
-                  <p className="text-sm text-[var(--muted-foreground)]">
-                    Attach cleaners and managers to the company their manager will dispatch.
-                  </p>
-                </div>
-                <span className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-                  {companyMembershipRows.filter((member) => !member.companyId).length} unassigned
-                </span>
-              </div>
-              <div className="divide-y divide-[var(--border)]">
-                {companyMembershipRows.length === 0 ? (
-                  <div className="p-4 text-sm text-[var(--muted-foreground)]">
-                    Add cleaners or managers before assigning company membership.
-                  </div>
-                ) : (
-                  companyMembershipRows.map((member) => (
-                    <div
-                      key={member._id}
-                      className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] sm:items-center"
-                    >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <ProfileImage
-                          avatarUrl={member.avatarUrl}
-                          label={member.name || member.email || "Member"}
-                          className="h-10 w-10"
-                        />
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold">
-                            {member.name || member.email || "Unknown"}
-                          </p>
-                          <p className="truncate text-xs text-[var(--muted-foreground)]">
-                            {member.email || "No email"} · {formatRoleLabel(member.role)}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm">
-                          {member.companyName ?? "No company assigned"}
-                        </p>
-                        <p className="text-xs text-[var(--muted-foreground)]">
-                          {member.companyMemberRole
-                            ? formatCompanyRoleLabel(member.companyMemberRole)
-                            : "Not visible to any manager"}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => openCompanyEditor(toMemberActionTarget(member))}
-                        className="inline-flex items-center justify-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-[var(--accent)]"
-                      >
-                        {member.companyId ? "Change" : "Attach"}
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
-          ) : null}
+          {/* Company Membership management moved to /companies → click a company → Members section. */}
 
           <div id="team-members-section">
             {loading ? (
