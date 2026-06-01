@@ -89,9 +89,6 @@ export default function TeamPage() {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [filterChip, setFilterChip] = useState<FilterChip>("none");
   const [mobileFilterPanel, setMobileFilterPanel] = useState<MobileFilterPanel>(null);
-  const [openMenuForUserId, setOpenMenuForUserId] = useState<Id<"users"> | null>(
-    null,
-  );
 
   const [roleEditor, setRoleEditor] = useState<MemberActionTarget | null>(null);
   const [roleDraft, setRoleDraft] = useState<UserRole>("cleaner");
@@ -183,21 +180,6 @@ export default function TeamPage() {
   const updateUser = useMutation(api.admin.mutations.updateUser);
   const assignCleanerToJob = useMutation(api.cleaningJobs.mutations.assign);
   const assignPropertyToCompany = useMutation(api.admin.mutations.assignPropertyToCompany);
-
-  useEffect(() => {
-    if (!openMenuForUserId) {
-      return;
-    }
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target?.closest("[data-team-member-menu]")) {
-        return;
-      }
-      setOpenMenuForUserId(null);
-    };
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, [openMenuForUserId]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -483,7 +465,6 @@ export default function TeamPage() {
     setRoleEditor(member);
     setRoleDraft(member.role);
     setMemberActionSheet(null);
-    setOpenMenuForUserId(null);
   }
 
   function openProfileEditor(member: MemberActionTarget) {
@@ -494,7 +475,6 @@ export default function TeamPage() {
       avatarUrl: member.avatarUrl ?? "",
     });
     setMemberActionSheet(null);
-    setOpenMenuForUserId(null);
   }
 
   function openCompanyEditor(member: MemberActionTarget) {
@@ -505,21 +485,18 @@ export default function TeamPage() {
         (member.role === "manager" ? "manager" : "cleaner"),
     );
     setMemberActionSheet(null);
-    setOpenMenuForUserId(null);
   }
 
   function openJobEditor(member: MemberActionTarget) {
     setJobEditor(member);
     setJobDraft("");
     setMemberActionSheet(null);
-    setOpenMenuForUserId(null);
   }
 
   function openPropertyEditor(member: MemberActionTarget) {
     setPropertyEditor(member);
     setPropertyDraft("");
     setMemberActionSheet(null);
-    setOpenMenuForUserId(null);
   }
 
   async function handleRoleUpdate(event: FormEvent<HTMLFormElement>) {
@@ -1184,67 +1161,13 @@ export default function TeamPage() {
                       </div>
                     </div>
                     {canManageTeam || canDispatchMember(member) ? (
-                      <div className="relative" data-team-member-menu>
-                        <button
-                          className="text-2xl leading-none"
-                          onClick={() =>
-                            setOpenMenuForUserId((current) =>
-                              current === member._id ? null : member._id,
-                            )
-                          }
-                          aria-haspopup="menu"
-                          aria-expanded={openMenuForUserId === member._id}
-                        >
-                          ⋮
-                        </button>
-                        {openMenuForUserId === member._id ? (
-                          <div className="absolute right-0 top-8 z-20 w-44 rounded-none border bg-[var(--card)] py-1 shadow-lg">
-                            {canManageTeam ? (
-                              <>
-                                <button
-                                  type="button"
-                                  className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                                  onClick={() => openProfileEditor(toMemberActionTarget(member))}
-                                >
-                                  Edit Profile
-                                </button>
-                                <button
-                                  type="button"
-                                  className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                                  onClick={() => openRoleEditor(toMemberActionTarget(member))}
-                                >
-                                  Assign Role
-                                </button>
-                                <button
-                                  type="button"
-                                  className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                                  onClick={() => openCompanyEditor(toMemberActionTarget(member))}
-                                >
-                                  Assign Company
-                                </button>
-                              </>
-                            ) : null}
-                            {canDispatchMember(member) ? (
-                              <button
-                                type="button"
-                                className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                                onClick={() => openJobEditor(toMemberActionTarget(member))}
-                              >
-                                Dispatch to Job
-                              </button>
-                            ) : null}
-                            {canManageTeam ? (
-                              <button
-                                type="button"
-                                className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                                onClick={() => openPropertyEditor(toMemberActionTarget(member))}
-                              >
-                                Assign Property
-                              </button>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setMemberActionSheet(toMemberActionTarget(member))}
+                        className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-[var(--accent)]"
+                      >
+                        Manage
+                      </button>
                     ) : null}
                   </div>
 
@@ -1318,87 +1241,15 @@ export default function TeamPage() {
                           {formatRoleLabel(member.role)} · {member.availability}
                         </p>
                       </div>
-                      <div className="relative" data-team-member-menu>
+                      {canManageTeam || canDispatchMember(member) ? (
                         <button
                           type="button"
-                          className="rounded-md border px-2 py-1 text-sm leading-none"
-                          onClick={() =>
-                            setOpenMenuForUserId((current) =>
-                              current === member._id ? null : member._id,
-                            )
-                          }
-                          aria-haspopup="menu"
-                          aria-expanded={openMenuForUserId === member._id}
+                          onClick={() => setMemberActionSheet(toMemberActionTarget(member))}
+                          className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-[var(--accent)]"
                         >
-                          ⋮
+                          Manage
                         </button>
-                        {openMenuForUserId === member._id ? (
-                          <div className="absolute right-0 top-9 z-20 w-64 rounded-none border bg-[var(--card)] p-2 shadow-lg">
-                            <div className="space-y-1 border-b pb-2 text-xs text-[var(--muted-foreground)]">
-                              <p className="truncate">{member.email || "—"}</p>
-                              <p className="truncate">
-                                {member.companyName
-                                  ? `${member.companyName}${
-                                      member.companyMemberRole
-                                        ? ` · ${formatCompanyRoleLabel(member.companyMemberRole)}`
-                                        : ""
-                                    }`
-                                  : "No company assigned"}
-                              </p>
-                              <p>Quality: {formatQualityScore(member.qualityScore)}</p>
-                              <p>On-Time: {formatPercent(member.onTimePct)}</p>
-                              <p>Assignments: {member.activeAssignmentsCount}</p>
-                            </div>
-                            {canManageTeam || canDispatchMember(member) ? (
-                              <div className="mt-2 grid gap-1">
-                                {canManageTeam ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                      onClick={() => openProfileEditor(toMemberActionTarget(member))}
-                                    >
-                                      Edit Profile
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                      onClick={() => openRoleEditor(toMemberActionTarget(member))}
-                                    >
-                                      Assign Role
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                      onClick={() => openCompanyEditor(toMemberActionTarget(member))}
-                                    >
-                                      Assign Company
-                                    </button>
-                                  </>
-                                ) : null}
-                                {canDispatchMember(member) ? (
-                                  <button
-                                    type="button"
-                                    className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                    onClick={() => openJobEditor(toMemberActionTarget(member))}
-                                  >
-                                    Dispatch to Job
-                                  </button>
-                                ) : null}
-                                {canManageTeam ? (
-                                  <button
-                                    type="button"
-                                    className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                    onClick={() => openPropertyEditor(toMemberActionTarget(member))}
-                                  >
-                                    Assign Property
-                                  </button>
-                                ) : null}
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </div>
+                      ) : null}
                     </div>
                   </article>
                 ))}
