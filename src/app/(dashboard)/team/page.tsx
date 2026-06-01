@@ -27,7 +27,8 @@ import {
   Users,
 } from "lucide-react";
 
-type UserRole = "cleaner" | "manager" | "property_ops" | "admin" | "owner";
+import type { RoleKey } from "@/lib/roles";
+type UserRole = RoleKey;
 type CompanyMemberRole = "cleaner" | "manager" | "owner";
 type AvailabilityFilter = "all" | "active" | "working" | "available" | "off";
 type TeamViewMode = "card" | "list";
