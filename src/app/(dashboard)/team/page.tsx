@@ -8,6 +8,7 @@ import type { Id } from "@convex/_generated/dataModel";
 import Image from "next/image";
 import { useToast } from "@/components/ui/toast-provider";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { TeamDetailDrawer, type DrawerMember } from "@/components/team/team-detail-drawer";
 import { uploadImageFile } from "@/lib/upload-image";
 import {
   getRoleFromMetadata,
@@ -69,6 +70,7 @@ type MemberActionTarget = {
   avatarUrl?: string;
   role: UserRole;
   companyId: Id<"cleaningCompanies"> | null;
+  companyName?: string | null;
   companyMemberRole: CompanyMemberRole | null;
 };
 
@@ -328,6 +330,7 @@ export default function TeamPage() {
       avatarUrl: member.avatarUrl,
       role: member.role,
       companyId: member.companyId,
+      companyName: member.companyName,
       companyMemberRole: member.companyMemberRole,
     };
   }
@@ -1760,71 +1763,35 @@ export default function TeamPage() {
         </div>
       ) : null}
 
-      {memberActionSheet ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-xl border bg-[var(--card)] p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-bold">Manage Member</h2>
-              <button
-                className="rounded-md px-2 py-1 text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
-                onClick={() => setMemberActionSheet(null)}
-              >
-                Close
-              </button>
-            </div>
-
-            <p className="mb-4 text-sm text-[var(--muted-foreground)]">
-              {memberActionSheet.name || memberActionSheet.email || "Selected user"}
-            </p>
-
-            <div className="grid gap-2">
-              {canManageTeam ? (
-                <>
-                  <button
-                    type="button"
-                    className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                    onClick={() => openProfileEditor(memberActionSheet)}
-                  >
-                    Edit Profile
-                  </button>
-                  <button
-                    type="button"
-                    className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                    onClick={() => openRoleEditor(memberActionSheet)}
-                  >
-                    Edit Role
-                  </button>
-                  <button
-                    type="button"
-                    className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                    onClick={() => openCompanyEditor(memberActionSheet)}
-                  >
-                    Assign Company
-                  </button>
-                </>
-              ) : null}
-              {canDispatchMember(memberActionSheet) ? (
-                <button
-                  type="button"
-                  className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                  onClick={() => openJobEditor(memberActionSheet)}
-                >
-                  Dispatch to Job
-                </button>
-              ) : null}
-              {canManageTeam ? (
-                <button
-                  type="button"
-                  className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                  onClick={() => openPropertyEditor(memberActionSheet)}
-                >
-                  Assign Property
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <TeamDetailDrawer
+        member={
+          memberActionSheet
+            ? ({
+                userId: memberActionSheet.userId,
+                name: memberActionSheet.name,
+                email: memberActionSheet.email,
+                avatarUrl: memberActionSheet.avatarUrl,
+                role: memberActionSheet.role,
+                companyId: memberActionSheet.companyId,
+                companyName: memberActionSheet.companyName ?? null,
+                companyMemberRole: memberActionSheet.companyMemberRole,
+              } satisfies DrawerMember)
+            : null
+        }
+        open={!!memberActionSheet}
+        onClose={() => setMemberActionSheet(null)}
+        canManageTeam={canManageTeam}
+        canDispatch={memberActionSheet ? canDispatchMember(memberActionSheet) : false}
+        onEditProfile={() => memberActionSheet && openProfileEditor(memberActionSheet)}
+        onEditRole={() => memberActionSheet && openRoleEditor(memberActionSheet)}
+        onEditCompany={() => memberActionSheet && openCompanyEditor(memberActionSheet)}
+        onDispatchJob={() => memberActionSheet && openJobEditor(memberActionSheet)}
+        onAssignProperty={() => memberActionSheet && openPropertyEditor(memberActionSheet)}
+        formatRoleLabel={(r) => formatRoleLabel((r as UserRole) ?? "cleaner")}
+        formatCompanyRoleLabel={(r) =>
+          r ? formatCompanyRoleLabel(r as CompanyMemberRole) : "Not visible to any manager"
+        }
+      />
 
       {profileEditor ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
