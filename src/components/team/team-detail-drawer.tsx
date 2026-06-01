@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import Image from "next/image";
 import { X } from "lucide-react";
+import { describeScope, getRoleDefinition } from "@/lib/roles";
 
 function Avatar({
   avatarUrl,
@@ -174,55 +175,96 @@ export function TeamDetailDrawer({
             </div>
           </section>
 
-          {/* Company */}
-          {canManageTeam ? (
-            <section className="space-y-2">
-              <SectionHeader>Company membership</SectionHeader>
-              {member.companyId ? (
-                <div className="rounded-md border p-3">
-                  <p className="text-sm font-medium">{member.companyName}</p>
-                  <p className="text-xs text-[var(--muted-foreground)]">
-                    {formatCompanyRoleLabel(member.companyMemberRole)}
-                  </p>
-                </div>
-              ) : (
-                <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
-                  <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
-                    No company assigned
-                  </p>
-                  <p className="text-xs text-amber-700/80 dark:text-amber-300/80">
-                    Not visible to any manager.
-                  </p>
-                </div>
-              )}
-              <ActionButton onClick={onEditCompany} variant="primary">
-                {member.companyId ? "Change company" : "Attach to company"}
-              </ActionButton>
-            </section>
-          ) : null}
+          {(() => {
+            const roleDef = getRoleDefinition(member.role);
+            const tenantScoped = roleDef?.scope === "tenant";
+            const ownershipScoped = roleDef?.scope === "ownership";
+            const requiresCompany = roleDef?.requiresCompany ?? false;
+            const requiresProperty = roleDef?.requiresProperty ?? false;
 
-          {/* Dispatch */}
-          {canDispatch || canManageTeam ? (
-            <section className="space-y-2">
-              <SectionHeader>Assignments</SectionHeader>
-              <div className="grid gap-2">
-                {canDispatch ? (
-                  <ActionButton onClick={onDispatchJob}>Dispatch to a job</ActionButton>
+            return (
+              <>
+                {/* Scope badge — tenant-scoped roles get neutral chip, not an alarm */}
+                {tenantScoped ? (
+                  <section className="space-y-2">
+                    <SectionHeader>Scope</SectionHeader>
+                    <div className="rounded-md border bg-[var(--accent)]/40 p-3">
+                      <p className="text-sm font-medium">{describeScope("tenant")}</p>
+                      <p className="text-xs text-[var(--muted-foreground)]">
+                        {roleDef?.description ?? "Internal portfolio-wide role."}
+                      </p>
+                    </div>
+                  </section>
                 ) : null}
-                {canManageTeam ? (
-                  <ActionButton onClick={onAssignProperty}>
-                    Assign to a property
-                  </ActionButton>
-                ) : null}
-              </div>
-            </section>
-          ) : null}
 
-          {/* Activity placeholder */}
+                {/* Company — only render when the role's scope demands it */}
+                {canManageTeam && requiresCompany ? (
+                  <section className="space-y-2">
+                    <SectionHeader>Company membership</SectionHeader>
+                    {member.companyId ? (
+                      <div className="rounded-md border p-3">
+                        <p className="text-sm font-medium">{member.companyName}</p>
+                        <p className="text-xs text-[var(--muted-foreground)]">
+                          {formatCompanyRoleLabel(member.companyMemberRole)}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
+                        <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                          No company assigned
+                        </p>
+                        <p className="text-xs text-amber-700/80 dark:text-amber-300/80">
+                          {roleDef?.label ?? "This role"} requires a company assignment.
+                        </p>
+                      </div>
+                    )}
+                    <ActionButton onClick={onEditCompany} variant="primary">
+                      {member.companyId ? "Change company" : "Attach to company"}
+                    </ActionButton>
+                  </section>
+                ) : null}
+
+                {/* Dispatch / property — only when role's scope demands per-record assignment */}
+                {(canDispatch || (canManageTeam && requiresProperty)) ? (
+                  <section className="space-y-2">
+                    <SectionHeader>Assignments</SectionHeader>
+                    <div className="grid gap-2">
+                      {canDispatch ? (
+                        <ActionButton onClick={onDispatchJob}>Dispatch to a job</ActionButton>
+                      ) : null}
+                      {canManageTeam && requiresProperty ? (
+                        <ActionButton onClick={onAssignProperty}>
+                          Assign to a property
+                        </ActionButton>
+                      ) : null}
+                    </div>
+                  </section>
+                ) : null}
+
+                {/* Ownership placeholder */}
+                {ownershipScoped ? (
+                  <section className="space-y-2">
+                    <SectionHeader>Owned properties</SectionHeader>
+                    <p className="text-sm text-[var(--muted-foreground)]">
+                      Ownership stakes appear in the Owner Portal.
+                    </p>
+                  </section>
+                ) : null}
+              </>
+            );
+          })()}
+
+          {/* Activity — copy varies by scope */}
           <section className="space-y-2">
             <SectionHeader>Activity</SectionHeader>
             <p className="text-sm text-[var(--muted-foreground)]">
-              Recent jobs and quality scores will appear here.
+              {(() => {
+                const scope = getRoleDefinition(member.role)?.scope;
+                if (scope === "tenant") return "Recent portfolio activity will appear here.";
+                if (scope === "company") return "Recent dispatches and team activity will appear here.";
+                if (scope === "ownership") return "Recent statements and approvals will appear here.";
+                return "Recent jobs and quality scores will appear here.";
+              })()}
             </p>
           </section>
         </div>
