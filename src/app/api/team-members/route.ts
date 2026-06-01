@@ -3,16 +3,18 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@convex/_generated/api";
 import { z } from "zod";
+import { ROLE_KEYS } from "@/lib/roles";
+
+// Invite flow currently cannot create owner accounts via this API; owner
+// onboarding happens through the owner portal. Filter to invite-eligible roles.
+const INVITE_ROLES = ROLE_KEYS.filter((r) => r !== "owner") as Array<
+  Exclude<(typeof ROLE_KEYS)[number], "owner">
+>;
 
 const createPayloadSchema = z.object({
   email: z.string().email(),
   fullName: z.string().min(2),
-  role: z.union([
-    z.literal("cleaner"),
-    z.literal("manager"),
-    z.literal("property_ops"),
-    z.literal("admin"),
-  ]),
+  role: z.enum(INVITE_ROLES as [string, ...string[]]),
   phone: z.string().optional(),
   companyId: z.string().optional(),
 });
@@ -95,7 +97,7 @@ export async function POST(request: Request) {
         lastName: lastName || undefined,
         publicMetadata: {
           ...(clerkUser.publicMetadata ?? {}),
-          role: payload.role,
+          role: payload.role as (typeof INVITE_ROLES)[number],
         },
       });
     } else {
@@ -133,7 +135,7 @@ export async function POST(request: Request) {
           name: payload.fullName,
           email: payload.email,
           phone: payload.phone,
-          role: payload.role,
+          role: payload.role as (typeof INVITE_ROLES)[number],
         },
       );
     } else {
@@ -144,7 +146,7 @@ export async function POST(request: Request) {
           email: payload.email,
           name: payload.fullName,
           phone: payload.phone,
-          role: payload.role,
+          role: payload.role as (typeof INVITE_ROLES)[number],
         },
       );
     }

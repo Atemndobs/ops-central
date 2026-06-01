@@ -27,7 +27,8 @@ import {
   Users,
 } from "lucide-react";
 
-type UserRole = "cleaner" | "manager" | "property_ops" | "admin" | "owner";
+import { getRoleDefinition, type RoleKey } from "@/lib/roles";
+type UserRole = RoleKey;
 type CompanyMemberRole = "cleaner" | "manager" | "owner";
 type AvailabilityFilter = "all" | "active" | "working" | "available" | "off";
 type TeamViewMode = "card" | "list";
@@ -1818,6 +1819,48 @@ export default function TeamPage() {
                   aria-label="Role"
                 />
               </label>
+
+              {(() => {
+                const fromDef = getRoleDefinition(roleEditor.role);
+                const toDef = getRoleDefinition(roleDraft);
+                if (!fromDef || !toDef || fromDef.key === toDef.key) return null;
+
+                const warnings: string[] = [];
+                if (!fromDef.requiresCompany && toDef.requiresCompany && !roleEditor.companyId) {
+                  warnings.push(
+                    `${toDef.label} requires a company assignment. You'll need to attach this user to a company after saving.`,
+                  );
+                }
+                if (!fromDef.requiresProperty && toDef.requiresProperty) {
+                  warnings.push(
+                    `${toDef.label} requires a property assignment.`,
+                  );
+                }
+                if (fromDef.scope === "tenant" && toDef.scope !== "tenant") {
+                  warnings.push(
+                    `Demoting from a portfolio-wide role (${fromDef.label}) to a scoped role (${toDef.label}). This user will lose tenant-wide access.`,
+                  );
+                }
+                if (
+                  fromDef.requiresCompany &&
+                  !toDef.requiresCompany &&
+                  roleEditor.companyId
+                ) {
+                  warnings.push(
+                    `${toDef.label} is not scoped to a company. The existing company membership will become irrelevant.`,
+                  );
+                }
+
+                if (warnings.length === 0) return null;
+                return (
+                  <div className="space-y-1 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
+                    <p className="font-semibold uppercase tracking-wide">Heads up</p>
+                    {warnings.map((w) => (
+                      <p key={w}>· {w}</p>
+                    ))}
+                  </div>
+                );
+              })()}
 
               <button
                 type="submit"
