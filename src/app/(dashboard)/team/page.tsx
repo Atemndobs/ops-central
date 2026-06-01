@@ -135,6 +135,7 @@ export default function TeamPage() {
     email: "",
     role: "cleaner" as UserRole,
     phone: "",
+    companyId: "" as string,
   });
 
   const { isLoaded: isClerkLoaded, isSignedIn, sessionClaims, userId } = useAuth();
@@ -1701,6 +1702,7 @@ export default function TeamPage() {
                     email: "",
                     role: "cleaner",
                     phone: "",
+                    companyId: "",
                   });
                   setIsCreateOpen(false);
                 } catch (error) {
@@ -1767,6 +1769,27 @@ export default function TeamPage() {
                   className="w-full rounded-md border bg-transparent px-3 py-2"
                 />
               </label>
+
+              {newMember.role === "cleaner" || newMember.role === "manager" ? (
+                <label className="block text-sm">
+                  <span className="mb-1 block text-[var(--muted-foreground)]">
+                    Attach to company (optional)
+                  </span>
+                  <SearchableSelect
+                    value={newMember.companyId || null}
+                    onChange={(id) =>
+                      setNewMember((prev) => ({ ...prev, companyId: id ?? "" }))
+                    }
+                    items={[
+                      { id: "", label: "— Skip (assign later) —" },
+                      ...(companies ?? []).map((c) => ({ id: c._id, label: c.name })),
+                    ]}
+                    placeholder="Skip (assign later)"
+                    searchPlaceholder="Search companies…"
+                    aria-label="Company"
+                  />
+                </label>
+              ) : null}
 
               {createError ? (
                 <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">

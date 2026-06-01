@@ -14,6 +14,7 @@ const createPayloadSchema = z.object({
     z.literal("admin"),
   ]),
   phone: z.string().optional(),
+  companyId: z.string().optional(),
 });
 
 function splitFullName(fullName: string) {
@@ -148,11 +149,31 @@ export async function POST(request: Request) {
       );
     }
 
+    // Optional company attach
+    let attachedCompanyId: string | null = null;
+    if (payload.companyId && (payload.role === "cleaner" || payload.role === "manager")) {
+      const convexUserAfter = await convex.query(api.users.queries.getByClerkId, {
+        clerkId: clerkUser.id,
+      });
+      if (convexUserAfter?._id) {
+        try {
+          await convex.mutation(api.admin.mutations.assignUserCompanyMembership, {
+            userId: convexUserAfter._id as never,
+            companyId: payload.companyId as never,
+          });
+          attachedCompanyId = payload.companyId;
+        } catch (e) {
+          console.error("Failed to attach new user to company", e);
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       clerkUserId: clerkUser.id,
       email: payload.email,
       role: payload.role,
+      companyId: attachedCompanyId,
     });
   } catch (error) {
     const message =
