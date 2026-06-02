@@ -181,6 +181,7 @@ export function TeamDetailDrawer({
             const scope = roleDef.scope;
             const requiresCompany = roleDef.requiresCompany;
             const requiresProperty = roleDef.requiresProperty;
+            const ownershipScoped = scope === "ownership";
 
             return (
               <>
@@ -211,6 +212,24 @@ export function TeamDetailDrawer({
                     <ActionButton onClick={onEditCompany} variant="primary">
                       {member.companyId ? "Change company" : "Attach to company"}
                     </ActionButton>
+                  </section>
+                ) : null}
+
+                {/* Ownership — link to a property to add owner row */}
+                {ownershipScoped && canManageTeam ? (
+                  <section className="space-y-2">
+                    <SectionHeader>Ownership</SectionHeader>
+                    <p className="text-xs text-[var(--muted-foreground)]">
+                      Owners are attached per property. Open a property and use the
+                      Property Owners card to add {member.name || "this user"} with
+                      a stake %.
+                    </p>
+                    <a
+                      href="/properties"
+                      className="inline-flex w-full items-center justify-center rounded-md border border-[var(--primary)] bg-[var(--primary)]/10 px-3 py-2 text-sm font-medium text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/20"
+                    >
+                      Open Properties →
+                    </a>
                   </section>
                 ) : null}
 
