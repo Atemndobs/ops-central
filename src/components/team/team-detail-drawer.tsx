@@ -177,30 +177,25 @@ export function TeamDetailDrawer({
 
           {(() => {
             const roleDef = getRoleDefinition(member.role);
-            const tenantScoped = roleDef?.scope === "tenant";
-            const ownershipScoped = roleDef?.scope === "ownership";
-            const requiresCompany = roleDef?.requiresCompany ?? false;
-            const requiresProperty = roleDef?.requiresProperty ?? false;
+            if (!roleDef) return null;
+            const scope = roleDef.scope;
+            const requiresCompany = roleDef.requiresCompany;
+            const requiresProperty = roleDef.requiresProperty;
 
             return (
               <>
-                {/* Scope badge — tenant-scoped roles get neutral chip, not an alarm */}
-                {tenantScoped ? (
-                  <section className="space-y-2">
-                    <SectionHeader>Scope</SectionHeader>
-                    <div className="rounded-md border bg-[var(--accent)]/40 p-3">
-                      <p className="text-sm font-medium">{describeScope("tenant")}</p>
-                      <p className="text-xs text-[var(--muted-foreground)]">
-                        {roleDef?.description ?? "Internal portfolio-wide role."}
-                      </p>
-                    </div>
-                  </section>
-                ) : null}
+                {/* Scope — single chip, short label */}
+                <section className="space-y-2">
+                  <SectionHeader>Scope</SectionHeader>
+                  <span className="inline-flex items-center rounded-full border bg-[var(--accent)]/40 px-2.5 py-0.5 text-xs font-medium">
+                    {describeScope(scope)}
+                  </span>
+                </section>
 
-                {/* Company — only render when the role's scope demands it */}
+                {/* Company — only when scope demands it */}
                 {canManageTeam && requiresCompany ? (
                   <section className="space-y-2">
-                    <SectionHeader>Company membership</SectionHeader>
+                    <SectionHeader>Company</SectionHeader>
                     {member.companyId ? (
                       <div className="rounded-md border p-3">
                         <p className="text-sm font-medium">{member.companyName}</p>
@@ -209,13 +204,8 @@ export function TeamDetailDrawer({
                         </p>
                       </div>
                     ) : (
-                      <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
-                        <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
-                          No company assigned
-                        </p>
-                        <p className="text-xs text-amber-700/80 dark:text-amber-300/80">
-                          {roleDef?.label ?? "This role"} requires a company assignment.
-                        </p>
+                      <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm font-medium text-amber-700 dark:text-amber-300">
+                        Needs a company
                       </div>
                     )}
                     <ActionButton onClick={onEditCompany} variant="primary">
@@ -240,32 +230,13 @@ export function TeamDetailDrawer({
                     </div>
                   </section>
                 ) : null}
-
-                {/* Ownership placeholder */}
-                {ownershipScoped ? (
-                  <section className="space-y-2">
-                    <SectionHeader>Owned properties</SectionHeader>
-                    <p className="text-sm text-[var(--muted-foreground)]">
-                      Ownership stakes appear in the Owner Portal.
-                    </p>
-                  </section>
-                ) : null}
               </>
             );
           })()}
 
-          {/* Activity — copy varies by scope */}
           <section className="space-y-2">
             <SectionHeader>Activity</SectionHeader>
-            <p className="text-sm text-[var(--muted-foreground)]">
-              {(() => {
-                const scope = getRoleDefinition(member.role)?.scope;
-                if (scope === "tenant") return "Recent portfolio activity will appear here.";
-                if (scope === "company") return "Recent dispatches and team activity will appear here.";
-                if (scope === "ownership") return "Recent statements and approvals will appear here.";
-                return "Recent jobs and quality scores will appear here.";
-              })()}
-            </p>
+            <p className="text-sm text-[var(--muted-foreground)]">No recent activity.</p>
           </section>
         </div>
       </aside>
