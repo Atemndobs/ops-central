@@ -1827,9 +1827,9 @@ export default function TeamPage() {
 
                 const tags: string[] = [];
                 if (!fromDef.requiresCompany && toDef.requiresCompany && !roleEditor.companyId)
-                  tags.push("Needs a company");
+                  tags.push("No company assigned");
                 if (!fromDef.requiresProperty && toDef.requiresProperty)
-                  tags.push("Needs a property");
+                  tags.push("No property assigned");
                 if (fromDef.scope === "tenant" && toDef.scope !== "tenant")
                   tags.push("Loses portfolio access");
                 if (fromDef.requiresCompany && !toDef.requiresCompany && roleEditor.companyId)

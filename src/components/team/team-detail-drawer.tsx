@@ -204,8 +204,8 @@ export function TeamDetailDrawer({
                         </p>
                       </div>
                     ) : (
-                      <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm font-medium text-amber-700 dark:text-amber-300">
-                        Needs a company
+                      <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                        No company assigned
                       </div>
                     )}
                     <ActionButton onClick={onEditCompany} variant="primary">
