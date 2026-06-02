@@ -1840,6 +1840,8 @@ export default function TeamPage() {
                   tags.push("Loses portfolio access");
                 if (fromDef.requiresCompany && !toDef.requiresCompany && roleEditor.companyId)
                   tags.push("Company membership ignored");
+                if (toDef.scope === "ownership")
+                  tags.push("Needs ownership rows on a property");
 
                 if (tags.length === 0) return null;
                 return (
