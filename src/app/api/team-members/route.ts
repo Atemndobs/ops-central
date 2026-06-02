@@ -5,16 +5,14 @@ import { api } from "@convex/_generated/api";
 import { z } from "zod";
 import { ROLE_KEYS } from "@/lib/roles";
 
-// Invite flow currently cannot create owner accounts via this API; owner
-// onboarding happens through the owner portal. Filter to invite-eligible roles.
-const INVITE_ROLES = ROLE_KEYS.filter((r) => r !== "owner") as Array<
-  Exclude<(typeof ROLE_KEYS)[number], "owner">
->;
+// This endpoint is upsert — used for both invites AND in-place role updates
+// (the role-editor modal on /team posts here too). Accept every role.
+const ALLOWED_ROLES = ROLE_KEYS;
 
 const createPayloadSchema = z.object({
   email: z.string().email(),
   fullName: z.string().min(2),
-  role: z.enum(INVITE_ROLES as [string, ...string[]]),
+  role: z.enum(ALLOWED_ROLES as [string, ...string[]]),
   // Treat empty strings as "not provided" — the form sends "" when skipped.
   phone: z
     .string()
@@ -109,7 +107,7 @@ export async function POST(request: Request) {
         lastName: lastName || undefined,
         publicMetadata: {
           ...(clerkUser.publicMetadata ?? {}),
-          role: payload.role as (typeof INVITE_ROLES)[number],
+          role: payload.role as (typeof ALLOWED_ROLES)[number],
         },
       });
     } else {
@@ -147,7 +145,7 @@ export async function POST(request: Request) {
           name: payload.fullName,
           email: payload.email,
           phone: payload.phone,
-          role: payload.role as (typeof INVITE_ROLES)[number],
+          role: payload.role as (typeof ALLOWED_ROLES)[number],
         },
       );
     } else {
@@ -158,7 +156,7 @@ export async function POST(request: Request) {
           email: payload.email,
           name: payload.fullName,
           phone: payload.phone,
-          role: payload.role as (typeof INVITE_ROLES)[number],
+          role: payload.role as (typeof ALLOWED_ROLES)[number],
         },
       );
     }
