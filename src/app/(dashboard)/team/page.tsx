@@ -89,6 +89,12 @@ export default function TeamPage() {
   const [railOpen, setRailOpen] = useState<boolean>(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [filterChip, setFilterChip] = useState<FilterChip>("none");
+  // Mounted flag — chip counts depend on Date.now() (inactive cutoff), which
+  // mismatches between SSR and CSR. Render counts only after mount.
+  const [hasMounted, setHasMounted] = useState(false);
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
   const [mobileFilterPanel, setMobileFilterPanel] = useState<MobileFilterPanel>(null);
 
   const [roleEditor, setRoleEditor] = useState<MemberActionTarget | null>(null);
@@ -1056,8 +1062,8 @@ export default function TeamPage() {
                   aria-pressed={active}
                 >
                   {chip.label}
-                  <span className="rounded-full bg-[var(--accent)] px-1.5 text-[10px] font-semibold">
-                    {chip.count}
+                  <span className="rounded-full bg-[var(--accent)] px-1.5 text-[10px] font-semibold" suppressHydrationWarning>
+                    {hasMounted ? chip.count : "—"}
                   </span>
                 </button>
               );
