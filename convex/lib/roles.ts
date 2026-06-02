@@ -104,15 +104,19 @@ export function requiresPropertyAssignment(role: string | undefined | null): boo
   return getRoleDefinition(role)?.requiresProperty ?? false;
 }
 
+/**
+ * Short label for the scope. One word. Long-form explanation belongs in
+ * the role/scope settings page, not inline in every UI surface.
+ */
 export function describeScope(scope: RoleScope): string {
   switch (scope) {
     case "tenant":
-      return "Portfolio-wide · no scoping required";
+      return "Portfolio";
     case "company":
-      return "Scoped to a cleaning company";
+      return "Company";
     case "entity":
-      return "Scoped to assigned jobs";
+      return "Jobs";
     case "ownership":
-      return "Scoped to owned properties";
+      return "Ownership";
   }
 }

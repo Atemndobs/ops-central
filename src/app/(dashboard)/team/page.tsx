@@ -1825,38 +1825,26 @@ export default function TeamPage() {
                 const toDef = getRoleDefinition(roleDraft);
                 if (!fromDef || !toDef || fromDef.key === toDef.key) return null;
 
-                const warnings: string[] = [];
-                if (!fromDef.requiresCompany && toDef.requiresCompany && !roleEditor.companyId) {
-                  warnings.push(
-                    `${toDef.label} requires a company assignment. You'll need to attach this user to a company after saving.`,
-                  );
-                }
-                if (!fromDef.requiresProperty && toDef.requiresProperty) {
-                  warnings.push(
-                    `${toDef.label} requires a property assignment.`,
-                  );
-                }
-                if (fromDef.scope === "tenant" && toDef.scope !== "tenant") {
-                  warnings.push(
-                    `Demoting from a portfolio-wide role (${fromDef.label}) to a scoped role (${toDef.label}). This user will lose tenant-wide access.`,
-                  );
-                }
-                if (
-                  fromDef.requiresCompany &&
-                  !toDef.requiresCompany &&
-                  roleEditor.companyId
-                ) {
-                  warnings.push(
-                    `${toDef.label} is not scoped to a company. The existing company membership will become irrelevant.`,
-                  );
-                }
+                const tags: string[] = [];
+                if (!fromDef.requiresCompany && toDef.requiresCompany && !roleEditor.companyId)
+                  tags.push("Needs a company");
+                if (!fromDef.requiresProperty && toDef.requiresProperty)
+                  tags.push("Needs a property");
+                if (fromDef.scope === "tenant" && toDef.scope !== "tenant")
+                  tags.push("Loses portfolio access");
+                if (fromDef.requiresCompany && !toDef.requiresCompany && roleEditor.companyId)
+                  tags.push("Company membership ignored");
 
-                if (warnings.length === 0) return null;
+                if (tags.length === 0) return null;
                 return (
-                  <div className="space-y-1 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
-                    <p className="font-semibold uppercase tracking-wide">Heads up</p>
-                    {warnings.map((w) => (
-                      <p key={w}>· {w}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {tags.map((t) => (
+                      <span
+                        key={t}
+                        className="inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300"
+                      >
+                        {t}
+                      </span>
                     ))}
                   </div>
                 );
