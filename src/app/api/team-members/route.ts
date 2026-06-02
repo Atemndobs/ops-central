@@ -15,8 +15,15 @@ const createPayloadSchema = z.object({
   email: z.string().email(),
   fullName: z.string().min(2),
   role: z.enum(INVITE_ROLES as [string, ...string[]]),
-  phone: z.string().optional(),
-  companyId: z.string().optional(),
+  // Treat empty strings as "not provided" — the form sends "" when skipped.
+  phone: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : undefined)),
+  companyId: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : undefined)),
 });
 
 function splitFullName(fullName: string) {
@@ -74,9 +81,14 @@ export async function POST(request: Request) {
     try {
       const json = await request.json();
       payload = createPayloadSchema.parse(json);
-    } catch {
+    } catch (err) {
+      const issues =
+        err instanceof z.ZodError
+          ? err.issues.map((i) => `${i.path.join(".")}: ${i.message}`)
+          : undefined;
+      console.error("team-members POST validation failed", issues ?? err);
       return NextResponse.json(
-        { error: "Invalid request payload." },
+        { error: "Invalid request payload.", issues },
         { status: 400 },
       );
     }
