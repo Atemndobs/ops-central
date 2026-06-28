@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — JNA Cleaners | J&A Business Solutions",
+  title: "Privacy Policy — Chez Soi Cleaners | J&A Business Solutions",
   description:
-    "Privacy policy for the JNA Cleaners mobile app, used by employees and contractors of J&A Business Solutions LLC.",
+    "Privacy policy for the Chez Soi Cleaners mobile app, used by employees and contractors of J&A Business Solutions LLC.",
   robots: { index: true, follow: true },
   alternates: { canonical: "https://ja-bs.com/privacy" },
 };
@@ -28,7 +28,7 @@ export default function PrivacyPolicyPage() {
       <main className="mx-auto max-w-3xl px-6 py-12 text-white/85">
         <article className="space-y-6 leading-relaxed">
           <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-            Privacy Policy — JNA Cleaners
+            Privacy Policy — Chez Soi Cleaners
           </h1>
 
           <p className="text-sm text-white/60">
@@ -39,7 +39,7 @@ export default function PrivacyPolicyPage() {
 
           <p>
             J&amp;A Business Solutions LLC (&ldquo;J&amp;A,&rdquo; &ldquo;we,&rdquo; &ldquo;us,&rdquo; or &ldquo;our&rdquo;) operates the{" "}
-            <strong>JNA Cleaners</strong> mobile application (the &ldquo;App&rdquo;), a workforce tool used by
+            <strong>Chez Soi Cleaners</strong> mobile application (the &ldquo;App&rdquo;), a workforce tool used by
             employees and contractors of J&amp;A Business Solutions LLC and its affiliated property
             operators to manage cleaning, inspection, incident reporting, and field operations at
             properties under our management.

@@ -3,9 +3,9 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Support — JNA Cleaners | J&A Business Solutions",
+  title: "Support — Chez Soi Cleaners | J&A Business Solutions",
   description:
-    "Support and help for the JNA Cleaners mobile app, used by employees and contractors of J&A Business Solutions LLC.",
+    "Support and help for the Chez Soi Cleaners mobile app, used by employees and contractors of J&A Business Solutions LLC.",
   robots: { index: true, follow: true },
   alternates: { canonical: "https://ja-bs.com/support" },
 };
@@ -40,11 +40,11 @@ export default function SupportPage() {
       <main className="mx-auto max-w-3xl px-6 py-12 text-white/85">
         <article className="space-y-6 leading-relaxed">
           <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-            JNA Cleaners — Support
+            Chez Soi Cleaners — Support
           </h1>
 
           <p>
-            <strong>JNA Cleaners</strong> is a field-operations app by{" "}
+            <strong>Chez Soi Cleaners</strong> is a field-operations app by{" "}
             <strong>J&amp;A Business Solutions LLC</strong>, used by our cleaning staff, managers,
             operations team, and property owners to coordinate cleaning jobs, capture photos, report
             incidents, and approve completed work. It is intended for authorized staff and partners.
@@ -83,10 +83,10 @@ export default function SupportPage() {
             <Faq q="Why does the app ask for camera, photos, and microphone access?">
               Camera &amp; photos are used to capture before/after and incident photos for your jobs. The
               microphone is used for voice-to-text messages. You can manage these in your device&rsquo;s
-              Settings → JNA Cleaners.
+              Settings → Chez Soi Cleaners.
             </Faq>
             <Faq q="Notifications aren't working">
-              Enable notifications in Settings → JNA Cleaners → Notifications so you&rsquo;re alerted to
+              Enable notifications in Settings → Chez Soi Cleaners → Notifications so you&rsquo;re alerted to
               new jobs and incidents.
             </Faq>
             <Faq q="I found a bug or have feedback">
