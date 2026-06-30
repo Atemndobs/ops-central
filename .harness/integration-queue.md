@@ -14,6 +14,17 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 - Note: follow-up candidate — owner-overview `StatementEditor`/`PropertySplitView` use the same named utilities, likely same latent bug.
 - Handoff: .harness/handoffs/TASK-MONTHLY-CLOSE-THEME-001/worktree-handoff.md
 
+### TASK-PROPERTY-COSTS-001
+- Branch: feat/property-costs-editor
+- Worktree: ~/sites/opscentral-admin-costs
+- PR: https://github.com/Atemndobs/ops-central/pull/181
+- Schema impact: none
+- Convex impact: main-dev-once-required (new `strCosts/costItems` module → regen api; mirror to cleaners)
+- Risk: low (additive — per-property cost-line editor + CRUD; only existing files touched are navigation.ts + message catalogs)
+- Merge ordering: AFTER PR #180 (reuses shared ui.tsx but edits none of #180's files; ordering ensures reused primitives render themed)
+- Handoff: .harness/handoffs/TASK-PROPERTY-COSTS-001/worktree-handoff.md
+- Note: also a Ready sibling — PR #180 (TASK-MONTHLY-CLOSE-THEME-001, theme fix). Merge #180 first.
+
 ## In progress (main session integrating)
 
 _None._
