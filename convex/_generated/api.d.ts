@@ -118,6 +118,7 @@ import type * as serviceUsage_providers_index from "../serviceUsage/providers/in
 import type * as serviceUsage_providers_types from "../serviceUsage/providers/types.js";
 import type * as serviceUsage_queries from "../serviceUsage/queries.js";
 import type * as strCosts_buckets from "../strCosts/buckets.js";
+import type * as strCosts_costItems from "../strCosts/costItems.js";
 import type * as strCosts_costMath from "../strCosts/costMath.js";
 import type * as strCosts_mutations from "../strCosts/mutations.js";
 import type * as strCosts_portfolio from "../strCosts/portfolio.js";
@@ -252,6 +253,7 @@ declare const fullApi: ApiFromModules<{
   "serviceUsage/providers/types": typeof serviceUsage_providers_types;
   "serviceUsage/queries": typeof serviceUsage_queries;
   "strCosts/buckets": typeof strCosts_buckets;
+  "strCosts/costItems": typeof strCosts_costItems;
   "strCosts/costMath": typeof strCosts_costMath;
   "strCosts/mutations": typeof strCosts_mutations;
   "strCosts/portfolio": typeof strCosts_portfolio;

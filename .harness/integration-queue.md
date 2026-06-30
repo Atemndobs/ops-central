@@ -4,32 +4,35 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
-### TASK-MONTHLY-CLOSE-THEME-001
-- Branch: fix/monthly-close-theme
-- Worktree: ~/sites/opscentral-admin-mc-theme
-- PR: https://github.com/Atemndobs/ops-central/pull/180
-- Schema impact: none
-- Convex impact: none (CSS/className-only)
-- Risk: very low (fixes transparent surfaces on /reports/monthly-close — named Tailwind color utilities were no-ops in this v4 setup; converted to `[var(--token)]`)
-- Note: follow-up candidate — owner-overview `StatementEditor`/`PropertySplitView` use the same named utilities, likely same latent bug.
-- Handoff: .harness/handoffs/TASK-MONTHLY-CLOSE-THEME-001/worktree-handoff.md
-
-### TASK-PROPERTY-COSTS-001
-- Branch: feat/property-costs-editor
-- Worktree: ~/sites/opscentral-admin-costs
-- PR: https://github.com/Atemndobs/ops-central/pull/181
-- Schema impact: none
-- Convex impact: main-dev-once-required (new `strCosts/costItems` module → regen api; mirror to cleaners)
-- Risk: low (additive — per-property cost-line editor + CRUD; only existing files touched are navigation.ts + message catalogs)
-- Merge ordering: AFTER PR #180 (reuses shared ui.tsx but edits none of #180's files; ordering ensures reused primitives render themed)
-- Handoff: .harness/handoffs/TASK-PROPERTY-COSTS-001/worktree-handoff.md
-- Note: also a Ready sibling — PR #180 (TASK-MONTHLY-CLOSE-THEME-001, theme fix). Merge #180 first.
+_None._
 
 ## In progress (main session integrating)
 
 _None._
 
 ## Done
+
+### TASK-PROPERTY-COSTS-001
+- Branch: feat/property-costs-editor
+- Worktree: ~/sites/opscentral-admin-costs
+- PR: https://github.com/Atemndobs/ops-central/pull/181 (merged)
+- Schema impact: none
+- Convex impact: deploy-required (new `strCosts/costItems` module — deployed to lovable-oriole-182, mirrored to cleaners)
+- Risk: low (additive — per-property cost-line editor + CRUD)
+- Merged: 2026-06-30
+- Handoff: .harness/handoffs/TASK-PROPERTY-COSTS-001/worktree-handoff.md
+- Post-merge: rebase needed (queue collision with #180); resolved + force-pushed worktree branch. `npx convex deploy` ✓, build ✓, costMath.test.ts 9/9 ✓, cleaners mirrored ✓.
+
+### TASK-MONTHLY-CLOSE-THEME-001
+- Branch: fix/monthly-close-theme
+- Worktree: ~/sites/opscentral-admin-mc-theme
+- PR: https://github.com/Atemndobs/ops-central/pull/180 (merged → ca26c9d)
+- Schema impact: none
+- Convex impact: none (CSS/className-only)
+- Risk: very low (converted named Tailwind utilities → `[var(--token)]` on `/reports/monthly-close` — Tailwind v4 has no `@theme` block so named utilities were silent no-ops)
+- Merged: 2026-06-30
+- Handoff: .harness/handoffs/TASK-MONTHLY-CLOSE-THEME-001/worktree-handoff.md
+- Follow-up candidate: `src/components/admin/owner-overview/{StatementEditor,PropertySplitView}.tsx` use the same named utilities and likely have the same latent transparency bug.
 
 ### TASK-MONTHLY-CLOSE-001
 - Branch: task/monthly-close
