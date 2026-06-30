@@ -4,21 +4,24 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
-### TASK-MONTHLY-CLOSE-001
-- Branch: task/monthly-close
-- Worktree: ~/sites/opscentral-admin-monthly-close
-- PR: https://github.com/Atemndobs/ops-central/pull/179
-- Schema impact: backward-compatible (additive `properties.status` + new `portfolioViews` table)
-- Convex impact: main-dev-once-required (`npx convex dev --once` to deploy schema + regen `api` for `strCosts/*`, then `sync:convex-backend` to cleaners)
-- Risk: low–medium (additive schema; new `strCosts/buckets.ts` adapter is the only behavioral mapping; only the statement breakdown depends on it, not portfolio totals)
-- Note: `npm run build` passes only AFTER `npx convex dev --once` (frontend `api.strCosts.*` needs codegen). Golden test green now: `node --test convex/strCosts/costMath.test.ts` (9/9).
-- Handoff: .harness/handoffs/TASK-MONTHLY-CLOSE-001/worktree-handoff.md
+_None._
 
 ## In progress (main session integrating)
 
 _None._
 
 ## Done
+
+### TASK-MONTHLY-CLOSE-001
+- Branch: task/monthly-close
+- Worktree: ~/sites/opscentral-admin-monthly-close
+- PR: https://github.com/Atemndobs/ops-central/pull/179 (merged → b77393b)
+- Schema impact: backward-compatible (additive optional `properties.pnlStatus` + new `portfolioViews` table)
+- Convex impact: deploy-required (deployed to lovable-oriole-182; PR classified as dev-once but runtime calls to new `strCosts/*` functions needed prod deploy)
+- Risk: low (additive schema; integration fix in 174fcfd: renamed schema field `status` → `pnlStatus` to avoid collision with the derived `status` attached by `convex/properties/queries.ts`)
+- Merged: 2026-06-30
+- Handoff: .harness/handoffs/TASK-MONTHLY-CLOSE-001/worktree-handoff.md
+- Post-merge: `npm install` (`simple-icons` missing — pre-existing gap from #130), `npx convex deploy` → lovable-oriole-182, mirror via `npm run sync:convex-backend`. Lint clean in new code (188 pre-existing errors unchanged). Build green. `costMath.test.ts` 9/9.
 
 ### TASK-OWNER-OVERVIEW-PHASE-3
 - Branch: feat/admin-owner-overview-split
