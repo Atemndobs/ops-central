@@ -66,12 +66,12 @@ export function MonthlyPnlTable({
   return (
     <div className="space-y-2">
       {report.excluded.length > 0 && (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-[var(--muted-foreground)]">
           {report.excluded.length} unit(s) excluded (dropped/managed)
         </p>
       )}
 
-      <div className="overflow-x-auto rounded-md border border-border">
+      <div className="overflow-x-auto rounded-md border border-[var(--border)]">
         <table className="w-full caption-bottom text-sm">
           <thead>
             <tr className="bg-[#0a1628] text-[#c9a84c]">
@@ -102,8 +102,8 @@ export function MonthlyPnlTable({
               return (
                 <Fragment key={row.id}>
                   <tr
-                    className={`cursor-pointer border-t border-border hover:bg-muted/40${
-                      rowMuted ? " text-muted-foreground opacity-60" : ""
+                    className={`cursor-pointer border-t border-[var(--border)] hover:bg-[var(--muted)]${
+                      rowMuted ? " text-[var(--muted-foreground)] opacity-60" : ""
                     }`}
                     role="button"
                     tabIndex={0}
@@ -119,13 +119,13 @@ export function MonthlyPnlTable({
                     <td className={`${TD} text-left font-medium`}>
                       <span className="inline-flex flex-wrap items-center gap-1">
                         {isExpanded ? (
-                          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <ChevronDown className="h-4 w-4 shrink-0 text-[var(--muted-foreground)]" />
                         ) : (
-                          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <ChevronRight className="h-4 w-4 shrink-0 text-[var(--muted-foreground)]" />
                         )}
                         {row.name}
                         {rowMuted && (
-                          <span className="ml-1 text-xs font-normal italic text-muted-foreground">
+                          <span className="ml-1 text-xs font-normal italic text-[var(--muted-foreground)]">
                             No data — import or enter
                           </span>
                         )}
@@ -146,44 +146,44 @@ export function MonthlyPnlTable({
                   </tr>
 
                   {isExpanded && (
-                    <tr className="bg-muted/10">
+                    <tr className="bg-[var(--muted)]">
                       <td colSpan={detailColSpan} className="px-6 py-3">
-                        <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
+                        <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-[var(--muted-foreground)]">
                           <span>
-                            <span className="font-medium text-foreground">Lease:</span>{" "}
+                            <span className="font-medium text-[var(--foreground)]">Lease:</span>{" "}
                             {formatCurrency(row.bucketTotals.lease ?? 0)}
                           </span>
                           <span>
-                            <span className="font-medium text-foreground">Utilities:</span>{" "}
+                            <span className="font-medium text-[var(--foreground)]">Utilities:</span>{" "}
                             {formatCurrency(row.bucketTotals.utilities ?? 0)}
                           </span>
                           <span>
-                            <span className="font-medium text-foreground">Cleaning:</span>{" "}
+                            <span className="font-medium text-[var(--foreground)]">Cleaning:</span>{" "}
                             {formatCurrency(row.bucketTotals.cleaning ?? 0)}
                           </span>
                           <span>
-                            <span className="font-medium text-foreground">Payouts:</span>{" "}
+                            <span className="font-medium text-[var(--foreground)]">Payouts:</span>{" "}
                             {formatCurrency(row.bucketTotals.payouts ?? 0)}
                           </span>
                           <span>
-                            <span className="font-medium text-foreground">Subscriptions:</span>{" "}
+                            <span className="font-medium text-[var(--foreground)]">Subscriptions:</span>{" "}
                             {formatCurrency(row.bucketTotals.subscriptions ?? 0)}
                           </span>
                           <span>
-                            <span className="font-medium text-foreground">Other:</span>{" "}
+                            <span className="font-medium text-[var(--foreground)]">Other:</span>{" "}
                             {formatCurrency(row.bucketTotals.other ?? 0)}
                           </span>
                           {(row.bucketTotals.unassigned ?? 0) > 0 && (
                             <span>
-                              <span className="font-medium text-foreground">Unassigned:</span>{" "}
+                              <span className="font-medium text-[var(--foreground)]">Unassigned:</span>{" "}
                               {formatCurrency(row.bucketTotals.unassigned ?? 0)}
                             </span>
                           )}
                         </div>
 
                         {onSaveActual && rowActuals[row.id] && (
-                          <div className="mt-4 border-t border-border/50 pt-3">
-                            <p className="mb-2 text-xs font-semibold text-foreground">
+                          <div className="mt-4 border-t border-[var(--border)] pt-3">
+                            <p className="mb-2 text-xs font-semibold text-[var(--foreground)]">
                               Off-platform / manual actuals (overrides Hospitable for this month)
                             </p>
                             <div className="flex flex-wrap items-end gap-3">
@@ -263,10 +263,10 @@ export function MonthlyPnlTable({
             })}
 
             {/* Portfolio total row */}
-            <tr className="border-t-2 border-border bg-muted/20 font-semibold">
+            <tr className="border-t-2 border-[var(--border)] bg-[var(--muted)] font-semibold">
               <td className={`${TD} text-left text-xs font-bold uppercase tracking-wider`}>Portfolio Total</td>
               <td className={`${TD} text-right font-bold`}>{formatCurrency(report.revenueGross)}</td>
-              <td className={`${TD} text-right text-muted-foreground`}>—</td>
+              <td className={`${TD} text-right text-[var(--muted-foreground)]`}>—</td>
               <td className={`${TD} text-right`}>{formatCurrency(report.bucketTotals.cleaning ?? 0)}</td>
               <td className={`${TD} text-right`}>
                 {formatCurrency(report.totalCosts - (report.bucketTotals.cleaning ?? 0))}
