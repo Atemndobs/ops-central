@@ -60,7 +60,7 @@ export const portfolioReport = query({
     // When a property was explicitly selected via propertyIds, always report it
     // as "active" so it appears in the report rows (not in excluded).
     const effectiveStatus = (p: (typeof allProps)[number]): "active" | "dropped" | "managed" =>
-      isFiltered ? "active" : (p.status ?? (p.isActive ? "active" : "dropped"));
+      isFiltered ? "active" : (p.pnlStatus ?? (p.isActive ? "active" : "dropped"));
 
     // Category → engine bucket map and name map (for cost lines without an
     // item-level bucket). OpsCentral category buckets are mapped to the

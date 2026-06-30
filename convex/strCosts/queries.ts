@@ -16,7 +16,7 @@ export const getProperties = query({
         name: p.name,
         city: p.city ?? null,
         state: p.state ?? null,
-        status: p.status ?? (p.isActive ? "active" : "dropped"),
+        status: p.pnlStatus ?? (p.isActive ? "active" : "dropped"),
         hospitableId: p.hospitableId ?? null,
       }))
       .sort((a, b) => a.name.localeCompare(b.name));

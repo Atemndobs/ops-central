@@ -327,7 +327,7 @@ export const portfolioStatementData = query({
     } else {
       const all = await ctx.db.query("properties").collect();
       propertyList = all.filter((p) => {
-        const effectiveStatus = p.status ?? (p.isActive ? "active" : "dropped");
+        const effectiveStatus = p.pnlStatus ?? (p.isActive ? "active" : "dropped");
         return effectiveStatus === "active";
       });
     }

@@ -185,7 +185,10 @@ const properties = defineTable({
   // have no value and the engine derives status from `isActive` when absent
   // (isActive ? "active" : "dropped"). "managed" = mgmt-fee unit, excluded
   // from the arbitrage P&L. See convex/strCosts/portfolio.ts.
-  status: v.optional(
+  // Named `pnlStatus` (not `status`) because `properties/queries.ts` attaches
+  // a derived readiness `status` ("ready"|"dirty"|"in_progress"|"vacant") to
+  // its query results, which would collide on the Doc<"properties"> type.
+  pnlStatus: v.optional(
     v.union(v.literal("active"), v.literal("dropped"), v.literal("managed")),
   ),
   currency: v.optional(v.string()),
