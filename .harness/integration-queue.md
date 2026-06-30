@@ -4,7 +4,15 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
-_None._
+### TASK-MONTHLY-CLOSE-THEME-001
+- Branch: fix/monthly-close-theme
+- Worktree: ~/sites/opscentral-admin-mc-theme
+- PR: https://github.com/Atemndobs/ops-central/pull/180
+- Schema impact: none
+- Convex impact: none (CSS/className-only)
+- Risk: very low (fixes transparent surfaces on /reports/monthly-close — named Tailwind color utilities were no-ops in this v4 setup; converted to `[var(--token)]`)
+- Note: follow-up candidate — owner-overview `StatementEditor`/`PropertySplitView` use the same named utilities, likely same latent bug.
+- Handoff: .harness/handoffs/TASK-MONTHLY-CLOSE-THEME-001/worktree-handoff.md
 
 ## In progress (main session integrating)
 
