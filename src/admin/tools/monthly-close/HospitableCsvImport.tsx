@@ -133,10 +133,10 @@ export function HospitableCsvImport({
   return (
     <div className="flex max-h-[80vh] flex-col">
       <div className="mb-3 flex items-center gap-2">
-        <Upload className="h-5 w-5 text-primary" />
+        <Upload className="h-5 w-5 text-[var(--primary)]" />
         <div>
-          <h2 className="text-base font-semibold text-foreground">Import from Hospitable</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-base font-semibold text-[var(--foreground)]">Import from Hospitable</h2>
+          <p className="text-sm text-[var(--muted-foreground)]">
             Upload your Hospitable reservations export CSV to import revenue and booking data.
           </p>
         </div>
@@ -156,7 +156,7 @@ export function HospitableCsvImport({
             if (f) void handleFile(f);
           }}
           className={`rounded-lg border-2 border-dashed p-8 text-center transition-colors ${
-            isDragOver ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/50"
+            isDragOver ? "border-[var(--primary)] bg-[var(--muted)]" : "border-[var(--border)] hover:border-[var(--muted-foreground)]"
           }`}
         >
           <input
@@ -170,27 +170,27 @@ export function HospitableCsvImport({
             }}
           />
           <label htmlFor="mc-csv-upload" className="flex cursor-pointer flex-col items-center gap-2">
-            <FileText className="h-10 w-10 text-muted-foreground" />
-            <span className="text-muted-foreground">
+            <FileText className="h-10 w-10 text-[var(--muted-foreground)]" />
+            <span className="text-[var(--muted-foreground)]">
               Drag &amp; drop your Hospitable CSV here, or{" "}
-              <span className="text-primary underline">browse</span>
+              <span className="text-[var(--primary)] underline">browse</span>
             </span>
-            <span className="text-xs text-muted-foreground">Hospitable → Reservations → Export</span>
+            <span className="text-xs text-[var(--muted-foreground)]">Hospitable → Reservations → Export</span>
           </label>
         </div>
       ) : (
         <div className="flex flex-1 flex-col gap-4 overflow-hidden">
-          <div className="overflow-hidden rounded-lg border border-border">
-            <div className="bg-muted/40 px-4 py-2 text-sm font-medium">
+          <div className="overflow-hidden rounded-lg border border-[var(--border)]">
+            <div className="bg-[var(--muted)] px-4 py-2 text-sm font-medium">
               Property mapping ({mappedCount}/{totalExternal} mapped)
             </div>
             <div className="max-h-80 divide-y divide-border overflow-y-auto">
               {Object.entries(grouped).map(([externalId, data]) => (
                 <div key={externalId} className="flex items-start justify-between gap-4 px-4 py-3">
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-foreground">{data.name}</div>
-                    <div className="text-xs text-muted-foreground">ID: {externalId}</div>
-                    <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                    <div className="truncate text-sm font-medium text-[var(--foreground)]">{data.name}</div>
+                    <div className="text-xs text-[var(--muted-foreground)]">ID: {externalId}</div>
+                    <div className="mt-1 flex flex-wrap gap-3 text-xs text-[var(--muted-foreground)]">
                       {data.months.map((m) => (
                         <span key={`${m.month}-${m.year}`}>
                           {MONTH_NAMES[m.month]} {m.year}: {currency.format(m.totalRevenue)} | {m.bookedNights} nights |{" "}

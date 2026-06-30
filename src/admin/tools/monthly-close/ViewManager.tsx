@@ -115,7 +115,7 @@ export function ViewManager({
       <ModalTitle id="view-mgr-title">{isEditing ? "Edit view" : "New view"}</ModalTitle>
 
       {isLoading ? (
-        <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 py-8 text-sm text-[var(--muted-foreground)]">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading…
         </div>
       ) : (
@@ -143,16 +143,16 @@ export function ViewManager({
 
           <div className="flex flex-col space-y-1">
             <Label>Properties</Label>
-            <div className="max-h-64 flex-1 space-y-1 overflow-y-auto rounded-md border border-border p-2">
+            <div className="max-h-64 flex-1 space-y-1 overflow-y-auto rounded-md border border-[var(--border)] p-2">
               {allProps!.length === 0 ? (
-                <p className="py-2 text-sm text-muted-foreground">No properties found.</p>
+                <p className="py-2 text-sm text-[var(--muted-foreground)]">No properties found.</p>
               ) : (
                 allProps!.map((prop) => {
                   const id = prop._id as string;
                   return (
                     <label
                       key={id}
-                      className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-muted"
+                      className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-[var(--muted)]"
                     >
                       <Checkbox checked={checkedIds.has(id)} onCheckedChange={() => toggleProp(id)} id={`prop-${id}`} />
                       <span>{prop.name}</span>
@@ -161,7 +161,7 @@ export function ViewManager({
                 })
               )}
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-[var(--muted-foreground)]">
               {checkedIds.size} of {allProps!.length} selected
             </p>
           </div>

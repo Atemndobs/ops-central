@@ -27,10 +27,10 @@ type ButtonVariant = "default" | "outline" | "destructive" | "ghost";
 type ButtonSize = "default" | "sm";
 
 const buttonVariants: Record<ButtonVariant, string> = {
-  default: "bg-primary text-primary-foreground hover:bg-primary/90",
-  outline: "border border-border bg-transparent hover:bg-muted text-foreground",
-  destructive: "bg-destructive text-white hover:bg-destructive/90",
-  ghost: "bg-transparent hover:bg-muted text-foreground",
+  default: "bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90",
+  outline: "border border-[var(--border)] bg-transparent hover:bg-[var(--muted)] text-[var(--foreground)]",
+  destructive: "bg-[var(--destructive)] text-white hover:opacity-90",
+  ghost: "bg-transparent hover:bg-[var(--muted)] text-[var(--foreground)]",
 };
 const buttonSizes: Record<ButtonSize, string> = {
   default: "h-9 px-4 text-sm",
@@ -49,7 +49,7 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]",
         buttonVariants[variant],
         buttonSizes[size],
         className,
@@ -64,7 +64,7 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
   return (
     <input
       className={cn(
-        "h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+        "h-9 w-full rounded-md border border-[var(--input)] bg-[var(--card)] px-3 py-1 text-sm text-[var(--foreground)] shadow-sm transition-colors placeholder:text-[var(--muted-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50",
         className,
       )}
       {...props}
@@ -76,7 +76,7 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
 export function Label({ className, ...props }: LabelHTMLAttributes<HTMLLabelElement>) {
   return (
     <label
-      className={cn("text-sm font-medium text-foreground", className)}
+      className={cn("text-sm font-medium text-[var(--foreground)]", className)}
       {...props}
     />
   );
@@ -91,7 +91,7 @@ export function Select({
   return (
     <select
       className={cn(
-        "h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+        "h-9 rounded-md border border-[var(--input)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)] shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50",
         className,
       )}
       {...props}
@@ -119,8 +119,8 @@ export function Switch({
       disabled={disabled}
       onClick={() => onCheckedChange(!checked)}
       className={cn(
-        "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
-        checked ? "bg-primary" : "bg-muted",
+        "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50",
+        checked ? "bg-[var(--primary)]" : "bg-[var(--muted)]",
       )}
     >
       <span
@@ -149,7 +149,7 @@ export function Checkbox({
       id={id}
       checked={checked}
       onChange={(e) => onCheckedChange(e.target.checked)}
-      className="h-4 w-4 rounded border-input accent-primary"
+      className="h-4 w-4 rounded border-[var(--input)] accent-[var(--primary)]"
     />
   );
 }
@@ -188,7 +188,7 @@ export function Modal({
         aria-modal="true"
         aria-labelledby={labelledBy}
         className={cn(
-          "relative my-8 w-full rounded-lg border border-border bg-background p-5 shadow-xl",
+          "relative my-8 w-full rounded-lg border border-[var(--border)] bg-[var(--popover)] p-5 shadow-xl",
           className ?? "max-w-md",
         )}
         onClick={(e) => e.stopPropagation()}
@@ -197,7 +197,7 @@ export function Modal({
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground hover:bg-muted"
+          className="absolute right-3 top-3 rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
         >
           <X className="h-4 w-4" />
         </button>
@@ -209,7 +209,7 @@ export function Modal({
 
 export function ModalTitle({ id, children }: { id?: string; children: ReactNode }) {
   return (
-    <h2 id={id} className="text-lg font-semibold text-foreground">
+    <h2 id={id} className="text-lg font-semibold text-[var(--foreground)]">
       {children}
     </h2>
   );

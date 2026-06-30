@@ -205,7 +205,7 @@ export default function MonthlyCloseApp() {
           {activeView ? "Edit view…" : "New view…"}
         </Button>
 
-        <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-muted-foreground">
+        <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-[var(--muted-foreground)]">
           <Switch checked={compare} onCheckedChange={setCompare} />
           Compare to previous month
         </label>
@@ -275,11 +275,11 @@ export default function MonthlyCloseApp() {
 
       {/* Body */}
       {report === undefined ? (
-        <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 p-6 text-sm text-[var(--muted-foreground)]">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading…
         </div>
       ) : report.rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-[var(--muted-foreground)]">
           No data for {month} — import a Hospitable CSV to begin.
         </p>
       ) : (
