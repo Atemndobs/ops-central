@@ -14,6 +14,10 @@ const users = defineTable({
   clerkId: v.string(),
   email: v.string(),
   name: v.optional(v.string()),
+  // Owner's company / legal entity — what prints on the Chez Soi Stays owner
+  // statement when this user is the statement client. Optional + additive; when
+  // absent the statement falls back to `name`. See strCosts/views.listStatementClients.
+  company: v.optional(v.string()),
   avatarUrl: v.optional(v.string()),
   role: v.union(
     v.literal("cleaner"),
