@@ -7,7 +7,7 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 ### TASK-MONTHLY-CLOSE-001
 - Branch: task/monthly-close
 - Worktree: ~/sites/opscentral-admin-monthly-close
-- PR: <fill after `gh pr create`>
+- PR: https://github.com/Atemndobs/ops-central/pull/179
 - Schema impact: backward-compatible (additive `properties.status` + new `portfolioViews` table)
 - Convex impact: main-dev-once-required (`npx convex dev --once` to deploy schema + regen `api` for `strCosts/*`, then `sync:convex-backend` to cleaners)
 - Risk: low–medium (additive schema; new `strCosts/buckets.ts` adapter is the only behavioral mapping; only the statement breakdown depends on it, not portfolio totals)
