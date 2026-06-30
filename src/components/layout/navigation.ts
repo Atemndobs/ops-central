@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   BarChart3,
   Calculator,
+  Receipt,
   Settings,
 } from "lucide-react";
 import type { UserRole } from "@/lib/auth";
@@ -108,6 +109,12 @@ export const navigation: NavigationItem[] = [
     nameKey: "nav.monthlyClose",
     href: "/reports/monthly-close",
     icon: Calculator,
+    roles: ["admin", "property_ops"],
+  },
+  {
+    nameKey: "nav.propertyCosts",
+    href: "/reports/costs",
+    icon: Receipt,
     roles: ["admin", "property_ops"],
   },
   {
