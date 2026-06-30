@@ -181,6 +181,13 @@ const properties = defineTable({
 
   // Config
   isActive: v.boolean(),
+  // Monthly-close / portfolio P&L status. Optional + additive: existing rows
+  // have no value and the engine derives status from `isActive` when absent
+  // (isActive ? "active" : "dropped"). "managed" = mgmt-fee unit, excluded
+  // from the arbitrage P&L. See convex/strCosts/portfolio.ts.
+  status: v.optional(
+    v.union(v.literal("active"), v.literal("dropped"), v.literal("managed")),
+  ),
   currency: v.optional(v.string()),
 
   // Amenities
@@ -1828,6 +1835,17 @@ const propertyMonthlySettings = defineTable({
   .index("by_property", ["propertyId"])
   .index("by_property_month", ["propertyId", "month"]);
 
+// Saved per-partner property subsets for the Monthly Close page. `clientName`
+// is the optional company/owner label printed on the Chez Soi Stays statement
+// ("Statement prepared for: {clientName}"). See convex/strCosts/views.ts.
+const portfolioViews = defineTable({
+  name: v.string(),
+  clientName: v.optional(v.string()),
+  propertyIds: v.array(v.id("properties")),
+  createdAt: v.optional(v.number()),
+  updatedAt: v.optional(v.number()),
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // OWNER PORTAL — NET-NEW TABLES (Wave 1; spec §4)
 // Order matters: propertyOwners + propertyFeeConfig must appear BEFORE
@@ -2119,6 +2137,7 @@ export default defineSchema({
   propertyCostItems,
   monthlyCalculations,
   propertyMonthlySettings,
+  portfolioViews,
   propertyOwners,
   propertyFeeConfig,
   ownerStatements,
