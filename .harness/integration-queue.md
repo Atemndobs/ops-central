@@ -4,6 +4,15 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
+### TASK-OWNER-COMPANY-001
+- Branch: feat/owner-company-statement
+- Worktree: ~/sites/opscentral-admin-owner-company
+- PR: https://github.com/Atemndobs/ops-central/pull/183
+- Schema impact: backward-compatible (additive optional `users.company`)
+- Convex impact: convex-deploy-required (schema field + functions; web build green w/o regen). One-off: `setOwnerCompanyByEmail` for Randalls → "J&A Business Solutions LLC".
+- Risk: low (additive field; statement client = company ?? name)
+- Handoff: .harness/handoffs/TASK-OWNER-COMPANY-001/worktree-handoff.md
+
 ### TASK-VIEW-CLIENT-DROPDOWN-001
 - Branch: feat/view-client-owner-dropdown
 - Worktree: ~/sites/opscentral-admin-client-dropdown
