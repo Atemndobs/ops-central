@@ -4,7 +4,15 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
-_None._
+### TASK-VIEW-CLIENT-DROPDOWN-001
+- Branch: feat/view-client-owner-dropdown
+- Worktree: ~/sites/opscentral-admin-client-dropdown
+- PR: https://github.com/Atemndobs/ops-central/pull/182
+- Schema impact: none
+- Convex impact: convex-deploy-required (`npx convex deploy` prod for new `views.listStatementClients`; web build is green WITHOUT regen since the query is on the existing `views` module)
+- Risk: low (one additive read query + Client/company field input→select; auto-scopes view to the picked owner's properties)
+- Note: deploy Convex right after merge to avoid a transient "unknown function" error before the web build flips over.
+- Handoff: .harness/handoffs/TASK-VIEW-CLIENT-DROPDOWN-001/worktree-handoff.md
 
 ## In progress (main session integrating)
 
