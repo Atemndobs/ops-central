@@ -68,7 +68,7 @@ export function ViewManager({
   // owner's properties. "None" / a preserved custom value leaves properties as-is.
   function handleClientChange(value: string) {
     setClientName(value);
-    const owner = owners?.find((o) => o.name === value);
+    const owner = owners?.find((o) => o.client === value);
     if (owner && owner.propertyIds.length > 0) {
       setCheckedIds(new Set(owner.propertyIds));
     }
@@ -153,12 +153,15 @@ export function ViewManager({
             >
               <option value="">— None —</option>
               {/* Preserve a custom value saved before owners existed in the list */}
-              {clientName && !(owners ?? []).some((o) => o.name === clientName) && (
+              {clientName && !(owners ?? []).some((o) => o.client === clientName) && (
                 <option value={clientName}>{clientName} (custom)</option>
               )}
               {(owners ?? []).map((o) => (
-                <option key={o.userId} value={o.name}>
-                  {o.name}
+                <option key={o.userId} value={o.client}>
+                  {/* Statement uses `client` (company if set, else name); show the rep
+                      in parens when a company is set so the picker stays unambiguous. */}
+                  {o.client}
+                  {o.company ? ` (${o.name})` : ""}
                   {o.propertyIds.length > 0
                     ? ` · ${o.propertyIds.length} ${o.propertyIds.length === 1 ? "property" : "properties"}`
                     : ""}
@@ -166,8 +169,9 @@ export function ViewManager({
               ))}
             </Select>
             <p className="text-xs text-[var(--muted-foreground)]">
-              Owners come from the properties you manage. Selecting one scopes the view
-              to their properties — adjust the checkboxes below if needed.
+              Owners come from the properties you manage; the statement shows their company
+              (or name if none). Selecting one scopes the view to their properties — adjust
+              the checkboxes below if needed.
             </p>
           </div>
 

@@ -80,20 +80,27 @@ export const listStatementClients = query({
     const rows: Array<{
       userId: string;
       name: string;
+      company: string | null;
+      /** What prints on the statement: company if set, else the owner's name. */
+      client: string;
       email: string | null;
       propertyIds: string[];
     }> = [];
     for (const [userId, propertyIds] of byUser.entries()) {
       const user = await ctx.db.get(userId as Id<"users">);
       if (!user) continue;
+      const name = user.name ?? user.email ?? "(unnamed owner)";
+      const company = user.company?.trim() || null;
       rows.push({
         userId,
-        name: user.name ?? user.email ?? "(unnamed owner)",
+        name,
+        company,
+        client: company ?? name,
         email: user.email ?? null,
         propertyIds: [...propertyIds],
       });
     }
-    rows.sort((a, b) => a.name.localeCompare(b.name));
+    rows.sort((a, b) => a.client.localeCompare(b.client));
     return rows;
   },
 });

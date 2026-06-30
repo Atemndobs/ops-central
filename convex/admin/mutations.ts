@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import { mutation } from "../_generated/server";
+import { mutation, internalMutation } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { type Doc, type Id } from "../_generated/dataModel";
 import { requireRole } from "../lib/auth";
@@ -176,6 +176,8 @@ export const updateUser = mutation({
     phone: v.optional(v.string()),
     avatarUrl: v.optional(v.string()),
     role: v.optional(appRoleValidator),
+    // Owner's company for the Chez Soi Stays statement (empty string clears it).
+    company: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireRole(ctx, ["admin"]);
@@ -214,6 +216,10 @@ export const updateUser = mutation({
     }
     if (fields.role !== undefined) {
       updates.role = fields.role;
+    }
+    if (fields.company !== undefined) {
+      const normalizedCompany = fields.company.trim();
+      updates.company = normalizedCompany.length > 0 ? normalizedCompany : undefined;
     }
 
     if (nextMetadata !== user.metadata) {
@@ -696,5 +702,27 @@ export const upsertUserFromClerkWebhook = mutation({
       userId,
       created: true,
     };
+  },
+});
+
+/**
+ * Ops one-off: set (or clear) an owner's statement company by email. Internal —
+ * not client-callable; run via `npx convex run admin/mutations:setOwnerCompanyByEmail`.
+ * Used to backfill owner companies (e.g. Randalls → "J&A Business Solutions LLC").
+ */
+export const setOwnerCompanyByEmail = internalMutation({
+  args: { email: v.string(), company: v.string() },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", args.email))
+      .first();
+    if (!user) throw new ConvexError(`No user with email ${args.email}`);
+    const company = args.company.trim();
+    await ctx.db.patch(user._id, {
+      company: company.length > 0 ? company : undefined,
+      updatedAt: Date.now(),
+    });
+    return { userId: user._id, name: user.name ?? null, company: company || null };
   },
 });
