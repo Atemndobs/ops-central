@@ -6,7 +6,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Loader2, Trash2 } from "lucide-react";
 import { useToast } from "@/components/ui/toast-provider";
-import { Button, Input, Label, Checkbox, Modal, ModalTitle, ModalFooter } from "./ui";
+import { Button, Input, Label, Select, Checkbox, Modal, ModalTitle, ModalFooter } from "./ui";
 
 interface ViewManagerProps {
   open: boolean;
@@ -28,6 +28,8 @@ export function ViewManager({
 
   const views = useQuery(api.strCosts.views.listViews, {});
   const allProps = useQuery(api.strCosts.queries.getProperties, {});
+  // Owners we manage (from propertyOwners) — the "Client / company" options.
+  const owners = useQuery(api.strCosts.views.listStatementClients, {});
 
   const saveView = useMutation(api.strCosts.views.saveView);
   const deleteView = useMutation(api.strCosts.views.deleteView);
@@ -60,6 +62,16 @@ export function ViewManager({
       else next.add(id);
       return next;
     });
+  }
+
+  // Picking an owner sets the statement client AND scopes the view to that
+  // owner's properties. "None" / a preserved custom value leaves properties as-is.
+  function handleClientChange(value: string) {
+    setClientName(value);
+    const owner = owners?.find((o) => o.name === value);
+    if (owner && owner.propertyIds.length > 0) {
+      setCheckedIds(new Set(owner.propertyIds));
+    }
   }
 
   async function handleSave(asNew: boolean) {
@@ -133,12 +145,30 @@ export function ViewManager({
 
           <div className="space-y-1">
             <Label htmlFor="view-client-name">Client / company (for statements)</Label>
-            <Input
+            <Select
               id="view-client-name"
               value={clientName}
-              onChange={(e) => setClientName(e.target.value)}
-              placeholder="e.g. Acme Realty LLC"
-            />
+              onChange={(e) => handleClientChange(e.target.value)}
+              className="w-full"
+            >
+              <option value="">— None —</option>
+              {/* Preserve a custom value saved before owners existed in the list */}
+              {clientName && !(owners ?? []).some((o) => o.name === clientName) && (
+                <option value={clientName}>{clientName} (custom)</option>
+              )}
+              {(owners ?? []).map((o) => (
+                <option key={o.userId} value={o.name}>
+                  {o.name}
+                  {o.propertyIds.length > 0
+                    ? ` · ${o.propertyIds.length} ${o.propertyIds.length === 1 ? "property" : "properties"}`
+                    : ""}
+                </option>
+              ))}
+            </Select>
+            <p className="text-xs text-[var(--muted-foreground)]">
+              Owners come from the properties you manage. Selecting one scopes the view
+              to their properties — adjust the checkboxes below if needed.
+            </p>
           </div>
 
           <div className="flex flex-col space-y-1">

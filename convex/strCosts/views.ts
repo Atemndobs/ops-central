@@ -1,5 +1,6 @@
 import { query, mutation } from "../_generated/server";
 import { v } from "convex/values";
+import type { Id } from "../_generated/dataModel";
 
 /**
  * List all saved portfolio views, ordered by name.
@@ -53,5 +54,46 @@ export const deleteView = mutation({
   handler: async (ctx, args) => {
     await ctx.db.delete(args.id);
     return null;
+  },
+});
+
+/**
+ * Owners we manage (from `propertyOwners`), for the "Client / company" picker
+ * on the saved-view editor. One row per owner-user with an active stake, plus
+ * the property ids they hold — so selecting an owner can auto-scope the view to
+ * their properties. Active stake = `effectiveTo === undefined` (matches
+ * admin/ownerOverview.loadActiveOwnerships).
+ */
+export const listStatementClients = query({
+  args: {},
+  handler: async (ctx) => {
+    const ownerships = await ctx.db.query("propertyOwners").collect();
+    const active = ownerships.filter((o) => o.effectiveTo === undefined);
+
+    const byUser = new Map<string, Set<string>>();
+    for (const o of active) {
+      const set = byUser.get(o.userId as string) ?? new Set<string>();
+      set.add(o.propertyId as string);
+      byUser.set(o.userId as string, set);
+    }
+
+    const rows: Array<{
+      userId: string;
+      name: string;
+      email: string | null;
+      propertyIds: string[];
+    }> = [];
+    for (const [userId, propertyIds] of byUser.entries()) {
+      const user = await ctx.db.get(userId as Id<"users">);
+      if (!user) continue;
+      rows.push({
+        userId,
+        name: user.name ?? user.email ?? "(unnamed owner)",
+        email: user.email ?? null,
+        propertyIds: [...propertyIds],
+      });
+    }
+    rows.sort((a, b) => a.name.localeCompare(b.name));
+    return rows;
   },
 });
