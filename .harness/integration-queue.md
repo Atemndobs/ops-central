@@ -4,30 +4,35 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
-### TASK-OWNER-COMPANY-001
-- Branch: feat/owner-company-statement
-- Worktree: ~/sites/opscentral-admin-owner-company
-- PR: https://github.com/Atemndobs/ops-central/pull/183
-- Schema impact: backward-compatible (additive optional `users.company`)
-- Convex impact: convex-deploy-required (schema field + functions; web build green w/o regen). One-off: `setOwnerCompanyByEmail` for Randalls → "J&A Business Solutions LLC".
-- Risk: low (additive field; statement client = company ?? name)
-- Handoff: .harness/handoffs/TASK-OWNER-COMPANY-001/worktree-handoff.md
-
-### TASK-VIEW-CLIENT-DROPDOWN-001
-- Branch: feat/view-client-owner-dropdown
-- Worktree: ~/sites/opscentral-admin-client-dropdown
-- PR: https://github.com/Atemndobs/ops-central/pull/182
-- Schema impact: none
-- Convex impact: convex-deploy-required (`npx convex deploy` prod for new `views.listStatementClients`; web build is green WITHOUT regen since the query is on the existing `views` module)
-- Risk: low (one additive read query + Client/company field input→select; auto-scopes view to the picked owner's properties)
-- Note: deploy Convex right after merge to avoid a transient "unknown function" error before the web build flips over.
-- Handoff: .harness/handoffs/TASK-VIEW-CLIENT-DROPDOWN-001/worktree-handoff.md
+_None._
 
 ## In progress (main session integrating)
 
 _None._
 
 ## Done
+
+### TASK-OWNER-COMPANY-001
+- Branch: feat/owner-company-statement
+- Worktree: ~/sites/opscentral-admin-owner-company
+- PR: https://github.com/Atemndobs/ops-central/pull/183 (merged → 754cc35)
+- Schema impact: backward-compatible (additive optional `users.company`)
+- Convex impact: deploy-required (deployed to lovable-oriole-182, mirrored to cleaners)
+- Risk: low (additive field; statement client = company ?? name)
+- Merged: 2026-07-01
+- Handoff: .harness/handoffs/TASK-OWNER-COMPANY-001/worktree-handoff.md
+- Post-merge: `npx convex deploy` ✓, `setOwnerCompanyByEmail` one-off backfill executed for Randalls → "J&A Business Solutions LLC" (userId `th7661d4pt47cf53w2ndv6fgj98014sk`) ✓, build ✓, tests 9/9 ✓, cleaners mirrored ✓.
+
+### TASK-VIEW-CLIENT-DROPDOWN-001
+- Branch: feat/view-client-owner-dropdown
+- Worktree: ~/sites/opscentral-admin-client-dropdown
+- PR: https://github.com/Atemndobs/ops-central/pull/182 (merged → 2586ac7)
+- Schema impact: none
+- Convex impact: deploy-required (deployed to lovable-oriole-182 — new `views.listStatementClients` query)
+- Risk: low (one additive read query + Client field input→select)
+- Merged: 2026-07-01
+- Handoff: .harness/handoffs/TASK-VIEW-CLIENT-DROPDOWN-001/worktree-handoff.md
+- Post-merge: deployed alongside #183 in the same `npx convex deploy` call.
 
 ### TASK-PROPERTY-COSTS-001
 - Branch: feat/property-costs-editor
