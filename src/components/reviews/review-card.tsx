@@ -64,9 +64,9 @@ export function ReviewCard({
     setPending(true);
     try {
       await approveAndSend({ reviewId: review._id, responseText: draft });
-      showToast({ title: "Reply queued for publishing", variant: "success" });
+      showToast("Reply queued for publishing", "success");
     } catch (error) {
-      showToast({ title: "Failed to send reply", description: getErrorMessage(error), variant: "error" });
+      showToast(`Failed to send reply: ${getErrorMessage(error)}`, "error");
     } finally {
       setPending(false);
     }
@@ -77,7 +77,7 @@ export function ReviewCard({
     try {
       await dismiss({ reviewId: review._id });
     } catch (error) {
-      showToast({ title: "Failed to dismiss", description: getErrorMessage(error), variant: "error" });
+      showToast(`Failed to dismiss: ${getErrorMessage(error)}`, "error");
     } finally {
       setPending(false);
     }
@@ -87,9 +87,9 @@ export function ReviewCard({
     setPending(true);
     try {
       await retrySend({ reviewId: review._id });
-      showToast({ title: "Retrying send…", variant: "success" });
+      showToast("Retrying send…", "success");
     } catch (error) {
-      showToast({ title: "Retry failed", description: getErrorMessage(error), variant: "error" });
+      showToast(`Retry failed: ${getErrorMessage(error)}`, "error");
     } finally {
       setPending(false);
     }
