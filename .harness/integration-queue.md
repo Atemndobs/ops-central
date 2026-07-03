@@ -4,7 +4,15 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
-_None._
+### TASK-REVIEW-RESPONSE-AI
+- Branch: task/review-response-ai
+- Worktree: ~/sites/opscentral-admin-review-response-ai
+- PR: https://github.com/Atemndobs/ops-central/pull/184
+- Schema impact: backward-compatible (additive `guestReviews` table + `reviewsAiReply` feature flag)
+- Convex impact: deploy-required (`npx convex dev --once` needed to regenerate codegen — branch currently shows ~11 expected `guestReviews`-does-not-exist typecheck errors that resolve automatically once this runs)
+- Risk: low-medium (new domain, additive schema, but touches the live-publish path to Airbnb — gated behind `reviewsAiReply` flag default OFF, and blocked on a separate Hospitable OAuth scope grant before it can do anything against real data)
+- Ready since: 2026-07-03
+- Handoff: .harness/handoffs/TASK-REVIEW-RESPONSE-AI/worktree-handoff.md
 
 ## In progress (main session integrating)
 
