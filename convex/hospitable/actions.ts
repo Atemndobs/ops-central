@@ -1759,3 +1759,94 @@ export const backfillReservationPlatforms = internalAction({
     };
   },
 });
+
+/**
+ * POST /v2/reviews/{uuid}/respond — publishes a reply to a guest review on
+ * Airbnb (also supports Booking.com per Hospitable's docs, but we don't
+ * operate there). Plain exported function, NOT a Convex action — called
+ * in-process from convex/guestReviews/actions.ts::sendApprovedReply to
+ * avoid an unnecessary action-to-action runtime hop (both run on the
+ * default V8 runtime; see convex/_generated/ai/guidelines.md).
+ */
+export async function postReviewResponse(args: {
+  apiKey: string;
+  baseUrl: string;
+  hospitableReviewId: string;
+  responseText: string;
+  ctx?: UsageLogCtx;
+}): Promise<{ id: string; respondedAt: string }> {
+  const url = `${args.baseUrl}/reviews/${args.hospitableReviewId}/respond`;
+  const startedAt = Date.now();
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${args.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ response: args.responseText }),
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error ?? "unknown");
+    if (args.ctx) {
+      try {
+        await args.ctx.runMutation(internal.serviceUsage.logger.log, {
+          serviceKey: "hospitable",
+          feature: "hospitable_review_respond",
+          status: "timeout",
+          durationMs: Date.now() - startedAt,
+          errorMessage: errorMessage.slice(0, 500),
+          metadata: { url: stripUrlSecrets(url) },
+        });
+      } catch {
+        // best-effort
+      }
+    }
+    throw new Error(`Network error posting review response: ${errorMessage}`);
+  }
+
+  const durationMs = Date.now() - startedAt;
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    if (args.ctx) {
+      try {
+        await args.ctx.runMutation(internal.serviceUsage.logger.log, {
+          serviceKey: "hospitable",
+          feature: "hospitable_review_respond",
+          status: classifyHttpStatus(response.status),
+          durationMs,
+          errorCode: String(response.status),
+          errorMessage: errorBody.slice(0, 500),
+          metadata: { url: stripUrlSecrets(url) },
+        });
+      } catch {
+        // best-effort
+      }
+    }
+    throw new Error(`Hospitable respond-to-review failed (${response.status}): ${errorBody}`);
+  }
+
+  const json = (await response.json()) as { id?: string; responded_at?: string };
+  if (args.ctx) {
+    try {
+      await args.ctx.runMutation(internal.serviceUsage.logger.log, {
+        serviceKey: "hospitable",
+        feature: "hospitable_review_respond",
+        status: "success",
+        durationMs,
+        metadata: { url: stripUrlSecrets(url) },
+      });
+    } catch {
+      // best-effort
+    }
+  }
+
+  return {
+    id: json.id ?? args.hospitableReviewId,
+    respondedAt: json.responded_at ?? new Date().toISOString(),
+  };
+}
