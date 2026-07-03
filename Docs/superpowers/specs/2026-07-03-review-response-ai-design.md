@@ -132,8 +132,10 @@ Both surfaces share the same review-card and approve/dismiss components — no d
 
 ## 9. Testing
 
-- Unit tests for `draftReviewResponse` (pure function — mock fetch, assert prompt construction and error handling), mirroring existing `messageEnhance` test coverage.
-- Unit tests for the `guestReviews` status-machine mutations (`upsertGuestReview`, `approveAndSend`, `dismiss`, retry-after-`send_failed`) — particularly the double-click/race guard on `approveAndSend`.
+Tests are colocated `*.test.ts` files next to the source they cover (e.g. `convex/owner/feeEngine.test.ts`, `convex/lib/companyScope.test.ts`), run via Node's built-in test runner (`npm test` → `node --test`). Note: `convex/lib/messageEnhance.ts` — the file this design's AI helper mirrors in shape — has no existing test file to follow as a template, so the tests below are new, not adapted from a sibling.
+
+- `convex/lib/reviewResponseDraft.test.ts` — unit tests for `draftReviewResponse` (pure function — mock fetch, assert prompt construction and error handling).
+- `convex/guestReviews/*.test.ts` — unit tests for the status-machine mutations (`upsertGuestReview`, `approveAndSend`, `dismiss`, retry-after-`send_failed`) — particularly the double-click/race guard on `approveAndSend`.
 - Webhook ingestion test: a `review.created` payload through `ingestEvent` produces exactly one `guestReviews` row, and a duplicate delivery (same `hospitableEventId`) is a no-op (existing dedup behavior, just needs a review-flavored payload fixture added).
 
 ## 10. Open items carried into planning
