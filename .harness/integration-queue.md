@@ -4,21 +4,25 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
-### TASK-REVIEW-RESPONSE-AI
-- Branch: task/review-response-ai
-- Worktree: ~/sites/opscentral-admin-review-response-ai
-- PR: https://github.com/Atemndobs/ops-central/pull/184
-- Schema impact: backward-compatible (additive `guestReviews` table + `reviewsAiReply` feature flag)
-- Convex impact: deploy-required (`npx convex dev --once` needed to regenerate codegen — branch currently shows ~11 expected `guestReviews`-does-not-exist typecheck errors that resolve automatically once this runs)
-- Risk: low-medium (new domain, additive schema, but touches the live-publish path to Airbnb — gated behind `reviewsAiReply` flag default OFF, and blocked on a separate Hospitable OAuth scope grant before it can do anything against real data)
-- Ready since: 2026-07-03
-- Handoff: .harness/handoffs/TASK-REVIEW-RESPONSE-AI/worktree-handoff.md
+_None._
 
 ## In progress (main session integrating)
 
 _None._
 
 ## Done
+
+### TASK-REVIEW-RESPONSE-AI
+- Branch: task/review-response-ai
+- Worktree: ~/sites/opscentral-admin-review-response-ai
+- PR: https://github.com/Atemndobs/ops-central/pull/184 (merged)
+- Schema impact: backward-compatible (additive `guestReviews` table + 3 indexes + `reviewsAiReply` feature flag)
+- Convex impact: deploy-required (deployed to lovable-oriole-182 — new `guestReviews.*` module + indexes: `by_hospitable_review_id`, `by_property`, `by_status`)
+- Risk: low-medium (new domain touching live-publish path to Airbnb — gated behind `reviewsAiReply` flag default OFF, and blocked on separate Hospitable OAuth `reviews:read`/`reviews:write` scope grant)
+- Merged: 2026-07-03
+- Handoff: .harness/handoffs/TASK-REVIEW-RESPONSE-AI/worktree-handoff.md
+- Post-merge: `npx convex deploy` ✓ (3 new indexes added), build ✓, guestReviews + reviewResponseDraft tests 17/17 ✓, cleaners mirrored ✓.
+- Business follow-ups (out of code scope): (1) re-authorize Hospitable OAuth with `reviews:read` + `reviews:write` scopes; (2) flip `reviewsAiReply` flag ON via Settings → Integrations → Feature Flags once OAuth is granted.
 
 ### TASK-OWNER-COMPANY-001
 - Branch: feat/owner-company-statement
