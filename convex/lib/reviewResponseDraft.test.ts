@@ -9,7 +9,7 @@ function mockFetchOnce(response: { ok: boolean; status?: number; json?: unknown;
     status: response.status ?? (response.ok ? 200 : 500),
     json: async () => response.json,
     text: async () => response.text ?? "",
-  })) as typeof fetch;
+  })) as unknown as typeof fetch;
   return () => {
     globalThis.fetch = original;
   };

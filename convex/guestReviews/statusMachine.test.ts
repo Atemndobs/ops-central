@@ -26,6 +26,10 @@ test("canTransition: send_failed -> sending is allowed (retry)", () => {
   assert.equal(canTransition("send_failed", "sending"), true);
 });
 
+test("canTransition: send_failed -> dismissed is allowed (after adding escape hatch)", () => {
+  assert.equal(canTransition("send_failed", "dismissed"), true);
+});
+
 test("canTransition: needs_draft -> dismissed is allowed", () => {
   assert.equal(canTransition("needs_draft", "dismissed"), true);
 });

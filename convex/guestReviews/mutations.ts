@@ -57,18 +57,30 @@ export const approveAndSend = mutation({
   },
 });
 
-/** Retry a failed send — re-enters "sending" and re-schedules the action. */
+/**
+ * Retry a failed send — re-enters "sending" and re-schedules the action.
+ * Takes the (possibly edited) response text from the caller so a fix made
+ * in the UI before retrying is actually what gets sent, rather than
+ * silently resending the original failed text still stored on the row.
+ */
 export const retrySend = mutation({
-  args: { reviewId: v.id("guestReviews") },
+  args: { reviewId: v.id("guestReviews"), responseText: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireRole(ctx, ["admin", "property_ops"]);
+
+    const trimmed = args.responseText.trim();
+    if (!trimmed) throw new Error("Response text cannot be empty.");
 
     const review = await ctx.db.get(args.reviewId);
     if (!review) throw new Error("Review not found.");
 
     assertTransition(review.status, "sending");
-    await ctx.db.patch(args.reviewId, { status: "sending", sendError: undefined });
+    await ctx.db.patch(args.reviewId, {
+      status: "sending",
+      respondedText: trimmed,
+      sendError: undefined,
+    });
 
     await ctx.scheduler.runAfter(0, internal.guestReviews.actions.sendApprovedReply, {
       reviewId: args.reviewId,

@@ -86,7 +86,7 @@ export function ReviewCard({
   async function handleRetry() {
     setPending(true);
     try {
-      await retrySend({ reviewId: review._id });
+      await retrySend({ reviewId: review._id, responseText: draft });
       showToast("Retrying send…", "success");
     } catch (error) {
       showToast(`Retry failed: ${getErrorMessage(error)}`, "error");
@@ -171,14 +171,24 @@ export function ReviewCard({
       )}
 
       {canReply && review.status === "send_failed" && (
-        <button
-          onClick={handleRetry}
-          disabled={pending}
-          className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm disabled:opacity-50"
-        >
-          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-          Retry Send
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleRetry}
+            disabled={pending || !draft.trim()}
+            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm disabled:opacity-50"
+          >
+            {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+            Retry Send
+          </button>
+          <button
+            onClick={handleDismiss}
+            disabled={pending}
+            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm disabled:opacity-50"
+          >
+            <X className="h-3.5 w-3.5" />
+            Dismiss
+          </button>
+        </div>
       )}
     </div>
   );

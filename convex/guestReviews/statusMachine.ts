@@ -4,6 +4,8 @@
 //   needs_draft --(AI draft)--> drafted --(approve)--> sending --(API ok)--> sent
 //        |                         |                       |
 //        +---(dismiss)--> dismissed                        +--(API error)--> send_failed --(retry)--> sending
+//                              ^                                                  |
+//                              +----------------------------(dismiss)-------------+
 
 export type GuestReviewStatus =
   | "needs_draft"
@@ -17,7 +19,7 @@ const ALLOWED_TRANSITIONS: Record<GuestReviewStatus, GuestReviewStatus[]> = {
   needs_draft: ["drafted", "dismissed"],
   drafted: ["sending", "dismissed"],
   sending: ["sent", "send_failed"],
-  send_failed: ["sending"],
+  send_failed: ["sending", "dismissed"],
   sent: [],
   dismissed: [],
 };
