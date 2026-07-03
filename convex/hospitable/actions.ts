@@ -3,6 +3,7 @@ import { action, internalAction } from "../_generated/server";
 import type { ActionCtx } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
+import { normalizeGuestReview } from "../guestReviews/normalize";
 
 const DEFAULT_HOSPITABLE_BASE_URL = "https://public.api.hospitable.com/v2";
 const DEFAULT_SYNC_WINDOW_DAYS = 30;
@@ -1591,6 +1592,81 @@ export const backfillReservationFinancials = internalAction({
       skippedNoChange,
       errors,
       dryRun,
+    };
+  },
+});
+
+/**
+ * Daily backstop sync for guest reviews. The `review.created` webhook
+ * (convex/hospitable/webhooks.ts) is the primary ingestion path; this sweep
+ * catches deliveries that failed before our ingest mutation ran, and
+ * backfills review history the first time this runs against a property.
+ * Iterates OUR properties table (not Hospitable's) — only properties with
+ * hospitableId set are queryable against the reviews endpoint.
+ */
+export const syncGuestReviews = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{
+    propertiesScanned: number;
+    reviewsUpserted: number;
+    reviewsSkipped: number;
+    errors: string[];
+  }> => {
+    const apiKey = process.env.HOSPITABLE_API_KEY ?? process.env.HOSPITABLE_API_TOKEN;
+    if (!apiKey) {
+      throw new Error("Missing HOSPITABLE_API_KEY/HOSPITABLE_API_TOKEN environment variable.");
+    }
+    const baseUrl = process.env.HOSPITABLE_API_URL ?? DEFAULT_HOSPITABLE_BASE_URL;
+
+    const properties: Array<Doc<"properties">> = await ctx.runQuery(
+      internal.hospitable.queries.listPropertiesWithHospitableId,
+      {},
+    );
+
+    let reviewsUpserted = 0;
+    let reviewsSkipped = 0;
+    const errors: string[] = [];
+
+    for (const property of properties) {
+      if (!property.hospitableId) continue;
+
+      let rawReviews: unknown[];
+      try {
+        rawReviews = await fetchAllHospitablePages(
+          apiKey,
+          `${baseUrl}/properties/${property.hospitableId}/reviews`,
+          ctx,
+          "hospitable_reviews_sync",
+        );
+      } catch (error) {
+        errors.push(
+          `Property ${property.hospitableId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        continue;
+      }
+
+      for (const rawReview of rawReviews) {
+        const { review, error } = normalizeGuestReview(rawReview);
+        if (!review) {
+          if (error) errors.push(error);
+          reviewsSkipped++;
+          continue;
+        }
+
+        const result = await ctx.runMutation(internal.hospitable.mutations.upsertGuestReview, review);
+        if (result.outcome === "skipped_no_property") {
+          reviewsSkipped++;
+        } else {
+          reviewsUpserted++;
+        }
+      }
+    }
+
+    return {
+      propertiesScanned: properties.length,
+      reviewsUpserted,
+      reviewsSkipped,
+      errors,
     };
   },
 });

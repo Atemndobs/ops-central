@@ -56,6 +56,19 @@ export const listStaysMissingPlatform = internalQuery({
   },
 });
 
+/**
+ * Used by `syncGuestReviews` (daily backstop sync) — returns every property
+ * that has a `hospitableId` set, since only those are queryable against
+ * Hospitable's reviews endpoint.
+ */
+export const listPropertiesWithHospitableId = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const all = await ctx.db.query("properties").collect();
+    return all.filter((p) => !!p.hospitableId);
+  },
+});
+
 export const listStaysMissingTotalAmount = internalQuery({
   args: {
     sinceMs: v.number(),
