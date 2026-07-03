@@ -1311,6 +1311,36 @@ const hospitableConfig = defineTable({
   updatedAt: v.optional(v.number()),
 });
 
+const guestReviews = defineTable({
+  hospitableReviewId: v.string(),
+  propertyId: v.id("properties"),
+  platform: v.union(v.literal("airbnb"), v.literal("direct")),
+  rating: v.number(),
+  publicReview: v.string(),
+  privateFeedback: v.optional(v.string()),
+  guestFirstName: v.string(),
+  guestLastName: v.string(),
+  reviewedAt: v.number(),
+  canRespond: v.boolean(),
+  status: v.union(
+    v.literal("needs_draft"),
+    v.literal("drafted"),
+    v.literal("sending"),
+    v.literal("sent"),
+    v.literal("dismissed"),
+    v.literal("send_failed"),
+  ),
+  aiDraftText: v.optional(v.string()),
+  aiDraftGeneratedAt: v.optional(v.number()),
+  respondedText: v.optional(v.string()),
+  respondedAt: v.optional(v.number()),
+  respondedBy: v.optional(v.id("users")),
+  sendError: v.optional(v.string()),
+})
+  .index("by_hospitable_review_id", ["hospitableReviewId"])
+  .index("by_property", ["propertyId"])
+  .index("by_status", ["status"]);
+
 // Inbound Hospitable webhook deliveries. Insert-on-receive provides
 // idempotency (Hospitable retries up to 5 times) and a debug trail for the
 // 24h header-discovery window before signature verification is enforced.
@@ -1499,7 +1529,11 @@ const featureFlags = defineTable({
     // Admin Owner Overview: if ON, a monthly cron auto-creates a DRAFT
     // statement for every (owner, property, prev-month). Default OFF —
     // admins opt in once they trust the flow.
-    v.literal("owner_overview_auto_drafts")
+    v.literal("owner_overview_auto_drafts"),
+    // Guest-review AI reply workflow (inbox + property-detail section).
+    // Default OFF — enable for the J&A team once real Hospitable review
+    // data is flowing (requires reviews:read/reviews:write OAuth scope).
+    v.literal("reviewsAiReply")
     // future flags go here
   ),
   enabled: v.boolean(),
@@ -2114,6 +2148,7 @@ export default defineSchema({
   // Integration
   hospitableConfig,
   hospitableWebhookEvents,
+  guestReviews,
 
   // AI Providers (admin-configurable)
   aiProviderSettings,

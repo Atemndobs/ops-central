@@ -30,7 +30,8 @@ const flagKeyValidator = v.union(
   v.literal("video_support"),
   v.literal("owner_show_mgmt_fee"),
   v.literal("owner_show_payout"),
-  v.literal("owner_overview_auto_drafts")
+  v.literal("owner_overview_auto_drafts"),
+  v.literal("reviewsAiReply")
   // future flags go here
 );
 
@@ -44,7 +45,8 @@ export type FeatureFlagKey =
   | "video_support"
   | "owner_show_mgmt_fee"
   | "owner_show_payout"
-  | "owner_overview_auto_drafts";
+  | "owner_overview_auto_drafts"
+  | "reviewsAiReply";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UI metadata — single source of truth for the admin Feature Flags card.
@@ -185,6 +187,19 @@ const FLAG_METADATA: Record<FeatureFlagKey, FlagMetadata> = {
     offBehaviour:
       "Cron is inert. Admins must open the property split view and click " +
       "Save draft to create the first statement row for any period.",
+  },
+  reviewsAiReply: {
+    key: "reviewsAiReply",
+    label: "AI review-response inbox",
+    description:
+      "Adds a top-level Reviews inbox and a Reviews section on property " +
+      "detail. Guest reviews synced from Hospitable get an AI-drafted " +
+      "reply that an admin or property_ops user edits and approves " +
+      "before it's published back to Airbnb.",
+    offBehaviour:
+      "Reviews nav item and property-detail Reviews section are hidden. " +
+      "Ingestion and drafting still run in the background regardless of " +
+      "this flag — it only gates the UI.",
   },
 };
 
