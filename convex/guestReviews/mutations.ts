@@ -100,4 +100,18 @@ export const markSendFailed = internalMutation({
   },
 });
 
+export const saveDraft = internalMutation({
+  args: { reviewId: v.id("guestReviews"), draftText: v.string() },
+  handler: async (ctx, args) => {
+    const review = await ctx.db.get(args.reviewId);
+    if (!review) return;
+    assertTransition(review.status, "drafted");
+    await ctx.db.patch(args.reviewId, {
+      status: "drafted",
+      aiDraftText: args.draftText,
+      aiDraftGeneratedAt: Date.now(),
+    });
+  },
+});
+
 export { InvalidReviewTransitionError };
