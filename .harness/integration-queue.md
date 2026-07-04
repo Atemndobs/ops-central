@@ -4,16 +4,18 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
-### TASK-OWNER-CONSISTENCY-001
-- Branch: task/owner-consistency
-- Worktree: ~/sites/opscentral-admin-owner-consistency
-- PR: https://github.com/Atemndobs/ops-central/pull/185
-- Schema impact: backward-compatible (`portfolioViews.ownerUserId` optional, no index/backfill) — combined-PR exception
-- Convex impact: deploy-required (schema + `strCosts/views.*`, `admin/queries.getTeamMetrics`, `admin/ownerOverview.listOwners`)
-- Risk: low (admin/web-only; additive fields; no mobile client calls; owner-bound views fall back to stored snapshot if link breaks)
-- What: makes `propertyOwners` the single source of truth for owner↔property across Team page, Owner Overview, and Monthly Close views (fixes role=owner users like Tataw John being invisible in Overview/statements)
-- CI: `npm test` +7 new pass (8 pre-existing baseline failures unchanged); `npm run build` ✓; `npx tsc --noEmit` ✓
-- Handoff: .harness/handoffs/TASK-OWNER-CONSISTENCY-001/worktree-handoff.md
+### TASK-OWNER-DRAFT-ERROR-001
+- Branch: task/owner-draft-engine-error
+- Worktree: ~/sites/opscentral-admin-owner-draft-fix
+- PR: https://github.com/Atemndobs/ops-central/pull/186
+- Schema impact: none
+- Convex impact: deploy-required (`owner/queries.getOwnerStatementDraft` error envelope, `owner/mutations.upsertPropertyFeeConfig`/`upsertPropertyOwners` first-row backdating, new `convex/lib/effectiveFrom.ts`)
+- Risk: low (bug fix + defensive envelope; mobile hook already handles the error-union shape; no schema/index changes)
+- What: fixes owner property page "Server Error" crash for newly onboarded owners (root cause: `pickFeeConfigForPeriod` throws a plain Error, `getOwnerStatementDraft` was the one owner query that didn't catch it) + prevents recurrence by backdating first-ever fee-config/owner rows to the property's first-activity month
+- Prerequisite: Task 0 in Docs/2026-07-04-fix-owner-statement-draft-crash.md is a separate, immediate prod data repair (backdateOwnerSeed for Tataw's property) — run independently of this PR merge, it unblocks him today
+- CI: `npm test` 70 pass (+6 new fee-config-period/effective-from tests; 8 pre-existing baseline failures unchanged); `npm run build` ✓; `npx tsc --noEmit` no new errors
+- Handoff: .harness/handoffs/TASK-OWNER-DRAFT-ERROR-001/worktree-handoff.md
+- Related: PR #185 (task/owner-consistency, already merged) touches the same user's Team/Owner-Overview/Monthly-Close drift — separate, independent scope, not conflated.
 
 ## In progress (main session integrating)
 
