@@ -8,6 +8,9 @@ import { Loader2, Trash2 } from "lucide-react";
 import { useToast } from "@/components/ui/toast-provider";
 import { Button, Input, Label, Select, Checkbox, Modal, ModalTitle, ModalFooter } from "./ui";
 
+const OWNER_NONE = "";
+const OWNER_CUSTOM = "__custom__";
+
 interface ViewManagerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -38,6 +41,7 @@ export function ViewManager({
 
   const [name, setName] = useState("");
   const [clientName, setClientName] = useState("");
+  const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -47,15 +51,23 @@ export function ViewManager({
     if (activeView) {
       setName(activeView.name);
       setClientName(activeView.clientName ?? "");
+      setOwnerUserId((activeView.ownerUserId as string | undefined) ?? null);
       setCheckedIds(new Set(activeView.propertyIds as string[]));
     } else {
       setName("");
       setClientName("");
+      setOwnerUserId(null);
       setCheckedIds(new Set((allProps ?? []).map((p) => p._id as string)));
     }
   }, [open, activeView, allProps]);
 
   function toggleProp(id: string) {
+    if (ownerUserId !== null) {
+      // Editing the property list contradicts "follow the owner" — unbind so
+      // the view is explicitly manual instead of silently diverging.
+      setOwnerUserId(null);
+      showToast("View unlinked from owner — property list is now manual.", "success");
+    }
     setCheckedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -64,14 +76,23 @@ export function ViewManager({
     });
   }
 
-  // Picking an owner sets the statement client AND scopes the view to that
-  // owner's properties. "None" / a preserved custom value leaves properties as-is.
-  function handleClientChange(value: string) {
-    setClientName(value);
-    const owner = owners?.find((o) => o.client === value);
-    if (owner && owner.propertyIds.length > 0) {
-      setCheckedIds(new Set(owner.propertyIds));
+  // Picking an owner BINDS the view: client + properties follow their
+  // ownership records live. "None"/custom leaves the view manual.
+  function handleOwnerChange(value: string) {
+    if (value === OWNER_NONE) {
+      setOwnerUserId(null);
+      setClientName("");
+      return;
     }
+    if (value === OWNER_CUSTOM) {
+      setOwnerUserId(null); // keep clientName as a free-form label
+      return;
+    }
+    const owner = owners?.find((o) => o.userId === value);
+    if (!owner) return;
+    setOwnerUserId(owner.userId);
+    setClientName(owner.client);
+    if (owner.propertyIds.length > 0) setCheckedIds(new Set(owner.propertyIds));
   }
 
   async function handleSave(asNew: boolean) {
@@ -91,8 +112,10 @@ export function ViewManager({
       const id = await saveView({
         id: asNew || !activeViewId ? undefined : (activeViewId as Id<"portfolioViews">),
         name: trimmed,
-        clientName: clientName.trim() || undefined,
+        // Bound views: the server derives clientName from the owner profile.
+        clientName: ownerUserId !== null ? undefined : clientName.trim() || undefined,
         propertyIds,
+        ownerUserId: ownerUserId !== null ? (ownerUserId as Id<"users">) : undefined,
       });
       onViewSaved(id as string);
       showToast(`"${trimmed}" saved.`, "success");
@@ -147,17 +170,17 @@ export function ViewManager({
             <Label htmlFor="view-client-name">Client / company (for statements)</Label>
             <Select
               id="view-client-name"
-              value={clientName}
-              onChange={(e) => handleClientChange(e.target.value)}
+              value={ownerUserId ?? (clientName ? OWNER_CUSTOM : OWNER_NONE)}
+              onChange={(e) => handleOwnerChange(e.target.value)}
               className="w-full"
             >
-              <option value="">— None —</option>
-              {/* Preserve a custom value saved before owners existed in the list */}
-              {clientName && !(owners ?? []).some((o) => o.client === clientName) && (
-                <option value={clientName}>{clientName} (custom)</option>
+              <option value={OWNER_NONE}>— None —</option>
+              {/* Preserve a custom label saved before owner-binding existed */}
+              {ownerUserId === null && clientName && (
+                <option value={OWNER_CUSTOM}>{clientName} (custom)</option>
               )}
               {(owners ?? []).map((o) => (
-                <option key={o.userId} value={o.client}>
+                <option key={o.userId} value={o.userId}>
                   {/* Statement uses `client` (company if set, else name); show the rep
                       in parens when a company is set so the picker stays unambiguous. */}
                   {o.client}
@@ -168,11 +191,25 @@ export function ViewManager({
                 </option>
               ))}
             </Select>
-            <p className="text-xs text-[var(--muted-foreground)]">
-              Owners come from the properties you manage; the statement shows their company
-              (or name if none). Selecting one scopes the view to their properties — adjust
-              the checkboxes below if needed.
-            </p>
+            {ownerUserId !== null ? (
+              <p className="text-xs text-[var(--muted-foreground)]">
+                Linked to this owner — the statement client and property list
+                follow their ownership records automatically. Editing the
+                checkboxes below unlinks the view.
+              </p>
+            ) : (
+              <p className="text-xs text-[var(--muted-foreground)]">
+                Owners come from the properties you manage; the statement shows
+                their company (or name if none). Selecting one links the view to
+                that owner.
+              </p>
+            )}
+            {activeView?.ownerLinkBroken ? (
+              <p className="text-xs font-medium text-amber-600">
+                The linked owner currently has no active properties — showing the
+                saved list instead.
+              </p>
+            ) : null}
           </div>
 
           <div className="flex flex-col space-y-1">

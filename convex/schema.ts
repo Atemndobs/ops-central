@@ -1883,6 +1883,11 @@ const portfolioViews = defineTable({
   name: v.string(),
   clientName: v.optional(v.string()),
   propertyIds: v.array(v.id("properties")),
+  // When set, the view is BOUND to this owner: clientName + propertyIds are
+  // derived LIVE from users + propertyOwners at read time (strCosts/views.
+  // listViews). The stored clientName/propertyIds become a fallback snapshot,
+  // used only if the owner loses all active stakes or the user row is gone.
+  ownerUserId: v.optional(v.id("users")),
   createdAt: v.optional(v.number()),
   updatedAt: v.optional(v.number()),
 });

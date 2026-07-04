@@ -1155,6 +1155,11 @@ export default function TeamPage() {
                         </p>
                         <p className="mt-1 text-[11px] uppercase tracking-wider text-[var(--muted-foreground)]">
                           {formatRoleLabel(member.role)}
+                          {member.role === "owner" && member.ownedPropertyCount === 0 ? (
+                            <span className="ml-2 font-semibold text-amber-600">
+                              No properties linked
+                            </span>
+                          ) : null}
                         </p>
                         <p className="mt-1 truncate text-xs text-[var(--muted-foreground)]">
                           {member.companyName
@@ -1246,6 +1251,11 @@ export default function TeamPage() {
                         </p>
                         <p className="mt-0.5 text-[11px] uppercase tracking-wide text-[var(--muted-foreground)]">
                           {formatRoleLabel(member.role)} · {member.availability}
+                          {member.role === "owner" && member.ownedPropertyCount === 0 ? (
+                            <span className="ml-2 font-semibold text-amber-600">
+                              No properties linked
+                            </span>
+                          ) : null}
                         </p>
                       </div>
                       {canManageTeam || canDispatchMember(member) ? (
@@ -1327,6 +1337,11 @@ export default function TeamPage() {
                       ) : null}
                       <td className={`${cellPad} text-[var(--muted-foreground)]`}>
                         {formatRoleLabel(member.role)}
+                        {member.role === "owner" && member.ownedPropertyCount === 0 ? (
+                          <span className="ml-2 text-[11px] font-semibold uppercase tracking-wider text-amber-600">
+                            No properties linked
+                          </span>
+                        ) : null}
                       </td>
                       {groupBy !== "company" ? (
                         <td className={`${cellPad} truncate text-xs text-[var(--muted-foreground)]`}>
