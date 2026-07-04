@@ -256,6 +256,12 @@ export default function MonthlyCloseApp() {
               placeholder="e.g. Acme Realty LLC"
               autoFocus
             />
+            {activeView?.ownerUserId ? (
+              <p className="text-xs text-[var(--muted-foreground)]">
+                Prefilled from the linked owner&apos;s profile (company, else
+                name) — kept in sync with their ownership records.
+              </p>
+            ) : null}
           </div>
           <div className="space-y-1">
             <Label htmlFor="stmt-date">Statement date</Label>
