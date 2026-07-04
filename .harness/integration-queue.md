@@ -4,24 +4,38 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
-### TASK-OWNER-DRAFT-ERROR-001
-- Branch: task/owner-draft-engine-error
-- Worktree: ~/sites/opscentral-admin-owner-draft-fix
-- PR: https://github.com/Atemndobs/ops-central/pull/186
-- Schema impact: none
-- Convex impact: deploy-required (`owner/queries.getOwnerStatementDraft` error envelope, `owner/mutations.upsertPropertyFeeConfig`/`upsertPropertyOwners` first-row backdating, new `convex/lib/effectiveFrom.ts`)
-- Risk: low (bug fix + defensive envelope; mobile hook already handles the error-union shape; no schema/index changes)
-- What: fixes owner property page "Server Error" crash for newly onboarded owners (root cause: `pickFeeConfigForPeriod` throws a plain Error, `getOwnerStatementDraft` was the one owner query that didn't catch it) + prevents recurrence by backdating first-ever fee-config/owner rows to the property's first-activity month
-- Prerequisite: Task 0 in Docs/2026-07-04-fix-owner-statement-draft-crash.md is a separate, immediate prod data repair (backdateOwnerSeed for Tataw's property) — run independently of this PR merge, it unblocks him today
-- CI: `npm test` 70 pass (+6 new fee-config-period/effective-from tests; 8 pre-existing baseline failures unchanged); `npm run build` ✓; `npx tsc --noEmit` no new errors
-- Handoff: .harness/handoffs/TASK-OWNER-DRAFT-ERROR-001/worktree-handoff.md
-- Related: PR #185 (task/owner-consistency, already merged) touches the same user's Team/Owner-Overview/Monthly-Close drift — separate, independent scope, not conflated.
+_None._
 
 ## In progress (main session integrating)
 
 _None._
 
 ## Done
+
+### TASK-OWNER-DRAFT-ERROR-001
+- Branch: task/owner-draft-engine-error
+- Worktree: ~/sites/opscentral-admin-owner-draft-fix
+- PR: https://github.com/Atemndobs/ops-central/pull/186 (merged → e3cb6ba)
+- Schema impact: none
+- Convex impact: deploy-required (deployed to lovable-oriole-182 — `owner/queries.getOwnerStatementDraft` error envelope, `owner/mutations.upsertPropertyFeeConfig`/`upsertPropertyOwners` first-row backdating, new `convex/lib/effectiveFrom.ts`)
+- Risk: low (bug fix + defensive envelope; mobile hook already handles the error-union shape; no schema/index changes)
+- What: fixes owner property page "Server Error" crash for newly onboarded owners (root cause: `pickFeeConfigForPeriod` threw a plain Error, `getOwnerStatementDraft` was the one owner query that didn't catch it) + prevents recurrence by backdating first-ever fee-config/owner rows to the property's first-activity month
+- Merged: 2026-07-04
+- Handoff: .harness/handoffs/TASK-OWNER-DRAFT-ERROR-001/worktree-handoff.md
+- Post-merge: rebased locally to resolve a queue-file conflict with #185, force-pushed worktree branch, then merged. `npx convex deploy` ✓, build ✓, tests 13/13 (ownership-helpers + view-resolution + effective-from + fee-config-period) ✓, cleaners mirrored ✓.
+- **Task 0 prod data repair executed** (main-session-only, per handoff doc): `owner/mutations:backdateOwnerSeed` run against prod for Tataw's property (`rs7892htyjbe7x7yxg39frbqr9853zyb`, effectiveFrom 2026-01-01 UTC) → `{touchedOwners:1, touchedConfigs:1}`. Verified via `debugEngineBreakdown` for both 2026-06 and 2026-07 — both return `totals` with no `error` key. Tataw's owner portal is unblocked.
+
+### TASK-OWNER-CONSISTENCY-001
+- Branch: task/owner-consistency
+- Worktree: ~/sites/opscentral-admin-owner-consistency
+- PR: https://github.com/Atemndobs/ops-central/pull/185 (merged → 95bb862)
+- Schema impact: backward-compatible (`portfolioViews.ownerUserId` optional, no index/backfill) — combined-PR exception
+- Convex impact: deploy-required (deployed to lovable-oriole-182 — schema + `strCosts/views.*`, `admin/queries.getTeamMetrics`, `admin/ownerOverview.listOwners`)
+- Risk: low (admin/web-only; additive fields; no mobile client calls; owner-bound views fall back to stored snapshot if link breaks)
+- What: makes `propertyOwners` the single source of truth for owner↔property across Team page, Owner Overview, and Monthly Close views (fixes role=owner users like Tataw John being invisible in Overview/statements)
+- Merged: 2026-07-04
+- Handoff: .harness/handoffs/TASK-OWNER-CONSISTENCY-001/worktree-handoff.md
+- Post-merge: deployed alongside #186 in the same `npx convex deploy` call. Build ✓, tests ✓, cleaners mirrored ✓.
 
 ### TASK-REVIEW-RESPONSE-AI
 - Branch: task/review-response-ai
