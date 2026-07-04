@@ -271,9 +271,19 @@ export const getOwnerStatementDraft = query({
     await assertOwnerOfProperty(ctx, args.propertyId);
     const month = args.month ?? currentMonthKey();
     const { start, end } = monthRange(month);
-    const inputs = await loadEngineInputs(ctx, args.propertyId, start, end);
-    const output = computeStatementForPeriod(inputs);
-    return { month, periodStart: start, periodEnd: end, draft: output };
+    // Engine failures (e.g. no propertyFeeConfig active in this period —
+    // a just-onboarded owner viewing a pre-onboarding month) must not
+    // crash the whole property page. Return the same `{ error }` envelope
+    // getOwnerDashboard uses per property; the mobile hook already
+    // branches on it, and the web client guards with `"totals" in`.
+    let draft: FeeEngineOutput | { error: string };
+    try {
+      const inputs = await loadEngineInputs(ctx, args.propertyId, start, end);
+      draft = computeStatementForPeriod(inputs);
+    } catch (e) {
+      draft = { error: e instanceof Error ? e.message : String(e) };
+    }
+    return { month, periodStart: start, periodEnd: end, draft };
   },
 });
 
