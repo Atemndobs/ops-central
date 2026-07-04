@@ -231,7 +231,7 @@ export function OwnerPropertyClient({
           full Earnings-summary (past-12-month strip, lease/payout breakdown,
           confidence line) lives. Owner intent: "snapshot here, drill in
           there". */}
-      {draft && (
+      {draft && "totals" in draft.draft && (
         <OverviewSummaryCard
           propertyId={propertyId}
           currency={currency}
@@ -245,6 +245,15 @@ export function OwnerPropertyClient({
                   ?.amount ?? 0
           }
         />
+      )}
+      {draft && "error" in draft.draft && (
+        <Card>
+          <div className="px-4 py-3 text-sm text-[var(--cleaner-muted,#6b7280)]">
+            No statement data for {fmtMonth(draft.month)} yet — this
+            property&apos;s fee configuration doesn&apos;t cover that period.
+            If you expected numbers here, contact Chez Soi Stays.
+          </div>
+        </Card>
       )}
 
       <section id="overview" className="scroll-mt-20">
