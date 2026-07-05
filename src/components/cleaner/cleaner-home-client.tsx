@@ -145,7 +145,7 @@ export function CleanerHomeClient() {
           unreadMessages={typeof unreadMessageCount === "number" ? unreadMessageCount : 0}
           updates={updateCount}
           onToggle={() => setIsSummaryVisible(false)}
-          userName={profile?.name}
+          userName={profile?.name?.trim().split(/\s+/)[0]}
           nextJobAt={nextJobAt}
           nextJobHref={nextJobHref}
         />
