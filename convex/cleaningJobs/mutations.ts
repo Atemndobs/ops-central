@@ -163,6 +163,18 @@ function buildValidationResult(args: {
   const afterCount = args.photos.filter((photo) => photo.type === "after").length;
   const incidentCount = args.photos.filter((photo) => photo.type === "incident").length;
 
+  // Baseline evidence floor: every submission needs at least one before AND
+  // one after photo, in any mode. Without this, standard mode derives its
+  // required rooms from the photos that already exist (`requiredRooms ??
+  // observedRooms`), so a zero-photo submission requires nothing and passes
+  // silently. (App Review: a job could reach review with no photos.)
+  if (beforeCount < 1) {
+    errors.push("At least one before photo is required before submitting.");
+  }
+  if (afterCount < 1) {
+    errors.push("At least one after photo is required before submitting.");
+  }
+
   const skippedRooms = dedupeRoomNames(
     (args.skippedRooms ?? []).map((room) => room.roomName),
   );
@@ -510,11 +522,20 @@ export const start = mutation({
 
     const revision = getCurrentRevision(job);
 
-    if (
-      user.role === "cleaner" &&
-      !job.assignedCleanerIds.includes(user._id)
-    ) {
-      throw new ConvexError("Cleaner is not assigned to this job.");
+    // Only the assigned cleaner — or an admin/property_ops override — may
+    // start a job (transition it to in_progress). Managers, owners, and
+    // unassigned cleaners cannot. (App Review: a non-cleaner could set a job
+    // in progress.)
+    const isAssignedCleaner =
+      user.role === "cleaner" && job.assignedCleanerIds.includes(user._id);
+    const canOverrideStart =
+      user.role === "admin" || user.role === "property_ops";
+    if (!isAssignedCleaner && !canOverrideStart) {
+      throw new ConvexError(
+        user.role === "cleaner"
+          ? "Cleaner is not assigned to this job."
+          : "Only the assigned cleaner or an admin/property ops user can start this job.",
+      );
     }
 
     if (
@@ -601,11 +622,18 @@ export const start = mutation({
       },
     );
 
+    // Warn-but-allow: flag when the job was scheduled on an earlier calendar
+    // day (stale). The client surfaces this as a warning; we don't block the
+    // start. (App Review concern: cleaners starting jobs scheduled in the past.)
+    const startOfTodayUtc = now - (now % 86_400_000);
+    const scheduledInPast = job.scheduledStartAt < startOfTodayUtc;
+
     return {
       jobId: args.jobId,
       revision,
       startedAtServer: job.actualStartAt ?? now,
       alreadyStarted: Boolean(session),
+      scheduledInPast,
     };
   },
 });
@@ -808,7 +836,11 @@ async function submitForApprovalInternal(
   }
   validationResult.pass = validationResult.errors.length === 0;
 
-  if (!validationResult.pass && !force) {
+  // Cleaners cannot force past the evidence gate — only admin/ops/manager
+  // (privileged) may override, mirroring the session-gate rule above. Stops a
+  // cleaner from submitting with missing/zero photos via force:true.
+  const canBypassEvidence = force && user.role !== "cleaner";
+  if (!validationResult.pass && !canBypassEvidence) {
     throw new ConvexError(
       `Evidence validation failed: ${validationResult.errors.join(" ")}`,
     );

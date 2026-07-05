@@ -2,9 +2,19 @@
 
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { useAuth, useUser } from "@clerk/nextjs";
 import { Plus, Settings2, Trash2, UserCheck, Users } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import {
+  getRoleFromMetadata,
+  getRoleFromSessionClaimsOrNull,
+  type UserRole,
+} from "@/lib/auth";
+
+// Ownership + fee config is admin/property_ops-only data. The backing query
+// (getPropertyOwnership) is auth-gated to these roles server-side.
+const OWNER_CARD_ROLES: readonly UserRole[] = ["admin", "property_ops"];
 
 /**
  * Admin-side card for assigning owners + setting fee config on a property.
@@ -14,11 +24,39 @@ import type { Id } from "@convex/_generated/dataModel";
  *
  * Both modals hit existing append-only mutations (upsertPropertyOwners
  * + upsertPropertyFeeConfig) that are auth-gated to admin/property_ops.
+ *
+ * Managers can still reach /properties/[id], but must NOT fire the
+ * admin-only ownership query — doing so throws a server error that crashes
+ * the whole page. We resolve the viewer's role client-side and skip both
+ * the query and the render for anyone outside admin/property_ops. The
+ * server-side requireRole check remains the real security boundary.
  */
 export function PropertyOwnersCard({ propertyId }: { propertyId: Id<"properties"> }) {
-  const data = useQuery(api.admin.ownerAssignment.getPropertyOwnership, { propertyId });
+  const { isLoaded, isSignedIn, userId, sessionClaims } = useAuth();
+  const { user } = useUser();
+
+  const convexUser = useQuery(
+    api.users.queries.getByClerkId,
+    isLoaded && isSignedIn && userId ? { clerkId: userId } : "skip",
+  );
+  const role: UserRole | null =
+    getRoleFromSessionClaimsOrNull(sessionClaims as Record<string, unknown> | null) ??
+    getRoleFromMetadata(user?.publicMetadata) ??
+    (convexUser?.role as UserRole | undefined) ??
+    null;
+  const canViewOwners = role !== null && OWNER_CARD_ROLES.includes(role);
+
+  const data = useQuery(
+    api.admin.ownerAssignment.getPropertyOwnership,
+    canViewOwners ? { propertyId } : "skip",
+  );
   const [editingOwners, setEditingOwners] = useState(false);
   const [editingFees, setEditingFees] = useState(false);
+
+  // Not authorized (e.g. manager) — render nothing rather than crashing the page.
+  if (!canViewOwners) {
+    return null;
+  }
 
   if (data === undefined) {
     return (
