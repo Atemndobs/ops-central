@@ -489,7 +489,18 @@ export const getForCleaner = query({
     if (user.role === "cleaner" && user._id !== args.cleanerId) {
       return [];
     }
-    const allowedPropertyIds = await getCallerJobScopeForListing(ctx, user);
+
+    // A user viewing their OWN assignments is always in scope for those jobs:
+    // the read below is keyed on `args.cleanerId`, so a self-query can only
+    // ever surface the caller's own jobs. Company-property scoping exists for
+    // manager/ops callers viewing *someone else* — applying it to a self-query
+    // makes getCallerJobScopeForListing return an empty set for cleaners, so
+    // the list comes back empty (the native app's "No jobs assigned" bug while
+    // the PWA — which uses getMyAssigned — showed them fine).
+    const isSelf = user._id === args.cleanerId;
+    const allowedPropertyIds = isSelf
+      ? null
+      : await getCallerJobScopeForListing(ctx, user);
     if (allowedPropertyIds && allowedPropertyIds.size === 0) {
       return [];
     }
