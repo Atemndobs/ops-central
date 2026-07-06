@@ -385,7 +385,11 @@ export const getMyJobDetail = query({
     const isAssignedCleaner = detail.job.assignedCleanerIds.includes(user._id);
 
     if (!isPrivileged && !isAssignedCleaner) {
-      throw new Error("You are not authorized to access this job.");
+      // Return null (treated as "not found") rather than throwing. A cleaner
+      // who is unassigned from a job while viewing it would otherwise get a
+      // reactive query rejection that crashes the mobile job-detail screen.
+      // Null also avoids leaking that the job exists to unauthorized callers.
+      return null;
     }
 
     return detail;
