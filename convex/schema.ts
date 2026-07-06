@@ -1533,7 +1533,17 @@ const featureFlags = defineTable({
     // Guest-review AI reply workflow (inbox + property-detail section).
     // Default OFF — enable for the J&A team once real Hospitable review
     // data is flowing (requires reviews:read/reviews:write OAuth scope).
-    v.literal("reviewsAiReply")
+    v.literal("reviewsAiReply"),
+    // Owner portal: show the gross-revenue figure. Default OFF — ship dark
+    // until the ops team is ready to expose owner-facing financials.
+    v.literal("owner_show_gross_revenue"),
+    // Owner portal: show the statements list + statement-detail screens.
+    // Default OFF — financial statement surfaces stay hidden until enabled.
+    v.literal("owner_show_statements"),
+    // WhatsApp messaging lane (per-cleaner WhatsApp channel + invite links).
+    // Default OFF — WhatsApp comms ship dark until the integration is ready
+    // to turn on from admin.
+    v.literal("whatsapp_messaging")
     // future flags go here
   ),
   enabled: v.boolean(),

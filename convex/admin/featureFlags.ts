@@ -31,7 +31,10 @@ const flagKeyValidator = v.union(
   v.literal("owner_show_mgmt_fee"),
   v.literal("owner_show_payout"),
   v.literal("owner_overview_auto_drafts"),
-  v.literal("reviewsAiReply")
+  v.literal("reviewsAiReply"),
+  v.literal("owner_show_gross_revenue"),
+  v.literal("owner_show_statements"),
+  v.literal("whatsapp_messaging")
   // future flags go here
 );
 
@@ -46,7 +49,10 @@ export type FeatureFlagKey =
   | "owner_show_mgmt_fee"
   | "owner_show_payout"
   | "owner_overview_auto_drafts"
-  | "reviewsAiReply";
+  | "reviewsAiReply"
+  | "owner_show_gross_revenue"
+  | "owner_show_statements"
+  | "whatsapp_messaging";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UI metadata — single source of truth for the admin Feature Flags card.
@@ -200,6 +206,38 @@ const FLAG_METADATA: Record<FeatureFlagKey, FlagMetadata> = {
       "Reviews nav item and property-detail Reviews section are hidden. " +
       "Ingestion and drafting still run in the background regardless of " +
       "this flag — it only gates the UI.",
+  },
+  owner_show_gross_revenue: {
+    key: "owner_show_gross_revenue",
+    label: "Owner portal: show gross revenue",
+    description:
+      "Shows the gross-revenue figure in the owner portal (per-property " +
+      "cards, tables, and month summary).",
+    offBehaviour:
+      "Gross-revenue numbers are hidden across the owner portal. Owners " +
+      "still see their jobs and non-financial info.",
+  },
+  owner_show_statements: {
+    key: "owner_show_statements",
+    label: "Owner portal: show statements",
+    description:
+      "Exposes the owner statements list and the statement-detail screen " +
+      "(monthly financial statements).",
+    offBehaviour:
+      "The statements list and statement-detail screens are hidden; deep " +
+      "links render a neutral placeholder. Statement data is untouched.",
+  },
+  whatsapp_messaging: {
+    key: "whatsapp_messaging",
+    label: "WhatsApp messaging lane",
+    description:
+      "Enables the per-cleaner WhatsApp channel in the job Communications " +
+      "panel — WhatsApp lane, invite links, and inbound/outbound WhatsApp " +
+      "messages.",
+    offBehaviour:
+      "The WhatsApp lane and invite links are hidden; only the internal " +
+      "team thread shows. Backend WhatsApp processing is unaffected — this " +
+      "gates the UI only.",
   },
 };
 
