@@ -34,7 +34,8 @@ const flagKeyValidator = v.union(
   v.literal("reviewsAiReply"),
   v.literal("owner_show_gross_revenue"),
   v.literal("owner_show_statements"),
-  v.literal("whatsapp_messaging")
+  v.literal("whatsapp_messaging"),
+  v.literal("cleaner_room_checklist")
   // future flags go here
 );
 
@@ -52,7 +53,8 @@ export type FeatureFlagKey =
   | "reviewsAiReply"
   | "owner_show_gross_revenue"
   | "owner_show_statements"
-  | "whatsapp_messaging";
+  | "whatsapp_messaging"
+  | "cleaner_room_checklist";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UI metadata — single source of truth for the admin Feature Flags card.
@@ -238,6 +240,18 @@ const FLAG_METADATA: Record<FeatureFlagKey, FlagMetadata> = {
       "The WhatsApp lane and invite links are hidden; only the internal " +
       "team thread shows. Backend WhatsApp processing is unaffected — this " +
       "gates the UI only.",
+  },
+  cleaner_room_checklist: {
+    key: "cleaner_room_checklist",
+    label: "Cleaner room checklist step",
+    description:
+      "Adds an interactive per-room checklist step to the cleaner job wizard " +
+      "(standard flow only). Cleaners tap each room to mark it cleaned, and " +
+      "submission warns if no room was marked. Before/after photos remain the " +
+      "primary proof-of-work.",
+    offBehaviour:
+      "The checklist step is hidden and submission is not blocked on it — " +
+      "cleaners proceed on before/after photos alone (current behaviour).",
   },
 };
 
