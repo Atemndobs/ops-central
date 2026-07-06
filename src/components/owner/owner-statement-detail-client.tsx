@@ -37,6 +37,29 @@ export function OwnerStatementDetailClient({
   }
 
   const { statement, flags } = result;
+
+  // Statements surface is admin-gated via `owner_show_statements`. When the
+  // flag is off we render a neutral placeholder even on direct navigation /
+  // deep link — the statement data must not be shown by any path.
+  if (!flags.showStatements) {
+    return (
+      <div
+        className="rounded-2xl border border-black/[0.06] p-12 text-center"
+        style={{ background: "var(--cleaner-surface)" }}
+      >
+        <p
+          className="text-lg"
+          style={{ fontFamily: "var(--font-cleaner-display)", fontWeight: 700 }}
+        >
+          This section isn&apos;t available
+        </p>
+        <p className="mt-2 text-sm" style={{ color: "var(--cleaner-muted)" }}>
+          Statements aren&apos;t available in your portal right now.
+        </p>
+      </div>
+    );
+  }
+
   const currency = property.property.currency ?? "USD";
   const t = statement.snapshotTotals;
 
