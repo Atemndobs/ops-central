@@ -1543,7 +1543,11 @@ const featureFlags = defineTable({
     // WhatsApp messaging lane (per-cleaner WhatsApp channel + invite links).
     // Default OFF — WhatsApp comms ship dark until the integration is ready
     // to turn on from admin.
-    v.literal("whatsapp_messaging")
+    v.literal("whatsapp_messaging"),
+    // Cleaner app: interactive per-room "mark as cleaned" checklist step in
+    // the job execution wizard (standard flow). Default OFF — before/after
+    // photos are the proof-of-work; when ON, cleaners also tick each room.
+    v.literal("cleaner_room_checklist")
     // future flags go here
   ),
   enabled: v.boolean(),
