@@ -55,6 +55,71 @@ async function findDraft(
   return rows.find((s) => s.status === "draft") ?? null;
 }
 
+function isActivePlatformClaim(
+  platformClaim: Doc<"incidents">["platformClaim"],
+): boolean {
+  const state = platformClaim?.claimFollowUpState ?? "not_started";
+  return state !== "approved" && state !== "denied" && state !== "closed";
+}
+
+async function loadPlatformClaimIncidents(
+  ctx: QueryCtx,
+  propertyIds: Id<"properties">[],
+): Promise<Array<{
+  _id: Id<"incidents">;
+  title: string;
+  status: Doc<"incidents">["status"];
+  severity: Doc<"incidents">["severity"];
+  createdAt: number;
+  propertyId: Id<"properties">;
+  propertyName: string;
+  platformClaim: NonNullable<Doc<"incidents">["platformClaim"]>;
+}>> {
+  const rows: Array<{
+    _id: Id<"incidents">;
+    title: string;
+    status: Doc<"incidents">["status"];
+    severity: Doc<"incidents">["severity"];
+    createdAt: number;
+    propertyId: Id<"properties">;
+    propertyName: string;
+    platformClaim: NonNullable<Doc<"incidents">["platformClaim"]>;
+  }> = [];
+
+  for (const propertyId of propertyIds) {
+    const [property, incidents] = await Promise.all([
+      ctx.db.get(propertyId),
+      ctx.db
+        .query("incidents")
+        .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
+        .collect(),
+    ]);
+
+    for (const incident of incidents) {
+      if (!incident.platformClaim) continue;
+      rows.push({
+        _id: incident._id,
+        title: incident.title,
+        status: incident.status,
+        severity: incident.severity,
+        createdAt: incident.createdAt,
+        propertyId,
+        propertyName: property?.name ?? "(unknown property)",
+        platformClaim: incident.platformClaim,
+      });
+    }
+  }
+
+  rows.sort((a, b) => {
+    const aDue = a.platformClaim.claimFollowUpDueAt ?? Number.MAX_SAFE_INTEGER;
+    const bDue = b.platformClaim.claimFollowUpDueAt ?? Number.MAX_SAFE_INTEGER;
+    if (aDue !== bDue) return aDue - bDue;
+    return b.createdAt - a.createdAt;
+  });
+
+  return rows;
+}
+
 // ─── Queries ────────────────────────────────────────────────────────────────
 
 /**
@@ -85,6 +150,7 @@ export const listOwners = query({
         status: Doc<"ownerStatements">["status"];
       } | null;
       draftsPending: number;
+      activePlatformClaims: number;
     }> = [];
 
     for (const [userId, ownerships] of byUser.entries()) {
@@ -113,6 +179,7 @@ export const listOwners = query({
           }
         }
       }
+      const platformClaims = await loadPlatformClaimIncidents(ctx, propertyIds);
 
       rows.push({
         userId,
@@ -121,6 +188,9 @@ export const listOwners = query({
         propertyCount: ownerships.length,
         lastStatement,
         draftsPending,
+        activePlatformClaims: platformClaims.filter((claim) =>
+          isActivePlatformClaim(claim.platformClaim),
+        ).length,
       });
     }
 
@@ -161,6 +231,10 @@ export const getOwnerDashboard = query({
       statements.push(...sts);
     }
     statements.sort((a, b) => b.periodStart - a.periodStart);
+    const platformClaims = await loadPlatformClaimIncidents(
+      ctx,
+      ownerships.map((o) => o.propertyId),
+    );
 
     return {
       user: {
@@ -170,6 +244,7 @@ export const getOwnerDashboard = query({
       },
       properties: properties.filter((x): x is NonNullable<typeof x> => x !== null),
       statements,
+      platformClaims,
     };
   },
 });

@@ -51,3 +51,37 @@ test("schema includes the \"owner\" role literal", () => {
     "expected users.role union to include \"owner\"",
   );
 });
+
+test("incidents schema includes platform suspension and claim tracking fields", () => {
+  const incidentsTable = (schema as unknown as { tables: Record<string, unknown> }).tables.incidents;
+  const validatorJson = JSON.stringify(incidentsTable);
+  for (const field of [
+    "platformClaim",
+    "affectedPlatform",
+    "suspensionStartedAt",
+    "suspensionEndedAt",
+    "canceledBookingCount",
+    "claimFollowUpState",
+    "claimFollowUpDueAt",
+  ]) {
+    assert.ok(
+      validatorJson.includes(field),
+      `expected incidents table to include "${field}" for platform suspension claim tracking`,
+    );
+  }
+
+  for (const state of [
+    "not_started",
+    "collecting_evidence",
+    "submitted",
+    "awaiting_platform",
+    "approved",
+    "denied",
+    "closed",
+  ]) {
+    assert.ok(
+      validatorJson.includes(state),
+      `expected platform claim follow-up state "${state}"`,
+    );
+  }
+});

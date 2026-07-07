@@ -9,13 +9,17 @@ import type { Id } from "@convex/_generated/dataModel";
 import Link from "next/link";
 import {
   AlertTriangle,
+  Ban,
   Building2,
   CalendarClock,
   CheckCircle2,
+  ClipboardCheck,
   ExternalLink,
   Loader2,
   MapPin,
   RefreshCw,
+  Save,
+  Trash2,
   Trello,
   User,
   X,
@@ -29,6 +33,15 @@ import {
   type IncidentStatus,
   type IncidentType,
 } from "@/components/incidents/incident-status";
+import {
+  CLAIM_FOLLOW_UP_LABELS,
+  CLAIM_FOLLOW_UP_STATES,
+  buildPlatformClaimSummary,
+  dateInputToUtcMs,
+  dateInputValue,
+  type ClaimFollowUpState,
+  type PlatformClaim,
+} from "@/components/incidents/platform-claim";
 import { MediaThumbnail } from "@/components/media/MediaThumbnail";
 import { VideoPlayer } from "@/components/media/VideoPlayer";
 import { useIsVideoEnabled } from "@/hooks/use-is-video-enabled";
@@ -252,6 +265,12 @@ function DrawerBody({
           ) : null}
         </dl>
 
+        <PlatformClaimSection
+          incidentId={incidentId}
+          platformClaim={incident.platformClaim}
+          canEdit={canResolve}
+        />
+
         <section className="border-t px-5 py-3">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
@@ -464,6 +483,261 @@ function InfoCell({
         <p className="text-micro text-[var(--muted-foreground)]">{label}</p>
         <p className="mt-0.5 truncate font-medium">{value}</p>
       </div>
+    </div>
+  );
+}
+
+function PlatformClaimSection({
+  incidentId,
+  platformClaim,
+  canEdit,
+}: {
+  incidentId: Id<"incidents">;
+  platformClaim?: PlatformClaim;
+  canEdit: boolean;
+}) {
+  const updatePlatformClaim = useMutation(
+    api.incidents.mutations.updatePlatformClaim,
+  );
+  const [editing, setEditing] = useState(false);
+  const [affectedPlatform, setAffectedPlatform] = useState("");
+  const [suspensionStartedAt, setSuspensionStartedAt] = useState("");
+  const [suspensionEndedAt, setSuspensionEndedAt] = useState("");
+  const [canceledBookingCount, setCanceledBookingCount] = useState("0");
+  const [claimFollowUpState, setClaimFollowUpState] =
+    useState<ClaimFollowUpState>("not_started");
+  const [claimFollowUpDueAt, setClaimFollowUpDueAt] = useState("");
+  const [claimNotes, setClaimNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAffectedPlatform(platformClaim?.affectedPlatform ?? "");
+    setSuspensionStartedAt(dateInputValue(platformClaim?.suspensionStartedAt));
+    setSuspensionEndedAt(dateInputValue(platformClaim?.suspensionEndedAt));
+    setCanceledBookingCount(String(platformClaim?.canceledBookingCount ?? 0));
+    setClaimFollowUpState(platformClaim?.claimFollowUpState ?? "not_started");
+    setClaimFollowUpDueAt(dateInputValue(platformClaim?.claimFollowUpDueAt));
+    setClaimNotes(platformClaim?.claimNotes ?? "");
+    setEditing(false);
+    setError(null);
+  }, [platformClaim]);
+
+  const summary = platformClaim ? buildPlatformClaimSummary(platformClaim) : null;
+
+  async function handleSaveClaim() {
+    setSaving(true);
+    setError(null);
+    try {
+      await updatePlatformClaim({
+        incidentId,
+        platformClaim: {
+          affectedPlatform: affectedPlatform.trim() || undefined,
+          suspensionStartedAt: dateInputToUtcMs(suspensionStartedAt),
+          suspensionEndedAt: dateInputToUtcMs(suspensionEndedAt),
+          canceledBookingCount: Number(canceledBookingCount) || 0,
+          claimFollowUpState,
+          claimFollowUpDueAt: dateInputToUtcMs(claimFollowUpDueAt),
+          claimNotes: claimNotes.trim() || undefined,
+        },
+      });
+      setEditing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save claim");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleClearClaim() {
+    setSaving(true);
+    setError(null);
+    try {
+      await updatePlatformClaim({ incidentId, platformClaim: null });
+      setEditing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to clear claim");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="border-t p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
+          <Ban className="h-4 w-4 text-rose-500" />
+          <span className="font-semibold uppercase tracking-wide">
+            Platform suspension and claim
+          </span>
+        </div>
+        {canEdit ? (
+          <button
+            type="button"
+            onClick={() => setEditing((value) => !value)}
+            disabled={saving}
+            className="rounded-none border border-[var(--border)] px-2 py-1 text-[10px] font-bold uppercase tracking-wide hover:bg-[var(--accent)] disabled:opacity-50"
+          >
+            {editing ? "Cancel" : summary ? "Edit" : "Add"}
+          </button>
+        ) : null}
+      </div>
+
+      {!editing ? (
+        summary ? (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <ClaimMetric label="Platform" value={summary.platform} />
+            <ClaimMetric label="Suspension" value={summary.suspensionWindow} />
+            <ClaimMetric
+              label="Canceled bookings"
+              value={summary.canceledBookings}
+            />
+            <ClaimMetric label="Follow-up" value={summary.followUpState} />
+            {summary.followUpDueAt ? (
+              <ClaimMetric label="Due" value={summary.followUpDueAt} />
+            ) : null}
+            {platformClaim?.claimNotes ? (
+              <p className="sm:col-span-2 whitespace-pre-wrap border border-[var(--border)] bg-[var(--secondary)]/30 p-3 text-xs leading-relaxed text-[var(--muted-foreground)]">
+                {platformClaim.claimNotes}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <p className="mt-3 text-sm text-[var(--muted-foreground)]">
+            No platform suspension or claim follow-up is tracked for this incident.
+          </p>
+        )
+      ) : (
+        <div className="mt-4 space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-xs font-medium text-[var(--muted-foreground)]">
+              Affected platform
+              <input
+                value={affectedPlatform}
+                onChange={(event) => setAffectedPlatform(event.target.value)}
+                placeholder="Airbnb"
+                className="mt-1 w-full rounded-none border bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
+                disabled={saving}
+              />
+            </label>
+            <label className="text-xs font-medium text-[var(--muted-foreground)]">
+              Claim follow-up
+              <select
+                value={claimFollowUpState}
+                onChange={(event) =>
+                  setClaimFollowUpState(event.target.value as ClaimFollowUpState)
+                }
+                className="mt-1 w-full rounded-none border bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
+                disabled={saving}
+              >
+                {CLAIM_FOLLOW_UP_STATES.map((state) => (
+                  <option key={state} value={state}>
+                    {CLAIM_FOLLOW_UP_LABELS[state]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs font-medium text-[var(--muted-foreground)]">
+              Suspended from
+              <input
+                type="date"
+                value={suspensionStartedAt}
+                onChange={(event) => setSuspensionStartedAt(event.target.value)}
+                className="mt-1 w-full rounded-none border bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
+                disabled={saving}
+              />
+            </label>
+            <label className="text-xs font-medium text-[var(--muted-foreground)]">
+              Suspended until
+              <input
+                type="date"
+                value={suspensionEndedAt}
+                onChange={(event) => setSuspensionEndedAt(event.target.value)}
+                className="mt-1 w-full rounded-none border bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
+                disabled={saving}
+              />
+            </label>
+            <label className="text-xs font-medium text-[var(--muted-foreground)]">
+              Canceled bookings
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={canceledBookingCount}
+                onChange={(event) => setCanceledBookingCount(event.target.value)}
+                className="mt-1 w-full rounded-none border bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
+                disabled={saving}
+              />
+            </label>
+            <label className="text-xs font-medium text-[var(--muted-foreground)]">
+              Follow-up due
+              <input
+                type="date"
+                value={claimFollowUpDueAt}
+                onChange={(event) => setClaimFollowUpDueAt(event.target.value)}
+                className="mt-1 w-full rounded-none border bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
+                disabled={saving}
+              />
+            </label>
+          </div>
+          <label className="block text-xs font-medium text-[var(--muted-foreground)]">
+            Claim notes
+            <textarea
+              value={claimNotes}
+              onChange={(event) => setClaimNotes(event.target.value)}
+              rows={3}
+              placeholder="Scanny Airbnb: evidence collected, claim follow-up pending with platform support."
+              className="mt-1 w-full rounded-none border bg-[var(--background)] p-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
+              disabled={saving}
+            />
+          </label>
+          {error ? (
+            <p className="rounded-none border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              {error}
+            </p>
+          ) : null}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {summary ? (
+              <button
+                type="button"
+                onClick={handleClearClaim}
+                disabled={saving}
+                className="inline-flex items-center gap-2 rounded-none border border-rose-200 px-3 py-2 text-xs font-semibold uppercase text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Clear
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={handleSaveClaim}
+              disabled={saving}
+              className="inline-flex items-center gap-2 rounded-none bg-[var(--primary)] px-3 py-2 text-xs font-bold uppercase tracking-wide text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-50"
+            >
+              {saving ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Save className="h-3.5 w-3.5" />
+              )}
+              Save claim
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ClaimMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border border-[var(--border)] bg-[var(--secondary)]/20 p-3">
+      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-[var(--muted-foreground)]">
+        <ClipboardCheck className="h-3.5 w-3.5" />
+        {label}
+      </div>
+      <p className="mt-1 text-sm font-semibold text-[var(--foreground)]">
+        {value}
+      </p>
     </div>
   );
 }

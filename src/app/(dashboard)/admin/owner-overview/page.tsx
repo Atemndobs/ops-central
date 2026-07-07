@@ -7,7 +7,7 @@
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
-import { Loader2, ChevronRight, UserCog } from "lucide-react";
+import { AlertTriangle, Loader2, ChevronRight, UserCog } from "lucide-react";
 
 function formatPeriod(periodStart: number): string {
   const d = new Date(periodStart);
@@ -56,6 +56,9 @@ export default function AdminOwnerOverviewIndexPage() {
                   Last statement
                 </th>
                 <th className="px-4 py-3 text-right font-medium">Drafts</th>
+                <th className="px-4 py-3 text-right font-medium">
+                  Claims
+                </th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -100,6 +103,16 @@ export default function AdminOwnerOverviewIndexPage() {
                     {o.draftsPending > 0 ? (
                       <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
                         {o.draftsPending}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">0</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    {o.activePlatformClaims > 0 ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-600 dark:text-rose-400">
+                        <AlertTriangle className="h-3 w-3" />
+                        {o.activePlatformClaims}
                       </span>
                     ) : (
                       <span className="text-muted-foreground">0</span>

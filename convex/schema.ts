@@ -938,6 +938,26 @@ const incidents = defineTable({
   customItemDescription: v.optional(v.string()),
   incidentContext: v.optional(v.string()),
 
+  // Platform suspension + claim follow-up tracking. Used for Airbnb/VRBO
+  // cases where the incident affects listing availability and owner payout.
+  platformClaim: v.optional(v.object({
+    affectedPlatform: v.optional(v.string()),
+    suspensionStartedAt: v.optional(v.number()),
+    suspensionEndedAt: v.optional(v.number()),
+    canceledBookingCount: v.optional(v.number()),
+    claimFollowUpState: v.optional(v.union(
+      v.literal("not_started"),
+      v.literal("collecting_evidence"),
+      v.literal("submitted"),
+      v.literal("awaiting_platform"),
+      v.literal("approved"),
+      v.literal("denied"),
+      v.literal("closed"),
+    )),
+    claimFollowUpDueAt: v.optional(v.number()),
+    claimNotes: v.optional(v.string()),
+  })),
+
   status: v.union(
     v.literal("open"),
     v.literal("in_progress"),
