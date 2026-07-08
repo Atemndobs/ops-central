@@ -857,7 +857,6 @@ interface NormalizedPropertyDetails {
   imageUrl?: string;
   bedrooms?: number;
   bathrooms?: number;
-  timezone?: string;
   rooms: NormalizedRoom[];
 }
 
@@ -975,7 +974,6 @@ function normalizePropertyDetails(rawProperty: unknown): NormalizedPropertyDetai
     zipCode:
       asString(addr?.postcode) ?? asString(addr?.postal_code) ?? asString(rawProperty.zip_code),
     country: asString(addr?.country) ?? asString(addr?.country_code),
-    timezone: asString(rawProperty.timezone) ?? asString(rawProperty.time_zone),
     currency: asString(rawProperty.currency),
     imageUrl:
       asString(rawProperty.picture) ??
@@ -1111,7 +1109,6 @@ export const syncPropertyDetails = internalAction({
           imageUrl: details.imageUrl,
           bedrooms: details.bedrooms,
           bathrooms: details.bathrooms,
-          timezone: details.timezone,
           rooms: enrichedRooms,
         });
         if (result.action === "inserted") propertiesInserted++;

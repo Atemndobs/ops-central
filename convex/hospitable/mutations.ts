@@ -352,7 +352,6 @@ export const upsertPropertyFromHospitable = internalMutation({
     imageUrl: v.optional(v.string()),
     bedrooms: v.optional(v.number()),
     bathrooms: v.optional(v.number()),
-    timezone: v.optional(v.string()),
     rooms: v.array(v.object({ name: v.string(), type: v.string() })),
   },
   handler: async (ctx, args) => {
@@ -411,6 +410,44 @@ export const upsertPropertyFromHospitable = internalMutation({
   },
 });
 
+export const updatePropertyDetails = internalMutation({
+  args: {
+    hospitableId: v.string(),
+    bedrooms: v.optional(v.number()),
+    bathrooms: v.optional(v.number()),
+    timezone: v.optional(v.string()),
+    rooms: v.array(v.object({ name: v.string(), type: v.string() })),
+  },
+  handler: async (ctx, args) => {
+    const property = await ctx.db
+      .query("properties")
+      .withIndex("by_hospitable", (q) => q.eq("hospitableId", args.hospitableId))
+      .first();
+
+    if (!property) {
+      throw new Error(`No property found with hospitableId ${args.hospitableId}`);
+    }
+
+    const patch: Record<string, unknown> = {
+      rooms: args.rooms,
+      updatedAt: Date.now(),
+    };
+
+    if (args.bedrooms !== undefined) {
+      patch.bedrooms = args.bedrooms;
+    }
+    if (args.bathrooms !== undefined) {
+      patch.bathrooms = args.bathrooms;
+    }
+    if (args.timezone !== undefined) {
+      patch.timezone = args.timezone;
+    }
+
+    await ctx.db.patch(property._id, patch);
+    return property._id;
+  },
+});
+
 export const softDeletePropertyByHospitableId = internalMutation({
   args: { hospitableId: v.string(), reason: v.optional(v.string()) },
   handler: async (ctx, args) => {
@@ -459,9 +496,6 @@ export const deactivateMissingProperties = internalMutation({
           deactivated: 0,
         };
       }
-    }
-    if (args.timezone !== undefined) {
-      patch.timezone = args.timezone;
     }
 
     for (const property of toDeactivate) {

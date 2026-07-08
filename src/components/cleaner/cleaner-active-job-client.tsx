@@ -166,25 +166,6 @@ function getVideoPostersByRoom(args: {
     }));
 }
 
-function getPendingUploadPreviews(
-  photoRefs: string[],
-  pendingUploads: PendingUpload[],
-  previewCache: Record<string, string> = {},
-): Array<{ photoRef: string; url: string }> {
-  return photoRefs
-    .map((photoRef) => {
-      // Prefer the in-memory cache — it survives the local-id -> server-id
-      // swap. Fall back to the pending-uploads queue for backward compat.
-      const cached = previewCache[photoRef];
-      if (typeof cached === "string" && cached.length > 0) {
-        return { photoRef, url: cached };
-      }
-      const url = pendingUploads.find((upload) => upload.id === photoRef)?.fileDataUrl;
-      return typeof url === "string" && url.length > 0 ? { photoRef, url } : null;
-    })
-    .filter((preview): preview is { photoRef: string; url: string } => preview !== null);
-}
-
 type JobDetailLike = {
   job: {
     _id: Id<"cleaningJobs">;
