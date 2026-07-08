@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useMemo, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
-import { ArrowLeft, Loader2, MapPin, Pencil } from "lucide-react";
+import { ArrowLeft, Loader2, MapPin, Pencil, Upload } from "lucide-react";
 import { PropertyFormModal } from "@/components/properties/property-form-modal";
 import { STATUS_LABELS } from "@/components/jobs/job-status";
 import { useToast } from "@/components/ui/toast-provider";
@@ -13,6 +13,12 @@ import { getErrorMessage } from "@/lib/errors";
 import { PropertyFormValues, PropertyRecord } from "@/types/property";
 import { PropertyCriticalCheckpointsPanel } from "@/components/properties/property-critical-checkpoints-panel";
 import { PropertyRefillTrackingPanel } from "@/components/properties/property-refill-tracking-panel";
+import { PropertyOwnersCard } from "@/components/properties/property-owners-card";
+import { PropertyInstructionsPanel } from "@/components/properties/property-instructions-panel";
+import { PropertyRoomsPanel } from "@/components/properties/property-rooms-panel";
+import { InventoryImportModal } from "@/components/inventory/inventory-import-modal";
+import { ReviewCard } from "@/components/reviews/review-card";
+import type { Id } from "@convex/_generated/dataModel";
 
 function formatDateTime(timestamp?: number) {
   if (!timestamp) {
@@ -40,6 +46,7 @@ function toMutationInput(values: PropertyFormValues) {
 export function PropertyDetail({ id }: { id: string }) {
   const { isAuthenticated } = useConvexAuth();
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const { showToast } = useToast();
@@ -56,6 +63,14 @@ export function PropertyDetail({ id }: { id: string }) {
   const propertyCompanyAssignment = useQuery(
     api.admin.queries.getPropertyCompanyAssignment,
     isAuthenticated ? { propertyId: id as never } : "skip",
+  );
+  const reviewsEnabled = useQuery(
+    api.admin.featureFlags.isFeatureEnabled,
+    isAuthenticated ? { key: "reviewsAiReply" } : "skip",
+  );
+  const propertyReviews = useQuery(
+    api.guestReviews.queries.listByProperty,
+    isAuthenticated && reviewsEnabled ? { propertyId: id as never } : "skip",
   );
 
   const updateProperty = useMutation(
@@ -151,13 +166,22 @@ export function PropertyDetail({ id }: { id: string }) {
               {property.address}
             </p>
           </div>
-          <button
-            onClick={() => setIsEditOpen(true)}
-            className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold hover:bg-[var(--accent)]"
-          >
-            <Pencil className="h-4 w-4" />
-            Edit Property
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setIsImportOpen(true)}
+              className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold hover:bg-[var(--accent)]"
+            >
+              <Upload className="h-4 w-4" />
+              Import Inventory
+            </button>
+            <button
+              onClick={() => setIsEditOpen(true)}
+              className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold hover:bg-[var(--accent)]"
+            >
+              <Pencil className="h-4 w-4" />
+              Edit Property
+            </button>
+          </div>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
@@ -203,9 +227,26 @@ export function PropertyDetail({ id }: { id: string }) {
         </div>
       ) : null}
 
-      <PropertyCriticalCheckpointsPanel propertyId={id} />
+      <PropertyInstructionsPanel
+        propertyId={id}
+        accessNotes={property.accessNotes ?? null}
+        keyLocation={property.keyLocation ?? null}
+        parkingNotes={property.parkingNotes ?? null}
+        urgentNotes={property.urgentNotes ?? null}
+        instructions={property.instructions ?? null}
+      />
+
+      <PropertyRoomsPanel
+        propertyId={id}
+        rooms={property.rooms ?? []}
+        hasHospitableId={Boolean(property.hospitableId)}
+      />
+
+      <PropertyCriticalCheckpointsPanel propertyId={id} propertyRooms={property.rooms ?? []} />
 
       <PropertyRefillTrackingPanel propertyId={id} />
+
+      <PropertyOwnersCard propertyId={id as Id<"properties">} />
 
       <section className="rounded-2xl border bg-[var(--card)]">
         <div className="border-b px-4 py-3">
@@ -253,6 +294,25 @@ export function PropertyDetail({ id }: { id: string }) {
         </div>
       </section>
 
+      {reviewsEnabled && (
+        <section className="rounded-2xl border bg-[var(--card)] p-5 space-y-3">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--muted-foreground)]">
+            Reviews
+          </h2>
+          {propertyReviews === undefined ? (
+            <p className="text-sm text-[var(--muted-foreground)]">Loading…</p>
+          ) : propertyReviews.length === 0 ? (
+            <p className="text-sm text-[var(--muted-foreground)]">No reviews yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {propertyReviews.map((review) => (
+                <ReviewCard key={review._id} review={review} showProperty={false} />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
       <PropertyFormModal
         open={isEditOpen}
         title="Edit Property"
@@ -277,6 +337,13 @@ export function PropertyDetail({ id }: { id: string }) {
         }}
         onClose={() => setIsEditOpen(false)}
         onSubmit={handleUpdate}
+      />
+
+      <InventoryImportModal
+        open={isImportOpen}
+        propertyId={id as Id<"properties">}
+        propertyName={property.name}
+        onClose={() => setIsImportOpen(false)}
       />
     </div>
   );

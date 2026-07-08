@@ -1,0 +1,1074 @@
+"use client";
+
+/**
+ * ChatComposer — extracted from conversation-thread.tsx (Phase A of the
+ * Granola-inspired composer redesign). This is a pure extraction: same
+ * markup, same handlers, same behaviour as the inline form it replaces.
+ *
+ * Phase B will introduce the Granola pill shape behind the
+ * `messages_granola_composer` feature flag. The flag check stays in the
+ * parent (`conversation-thread.tsx`) so the parent can render either
+ * shape without the composer needing to know.
+ *
+ * See Docs/messages-redesign/2026-04-28-granola-inspired-chat-input.md.
+ */
+
+import { useEffect, useRef, useState } from "react";
+import { useAction, useMutation } from "convex/react";
+import { useTranslations } from "next-intl";
+import {
+  Camera,
+  FileUp,
+  Image as ImageIcon,
+  Loader2,
+  Mic,
+  Paperclip,
+  Send,
+  Sparkles,
+  Video as VideoIcon,
+  X as XIcon,
+} from "lucide-react";
+import { api } from "@convex/_generated/api";
+import type { Id } from "@convex/_generated/dataModel";
+import { getErrorMessage } from "@/lib/errors";
+import { useToast } from "@/components/ui/toast-provider";
+import { VoiceRecordButton } from "@/components/voice/voice-record-button";
+
+type MessageLocale = "en" | "es";
+
+export type PendingAudio = {
+  storageId: string;
+  mimeType: string;
+  byteSize: number;
+  durationMs: number;
+};
+
+export type PendingVideo = {
+  storageId: string;
+  mimeType: string;
+  byteSize: number;
+  fileName: string;
+  durationMs: number | null;
+  width: number | null;
+  height: number | null;
+};
+
+export type PendingImage = {
+  storageId: string;
+  mimeType: string;
+  byteSize: number;
+  fileName: string;
+  width: number | null;
+  height: number | null;
+};
+
+export type PendingFile = {
+  storageId: string;
+  mimeType: string;
+  byteSize: number;
+  fileName: string;
+};
+
+/** Hard cap surfaced to the user. Stays in sync with mediaValidation
+ *  ceilings on the backend (60 s / 25 MiB per ADR-0003). */
+const COMPOSER_MAX_VIDEO_SECONDS = 60;
+const COMPOSER_MAX_VIDEO_BYTES = 25 * 1024 * 1024;
+const COMPOSER_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const COMPOSER_MAX_FILE_BYTES = 25 * 1024 * 1024;
+
+async function probeLocalImage(file: File): Promise<{
+  width: number | null;
+  height: number | null;
+}> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    const cleanup = () => {
+      URL.revokeObjectURL(url);
+    };
+    img.onload = () => {
+      const out = {
+        width: img.naturalWidth || null,
+        height: img.naturalHeight || null,
+      };
+      cleanup();
+      resolve(out);
+    };
+    img.onerror = () => {
+      cleanup();
+      resolve({ width: null, height: null });
+    };
+    img.src = url;
+  });
+}
+
+async function probeLocalVideo(file: File): Promise<{
+  durationMs: number | null;
+  width: number | null;
+  height: number | null;
+}> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    const cleanup = () => {
+      URL.revokeObjectURL(url);
+      video.src = "";
+      video.load();
+    };
+    video.onloadedmetadata = () => {
+      const out = {
+        durationMs: Number.isFinite(video.duration)
+          ? Math.round(video.duration * 1000)
+          : null,
+        width: video.videoWidth || null,
+        height: video.videoHeight || null,
+      };
+      cleanup();
+      resolve(out);
+    };
+    video.onerror = () => {
+      cleanup();
+      resolve({ durationMs: null, width: null, height: null });
+    };
+    video.src = url;
+  });
+}
+
+export type ChatComposerProps = {
+  body: string;
+  setBody: (next: string | ((prev: string) => string)) => void;
+  pending: boolean;
+  setPending: (pending: boolean) => void;
+  pendingAudio: PendingAudio | null;
+  setPendingAudio: (audio: PendingAudio | null) => void;
+  pendingVideo: PendingVideo | null;
+  setPendingVideo: (video: PendingVideo | null) => void;
+  videoUploading: boolean;
+  setVideoUploading: (uploading: boolean) => void;
+  pendingImage: PendingImage | null;
+  setPendingImage: (image: PendingImage | null) => void;
+  imageUploading: boolean;
+  setImageUploading: (uploading: boolean) => void;
+  pendingFile: PendingFile | null;
+  setPendingFile: (file: PendingFile | null) => void;
+  fileUploading: boolean;
+  setFileUploading: (uploading: boolean) => void;
+  isWhatsAppLane: boolean;
+  canReplyInApp: boolean;
+  compact: boolean;
+  myLocale: MessageLocale;
+  voiceMessagesEnabled: boolean | undefined;
+  videoEnabled: boolean;
+  /** Phase B — render the Granola pill shape when true. Default false
+   *  preserves the legacy side-by-side layout. */
+  granolaShape?: boolean;
+  /** Phase C — quick-action prompt chips rendered above the input
+   *  (Granola variant only). Tapping a chip fills the textarea with
+   *  `prompt` (or runs `onSelect` when provided). */
+  chips?: ComposerChip[];
+  onSubmit: () => Promise<void>;
+};
+
+export type ComposerChip = {
+  /** Stable id used for React keys. */
+  id: string;
+  /** Visible label rendered inside the chip. */
+  label: string;
+  /** Text inserted into the textarea on tap. Ignored when `onSelect` is set. */
+  prompt?: string;
+  /** Optional override that runs instead of the default fill-textarea. */
+  onSelect?: () => void;
+  /** Optional leading icon. */
+  icon?: React.ReactNode;
+};
+
+export function ChatComposer(props: ChatComposerProps) {
+  if (props.granolaShape) {
+    return <GranolaChatComposer {...props} />;
+  }
+  return <LegacyChatComposer {...props} />;
+}
+
+function LegacyChatComposer({
+  body,
+  setBody,
+  pending,
+  pendingAudio,
+  setPendingAudio,
+  pendingVideo,
+  setPendingVideo,
+  videoUploading,
+  setVideoUploading,
+  isWhatsAppLane,
+  canReplyInApp,
+  compact,
+  myLocale,
+  voiceMessagesEnabled,
+  videoEnabled,
+  onSubmit,
+}: ChatComposerProps) {
+  const t = useTranslations();
+  const { showToast } = useToast();
+  const generateUploadUrl = useMutation(api.files.mutations.generateUploadUrl);
+
+  return (
+    <form
+      className="shrink-0 border-t border-[var(--msg-divider,var(--border))] p-3"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        // Phase 4a — allow sending when there's either body text OR a
+        // video attachment ready. Audio still requires body text from
+        // the transcribe action.
+        if (!body.trim() && !pendingVideo) {
+          return;
+        }
+        await onSubmit();
+      }}
+    >
+      {pendingAudio ? (
+        <div className="mb-2 flex items-center gap-2 rounded-full border border-[var(--msg-primary,var(--primary))]/30 bg-[var(--msg-primary,var(--primary))]/10 px-3 py-1.5 text-xs font-medium text-[var(--msg-primary,var(--primary))]">
+          <Mic className="h-3.5 w-3.5" />
+          <span>
+            {/* e.g. "Voice · 0:08" — concise indicator; full player only
+                renders once the message is actually posted. */}
+            {t("voice.attachmentLabel", {
+              duration: `${Math.floor(pendingAudio.durationMs / 60000)}:${String(
+                Math.floor((pendingAudio.durationMs % 60000) / 1000),
+              ).padStart(2, "0")}`,
+            })}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPendingAudio(null)}
+            className="ml-auto rounded-full p-0.5 hover:bg-[var(--msg-primary,var(--primary))]/20"
+            aria-label={t("voice.removeAttachment")}
+          >
+            <XIcon className="h-3 w-3" />
+          </button>
+        </div>
+      ) : null}
+
+      {/* Phase 4a — pending video chip. Mirrors the audio chip but
+          shows duration + filename. The actual player renders once
+          the message lands and the reactive query updates. */}
+      {pendingVideo ? (
+        <div className="mb-2 flex items-center gap-2 rounded-full border border-[var(--msg-primary,var(--primary))]/30 bg-[var(--msg-primary,var(--primary))]/10 px-3 py-1.5 text-xs font-medium text-[var(--msg-primary,var(--primary))]">
+          <VideoIcon className="h-3.5 w-3.5" />
+          <span className="truncate max-w-[200px]">
+            {pendingVideo.durationMs != null
+              ? `Video · ${Math.floor(pendingVideo.durationMs / 60000)}:${String(
+                  Math.floor((pendingVideo.durationMs % 60000) / 1000),
+                ).padStart(2, "0")}`
+              : `Video · ${pendingVideo.fileName}`}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPendingVideo(null)}
+            className="ml-auto rounded-full p-0.5 hover:bg-[var(--msg-primary,var(--primary))]/20"
+            aria-label="Remove video"
+          >
+            <XIcon className="h-3 w-3" />
+          </button>
+        </div>
+      ) : null}
+
+      <div className="flex items-end gap-2">
+        <textarea
+          value={body}
+          onChange={(event) => setBody(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              // Phase 4a: allow Enter-to-send when only a video is
+              // attached (empty body but pendingVideo is set).
+              if (
+                (body.trim() || pendingVideo) &&
+                !pending &&
+                !videoUploading &&
+                canReplyInApp
+              ) {
+                event.currentTarget.form?.requestSubmit();
+              }
+            }
+          }}
+          rows={compact ? 1 : 2}
+          disabled={pending || !canReplyInApp}
+          placeholder={
+            isWhatsAppLane
+              ? canReplyInApp
+                ? "Reply in WhatsApp..."
+                : "Await cleaner reply..."
+              : "Type a message..."
+          }
+          className="flex-1 resize-none rounded-full border border-[var(--msg-bubble-border,var(--border))] bg-[var(--msg-card,var(--background))] px-4 py-2.5 text-sm text-[var(--msg-text,var(--foreground))] outline-none placeholder:text-[var(--msg-text-muted,var(--muted-foreground))] focus:border-[var(--msg-primary,var(--primary))] focus:ring-2 focus:ring-[var(--msg-primary,var(--primary))]/20 disabled:cursor-not-allowed disabled:opacity-60"
+        />
+        {voiceMessagesEnabled ? (
+          <VoiceRecordButton
+            disabled={pending || !canReplyInApp}
+            languageHint={myLocale}
+            size={compact ? "sm" : "md"}
+            onTranscript={(text, retainedAudio) => {
+              // Append the transcript so a user who already started typing
+              // doesn't lose their draft. Trim so we don't prepend leading
+              // whitespace when appending to an empty composer.
+              setBody((prev) => (prev ? `${prev} ${text}`.trim() : text));
+              // When the admin has audio-retention ON, hold the blob
+              // metadata so it ships with the next send() call.
+              setPendingAudio(retainedAudio);
+            }}
+            onError={(message) => showToast(message, "error")}
+          />
+        ) : null}
+        {/* Phase 4a — Video attach button. Hidden on WhatsApp lane
+            (sendWhatsAppReply doesn't support attachments) and gated
+            by the master flag (env + admin runtime toggle). */}
+        {videoEnabled && !isWhatsAppLane ? (
+          <label
+            className={`flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full border border-[var(--msg-bubble-border,var(--border))] text-[var(--msg-text-muted,var(--muted-foreground))] hover:bg-[var(--msg-card,var(--accent))] hover:text-[var(--msg-text,var(--foreground))] ${
+              pending || videoUploading || !canReplyInApp || pendingVideo
+                ? "pointer-events-none opacity-40"
+                : ""
+            }`}
+            aria-label="Attach video"
+            title="Attach video"
+          >
+            {videoUploading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <VideoIcon className="h-4 w-4" />
+            )}
+            <input
+              type="file"
+              accept="video/mp4,video/webm,video/quicktime"
+              className="hidden"
+              disabled={
+                pending || videoUploading || !canReplyInApp || !!pendingVideo
+              }
+              onChange={async (event) => {
+                const file = event.target.files?.[0];
+                // Reset the input so the same file can be re-selected
+                // after an error / removal.
+                event.target.value = "";
+                if (!file) return;
+
+                if (file.size > COMPOSER_MAX_VIDEO_BYTES) {
+                  showToast(
+                    `Video too large. Max ${Math.round(
+                      COMPOSER_MAX_VIDEO_BYTES / (1024 * 1024),
+                    )} MB.`,
+                    "error",
+                  );
+                  return;
+                }
+
+                setVideoUploading(true);
+                try {
+                  // Probe metadata first so we can reject overlong
+                  // clips before burning bandwidth on upload.
+                  const meta = await probeLocalVideo(file);
+                  if (
+                    meta.durationMs != null &&
+                    meta.durationMs > COMPOSER_MAX_VIDEO_SECONDS * 1000
+                  ) {
+                    showToast(
+                      `Video too long. Max ${COMPOSER_MAX_VIDEO_SECONDS}s.`,
+                      "error",
+                    );
+                    return;
+                  }
+
+                  // Standard Convex two-step: get a one-shot URL, PUT
+                  // the file, then read the storageId from the response.
+                  const uploadUrl = await generateUploadUrl({});
+                  const putRes = await fetch(uploadUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": file.type || "video/mp4" },
+                    body: file,
+                  });
+                  if (!putRes.ok) {
+                    throw new Error(`Upload failed (${putRes.status}).`);
+                  }
+                  const { storageId } = (await putRes.json()) as {
+                    storageId: Id<"_storage">;
+                  };
+
+                  setPendingVideo({
+                    storageId,
+                    mimeType: file.type || "video/mp4",
+                    byteSize: file.size,
+                    fileName: file.name || `video-${Date.now()}.mp4`,
+                    durationMs: meta.durationMs,
+                    width: meta.width,
+                    height: meta.height,
+                  });
+                } catch (error) {
+                  showToast(
+                    getErrorMessage(error, "Failed to upload video."),
+                    "error",
+                  );
+                } finally {
+                  setVideoUploading(false);
+                }
+              }}
+            />
+          </label>
+        ) : null}
+        <button
+          type="submit"
+          disabled={
+            pending ||
+            (!body.trim() && !pendingVideo) ||
+            videoUploading ||
+            !canReplyInApp
+          }
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--msg-primary,var(--primary))] text-[var(--msg-on-primary,var(--primary-foreground))] shadow-[var(--msg-shadow-float,none)] transition-transform hover:scale-105 active:scale-95 disabled:opacity-40"
+        >
+          <Send className="h-4 w-4" />
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Granola variant — Phase B
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Shared video-upload pipeline used by both the legacy Video button and
+ * the Granola attach popover. Same Convex two-step (`generateUploadUrl`
+ * → PUT) and same client-side caps as the legacy path. Keeps Phase B
+ * free of behaviour drift on the upload side.
+ */
+function useVideoUploader(args: {
+  setVideoUploading: (v: boolean) => void;
+  setPendingVideo: (v: PendingVideo | null) => void;
+}) {
+  const { setVideoUploading, setPendingVideo } = args;
+  const generateUploadUrl = useMutation(api.files.mutations.generateUploadUrl);
+  const { showToast } = useToast();
+
+  return async (file: File) => {
+    if (file.size > COMPOSER_MAX_VIDEO_BYTES) {
+      showToast(
+        `Video too large. Max ${Math.round(
+          COMPOSER_MAX_VIDEO_BYTES / (1024 * 1024),
+        )} MB.`,
+        "error",
+      );
+      return;
+    }
+    setVideoUploading(true);
+    try {
+      const meta = await probeLocalVideo(file);
+      if (
+        meta.durationMs != null &&
+        meta.durationMs > COMPOSER_MAX_VIDEO_SECONDS * 1000
+      ) {
+        showToast(
+          `Video too long. Max ${COMPOSER_MAX_VIDEO_SECONDS}s.`,
+          "error",
+        );
+        return;
+      }
+      const uploadUrl = await generateUploadUrl({});
+      const putRes = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type || "video/mp4" },
+        body: file,
+      });
+      if (!putRes.ok) {
+        throw new Error(`Upload failed (${putRes.status}).`);
+      }
+      const { storageId } = (await putRes.json()) as {
+        storageId: Id<"_storage">;
+      };
+      setPendingVideo({
+        storageId,
+        mimeType: file.type || "video/mp4",
+        byteSize: file.size,
+        fileName: file.name || `video-${Date.now()}.mp4`,
+        durationMs: meta.durationMs,
+        width: meta.width,
+        height: meta.height,
+      });
+    } catch (error) {
+      showToast(getErrorMessage(error, "Failed to upload video."), "error");
+    } finally {
+      setVideoUploading(false);
+    }
+  };
+}
+
+function useImageUploader(args: {
+  setImageUploading: (v: boolean) => void;
+  setPendingImage: (v: PendingImage | null) => void;
+}) {
+  const { setImageUploading, setPendingImage } = args;
+  const generateUploadUrl = useMutation(api.files.mutations.generateUploadUrl);
+  const { showToast } = useToast();
+  return async (file: File) => {
+    if (file.size > COMPOSER_MAX_IMAGE_BYTES) {
+      showToast(
+        `Image too large. Max ${Math.round(
+          COMPOSER_MAX_IMAGE_BYTES / (1024 * 1024),
+        )} MB.`,
+        "error",
+      );
+      return;
+    }
+    setImageUploading(true);
+    try {
+      const meta = await probeLocalImage(file);
+      const uploadUrl = await generateUploadUrl({});
+      const putRes = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type || "image/jpeg" },
+        body: file,
+      });
+      if (!putRes.ok) {
+        throw new Error(`Upload failed (${putRes.status}).`);
+      }
+      const { storageId } = (await putRes.json()) as {
+        storageId: Id<"_storage">;
+      };
+      setPendingImage({
+        storageId,
+        mimeType: file.type || "image/jpeg",
+        byteSize: file.size,
+        fileName: file.name || `photo-${Date.now()}.jpg`,
+        width: meta.width,
+        height: meta.height,
+      });
+    } catch (error) {
+      showToast(getErrorMessage(error, "Failed to upload image."), "error");
+    } finally {
+      setImageUploading(false);
+    }
+  };
+}
+
+function useFileUploader(args: {
+  setFileUploading: (v: boolean) => void;
+  setPendingFile: (v: PendingFile | null) => void;
+}) {
+  const { setFileUploading, setPendingFile } = args;
+  const generateUploadUrl = useMutation(api.files.mutations.generateUploadUrl);
+  const { showToast } = useToast();
+  return async (file: File) => {
+    if (file.size > COMPOSER_MAX_FILE_BYTES) {
+      showToast(
+        `File too large. Max ${Math.round(
+          COMPOSER_MAX_FILE_BYTES / (1024 * 1024),
+        )} MB.`,
+        "error",
+      );
+      return;
+    }
+    setFileUploading(true);
+    try {
+      const uploadUrl = await generateUploadUrl({});
+      const putRes = await fetch(uploadUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": file.type || "application/octet-stream",
+        },
+        body: file,
+      });
+      if (!putRes.ok) {
+        throw new Error(`Upload failed (${putRes.status}).`);
+      }
+      const { storageId } = (await putRes.json()) as {
+        storageId: Id<"_storage">;
+      };
+      setPendingFile({
+        storageId,
+        mimeType: file.type || "application/octet-stream",
+        byteSize: file.size,
+        fileName: file.name || `file-${Date.now()}`,
+      });
+    } catch (error) {
+      showToast(getErrorMessage(error, "Failed to upload file."), "error");
+    } finally {
+      setFileUploading(false);
+    }
+  };
+}
+
+function GranolaChatComposer({
+  body,
+  setBody,
+  pending,
+  pendingAudio,
+  setPendingAudio,
+  pendingVideo,
+  setPendingVideo,
+  videoUploading,
+  setVideoUploading,
+  pendingImage,
+  setPendingImage,
+  imageUploading,
+  setImageUploading,
+  pendingFile,
+  setPendingFile,
+  fileUploading,
+  setFileUploading,
+  isWhatsAppLane,
+  canReplyInApp,
+  compact,
+  myLocale,
+  voiceMessagesEnabled,
+  videoEnabled,
+  chips,
+  onSubmit,
+}: ChatComposerProps) {
+  const t = useTranslations();
+  const { showToast } = useToast();
+  const uploadVideo = useVideoUploader({ setVideoUploading, setPendingVideo });
+  const uploadImage = useImageUploader({ setImageUploading, setPendingImage });
+  const uploadFile = useFileUploader({ setFileUploading, setPendingFile });
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const enhanceDraft = useAction(api.conversations.enhance.enhanceDraft);
+  const [enhancing, setEnhancing] = useState(false);
+
+  // Attach popover open state. Closes on outside click / Escape.
+  const [attachOpen, setAttachOpen] = useState(false);
+  const attachRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!attachOpen) return;
+    const onDocClick = (event: MouseEvent) => {
+      if (
+        attachRef.current &&
+        !attachRef.current.contains(event.target as Node)
+      ) {
+        setAttachOpen(false);
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAttachOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [attachOpen]);
+
+  const hasAttachment = !!pendingVideo || !!pendingImage || !!pendingFile;
+  const hasContent = body.trim().length > 0 || hasAttachment;
+  const showSendSlot = hasContent || pendingAudio != null;
+  const sendDisabled =
+    pending ||
+    (!body.trim() && !hasAttachment) ||
+    videoUploading ||
+    imageUploading ||
+    fileUploading ||
+    !canReplyInApp;
+  const inputDisabled = pending || !canReplyInApp;
+
+  return (
+    <form
+      className="shrink-0 border-t border-[var(--msg-divider,var(--border))] p-3"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        if (!body.trim() && !hasAttachment) return;
+        await onSubmit();
+      }}
+      onDragOver={(event) => {
+        if (!videoEnabled || isWhatsAppLane) return;
+        event.preventDefault();
+      }}
+      onDrop={async (event) => {
+        if (!videoEnabled || isWhatsAppLane) return;
+        const file = event.dataTransfer.files?.[0];
+        if (!file || !file.type.startsWith("video/")) return;
+        event.preventDefault();
+        await uploadVideo(file);
+      }}
+      onPaste={async (event) => {
+        if (!videoEnabled || isWhatsAppLane) return;
+        const item = Array.from(event.clipboardData.items).find((i) =>
+          i.type.startsWith("video/"),
+        );
+        if (!item) return;
+        const file = item.getAsFile();
+        if (!file) return;
+        event.preventDefault();
+        await uploadVideo(file);
+      }}
+    >
+      {pendingAudio ? (
+        <div className="mb-2 flex items-center gap-2 rounded-full border border-[var(--msg-primary,var(--primary))]/30 bg-[var(--msg-primary,var(--primary))]/10 px-3 py-1.5 text-xs font-medium text-[var(--msg-primary,var(--primary))]">
+          <Mic className="h-3.5 w-3.5" />
+          <span>
+            {t("voice.attachmentLabel", {
+              duration: `${Math.floor(pendingAudio.durationMs / 60000)}:${String(
+                Math.floor((pendingAudio.durationMs % 60000) / 1000),
+              ).padStart(2, "0")}`,
+            })}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPendingAudio(null)}
+            className="ml-auto rounded-full p-0.5 hover:bg-[var(--msg-primary,var(--primary))]/20"
+            aria-label={t("voice.removeAttachment")}
+          >
+            <XIcon className="h-3 w-3" />
+          </button>
+        </div>
+      ) : null}
+
+      {pendingVideo ? (
+        <div className="mb-2 flex items-center gap-2 rounded-full border border-[var(--msg-primary,var(--primary))]/30 bg-[var(--msg-primary,var(--primary))]/10 px-3 py-1.5 text-xs font-medium text-[var(--msg-primary,var(--primary))]">
+          <VideoIcon className="h-3.5 w-3.5" />
+          <span className="truncate max-w-[200px]">
+            {pendingVideo.durationMs != null
+              ? `Video · ${Math.floor(pendingVideo.durationMs / 60000)}:${String(
+                  Math.floor((pendingVideo.durationMs % 60000) / 1000),
+                ).padStart(2, "0")}`
+              : `Video · ${pendingVideo.fileName}`}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPendingVideo(null)}
+            className="ml-auto rounded-full p-0.5 hover:bg-[var(--msg-primary,var(--primary))]/20"
+            aria-label="Remove video"
+          >
+            <XIcon className="h-3 w-3" />
+          </button>
+        </div>
+      ) : null}
+
+      {pendingImage ? (
+        <div className="mb-2 flex items-center gap-2 rounded-full border border-[var(--msg-primary,var(--primary))]/30 bg-[var(--msg-primary,var(--primary))]/10 px-3 py-1.5 text-xs font-medium text-[var(--msg-primary,var(--primary))]">
+          <ImageIcon className="h-3.5 w-3.5" />
+          <span className="truncate max-w-[200px]">
+            {`Photo · ${pendingImage.fileName}`}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPendingImage(null)}
+            className="ml-auto rounded-full p-0.5 hover:bg-[var(--msg-primary,var(--primary))]/20"
+            aria-label="Remove photo"
+          >
+            <XIcon className="h-3 w-3" />
+          </button>
+        </div>
+      ) : null}
+
+      {pendingFile ? (
+        <div className="mb-2 flex items-center gap-2 rounded-full border border-[var(--msg-primary,var(--primary))]/30 bg-[var(--msg-primary,var(--primary))]/10 px-3 py-1.5 text-xs font-medium text-[var(--msg-primary,var(--primary))]">
+          <FileUp className="h-3.5 w-3.5" />
+          <span className="truncate max-w-[200px]">
+            {`File · ${pendingFile.fileName}`}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPendingFile(null)}
+            className="ml-auto rounded-full p-0.5 hover:bg-[var(--msg-primary,var(--primary))]/20"
+            aria-label="Remove file"
+          >
+            <XIcon className="h-3 w-3" />
+          </button>
+        </div>
+      ) : null}
+
+      {/* Phase C — quick-action chip row. Horizontal scroll on overflow
+          so narrow viewports don't wrap. Hidden when no chips are
+          configured for this surface. */}
+      {chips && chips.length > 0 ? (
+        <div
+          role="toolbar"
+          aria-label={t("messagesComposer.chips.ariaLabel")}
+          className="mb-2 flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {chips.map((chip) => (
+            <button
+              key={chip.id}
+              type="button"
+              disabled={pending || !canReplyInApp}
+              onClick={() => {
+                if (chip.onSelect) {
+                  chip.onSelect();
+                  return;
+                }
+                if (chip.prompt) setBody(chip.prompt);
+                textareaRef.current?.focus();
+              }}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--muted)]/40 px-3 py-1 text-xs font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40"
+            >
+              {chip.icon}
+              <span>{chip.label}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {/* Granola pill tile: textarea is the visual anchor; trailing
+          action cluster (attach + mic↔send) sits inside the right edge.
+          Tile uses elevated surface (slightly brighter than the thread
+          background) + a soft shadow so it reads as a distinct input
+          surface, mirroring Granola's composer treatment. */}
+      <div className="rounded-[20px] border border-[var(--msg-bubble-border,var(--border))] bg-[var(--card)] px-2 py-1.5 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset,0_2px_12px_rgba(0,0,0,0.18)] transition-[border-color,box-shadow] duration-150 focus-within:border-[var(--msg-primary,var(--primary))]/60 focus-within:shadow-[0_0_0_3px_color-mix(in_oklch,var(--msg-primary,var(--primary))_22%,transparent)]">
+        <div className="flex items-end gap-1">
+          <textarea
+            ref={textareaRef}
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+            onKeyDown={(event) => {
+              // Granola keyboard contract: Enter = newline, Cmd/Ctrl+Enter = send.
+              if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                event.preventDefault();
+                if (
+                  (body.trim() || hasAttachment) &&
+                  !pending &&
+                  !videoUploading &&
+                  !imageUploading &&
+                  !fileUploading &&
+                  canReplyInApp
+                ) {
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }
+            }}
+            rows={compact ? 1 : 2}
+            disabled={inputDisabled}
+            placeholder={
+              isWhatsAppLane
+                ? canReplyInApp
+                  ? "Reply in WhatsApp…"
+                  : "Await cleaner reply…"
+                : "Type a message…"
+            }
+            className="min-h-[40px] flex-1 resize-none bg-transparent px-3 py-2 text-[15px] leading-snug text-[var(--msg-text,var(--foreground))] outline-none placeholder:text-[var(--msg-text-muted,var(--muted-foreground))]/80 disabled:cursor-not-allowed disabled:opacity-60"
+          />
+
+          {/* Polish-with-AI button — runs the draft through Gemini and
+              replaces the textarea body with the rewritten version.
+              Hidden on the WhatsApp lane to keep the surface minimal
+              there; available on internal threads. */}
+          {!isWhatsAppLane ? (
+            <button
+              type="button"
+              disabled={
+                enhancing ||
+                pending ||
+                !canReplyInApp ||
+                body.trim().length === 0
+              }
+              onClick={async () => {
+                const draft = body.trim();
+                if (!draft) {
+                  showToast(t("messagesComposer.enhance.errorEmpty"), "error");
+                  return;
+                }
+                setEnhancing(true);
+                try {
+                  const polished = await enhanceDraft({
+                    text: draft,
+                    locale: myLocale,
+                  });
+                  if (polished) setBody(polished);
+                  textareaRef.current?.focus();
+                } catch (error) {
+                  showToast(
+                    getErrorMessage(
+                      error,
+                      t("messagesComposer.enhance.errorGeneric"),
+                    ),
+                    "error",
+                  );
+                } finally {
+                  setEnhancing(false);
+                }
+              }}
+              aria-label={t("messagesComposer.enhance.tooltip")}
+              title={t("messagesComposer.enhance.tooltip")}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--msg-text-muted,var(--muted-foreground))] transition-colors hover:bg-[var(--accent)]/60 hover:text-[var(--msg-primary,var(--primary))] active:scale-95 disabled:pointer-events-none disabled:opacity-30"
+            >
+              {enhancing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+            </button>
+          ) : null}
+
+          {/* Attach popover (paperclip) — unified entry for image / file / camera / video. */}
+          <div className="relative" ref={attachRef}>
+            <button
+              type="button"
+              disabled={pending || !canReplyInApp}
+              onClick={() => setAttachOpen((open) => !open)}
+              aria-haspopup="menu"
+              aria-expanded={attachOpen}
+              aria-label="Attach"
+              title="Attach"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--msg-text-muted,var(--muted-foreground))] transition-colors hover:bg-[var(--accent)]/60 hover:text-[var(--msg-text,var(--foreground))] active:scale-95 disabled:pointer-events-none disabled:opacity-30"
+            >
+              {videoUploading || imageUploading || fileUploading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Paperclip className="h-4 w-4" />
+              )}
+            </button>
+            {attachOpen ? (
+              <div
+                role="menu"
+                className="absolute bottom-12 right-0 z-20 w-52 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover,var(--card))] shadow-lg"
+              >
+                {!isWhatsAppLane ? (
+                  <>
+                    <AttachOption
+                      icon={<Camera className="h-4 w-4" />}
+                      label="Take photo"
+                      accept="image/*"
+                      capture="environment"
+                      disabled={
+                        pending ||
+                        imageUploading ||
+                        !canReplyInApp ||
+                        !!pendingImage
+                      }
+                      onPick={async (file) => {
+                        setAttachOpen(false);
+                        if (file) await uploadImage(file);
+                      }}
+                    />
+                    <AttachOption
+                      icon={<ImageIcon className="h-4 w-4" />}
+                      label="Choose photo"
+                      accept="image/*"
+                      disabled={
+                        pending ||
+                        imageUploading ||
+                        !canReplyInApp ||
+                        !!pendingImage
+                      }
+                      onPick={async (file) => {
+                        setAttachOpen(false);
+                        if (file) await uploadImage(file);
+                      }}
+                    />
+                    <AttachOption
+                      icon={<FileUp className="h-4 w-4" />}
+                      label="Choose file"
+                      disabled={
+                        pending ||
+                        fileUploading ||
+                        !canReplyInApp ||
+                        !!pendingFile
+                      }
+                      onPick={async (file) => {
+                        setAttachOpen(false);
+                        if (file) await uploadFile(file);
+                      }}
+                    />
+                  </>
+                ) : null}
+                {videoEnabled && !isWhatsAppLane ? (
+                  <AttachOption
+                    icon={<VideoIcon className="h-4 w-4" />}
+                    label="Record video"
+                    accept="video/mp4,video/webm,video/quicktime"
+                    capture="environment"
+                    disabled={
+                      pending ||
+                      videoUploading ||
+                      !canReplyInApp ||
+                      !!pendingVideo
+                    }
+                    onPick={async (file) => {
+                      setAttachOpen(false);
+                      if (file) await uploadVideo(file);
+                    }}
+                  />
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
+          {/* Mic ↔ send — single right-most slot. Mic when input empty &
+              voice flag on; send when there is content. */}
+          {showSendSlot ? (
+            <button
+              type="submit"
+              disabled={sendDisabled}
+              aria-label="Send message"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--msg-primary,var(--primary))] text-[var(--msg-on-primary,var(--primary-foreground))] shadow-[0_2px_8px_color-mix(in_oklch,var(--msg-primary,var(--primary))_40%,transparent)] transition-transform hover:scale-[1.04] active:scale-95 disabled:pointer-events-none disabled:opacity-30 disabled:shadow-none"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          ) : voiceMessagesEnabled ? (
+            <VoiceRecordButton
+              disabled={pending || !canReplyInApp}
+              languageHint={myLocale}
+              size="sm"
+              onTranscript={(text, retainedAudio) => {
+                setBody((prev) => (prev ? `${prev} ${text}`.trim() : text));
+                setPendingAudio(retainedAudio);
+              }}
+              onError={(message) => showToast(message, "error")}
+            />
+          ) : (
+            // Voice off + empty input → show disabled send so the slot
+            // never collapses and shifts the layout while typing.
+            <button
+              type="submit"
+              disabled
+              aria-label="Send message"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--muted)] text-[var(--muted-foreground)] opacity-60"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
+    </form>
+  );
+}
+
+function AttachOption({
+  icon,
+  label,
+  accept,
+  capture,
+  multiple,
+  disabled,
+  onPick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  accept?: string;
+  capture?: "user" | "environment";
+  multiple?: boolean;
+  disabled?: boolean;
+  onPick: (file: File | null) => void | Promise<void>;
+}) {
+  return (
+    <label
+      role="menuitem"
+      className={`flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--accent)] ${
+        disabled ? "pointer-events-none opacity-40" : ""
+      }`}
+    >
+      {icon}
+      <span>{label}</span>
+      <input
+        type="file"
+        accept={accept}
+        capture={capture}
+        multiple={multiple}
+        disabled={disabled}
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0] ?? null;
+          event.target.value = "";
+          void onPick(file);
+        }}
+      />
+    </label>
+  );
+}

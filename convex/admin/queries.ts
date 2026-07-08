@@ -15,6 +15,7 @@ import { v } from "convex/values";
 import { query, type QueryCtx } from "../_generated/server";
 import { type Doc, type Id } from "../_generated/dataModel";
 import { requireRole, requireAuth } from "../lib/auth";
+import { groupActiveByUser } from "../lib/ownership";
 
 type TeamAvailability = "working" | "available" | "off";
 
@@ -109,7 +110,8 @@ export const getAllUsers = query({
         v.literal("cleaner"),
         v.literal("manager"),
         v.literal("property_ops"),
-        v.literal("admin")
+        v.literal("admin"),
+        v.literal("owner")
       )
     ),
     status: v.optional(v.string()),
@@ -174,7 +176,7 @@ export const getTeamMetrics = query({
     horizonHours: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, ["admin", "property_ops", "manager"]);
+    const actor = await requireRole(ctx, ["admin", "property_ops", "manager"]);
 
     const now = Date.now();
     const lookbackDays = Math.min(
@@ -188,30 +190,13 @@ export const getTeamMetrics = query({
     const lookbackStart = now - lookbackDays * 24 * 60 * 60 * 1000;
     const horizonEnd = now + horizonHours * 60 * 60 * 1000;
 
-    const [users, jobs, memberships] = await Promise.all([
+    const [users, jobs, memberships, ownerships] = await Promise.all([
       ctx.db.query("users").collect(),
       ctx.db.query("cleaningJobs").collect(),
       ctx.db.query("companyMembers").collect(),
+      ctx.db.query("propertyOwners").collect(),
     ]);
-
-    const jobsByUserId = new Map<Id<"users">, Doc<"cleaningJobs">[]>();
-    for (const user of users) {
-      jobsByUserId.set(user._id, []);
-    }
-
-    for (const job of jobs) {
-      const participantIds = new Set<Id<"users">>(job.assignedCleanerIds);
-      if (job.assignedManagerId) {
-        participantIds.add(job.assignedManagerId);
-      }
-
-      for (const participantId of participantIds) {
-        if (!jobsByUserId.has(participantId)) {
-          jobsByUserId.set(participantId, []);
-        }
-        jobsByUserId.get(participantId)!.push(job);
-      }
-    }
+    const stakesByUser = groupActiveByUser(ownerships);
 
     const activeMembershipByUserId = new Map<Id<"users">, Doc<"companyMembers">>();
     for (const membership of memberships) {
@@ -225,9 +210,62 @@ export const getTeamMetrics = query({
       }
     }
 
+    const actorMembership = activeMembershipByUserId.get(actor._id) ?? null;
+    const managerCompanyId =
+      actor.role === "manager" ? actorMembership?.companyId ?? null : null;
+
+    const visibleUsers =
+      actor.role === "manager"
+        ? managerCompanyId
+          ? users.filter(
+              (user) =>
+                activeMembershipByUserId.get(user._id)?.companyId === managerCompanyId,
+            )
+          : []
+        : users;
+
+    let visibleJobs = jobs;
+    if (actor.role === "manager") {
+      if (!managerCompanyId) {
+        visibleJobs = [];
+      } else {
+        const companyAssignments = await ctx.db
+          .query("companyProperties")
+          .withIndex("by_company", (q) => q.eq("companyId", managerCompanyId))
+          .collect();
+        const scopedPropertyIds = new Set(
+          companyAssignments
+            .filter(isActiveCompanyPropertyAssignment)
+            .map((assignment) => assignment.propertyId),
+        );
+        visibleJobs = jobs.filter((job) => scopedPropertyIds.has(job.propertyId));
+      }
+    }
+
+    const jobsByUserId = new Map<Id<"users">, Doc<"cleaningJobs">[]>();
+    for (const user of visibleUsers) {
+      jobsByUserId.set(user._id, []);
+    }
+
+    for (const job of visibleJobs) {
+      const participantIds = new Set<Id<"users">>(job.assignedCleanerIds);
+      if (job.assignedManagerId) {
+        participantIds.add(job.assignedManagerId);
+      }
+
+      for (const participantId of participantIds) {
+        if (!jobsByUserId.has(participantId)) {
+          continue;
+        }
+        jobsByUserId.get(participantId)!.push(job);
+      }
+    }
+
     const companyIds = [
       ...new Set(
-        [...activeMembershipByUserId.values()].map((membership) => membership.companyId),
+        visibleUsers
+          .map((user) => activeMembershipByUserId.get(user._id)?.companyId ?? null)
+          .filter((companyId): companyId is Id<"cleaningCompanies"> => companyId !== null),
       ),
     ];
     const companies = await Promise.all(companyIds.map((companyId) => ctx.db.get(companyId)));
@@ -237,7 +275,7 @@ export const getTeamMetrics = query({
         .map((company) => [company._id, company] as const),
     );
 
-    const members = users
+    const members = visibleUsers
       .map((user) => {
         const assignedJobs = jobsByUserId.get(user._id) ?? [];
         const inWindowJobs = assignedJobs.filter((job) =>
@@ -311,6 +349,14 @@ export const getTeamMetrics = query({
           phone: user.phone,
           avatarUrl: user.avatarUrl,
           role: user.role,
+          // Owners only: how many distinct properties they hold an ACTIVE
+          // stake in. 0 = role/ownership drift (flagged in the UI).
+          ownedPropertyCount:
+            user.role === "owner"
+              ? new Set(
+                  (stakesByUser.get(user._id) ?? []).map((o) => o.propertyId),
+                ).size
+              : null,
           availability: pickAvailability(assignedJobs, now, horizonEnd),
           onTimePct,
           qualityScore,

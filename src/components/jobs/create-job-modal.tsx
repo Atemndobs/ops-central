@@ -1,10 +1,11 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { useMutation } from "convex/react";
+import { FormEvent, useEffect, useState } from "react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useToast } from "@/components/ui/toast-provider";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { getErrorMessage } from "@/lib/errors";
 
 type Option = {
@@ -16,7 +17,14 @@ type CreateJobModalProps = {
   open: boolean;
   onClose: () => void;
   propertyOptions: Option[];
-  cleanerOptions: Option[];
+  /**
+   * @deprecated 2026-05-19 — no longer rendered. Cleaners are fetched
+   * per-property via api.users.queries.getCleanersForProperty so we never
+   * surface a cleaner who isn't associated with the chosen property's
+   * cleaning company. Prop kept for backwards-compat; will be removed in
+   * a follow-up PR after all call sites stop passing it.
+   */
+  cleanerOptions?: Option[];
 };
 
 function getAssignWarnings(result: unknown): string[] {
@@ -34,7 +42,6 @@ export function CreateJobModal({
   open,
   onClose,
   propertyOptions,
-  cleanerOptions,
 }: CreateJobModalProps) {
   const createJob = useMutation(
     api.cleaningJobs.mutations.create,
@@ -53,6 +60,27 @@ export function CreateJobModal({
   const [manualPropertyId, setManualPropertyId] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Cleaners are scoped to the selected property's cleaning company. Skip
+  // the query until a property is picked from the dropdown — manual
+  // propertyId (the free-text fallback) can't be used to look up cleaners
+  // because we don't know if it's a real Id until submit. In that case
+  // the cleaner select stays empty.
+  const propertyCleaners = useQuery(
+    api.users.queries.getCleanersForProperty,
+    propertyId ? { propertyId: propertyId as Id<"properties"> } : "skip",
+  );
+  const cleanersLoading = propertyId !== "" && propertyCleaners === undefined;
+  const scopedCleanerOptions: Option[] = (propertyCleaners ?? []).map((c) => ({
+    id: c.id,
+    name: c.name ?? c.email ?? "Unnamed cleaner",
+  }));
+
+  // Clear cleaner selection whenever the property changes — a cleaner
+  // valid for one company is unlikely to be valid for another.
+  useEffect(() => {
+    setCleanerId("");
+  }, [propertyId]);
 
   if (!open) {
     return null;
@@ -143,34 +171,41 @@ export function CreateJobModal({
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="space-y-1 text-sm">
             <span className="text-[var(--muted-foreground)]">Property</span>
-            <select
-              value={propertyId}
-              onChange={(event) => setPropertyId(event.target.value)}
-              className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-            >
-              <option value="">Select property</option>
-              {propertyOptions.map((property) => (
-                <option key={property.id} value={property.id}>
-                  {property.name}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={propertyId || null}
+              onChange={(id) => setPropertyId(id ?? "")}
+              placeholder="Select property"
+              searchPlaceholder="Search properties…"
+              aria-label="Property"
+              items={propertyOptions.map((p) => ({ id: p.id, label: p.name }))}
+            />
           </label>
 
           <label className="space-y-1 text-sm">
             <span className="text-[var(--muted-foreground)]">Cleaner</span>
-            <select
-              value={cleanerId}
-              onChange={(event) => setCleanerId(event.target.value)}
-              className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-            >
-              <option value="">Unassigned</option>
-              {cleanerOptions.map((cleaner) => (
-                <option key={cleaner.id} value={cleaner.id}>
-                  {cleaner.name}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={cleanerId || null}
+              onChange={(id) => setCleanerId(id ?? "")}
+              placeholder={
+                !propertyId
+                  ? "Select a property first"
+                  : cleanersLoading
+                    ? "Loading cleaners…"
+                    : scopedCleanerOptions.length === 0
+                      ? "No cleaners assigned to this property"
+                      : "Unassigned"
+              }
+              searchPlaceholder="Search cleaners…"
+              aria-label="Cleaner"
+              items={scopedCleanerOptions.map((c) => ({ id: c.id, label: c.name }))}
+              disabled={!propertyId || cleanersLoading}
+            />
+            {propertyId && !cleanersLoading && scopedCleanerOptions.length === 0 ? (
+              <p className="text-xs text-[var(--muted-foreground)]">
+                This property has no active cleaning company assignment. Assign a company
+                in Properties → [property] → Team before dispatching jobs.
+              </p>
+            ) : null}
           </label>
         </div>
 

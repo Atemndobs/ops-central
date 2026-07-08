@@ -10,7 +10,28 @@ export function CleanerHistoryClient() {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const t = useTranslations();
   const jobs = useQuery(api.cleaningJobs.queries.getMyAssigned, isAuthenticated ? { limit: 500 } : "skip") as
-    | Array<{ _id: string; status: string; scheduledStartAt: number; property?: { name?: string | null } | null }>
+    | Array<{
+        _id: string;
+        status: string;
+        scheduledStartAt: number;
+        scheduledEndAt?: number | null;
+        property?: {
+          name?: string | null;
+          address?: string | null;
+          city?: string | null;
+          bedrooms?: number | null;
+          bathrooms?: number | null;
+          timezone?: string | null;
+        } | null;
+        stay?: {
+          numberOfGuests?: number | null;
+          partyRiskFlag?: boolean;
+          lateCheckout?: boolean;
+          earlyCheckin?: boolean;
+          checkInAt?: number | null;
+          checkOutAt?: number | null;
+        } | null;
+      }>
     | undefined;
 
   const history = useMemo(() => {
@@ -55,7 +76,19 @@ export function CleanerHistoryClient() {
         <CleanerJobCard
           key={job._id}
           propertyName={job.property?.name ?? t("cleaner.unknownProperty")}
+          address={job.property?.address ?? null}
+          city={job.property?.city ?? null}
+          guestCount={job.stay?.numberOfGuests ?? null}
+          bedrooms={job.property?.bedrooms ?? null}
+          bathrooms={job.property?.bathrooms ?? null}
+          partyRiskFlag={job.stay?.partyRiskFlag ?? false}
+          lateCheckout={job.stay?.lateCheckout ?? false}
+          earlyCheckin={job.stay?.earlyCheckin ?? false}
           scheduledAt={job.scheduledStartAt}
+          scheduledEndAt={job.scheduledEndAt ?? null}
+          checkInAt={job.stay?.checkInAt ?? null}
+          checkOutAt={job.stay?.checkOutAt ?? null}
+          timezone={job.property?.timezone ?? null}
           appearance={mapJobAppearance(job.status)}
           statusLabel={getStatusLabel(job.status)}
           detailHref={`/cleaner/jobs/${job._id}`}

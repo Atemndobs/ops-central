@@ -5,11 +5,15 @@ import { useMemo, useState } from "react";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useTranslations } from "next-intl";
-import { Bell, Building2, CheckCheck, ExternalLink, Globe, Settings, Trash2, Users, Zap } from "lucide-react";
+import { Bell, Building2, CheckCheck, ExternalLink, Flag, Gauge, Globe, Settings, Sparkles, Trash2, Users, Zap } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { navigation } from "@/components/layout/navigation";
 import { LanguageSwitcher } from "@/components/cleaner/language-switcher";
 import { useToast } from "@/components/ui/toast-provider";
+import { AIProviderCard } from "@/components/settings/ai-provider-card";
+import { FeatureFlagsCard } from "@/components/settings/feature-flags-card";
+import { UsageDashboardCard } from "@/components/settings/usage/usage-dashboard-card";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import {
   getRoleFromMetadata,
   getRoleFromSessionClaimsOrNull,
@@ -86,7 +90,7 @@ const placeholderSections: Record<
   ],
 };
 
-const roleOrder: UserRole[] = ["admin", "property_ops", "manager", "cleaner"];
+const roleOrder: UserRole[] = ["admin", "property_ops", "manager", "cleaner", "owner"];
 
 function formatRoleLabel(role: UserRole): string {
   switch (role) {
@@ -96,6 +100,8 @@ function formatRoleLabel(role: UserRole): string {
       return "Manager";
     case "cleaner":
       return "Cleaner";
+    case "owner":
+      return "Owner";
     case "admin":
     default:
       return "Admin";
@@ -171,54 +177,22 @@ function PlaceholderTab({
 
 function SchedulingSettingsPanel() {
   const hospitableSync = useQuery(api.hospitable.queries.getSyncStatus, {});
-  const jobs = useQuery(api.cleaningJobs.queries.getAll, { limit: 1000 });
+  // Wave 3 (bandwidth optimization): we previously streamed 1000 enriched
+  // jobs to the client just to derive these 7 numeric counts. Now we ask
+  // the server for the counts directly via a thin aggregate query — see
+  // `convex/cleaningJobs/queries.ts:getSchedulingMetrics`.
+  const metricsResult = useQuery(api.cleaningJobs.queries.getSchedulingMetrics, {});
   const properties = useQuery(api.properties.queries.getAll, { limit: 500 });
-  const [referenceNow] = useState(() => Date.now());
 
-  const schedulingMetrics = useMemo(() => {
-    const now = referenceNow;
-    const nextTwentyFourHours = now + 24 * 60 * 60 * 1000;
-    const sourceJobs = jobs ?? [];
-
-    const scheduled = sourceJobs.filter((job) => job.status === "scheduled").length;
-    const assigned = sourceJobs.filter((job) => job.status === "assigned").length;
-    const inProgress = sourceJobs.filter((job) => job.status === "in_progress").length;
-    const reworkRequired = sourceJobs.filter(
-      (job) => job.status === "rework_required",
-    ).length;
-    const unassignedUpcoming = sourceJobs.filter(
-      (job) =>
-        (job.status === "scheduled" || job.status === "assigned") &&
-        (job.assignedCleanerIds?.length ?? 0) === 0 &&
-        typeof job.scheduledStartAt === "number" &&
-        job.scheduledStartAt >= now &&
-        job.scheduledStartAt <= nextTwentyFourHours,
-    ).length;
-    const urgentUpcoming = sourceJobs.filter(
-      (job) =>
-        (job.isUrgent || job.partyRiskFlag || job.opsRiskFlag) &&
-        typeof job.scheduledStartAt === "number" &&
-        job.scheduledStartAt >= now &&
-        job.scheduledStartAt <= nextTwentyFourHours,
-    ).length;
-    const hospitableJobs = sourceJobs.filter(
-      (job) =>
-        job.metadata &&
-        typeof job.metadata === "object" &&
-        !Array.isArray(job.metadata) &&
-        (job.metadata as Record<string, unknown>).source === "hospitable",
-    ).length;
-
-    return {
-      scheduled,
-      assigned,
-      inProgress,
-      reworkRequired,
-      unassignedUpcoming,
-      urgentUpcoming,
-      hospitableJobs,
-    };
-  }, [jobs, referenceNow]);
+  const schedulingMetrics = metricsResult ?? {
+    scheduled: 0,
+    assigned: 0,
+    inProgress: 0,
+    reworkRequired: 0,
+    unassignedUpcoming: 0,
+    urgentUpcoming: 0,
+    hospitableJobs: 0,
+  };
 
   return (
     <div className="space-y-6">
@@ -804,7 +778,44 @@ export function SettingsPageClient({ initialTab }: { initialTab: SettingsTab }) 
       {activeTab === "team" ? <TeamSettingsPanel /> : null}
       {activeTab === "notifications" ? <NotificationsSettingsPanel /> : null}
       {activeTab === "integrations" ? (
-        <PlaceholderTab sections={placeholderSections.integrations} />
+        <div className="space-y-3">
+          <CollapsibleSection
+            persistKey="integrations-feature-flags"
+            icon={<Flag className="h-4 w-4" />}
+            title="Feature flags"
+            subtitle="Turn individual features on or off for the whole team. New features ship OFF by default."
+            defaultOpen
+          >
+            <FeatureFlagsCard />
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            persistKey="integrations-usage-dashboard"
+            icon={<Gauge className="h-4 w-4" />}
+            title="Service usage & cost"
+            subtitle="Month-to-date spend, quota consumption, and error health across tracked services. Requires the usage_dashboard flag."
+          >
+            <UsageDashboardCard />
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            persistKey="integrations-ai-provider"
+            icon={<Sparkles className="h-4 w-4" />}
+            title="AI provider (voice transcription)"
+            subtitle="Pick the model used for voice-message transcription."
+          >
+            <AIProviderCard />
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            persistKey="integrations-placeholders"
+            icon={<Building2 className="h-4 w-4" />}
+            title="Connected services"
+            subtitle="Hospitable sync health and messaging integrations (coming soon)."
+          >
+            <PlaceholderTab sections={placeholderSections.integrations} />
+          </CollapsibleSection>
+        </div>
       ) : null}
     </div>
   );

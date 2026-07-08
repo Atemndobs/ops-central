@@ -1,0 +1,130 @@
+Inventory,Room,Location - Detail,Item Name,Vendor,link,Quantity,sales_price,total_price,Order Status,Column 10,Item
+Consumables,All Bathrooms,Bathroom - Storage,Toilet paper (30 rolls),Amazon,https://a.co/d/89NcAsV,1,$20.00,$20.00,ordered,,Presto Brand
+Smallware,All Bathrooms,Bathroom + Bedroom Closet,Bath towels 12 (4-pack) ,Amazon,https://a.co/d/5kzVU0j,3,$29.00,$87.00,from Little Skagen,,Grandeur Hospitality Bath Towel (6-pack)
+Smallware,All Bathrooms,Bathroom + Bedroom Closet,Hand towels 12 (6-pack) ,Amazon,https://a.co/d/6TLe5VT,2,$18.00,$36.00,from Little Skagen,,Grandeur Hospitality Hand Towel (12-pack)
+Smallware,All Bathrooms,Bathroom + Bedroom Closet,Face towels 24 (24-pack) ,Amazon,https://a.co/d/4ex44XN,1,$18.00,$18.00,from Little Skagen,,
+Consumables,All Bathrooms,Bathroom - Storage,"Set Shampoo, Conditioner, Body Wash",Amazon,https://a.co/d/0GIQAni,1,$83.00,$83.00,from Little Skagen,,
+Consumables,All Bathrooms,Bathroom - Storage,Small Trashbags (Pack of 3),Amazon,https://a.co/d/hmCY7zQ,1,$26.00,$26.00,ordered,,
+Consumables,All Bathrooms,Bathroom - Storage,Shampoo,Amazon,https://www.amazon.com/Ginger-Lily-Farms-Formula-Cruelty-Free/dp/B09HYVL549/ref=sr_1_4?crid=2ZJ0IZ7K4EQV8&dib=eyJ2IjoiMSJ9.GClCQcJ0i2f_ephcTUdO3k8iAsCyrZKKQBUhLaoDq3CduQDXPUmkNTNlzn-QkEXOQrHJlS-SrbshKfYq9hFSMwcZ_JQcmky58rvfxkAQp9jAmuBnGS7MKwbQ8JAoidTojVVj_i2xGS4OLLH0QB-gp7-7WkjRvkS-Y-aa67d2_WNrGIFGjEI_iOVwXTEOnieMKNFCGz8AHtgvnedV0nj_nFNbzIC-u_wyD5Nr1vdhL-o.BiUyp2CSHzzfq6LvP3h1OScyslTGoI-9LsdAyhJff8M&dib_tag=se&keywords=ginger+lily&qid=1772148557&sprefix=ginger+lil%2Caps%2C228&sr=8-4,1,$30.00,$30.00,ordered,,
+Consumables,All Bathrooms,Bathroom - Storage,Conditioner,Amazon,https://www.amazon.com/Ginger-Lily-Farms-Conditioner-Cruelty-Free/dp/B09HZ9QFK6/ref=sr_1_5?crid=2ZJ0IZ7K4EQV8&dib=eyJ2IjoiMSJ9.GClCQcJ0i2f_ephcTUdO3k8iAsCyrZKKQBUhLaoDq3CduQDXPUmkNTNlzn-QkEXOQrHJlS-SrbshKfYq9hFSMwcZ_JQcmky58rvfxkAQp9jAmuBnGS7MKwbQ8JAoidTojVVj_i2xGS4OLLH0QB-gp7-7WkjRvkS-Y-aa67d2_WNrGIFGjEI_iOVwXTEOnieMKNFCGz8AHtgvnedV0nj_nFNbzIC-u_wyD5Nr1vdhL-o.BiUyp2CSHzzfq6LvP3h1OScyslTGoI-9LsdAyhJff8M&dib_tag=se&keywords=ginger+lily&qid=1772148557&sprefix=ginger+lil%2Caps%2C228&sr=8-5,1,$30.00,$30.00,ordered,,
+,All Bathrooms,Bathroom,Towels (24),Amazon,,,,$0.00,from Little Skagen,,
+Consumables,All Bathrooms,Bathroom - Storage,"Refills BOdy Wash, ",Amazon,,1,,$0.00,from Little Skagen,,
+Smallware,All Bathrooms,Bathromm 1-2,Q-Tip Jars (Set of 3) ,Amazon,https://www.amazon.com/Candle-Labels-Cosmetic-Containers-Kitchen/dp/B0DFCJRX8Q/ref=abl_lv_ov_lig?colid=2OWLJX0Y4FSPM&coliid=IQPFEG3DPQO2L&sbo=RZvfv%2F%2FHxDF%2BO5021pAnSA%3D%3D,2,$10.00,$20.00,from Little Skagen,,
+Consumables,All Bathrooms,Bathroom - Storage,Q-Tips,Amazon,https://www.amazon.com/gp/product/B09498GV6R/ref=ox_sc_act_title_1?smid=ATVPDKIKX0DER&psc=1,1,$11.00,$11.00,from Little Skagen,,
+Consumables,All Bathrooms,Bathroom - Storage,Flossers (540),Amazon,https://www.amazon.com/Amazon-Basics-Dental-Flosses-Count/dp/B08QWZ3Q41/ref=sr_1_3?crid=P8HYUA6EDFGR&dib=eyJ2IjoiMSJ9.P8TkgkcyfTuW0CS5l8seiNhiqQWgyFXvWOskSIrMs007gNzWDCvkfWmojT_TFYEI5MuNRQZm1CEDDyHysWSI2VQAzoca38Di4ra8gdTVEs2JGB3uDk4BZB4RnMV-y1YarXvcqSs5wWhn03W4LX8WFgz0qGGv84BpwQK9BUP3dVFSoD-sSRGymF_pW3z8MVgzX5LXNdnlwVHNYzIO8g2MfA3eP-vOkSYxB8cgp7n4-3U.QtmEkubo9KsoNZjYYN7P_oUHhr6K-zQmM2hGikiH3Jw&dib_tag=se&keywords=flossers&qid=1763916058&sprefix=flossers%2Caps%2C312&sr=8-3,1,$10.00,$10.00,from Little Skagen,,
+Smallware,All Bathrooms,Bathroom - Drawer,Hairdryer ,Amazon,https://a.co/d/1OliwgR,2,$11.00,$22.00,from Little Skagen,,Revlon 1875W Volumizing Hair Dryer
+,All Bathrooms,Bathroom - Shower,Set Shampoo Bottles Dispensers,Amazon,https://www.amazon.com/Stylish-Shampoo-Conditioner-Dispenser-Mount/dp/B0D3LLHRDF/ref=abl_lv_ov_lig?colid=3FUAIUX2TWVP&coliid=I1INXNBYNW2Q8X&sbo=RZvfv%2F%2FHxDF%2BO5021pAnSA%3D%3D,2,$19.00,$38.00,from Little Skagen,,"Luseta Tea Tree & Argan Oil Shampoo & Conditioner Set 2x16.9oz for Damaged and Oil Hair - Clarifying,Hydrating and Fighting Dandruff - Sulfate and Paraben Free for Men and Women"
+Smallware,All Bathrooms,Bathroom - Counter,"Bathroom Set: bin,plunger, tray, dispenser, toothbrush holder) ",Amazon,https://www.amazon.com/GAHEFY-Bathroom-Accessories-Toothbrush-Dispenser/dp/B0C5MJ2H2F/ref=abl_lv_ov_lig?colid=3FUAIUX2TWVP&coliid=I38HMOHYO0JQQ8&sbo=RZvfv%2F%2FHxDF%2BO5021pAnSA%3D%3D,2,$40.00,$80.00,from Little Skagen,,
+,All Bedrooms,Queen Bed 1-2,Mattress Protector Queen,Amazon,https://www.amazon.com/Utopia-Bedding-Quilted-Fitted-Mattress/dp/B00NESCOY0/ref=sr_1_3?crid=1QOHBEP1ARLUC&dib=eyJ2IjoiMSJ9.MQ7qF9ye0YNGve8ZsKiTSCzJyrSQae2bsMf5WrI10jdI_dCFn46QXFoCcDIjedMP1KWVhNObkj7Q5Ulba38nZdEp8EiUTMu2hy7l1a6SX0FAr8BUP-oIXdf25GMKnJ3WoTX2C2-_BIR4OSALsjMBkT_0deastbf5Z1Xaaxqc_h6KY0famobKn-hVSZ1vItyiE3n3j8x3fRRCyQkwySkdGoMxy1DaSk01las2I4QEYRU.grYyk2HprNrunJTIPljaJ2bmXQdo69K3qxTo9N1mPV4&dib_tag=se&keywords=mattress+protector+queen&qid=1772148720&sprefix=mattress+protector+queen%2Caps%2C232&sr=8-3,1,$17.00,$17.00,ordered,,"Zinus Memory Foam 12"" Green Tea, Queen"
+,All Bedrooms,Queen Bed 1,Mattress Protector Queen,Amazon,https://a.co/d/gVUJZCj,1,$17.00,$17.00,from Little Skagen,,"Zinus Memory Foam 12"" Green Tea, Queen"
+,All Bedrooms,Queen Bed 2,Mattress Protector Queen,Amazon,https://a.co/d/gVUJZCj,1,$17.00,$17.00,ordered,,
+,All Bedrooms,Queen Bed 1-2,Queen Bed Frame  dark brown,Amazon,https://www.amazon.com/dp/B0GL5ZJGZ8?ref=fed_asin_title,2,$225.00,$450.00,ordered,,
+,Bedroom 1 ,Queen Bed ,"Queen Mattress 3 / 12"" Th",Amazon,https://a.co/d/0dJHAL04,1,$192.00,$192.00,ordered,,"Zinus Memory Foam 12"" Green Tea, Queen"
+,Bedroom 2,Queen Bed ,"Queen Mattress / 12"" Th",Amazon,https://www.amazon.com/dp/B0CSJTBM1L?ref=fed_asin_title,1,$180.00,$180.00,ordered,,
+,All Bedrooms,All Bed 1-2,Queen Pillows - 6 total (Set of 2),Amazon,https://a.co/d/6euUTqO,3,$20.00,$60.00,ordered,,
+,All Bedrooms,Bed 1-2,Pillow Protector 4+2 spare (Queen),Amazon,https://a.co/d/5GNaOYZ,6,$7.00,$42.00,ordered,,"CALM NITE Pillow Protector 2 Pack - Extra Soft Knit - Waterproof Zippered Hypoallergenic Case, Blocks Bed Bugs and Dust Mites (Queen 2 Pack)"
+,All Bedrooms,Queen Bed 1-2,"Queen Comforter, need (pack of 2 > need 3, incl. 1 spare from Skagen)",Amazon,https://a.co/d/dpqumwK,1,$43.00,$43.00,ordered,,"Utopia Bedding All Season Comforter - Ultra Soft Down Alternative Comforter - Plush Siliconized Fiberfill Duvet Insert - Box Stitched (King/California King, White)"
+,All Bedrooms,Queen Bed 1-2,Queen Comforter,Amazon,https://a.co/d/dpqumwK,1,,$0.00,from Little Skagen,,
+,All Bedrooms,Queen Bed 1-2,"Queen Duvet Cover cotton (need 3-4, incl. spare)",Amazon,https://a.co/d/02EJo0ZP,4,$36.00,$144.00,from Little Skagen,,"Utopia Bedding All Season Comforter - Ultra Soft Down Alternative Comforter - Plush Siliconized Fiberfill Duvet Insert - Box Stitched (King/California King, White)"
+,All Bedrooms,Queen Bed 1-2,"Queen Sheet Set 4-piece (2 pillow shams, 1 fitted, 1 flat)",Amazon,https://a.co/d/0gXBcFAR,3,$43.00,$129.00,from Little Skagen,,Utopia Bedding Soft Brushed Microfiber Wrinkle Fade and Stain Resistant 4-Piece Queen Bed Sheet Set - White
+,All Bedrooms,Queen Bed 1-2,"Queen Sheet Set 4-piece (2 pillow shams, 1 fitted, 1 flat)",Amazon,https://a.co/d/0gXBcFAR,3,$43.00,$129.00,ordered,,
+,All Bedrooms,Queen Bed 1-2,Side Tables charcoal (2),Amazon,https://a.co/d/0dKwxJqS,2,$60.00,$120.00,ordered,,
+,All Bedrooms,Queen Bed 1-2,Area Rug blue oriental pattern 8x10',Amazon,https://www.amazon.com/dp/B0FD3MRDZH?ref=fed_asin_title,2,$90.00,$180.00,ordered,,
+,All Bathrooms,Bathroom,Bath mat blue,Amazon,https://www.amazon.com/gp/product/B07JN2W9R5/ref=ox_sc_act_title_1?smid=A719I4BUN1UYG&psc=1,2,$13.00,$26.00,ordered,,Utopia Towels Cotton Banded Bath Mats 2 Pack
+,Bedroom 1 ,Queen Bed ,"Throw Blanket, blue",Amazon,https://a.co/d/082gxKCt,1,$34.00,$34.00,ordered,,"GREEN ORANGE Throw Blanket for Couch - 50x60, Lightweight, Mustard Yellow - Soft, Plush, Fluffy, Warm, Cozy - Perfect for Bed, Sofa"
+,Bedroom 2,Queen Bed ,"Throw Blanket, mustard",Amazon,https://www.amazon.com/GINAMUSE-Chenille-Lightweight-Decorative-Blankets/dp/B0CXP9CZJC/ref=abl_lv_ov_lig?colid=3BX4FZQYPOH21&coliid=I3N04TD4A7SIAY&sbo=RZvfv%2F%2FHxDF%2BO5021pAnSA%3D%3D,1,$24.00,$24.00,ordered,,
+,Bedroom 1 ,Bedroom ,"Wall Art, silver spikes",Ashleys,,1,$59.00,$59.00,from Randalls,,
+,Bedroom 1 ,Curtains/Blinds ,"Curtains, 42x84"", velvet, light blue",Amazon,https://www.amazon.com/gp/product/B0FQNZ81RC/ref=ox_sc_act_title_1?smid=A28ZR2CK9YHJJW&psc=1,1,$30.00,$30.00,ordered,,
+Smallware,Kitchen,Kitchen Ware,Wine Glass (8) ,Amazon,https://www.amazon.com/Glasses-Clear-White-Party-Wedding/dp/B0BQBMPPX7/ref=sr_1_6?crid=2MB5BYQRAXWHG&dib=eyJ2IjoiMSJ9.ODKXNRPFklMaZg82-aePX0ipyXQh2fnEijkJkz_SS5nMQ4lU44LkQIqkVfbL8WMlbhqCr3CPOpcPpJmKjx1pch2p50n0GFqE8BTAWlYRL_ZZtYXy1xC_FWoih8e6DR3m8l3PIvRHdfDOB7Zdbx2LhaO0rXpMZaRvjPv7v8OKhch0aYx-U7Am7wLvW1-50go0VU-YsVPz6Jx5kE52TvTl9u3_eRHVzSHAz6HaVtiLl-A.4IbdB4TXZxbeye4Xx06qePWpbayXNzOxuyOyH4gePrE&dib_tag=se&keywords=wine+glasses+set+of+8&qid=1763903531&sprefix=wine+glasses%2Caps%2C364&sr=8-6,1,$25.00,$25.00,ordered,,
+Smallware,Kitchen,Kitchen Ware,Simple Water Glass (12) ,Amazon,https://a.co/d/0fgfMhbd,1,$20.00,$20.00,ordered,,
+Smallware,Kitchen,Kitchen Ware,Table Set – Navy (6)  ,Amazon,https://a.co/d/dWcgKe5,1,$11.00,$11.00,ordered,,
+Smallware,Kitchen,Kitchen Ware,"Dinnerware, Set for 6 (just set 1BR)",Amazon,https://a.co/d/0nNvfwB,1,$80.00,$80.00,from Little Skagen,,
+Consumables,Kitchen,Kitchen,Olive oil (1l),Amazon,https://a.co/d/eOx4BwY,1,$12.00,$12.00,ordered,,Kirkland Brand Extra Virgin Olive Oil
+,Kitchen,Kitchen Counter,Electric Milk Steamer,Amazon,https://a.co/d/cBs9fyE,1,$37.00,$37.00,ordered,,
+Consumables,Kitchen,Kitchen,Paper Towels,Amazon,https://www.amazon.com/dp/B09BWFX1L6?ref=fed_asin_title,1,$18.00,$18.00,from Little Skagen,,"Kleenex Professional Facial Tissue for Business (21606), Flat Tissue Boxes, 48 Boxes/Case, 125 Tissues/Box"
+,Kitchen,Kitchen - Counter,Toaster,Amazon,https://a.co/d/6cI1hKY,1,$20.00,$20.00,ordered,,"BLACK+DECKER 2-Slice Extra-Wide Slot Toaster, Square, Black, T2569B"
+,Kitchen,Kitchen - Counter,Coffee Maschine  - Keurig,Amazon,https://a.co/d/6dfGW4y,1,$90.00,$90.00,ordered,,"Keurig K-Classic K-50 Coffee Maker, Single Serve K-Cup Pod Coffee Brewer, 6 to 10 Oz. Brew Sizes, Black"
+Consumables,Kitchen,Kitchen,Creamer (180),Amazon,https://a.co/d/8Lhzue6,1,$13.00,$13.00,ordered,,"Keurig K-Classic K-50 Coffee Maker, Single Serve K-Cup Pod Coffee Brewer, 6 to 10 Oz. Brew Sizes, Black"
+Consumables,Kitchen,Kitchen,Keurig Coffee Pods Vairety (100),Amazon,https://a.co/d/fTl73F1,1,$46.00,$46.00,ordered,,
+,Kitchen,Kitchen - Counter,Tea kettle,Amazon,https://a.co/d/0e8lVyNi,1,$23.00,$23.00,ordered,,AmazonBasics Stainless Steel Electric Kettle - 1-Liter
+Consumables,Kitchen,Kitchen - Counter,Tea Bags Assortment,Amazon,https://a.co/d/2Vbx2LJ,1,$41.00,$41.00,ordered,,
+,Kitchen,Kitchen - Counter,TeaBox,Amazon,https://a.co/d/h3sYd1M,1,$17.00,$17.00,ordered,,
+Smallware,Kitchen,Kitchen - Counter,"Kitchen towels beige (6-pack), 13x28"" ",Amazon,https://a.co/d/gKFT8ho,1,$12.00,$12.00,from Little Skagen,,Cotton Craft - 8 Pack - Euro Cafe Waffle Weave Terry Kitchen Towels - 16x28 Inches - White - 400 GSM quality - 100% Ringspun 2 Ply Cotton - Highly Absorbent Low Lint - Multi Purpose
+Smallware,Kitchen,Kitchen - Counter,"Cooking Mittens, black ",Amazon,https://a.co/d/08epj3WY,1,$9.00,$9.00,ordered,,
+Smallware,Kitchen,Kitchen - Counter,"Dinnerware, Set for 6 (18pcs)",Amazon,https://a.co/d/0aUzZnyZ,1,$51.00,$51.00,ordered,,
+Smallware,Kitchen,Kitchen - Cabinets,Coffee mugs (6) ,Amazon,https://a.co/d/0bfPeoDx,1,$26.00,$26.00,ordered,,"Sweese 6201 Porcelain Mugs - 16 Ounce for Coffee, Tea, Cocoa, Set of 6, White"
+Smallware,Kitchen,Kitchen - Cabinets,Silverware settings (for 4) ,Amazon,https://www.amazon.com/gp/product/B07Y51PTN6/ref=ox_sc_act_title_1?smid=AW9HSMUTGKWOF&psc=1,1,$18.00,$18.00,from Little Skagen,,"Begale Stainless Steel 40-piece Flatware Set, Silverware Service for 8"
+Smallware,Kitchen,Kitchen - Counter,Knife Set 5 knives + 1 Scissor ,Amazon,https://a.co/d/aCnPsEm,1,$24.00,$24.00,ordered,,Chicago Cutlery Essentials 15-Piece Knife Set
+Smallware,Kitchen,Kitchen - Drawers,Wine / bottle opener ,Amazon,https://a.co/d/ikHAXvj,1,$12.00,$12.00,ordered,,Foho Best Wing Corkscrew Wine Bottle Opener Luxury Waiter Corkscrew with Stopper Set for Wine Enthusiast Waiters - Sleeve Anchors
+,Kitchen,Kitchen - Counter,"Cooking utensils, black",Amazon,https://a.co/d/gKFT8ho,1,$19.00,$19.00,ordered,,Kitchen Utensil Set - 23 Nylon Cooking Utensils - Kitchen Utensils with Spatula - Kitchen Gadgets Cookware Set - Best Kitchen Tool Set Gift by HomeHero
+,Kitchen,Kitchen - Cabinets,Pots and pans (for Gas),Amazon,https://a.co/d/0hGCjdAd,1,$44.00,$44.00,ordered,,"Cook N Home 15-Piece Nonstick Stay Cool Handle Cookware Set, Black"
+,Kitchen,Kitchen - Counter,Cutting board (3),Amazon,https://a.co/d/cXGmUj8,1,$14.00,$14.00,ordered,,"HOMWE Kitchen Cutting Board (3-Piece Set) | Juice Grooves w/Easy-Grip Handles | BPA-Free, Non-Porous, Dishwasher Safe | Multiple Sizes (Set of Three, Gray)"
+,Kitchen,Kitchen - Counter,Paper Towel holder,Amazon,https://www.amazon.com/dp/B0CHFG38VF/?coliid=I2ZX7Q5JXP5YHR&colid=3FUAIUX2TWVP&psc=1,1,$10.00,$10.00,ordered,,"Spectrum Diversified Euro Paper Towel Holder, Chrome"
+Smallware,Kitchen,Kitchen - Counter,Salt and pepper shaker ,Amazon,https://www.amazon.com/EC-Premium-Pepper-Shakers-Adjustable/dp/B08998DB76/ref=abl_lv_ov_lig?colid=3FUAIUX2TWVP&coliid=I2DKCOV9N9PTME&sbo=RZvfv%2F%2FHxDF%2BO5021pAnSA%3D%3D,1,$13.00,$13.00,ordered,,Salt and Pepper Grinder Set with Stand Premium Stainless Steel Salt and Pepper Shakers with Ceramic Spice Grinder Mill for Adjustable Coarseness
+Consumables,Kitchen,Kitchen,Salt (500g),Amazon,https://a.co/d/gv2ceHN,1,$1.70,$1.70,ordered,,
+Consumables,Kitchen,Kitchen,Pepper (500g),Amazon,https://a.co/d/4JfoyxP,1,$14.00,$14.00,ordered,,
+,Kitchen,Kitchen - Cabinets,Mixing bowls (3),Amazon,https://a.co/d/esRGC72,1,$18.00,$18.00,from Little Skagen,,"Plastic Mixing Bowls-Multicolored Mixing Bowl Set of 8, Nest for Easy Storage, inculding Measuring Cups, Colander, Sifter, Large Bowls, Great for Cooking and Baking, BPA Free"
+,Kitchen,Kitchen - Cabinets,Measuring Cup,Amazon,https://a.co/d/5JwJFEQ,1,$7.00,$7.00,ordered,,
+,Kitchen,Kitchen - Cabinets,Bakeware set,Amazon,https://a.co/d/0a3rXpUk,1,$22.00,$22.00,ordered,,Good Cook Set Of 3 Non-Stick Cookie Sheet
+,Kitchen,Kitchen - Drawers,Silverware Tray,Amazon,https://a.co/d/dwFvPLQ,1,$6.00,$6.00,ordered,,Yesker 5 Compartment Mesh Small Cutlery Tray with Foam Feet - Kitchen Organization/Silverware Storage Kitchen Utensil Flatware Tray
+Consumables,Kitchen,Kitchen - Counter,"Sugar,  jar, 20oz (600g)",Amazon,https://a.co/d/dkViyA0,1,$13.00,$13.00,ordered,,DOMINO SUGAR PACKETS - 250/ 3.54g Packs
+Smallware,Kitchen,Kitchen - Drawers,"Colander, black",Amazon,https://www.amazon.com/sspa/click?ie=UTF8&spc=MToxNjgzMTU4MjE5MTk0NzIzOjE3NzIxODMxNTA6c3BfYXRmOjMwMDEzNzUwNTI2MjEwMjo6MDo6&url=%2FGulex-Colander-Stainless-Strainer-Dishwasher%2Fdp%2FB0BKRQQNPS%2Fref%3Dsr_1_2_sspa%3Fcrid%3D27RRPYTVWL9OG%26dib%3DeyJ2IjoiMSJ9.Zp5_rgrZpko9GlgTUeUMslwHZveYrlmEW_hMXhg0BkZRfX649vmaPpHOvk87L7LO9w14gVUKSMxN4NG3MQWKgbO9a6IoCaIhxx5XqvjETUBzMRSBRL2N07Pv2RCe1BLuNHIoA9Ueno17zpNsfh63tPkikrCT0tvUMWi22ehYMuEX5gSRU2HdkBjr8oaNJaJjRNi8GFNjxV0wngHC4Y7we5W8vmzukzwaOvyBzecV6z22l-lIEJ7GwHi5GnNrn8FepYu_IJI0z4ZU8SmmrCk-gWF6gHc3QUg--4rttM9CSAY.15Oeaf-LVqVQ3HCBmyBAZrgFrjeloqpv2JerOHSh5Ac%26dib_tag%3Dse%26keywords%3Dcolander%26qid%3D1772183150%26s%3Dhome-garden%26sprefix%3Dcolander%252Caps%252C240%26sr%3D1-2-spons%26sp_csd%3Dd2lkZ2V0TmFtZT1zcF9hdGY%26psc%3D1,1,$15.00,$15.00,ordered,,
+Consumables,Kitchen,Kitchen,"Sugar Cubes (16 oz, 500g)",Amazon,https://www.amazon.com/Domino-Premium-Sugar-Cubes-Pound/dp/B0005Z7IAA/ref=sr_1_3?dib=eyJ2IjoiMSJ9.ImWBEgIg58BYUEroC_S1-qFs7XsHtIHi-mgmovhuuJfyHwQeXGpdpM-dX0sYmemYapqOO5Vd4bOZUPS-WsMxYTBiZh2jQY8ytE2Y7DnpqLqQUkhKLZOA8CEticfaxOHSjqGNfZrAa0Y6slhrIHmfw0KzuF4d78rKVNW0mYnyZy4w41cna-F1LmKB7-ieL7j3Fw8LRVjKvoAmvDeI0V-RWLMl2iD4WhGg_FWeaTlsVGU.XVmISCfSWP-7FWtGyaFGF0ljqlt8vLox9ib4IRktnqU&dib_tag=se&keywords=sugar+cubes&qid=1762356137&sr=8-3,2,$3.00,$6.00,ordered,,
+Smallware,Kitchen,Kitchen - Counter,Coffee Pod holder + Creamer holder (set of 2),Amazon,https://a.co/d/ezPmg4I,1,$33.00,$33.00,ordered,,
+Consumables,Kitchen,Kitchen,Dishwasher pads (78),Amazon,https://a.co/d/bTJjqw3,1,$17.00,$17.00,ordered,,"Cascade Complete ActionPacs Dishwasher Detergent, Fresh Scent, 78 Count "
+Consumables,Kitchen,Kitchen,Dishwash Liquid (2.8l),Amazon,https://a.co/d/3GBaPUr,1,$6.00,$6.00,ordered,,"Cascade Complete ActionPacs Dishwasher Detergent, Fresh Scent, 78 Count "
+,Kitchen,Kitchen - Counter,Soap Dispenser Set (Hand & Dish Wash),Amazon,https://a.co/d/6zb283C,1,$25.00,$25.00,ordered,,"2 Pack Thick Clear Glass Pint Jar Soap Dispenser with Matte Black Stainless Steel Pump, 16ounce Clear Boston Round Bottles Dispenser with Rustproof Pump for Essential Oil, Lotion Soap"
+Consumables,Kitchen,Kitchen,Scrubbers (12),Amazon,https://a.co/d/1ZO8Zw1,1,$7.00,$7.00,ordered,,"Full Circle Bubble Up Bamboo Dish Brush, White/Grey,"
+,Laundry Room,Laundry,Laundry Hamper (2),Amazon,https://a.co/d/09NZucoB,1,$16.00,$16.00,ordered,,AmazonBasics Foldable Laundry Hamper
+,Laundry Room,Laundry,Ironing Board,Amazon,https://a.co/d/00drrokT,1,$27.00,$27.00,ordered,,"STORAGE MANIAC Tabletop Ironing Board with Iron Rest, All-Iron Frame & Silver Metallic Cover for Faster Ironing"
+,Laundry Room,Laundry,Iron,Amazon,https://a.co/d/gv0BhBE,1,$18.00,$18.00,ordered,,"BLACK+DECKER Easy Steam Compact Iron, IR40V"
+Smallware,Laundry Room,Bedroom - Closet,"Velvet Hangers, 50,  ",Amazon,https://a.co/d/5584MkU,1,$13.00,$13.00,ordered,,"AmazonBasics Velvet Suit Clothes Hangers, 30-Pack, Black"
+Smallware,Laundry Room,Living Room Coat Closet,First Aid Kit ,Amazon,https://a.co/d/iWwwtGc,1,$11.00,$11.00,ordered,,First Aid Kit – 100 Pieces – Bag
+Smallware,Laundry Room,Living Room Coat Closet,Broom & Dustpan ,Amazon,https://www.amazon.com/Cedar-PowerCorner-Dustpan-3-Piece-Handle/dp/B0C5JVX1WW/ref=pd_bxgy_thbs_d_sccl_2/136-1434195-1307552?pd_rd_w=ZYDcS&content-id=amzn1.sym.d6ac0d01-6230-4dde-a4f9-41c646a6c7b8&pf_rd_p=d6ac0d01-6230-4dde-a4f9-41c646a6c7b8&pf_rd_r=K4TY61KCK9YW7JJWMQBF&pd_rd_wg=qmhxW&pd_rd_r=627bc746-f508-48f2-ae9a-107bfbd8854e&pd_rd_i=B0C5JVX1WW&psc=1,1,$14.00,$14.00,ordered,,"Angle Broom with Dust Pan Combo Cleaning Supplies Lobby Broom and Handhold Dustpan Set with 52"" Broom Handle for Home Kitchen Room Office Outdoor Indoor"
+Consumables,Laundry Room,Laundry Closet,"Laundry Detergent (liquid, 110 loads)",Amazon,https://a.co/d/0h24Ulry,1,$20.00,$20.00,ordered,,"Arm & Hammer Sensitive Skin Free & Clear, 140 Loads Liquid Laundry Detergent, 210 Fl oz"
+Consumables,Laundry Room,Laundry Closet,Dryer Sheets (240),Amazon,https://a.co/d/fym2oHh,1,$7.00,$7.00,ordered,,"Bounce Fabric Softener and Dryer Sheets, Outdoor Fresh, 240 Count"
+Consumables,Laundry Room,Kitchen  - Under Sink,"Cleaning Spray, pink grapefruit",Amazon,https://a.co/d/coptcmD,1,$12.00,$12.00,from Little Skagen,,"Mrs. Meyer's Clean Day Multi-Surface Everyday Cleaner, Lemon Verbena, 16 fl oz"
+,Living Room,Living,Couch Sofa (Alternative),Amazon,https://a.co/d/0f9TqS6x,1,$500.00,$500.00,ordered,,
+,Living Room,Living,Accent chairs leather (2),Amazon,https://www.amazon.com/Leather-Channel-Upholstered-Decorative-Reception/dp/B0CZNYFML4/ref=abl_lv_ov_lig?colid=2OWLJX0Y4FSPM&coliid=I1WFVZU5OVQG05&sbo=RZvfv%2F%2FHxDF%2BO5021pAnSA%3D%3D,1,$338.00,$338.00,ordered,,
+,Living Room,Living,"Rug Blue, 8x10'",Ashleys,,1,$73.00,$73.00,from Randalls,,
+,Living Room,Living,Coffee Table Set – blue gold,Amazon,https://a.co/d/0i5XGsbn,2,$42.00,$84.00,ordered,,
+,Living Room,Living,Coffee Table round big,Amazon,https://a.co/d/09sBV6nE,1,$59.00,$59.00,ordered,,
+,Living Room,Living,artifical flowers dusty blue,Amazon,https://a.co/d/0gWhuYuI,1,$23.00,$23.00,ordered,,
+,Living Room,Living,silver vase,Amazon,,,,$0.00,from Randalls,,
+,Living Room,Living,"Accent chairs, blue, 2",Amazon,https://www.amazon.com/gp/product/B0G1KLPJC2/ref=ox_sc_act_title_8?smid=A823IJDZI6M1L&psc=1,1,$240.00,$240.00,ordered,,
+,Living Room,Living,"tray, wood black",Amazon,https://a.co/d/1BFOm9S,1,$15.00,$15.00,ordered,,
+Consumables,One-per-build,Living,candle scented (2),Amazon,https://a.co/d/aFk33PS,1,$20.00,$20.00,open,,
+,Living Room,Living,Lamp ornament rectangular,Ashleys,,1,$100.00,$100.00,from Randalls,,
+,Living Room,Living,Lamp wire round,Ashleys,,1,$70.00,$70.00,from Randalls,,
+,Living Room,Living,"Wall Art, blue ornament square",Ashleys,,1,$88.00,$88.00,from Randalls,,
+,Living Room,Dining Section,Dining Table,Amazon,https://a.co/d/09EeS5DD,1,$270.00,$270.00,ordered,,
+,Living Room,Dining Section,Dining Chairs (set of 6 / we need 6> 2 go to each bedroom),Amazon,https://a.co/d/0d6JJXzQ,1,$416.00,$416.00,ordered,,
+Smallware,Living Room,workout,Yoga Mat  (1),Amazon,https://a.co/d/aYFdew2,1,$20.00,$20.00,open,,
+Smallware,Bedroom 2,Bed,Throw pillows (2) mustard ,Amazon,https://www.amazon.com/Jeanerlor-Pillowcase-Cousion-Embellish-Reception/dp/B09XHXHW81/ref=abl_lv_ov_lig?colid=3BX4FZQYPOH21&coliid=I29OBTH0GJO5H1&sbo=RZvfv%2F%2FHxDF%2BO5021pAnSA%3D%3D,1,$20.00,$20.00,ordered,,
+Smallware,Bedroom 2,Bed,Throw pillows (2) gold ,Amazon,https://www.amazon.com/Jeanerlor-Pillowcase-Cousion-Embellish-Reception/dp/B09XHXHW81/ref=abl_lv_ov_lig?colid=3BX4FZQYPOH21&coliid=I29OBTH0GJO5H1&sbo=RZvfv%2F%2FHxDF%2BO5021pAnSA%3D%3D,1,$20.00,$20.00,from Little Skagen,,
+Smallware,Bedroom 1 ,Bed,throw pillows black?? (2) 20x20 linen,Amazon,https://a.co/d/1GCEqJQ,1,$29.00,$29.00,from Little Skagen,,
+Smallware,Bedroom 1 ,Bed,Throw pillows (2) blue pattern ,Amazon,https://a.co/d/09JyuASX,2,$17.00,$34.00,ordered,,
+,One-per-build,Bedrooms and living,"Throw pillows inserts 20x20"" (4) > 8 in total",Amazon,https://a.co/d/aY5GlSJ,8,$27.00,$216.00,from Little Skagen,,
+,Living Room,Living,"TV 55""",Amazon,https://a.co/d/0dKmNhOb,1,$200.00,$200.00,ordered,,
+,One-per-build,All TVs,TV Mount,Amazon,https://www.amazon.com/Mounting-Dream-600x400mm-Capacity-MD2268-LK/dp/B00NKYYMAW/ref=sr_1_3?crid=3EFD8J6E12ZDK&dib=eyJ2IjoiMSJ9.ni1VoRo03NBkjDgGMTeuAzhYrwC2OCJpwlPSecMMkQ1Qz8rBFyCJNg1nLJZEbrDVjb-9-d03B4QQQ-_GV_GdkMxGVVvF7kyCtoxFFytkEppGWdJNgnk_7PnmQ2URRdWJX7Je999gYTgFpiiQO1hfSeyUaIa00yjutmkbA4EchbKt4E8qEVSAK6Fs8IXiy7FElrOfSRemI9ZsNZp_wBJ5_0KzbIWjvaB1cYtbwELFLqs7DhR0K1Zx_9HUJvwtsy2F3bRIC6Cs70osFkttoZ3YevQ6FrAi4gpcZvojw8STY60.iv3QDqa6uJkmicrK4lGdXLMiw_uC1awWaakHON3GPnQ&dib_tag=se&keywords=tv+mount&qid=1763907454&s=home-garden&sprefix=tv+mount%2Caps%2C240&sr=1-3,3,$30.00,$90.00,ordered,,
+,One-per-build,All TVs,TV Cord Hider,Amazon,https://a.co/d/5FpHp7K,1,$13.00,$13.00,open,,
+,All Bedrooms,Small TV,"TV 32""",Amazon,https://a.co/d/0dtDM61o,2,$90.00,$180.00,ordered,,
+Consumables,One-per-build,Storage ,"Light Bulbs E26 (set of 6, most lamps)",Amazon,https://a.co/d/8b9ZoAw,1,$6.00,$6.00,open,,"12Pack A19 LED Light Bulbs 100 Watt Equivalent 5000K Daylight White, No Flicker E26 Medium Screw Base Bulbs, 1100Lumens, Non Dimmable"
+,One-per-build,Living Room Coat Closet,Vacuum,Amazon,https://a.co/d/0bTaq0H,1,$55.00,$55.00,ordered,,"Eureka NEU182A PowerSpeed Lightweight Bagless Upright Vacuum Cleaner, Lite, Indigo Blue"
+,One-per-build,"Bedroom 1-2, Living","Remaining Curtain Rods, normal size 30-90"" (need 3)",Amazon,https://a.co/d/cKdh0Er,1,$0.00,$0.00,ordered,,
+,One-per-build,"Bedroom 1-2, Living","Curtain Rods, normal size 30-90"" (need 3)",Amazon,https://a.co/d/cKdh0Er,1,$30.00,$30.00,from Little Skagen,,
+,Bedroom 2,Bedroom ,"Wall Art, metal dish white gold",Amazon,https://a.co/d/0e3MAlnY,1,$28.00,$28.00,ordered,,
+,Bedroom 2,Bedroom ,"Wall Art, metal dish gold",Amazon,https://a.co/d/0eIswXIJ,1,$24.00,$24.00,ordered,,
+,Bedroom 2,Bedroom,Table Lamps gold (2),Amazon,https://a.co/d/0iAOImIq,1,$50.00,$50.00,ordered,,"Decor Therapy Side Table, Resotration Gray"
+,Bedroom 2,Bedroom ,"Curtains, 43x84"", velvet, golden brown",Amazon,https://www.amazon.com/gp/product/B0DWK5XDZ8/ref=ox_sc_act_title_2?smid=A28ZR2CK9YHJJW&psc=1,1,$30.00,$30.00,ordered,,
+,Living Room,Curtains (Living and Dining),"52x84"", retro blue, linen, slight transparent, no blackout",Amazon,https://a.co/d/05mEwAAk,1,$29.00,$29.00,ordered,,
+,One-per-build,Living,"Airbed, extra bed, Queen Size Mattress",Amazon,https://a.co/d/4cUqwaC,1,$60.00,$60.00,open,,
+,Storage,Housekeepers,Mop + Bucket,Amazon,https://www.amazon.com/Cedar-EasyWring-Microfiber-Bucket-Cleaning/dp/B00WSWGVZQ/ref=pd_bxgy_thbs_d_sccl_1/136-1434195-1307552?pd_rd_w=ZYDcS&content-id=amzn1.sym.d6ac0d01-6230-4dde-a4f9-41c646a6c7b8&pf_rd_p=d6ac0d01-6230-4dde-a4f9-41c646a6c7b8&pf_rd_r=K4TY61KCK9YW7JJWMQBF&pd_rd_wg=qmhxW&pd_rd_r=627bc746-f508-48f2-ae9a-107bfbd8854e&pd_rd_i=B00WSWGVZQ&psc=1,1,$35.00,$35.00,ordered,,O-Cedar Easywring Microfiber Spin Mop & Bucket Floor Cleaning System with 1 Extra Refill
+Consumables,One-per-build,Bathroom - Storage,"Handwash Gel 1Gallon, Forest",Amazon,https://www.amazon.com/gp/product/B0CV99S3T5/ref=ox_sc_act_title_1?smid=ATVPDKIKX0DER&psc=1,1,$21.00,$21.00,ordered,,
+Consumables,One-per-build,Kitchen - Under Sink,"Large Trash Bags, 13 gl, 200 pcs",Amazon,https://a.co/d/c4HhlE9,1,$20.00,$20.00,ordered,,"Amazon Brand - Solimo Tall Kitchen Drawstring Trash Bags, Clean Fresh Scent, 13 Gallon, 80 Count"
+,One-per-build,Kitchen,Kitchen Trash Can 13 gl,Amazon,,,,$0.00,from Little Skagen,,
+,One-per-build,Door,Door Mat,Amazon,,,,$0.00,from Little Skagen,,
+,One-per-build,Door,Blink Door Video Bell,Amazon,https://a.co/d/0a9DgYfX,1,$45.00,$45.00,ordered,,
+,One-per-build,Door,Schlage Smart wifi Lock,Amazon,https://a.co/d/028NoJMb,1,$201.00,$201.00,from Randalls,,
+,One-per-build,locked storage,cabinet lock code (NO keys),Amazon,https://www.amazon.com/gp/product/B0C6KN83QQ/ref=ox_sc_act_title_2?smid=A75XX9GOWI616&psc=1,1,$9.00,$9.00,ordered,,
+,,,,,,,"$3,878.70","$6,923.70",open,,

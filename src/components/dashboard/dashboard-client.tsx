@@ -3,37 +3,71 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { useAuth, useUser } from "@clerk/nextjs";
 import { useTranslations } from "next-intl";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import type { LucideIcon } from "lucide-react";
 import {
+  AlertCircle,
   AlertTriangle,
+  Ban,
   Check,
+  CheckCircle2,
+  Clock,
   Loader2,
+  Play,
+  ShieldAlert,
   UserPlus,
 } from "lucide-react";
+import { TasksCard } from "@/components/dashboard/tasks-card";
 import {
   STATUS_CLASSNAMES,
   STATUS_LABELS,
 } from "@/components/jobs/job-status";
 import { JobCountdown } from "@/components/jobs/job-countdown";
 import { useToast } from "@/components/ui/toast-provider";
+import {
+  canAccessPath,
+  getRoleFromMetadata,
+  getRoleFromSessionClaimsOrNull,
+  type UserRole,
+} from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { isPropertyStatus, type PropertyStatus } from "@/types/property";
 
 const dayMs = 24 * 60 * 60 * 1000;
 
-const funnelStages = [
+const primaryFunnelStages = [
   { status: "scheduled", labelKey: "dashboard.scheduled", href: "/jobs?status=scheduled" },
   { status: "assigned", labelKey: "dashboard.assigned", href: "/jobs?status=assigned" },
-  { status: "in_progress", labelKey: "dashboard.inProgress", href: "/jobs?status=in_progress" },
+] as const;
+
+const inFlightStages: ReadonlyArray<{
+  status: string;
+  labelKey: string;
+  href: string;
+  icon: LucideIcon;
+}> = [
+  {
+    status: "in_progress",
+    labelKey: "dashboard.inProgress",
+    href: "/jobs?status=in_progress",
+    icon: Play,
+  },
   {
     status: "awaiting_approval",
     labelKey: "dashboard.awaitingApproval",
     href: "/jobs?status=awaiting_approval",
+    icon: Clock,
   },
-  { status: "completed", labelKey: "dashboard.completed", href: "/jobs?status=completed" },
-] as const;
+  {
+    status: "completed",
+    labelKey: "dashboard.completed",
+    href: "/jobs?status=completed",
+    icon: CheckCircle2,
+  },
+];
 
 const readinessLabelKey: Record<PropertyStatus, string> = {
   ready: "dashboard.ready",
@@ -79,19 +113,55 @@ export function DashboardClient() {
   const t = useTranslations();
   const { showToast } = useToast();
   const { isAuthenticated } = useConvexAuth();
+  const { isLoaded, isSignedIn, userId, sessionClaims } = useAuth();
+  const { user } = useUser();
   const [showAllAlerts, setShowAllAlerts] = useState(false);
   const [now, setNow] = useState<number | null>(null);
   const [quickAssignAlertId, setQuickAssignAlertId] = useState<Id<"cleaningJobs"> | null>(null);
   const [assigningJobId, setAssigningJobId] = useState<Id<"cleaningJobs"> | null>(null);
+  const convexUser = useQuery(
+    api.users.queries.getByClerkId,
+    isLoaded && isSignedIn && userId ? { clerkId: userId } : "skip",
+  );
+  const roleFromClaims = getRoleFromSessionClaimsOrNull(
+    sessionClaims as Record<string, unknown> | null,
+  );
+  const roleFromMetadata = getRoleFromMetadata(user?.publicMetadata);
+  const role: UserRole = roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "manager";
+  const canViewReports = isLoaded && canAccessPath(role, "/reports");
 
+  // Wave 3.b — dashboard renders only recent + upcoming jobs (alerts
+  // for overdues, today's timeline, per-status funnel deltas). Subscribe
+  // to a windowed read via the `by_scheduled` index instead of pulling
+  // the most-recent 500 jobs globally and filtering client-side.
+  // Window: past 7 days → future 30 days (covers stragglers + planning).
+  const dashboardJobsFromMs = useMemo(
+    () => Date.now() - 7 * 24 * 60 * 60 * 1000,
+    [],
+  );
+  const dashboardJobsToMs = useMemo(
+    () => Date.now() + 30 * 24 * 60 * 60 * 1000,
+    [],
+  );
   const jobs = useQuery(
-    api.cleaningJobs.queries.getAll,
-    isAuthenticated ? { limit: 500 } : "skip",
+    api.cleaningJobs.queries.getInDateRange,
+    isAuthenticated
+      ? { from: dashboardJobsFromMs, to: dashboardJobsToMs }
+      : "skip",
   );
   const properties = useQuery(
     api.properties.queries.getAll,
     isAuthenticated ? { limit: 500 } : "skip",
   );
+  const incidentCounts = useQuery(
+    api.incidents.queries.getOpenIncidentCounts,
+    isAuthenticated ? {} : "skip",
+  );
+  const me = useQuery(
+    api.users.queries.getMyProfile,
+    isAuthenticated ? {} : "skip",
+  ) as { _id: Id<"users">; role: string } | null | undefined;
+  const isManagerRole = me?.role === "manager";
   const assignJob = useMutation(api.cleaningJobs.mutations.assign);
 
   useEffect(() => {
@@ -161,20 +231,24 @@ export function DashboardClient() {
       return job.scheduledStartAt < referenceTime;
     };
 
-    return funnelStages.map((stage) => {
+    const buildStage = <T extends { status: string }>(stage: T) => {
       const stageJobs = dashboardJobs.filter((job) => job.status === stage.status);
       const overdueNow = stageJobs.filter((job) => isOverdueAt(job, currentNow)).length;
       const overduePrevious = stageJobs.filter((job) =>
         isOverdueAt(job, previousNow),
       ).length;
-
       return {
         ...stage,
         count: stageJobs.length,
         overdueNow,
         overdueDelta: overdueNow - overduePrevious,
       };
-    });
+    };
+
+    return {
+      primary: primaryFunnelStages.map(buildStage),
+      inFlight: inFlightStages.map(buildStage),
+    };
   }, [dashboardJobs, now]);
 
   const readiness = useMemo(() => {
@@ -331,7 +405,7 @@ export function DashboardClient() {
   const unmappedReadinessCount = Math.max(0, readiness.totalCount - readiness.mappedCount);
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="flex flex-col gap-4 sm:gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3 sm:items-start sm:gap-4">
         <div className="min-w-0">
           <h1 className="hidden text-3xl font-extrabold tracking-tight sm:block">
@@ -342,28 +416,31 @@ export function DashboardClient() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            href="/reports"
-            className="rounded-xl bg-[var(--secondary)] px-3 py-1.5 text-xs font-semibold text-[var(--secondary-foreground)] transition hover:opacity-90 sm:px-4 sm:py-2 sm:text-sm"
-          >
-            {t("dashboard.generateReport")}
-          </Link>
-          <Link
-            href="/jobs"
-            className="rounded-xl bg-[var(--primary)] px-3 py-1.5 text-center text-xs font-semibold text-[var(--primary-foreground)] sm:px-4 sm:py-2 sm:text-sm"
-          >
-            {t("dashboard.newJob")}
-          </Link>
+          {canViewReports ? (
+            <Link
+              href="/reports"
+              className="rounded-xl bg-[var(--secondary)] px-3 py-1.5 text-xs font-semibold text-[var(--secondary-foreground)] transition hover:opacity-90 sm:px-4 sm:py-2 sm:text-sm"
+            >
+              {t("dashboard.generateReport")}
+            </Link>
+          ) : null}
+          {isManagerRole ? null : (
+            <Link
+              href="/jobs"
+              className="rounded-xl bg-[var(--primary)] px-3 py-1.5 text-center text-xs font-semibold text-[var(--primary-foreground)] sm:px-4 sm:py-2 sm:text-sm"
+            >
+              {t("dashboard.newJob")}
+            </Link>
+          )}
         </div>
       </div>
 
-      <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5">
+      <section className={`rounded-2xl border bg-[var(--card)] p-3 sm:p-5${isManagerRole ? " order-3" : ""}`}>
         <div className="mb-3 flex items-center justify-between sm:mb-4">
           <div>
-            <h2 className="text-base font-bold sm:text-lg">{t("dashboard.opsFunnel")}</h2>
-            <p className="text-xs text-[var(--muted-foreground)]">
-              {t("dashboard.opsFunnelSubtitle")}
-            </p>
+            <h2 className="text-base font-bold sm:text-lg">
+              {isManagerRole ? t("dashboard.jobs") : t("dashboard.opsFunnel")}
+            </h2>
           </div>
         </div>
         {loading ? (
@@ -372,8 +449,18 @@ export function DashboardClient() {
             {t("dashboard.loadingFunnel")}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
-            {opsFunnel.map((stage) => {
+          <div className={`grid gap-2 ${isManagerRole ? "grid-cols-3" : "grid-cols-2 lg:grid-cols-4"}`}>
+            {(isManagerRole
+              ? [
+                  ...opsFunnel.primary,
+                  ...opsFunnel.inFlight.filter((s) => s.status === "in_progress"),
+                ]
+              : opsFunnel.primary
+            ).map((stage) => {
+              const stageLabel =
+                isManagerRole && stage.status === "scheduled"
+                  ? t("dashboard.openStatus")
+                  : t(stage.labelKey);
               const deltaLabel =
                 stage.overdueDelta > 0
                   ? `+${stage.overdueDelta}`
@@ -391,7 +478,7 @@ export function DashboardClient() {
                   className="rounded-xl border bg-[var(--card)] px-3 py-2.5 transition hover:border-[var(--primary)]/40 hover:bg-[var(--accent)]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
                 >
                   <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--muted-foreground)]">
-                    {t(stage.labelKey)}
+                    {stageLabel}
                   </p>
                   <p className="mt-1 text-2xl font-extrabold leading-none">
                     {stage.count}
@@ -402,12 +489,121 @@ export function DashboardClient() {
                 </Link>
               );
             })}
+
+            {isManagerRole ? null : (
+            <Link
+              href="/jobs"
+              className="rounded-xl border bg-[var(--card)] px-3 py-2.5 transition hover:border-[var(--primary)]/40 hover:bg-[var(--accent)]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
+            >
+              <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--muted-foreground)]">
+                {t("dashboard.jobsInFlight")}
+              </p>
+              <p className="mt-1 text-2xl font-extrabold leading-none">
+                {opsFunnel.inFlight.reduce((sum, stage) => sum + stage.count, 0)}
+              </p>
+              <div className="mt-1.5 flex flex-nowrap items-center gap-x-2 text-[10px] font-semibold text-[var(--muted-foreground)]">
+                {opsFunnel.inFlight.map((stage) => {
+                  const Icon = stage.icon;
+                  return (
+                    <span
+                      key={stage.status}
+                      className="inline-flex items-center gap-1 whitespace-nowrap"
+                      title={t(stage.labelKey)}
+                    >
+                      <Icon className="h-3 w-3" aria-hidden="true" />
+                      <span className="hidden sm:inline">{t(stage.labelKey)}</span>
+                      <span>{stage.count}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </Link>
+            )}
+
+            {isManagerRole ? null : (
+            <Link
+              href="/incidents"
+              className={`relative rounded-xl border px-3 py-2.5 transition focus-visible:outline-none focus-visible:ring-2 ${
+                (incidentCounts?.open ?? 0) > 0
+                  ? "border-rose-200 bg-rose-50/40 hover:border-rose-300 hover:bg-rose-50 focus-visible:ring-rose-300"
+                  : "border-emerald-200 bg-emerald-50/40 hover:border-emerald-300 hover:bg-emerald-50 focus-visible:ring-emerald-300"
+              }`}
+            >
+              {incidentCounts && (incidentCounts.open ?? 0) === 0 ? (
+                <span
+                  className="absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white"
+                  title={t("dashboard.allClear")}
+                  aria-label={t("dashboard.allClear")}
+                >
+                  <Check className="h-3 w-3" aria-hidden="true" />
+                </span>
+              ) : null}
+              <div className="flex items-center gap-1.5">
+                <ShieldAlert
+                  className={`h-3.5 w-3.5 ${
+                    (incidentCounts?.open ?? 0) > 0
+                      ? "text-rose-600"
+                      : "text-emerald-600"
+                  }`}
+                />
+                <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--muted-foreground)]">
+                  {t("dashboard.incidents")}
+                </p>
+              </div>
+              <p className="mt-1 text-2xl font-extrabold leading-none">
+                {incidentCounts?.total ?? 0}
+              </p>
+              {incidentCounts && incidentCounts.total > 0 ? (
+                <div className="mt-1.5 flex flex-nowrap items-center gap-x-2 text-[10px] font-semibold">
+                  <span
+                    className="inline-flex items-center gap-1 whitespace-nowrap text-rose-700"
+                    title={t("dashboard.incidentOpen")}
+                  >
+                    <AlertCircle className="h-3 w-3" aria-hidden="true" />
+                    <span className="hidden sm:inline">{t("dashboard.incidentOpen")}</span>
+                    <span>{incidentCounts.open}</span>
+                  </span>
+                  <span
+                    className="inline-flex items-center gap-1 whitespace-nowrap text-amber-700"
+                    title={t("dashboard.incidentInProgress")}
+                  >
+                    <Play className="h-3 w-3" aria-hidden="true" />
+                    <span className="hidden sm:inline">{t("dashboard.incidentInProgress")}</span>
+                    <span>{incidentCounts.inProgress}</span>
+                  </span>
+                  <span
+                    className="inline-flex items-center gap-1 whitespace-nowrap text-emerald-700"
+                    title={t("dashboard.incidentResolved")}
+                  >
+                    <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                    <span className="hidden sm:inline">{t("dashboard.incidentResolved")}</span>
+                    <span>{incidentCounts.resolved}</span>
+                  </span>
+                  {incidentCounts.wontFix > 0 ? (
+                    <span
+                      className="inline-flex items-center gap-1 whitespace-nowrap text-[var(--muted-foreground)]"
+                      title={t("dashboard.incidentWontFix")}
+                    >
+                      <Ban className="h-3 w-3" aria-hidden="true" />
+                      <span className="hidden sm:inline">{t("dashboard.incidentWontFix")}</span>
+                      <span>{incidentCounts.wontFix}</span>
+                    </span>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="mt-1 text-[11px] font-semibold text-[var(--muted-foreground)]">
+                  {t("dashboard.noIncidents")}
+                </p>
+              )}
+            </Link>
+            )}
           </div>
         )}
       </section>
 
+      {isManagerRole ? null : (
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5 xl:col-span-5">
+        <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5 xl:col-span-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-base font-bold sm:text-lg">{t("dashboard.blockers")}</h2>
             <Link
@@ -450,7 +646,7 @@ export function DashboardClient() {
           )}
         </section>
 
-        <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5 xl:col-span-7">
+        <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5 xl:col-span-4">
           <div className="mb-3 flex items-center justify-between sm:mb-4">
             <div className="flex items-center gap-2">
               <h2 className="text-base font-bold sm:text-lg">{t("dashboard.criticalAlerts")}</h2>
@@ -577,10 +773,13 @@ export function DashboardClient() {
             </div>
           )}
         </section>
-      </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5 xl:col-span-7">
+        <TasksCard />
+      </div>
+      )}
+
+      <div className={`grid grid-cols-1 gap-4 xl:grid-cols-12${isManagerRole ? " order-2" : ""}`}>
+        <section className={`rounded-2xl border bg-[var(--card)] p-3 sm:p-5 ${isManagerRole ? "xl:col-span-12" : "xl:col-span-7"}`}>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-base font-bold sm:text-lg">{t("dashboard.todayTimeline")}</h2>
             <Link
@@ -644,6 +843,7 @@ export function DashboardClient() {
           )}
         </section>
 
+        {isManagerRole ? null : (
         <section className="rounded-2xl border bg-[var(--card)] p-3 sm:p-5 xl:col-span-5">
           <div className="mb-3 flex items-center justify-between sm:mb-4">
             <h2 className="text-base font-bold sm:text-lg">{t("dashboard.propertyReadiness")}</h2>
@@ -654,7 +854,9 @@ export function DashboardClient() {
             </p>
           ) : (
             <div className="grid grid-cols-2 gap-2">
-              {(Object.keys(readiness.summary) as PropertyStatus[]).map((status) => (
+              {(Object.keys(readiness.summary) as PropertyStatus[])
+                .filter((status) => (isManagerRole ? status !== "vacant" : true))
+                .map((status) => (
                 <Link
                   key={status}
                   href={`/properties?status=${status}`}
@@ -683,6 +885,7 @@ export function DashboardClient() {
             </p>
           ) : null}
         </section>
+        )}
       </div>
     </div>
   );

@@ -1,10 +1,16 @@
 import { Suspense } from "react";
-import { MessagesInboxClient } from "@/components/conversations/messages-inbox-client";
+import { MessagesInboxClient } from "@/components/messages/messages-inbox-client";
 
 export default function CleanerMessagesPage() {
   return (
-    <Suspense fallback={<div className="text-sm text-[var(--muted-foreground)]">Loading messages...</div>}>
-      <MessagesInboxClient title="Messages" />
+    <Suspense
+      fallback={
+        <p className="text-sm text-[var(--msg-text-muted,var(--muted-foreground))]">
+          Loading messages...
+        </p>
+      }
+    >
+      <MessagesInboxClient forceSinglePane />
     </Suspense>
   );
 }

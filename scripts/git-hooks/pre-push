@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+#
+# pre-push hook — block drift to the mobile app's Convex mirror.
+#
+# Runs the fast compat smoke test (scripts/verify-mobile-api-compat.sh) on
+# every push. The fast check verifies a curated list of critical exports
+# exists; it doesn't catch return-shape drift or local-type adapter breakage.
+#
+# For a deep check (full mobile TypeScript compile against admin's convex/),
+# run `csoi mobile:check` manually before pushing — or set
+# CSOI_DEEP_PREPUSH=1 to make it part of pre-push too (slow, adds ~30s+).
+#
+# Bypass for emergencies: `git push --no-verify`. Don't make it a habit.
+#
+# Install:
+#   ln -sf ../../scripts/git-hooks/pre-push .git/hooks/pre-push
+# (or copy if your filesystem doesn't support symlinks)
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+COMPAT_SCRIPT="$REPO_ROOT/scripts/verify-mobile-api-compat.sh"
+
+# Skip if pushing to a non-shared branch (only enforce for main + release)
+push_target=""
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main|refs/heads/master|refs/heads/release/*)
+      push_target="$remote_ref"
+      break
+      ;;
+  esac
+done
+
+if [ -z "$push_target" ]; then
+  exit 0
+fi
+
+echo ""
+echo "=== pre-push: mobile drift check (target: $push_target) ==="
+
+if [ ! -x "$COMPAT_SCRIPT" ]; then
+  echo "  ⚠️  $COMPAT_SCRIPT not found or not executable — skipping."
+  echo "  fix: chmod +x $COMPAT_SCRIPT"
+  exit 0  # don't block; this is infrastructure, not policy
+fi
+
+if ! bash "$COMPAT_SCRIPT"; then
+  cat <<EOF
+
+❌ pre-push blocked: mobile API compatibility check failed.
+
+This means one or more functions the mobile app calls is missing from
+admin's convex/ source. Pushing to $push_target would deploy a backend
+that breaks the mobile app at runtime.
+
+Options:
+  1. Restore the function in admin (preferred if removal was accidental)
+  2. Coordinate with the mobile team to update their call sites BEFORE
+     this admin change ships
+  3. If you've already coordinated and a mobile PR is in flight, bypass
+     this hook with:  git push --no-verify
+
+For a deeper check that catches return-shape drift (not just missing
+functions), run:  csoi mobile:check
+EOF
+  exit 1
+fi
+
+# Optional deep check — slow, opt-in.
+if [ "${CSOI_DEEP_PREPUSH:-0}" = "1" ]; then
+  if command -v csoi >/dev/null 2>&1; then
+    echo ""
+    echo "=== pre-push: deep mobile typecheck (CSOI_DEEP_PREPUSH=1) ==="
+    if ! csoi mobile:check; then
+      cat <<EOF
+
+❌ pre-push blocked: mobile deep typecheck failed.
+
+To bypass: git push --no-verify
+EOF
+      exit 1
+    fi
+  else
+    echo "  ⚠️  CSOI_DEEP_PREPUSH=1 set but 'csoi' not on PATH — skipping deep check."
+  fi
+fi
+
+echo "✅ pre-push: mobile drift check passed."
+echo ""

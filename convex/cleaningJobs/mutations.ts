@@ -1,20 +1,26 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, type MutationCtx } from "../_generated/server";
+import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import { getCurrentUser } from "../lib/auth";
+import { getCurrentUser, requireRole } from "../lib/auth";
+import {
+  getActivePropertyCompanyAssignment,
+  getLatestActiveCompanyMembership,
+} from "../lib/companyScope";
 import {
   createNotificationsForUsers,
   createOpsNotifications,
 } from "../lib/opsNotifications";
-import {
-  dismissNotificationsForJob,
-  listOpsUserIds,
-} from "../lib/notificationLifecycle";
+import { listOpsUserIds } from "../lib/notificationLifecycle";
 import {
   getJobConversationByJobId,
   seedJobConversationParticipants,
-  syncConversationStatusForJob,
 } from "../conversations/lib";
+import {
+  markAcknowledgementAccepted,
+  reconcileAcknowledgements,
+  schedulePendingAcknowledgementEscalation,
+} from "./acknowledgements";
 
 const qaModeValidator = v.union(v.literal("standard"), v.literal("quick"));
 
@@ -101,48 +107,6 @@ function requirePrivilegedRole(user: Doc<"users">) {
   }
 }
 
-function isActiveCompanyPropertyAssignment(
-  assignment: Doc<"companyProperties">,
-): boolean {
-  return assignment.isActive !== false && assignment.unassignedAt === undefined;
-}
-
-function isActiveMembership(membership: Doc<"companyMembers">): boolean {
-  return membership.isActive && membership.leftAt === undefined;
-}
-
-async function getActivePropertyCompanyAssignment(
-  ctx: MutationCtx,
-  propertyId: Id<"properties">,
-) {
-  const assignments = await ctx.db
-    .query("companyProperties")
-    .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
-    .collect();
-
-  const active = assignments
-    .filter(isActiveCompanyPropertyAssignment)
-    .sort((a, b) => b.assignedAt - a.assignedAt)[0];
-
-  return active ?? null;
-}
-
-async function getLatestActiveCompanyMembership(
-  ctx: MutationCtx,
-  userId: Id<"users">,
-) {
-  const memberships = await ctx.db
-    .query("companyMembers")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .collect();
-
-  const active = memberships
-    .filter(isActiveMembership)
-    .sort((a, b) => b.joinedAt - a.joinedAt)[0];
-
-  return active ?? null;
-}
-
 type SubmissionValidation = {
   mode: "standard" | "quick";
   pass: boolean;
@@ -198,6 +162,18 @@ function buildValidationResult(args: {
   const beforeCount = args.photos.filter((photo) => photo.type === "before").length;
   const afterCount = args.photos.filter((photo) => photo.type === "after").length;
   const incidentCount = args.photos.filter((photo) => photo.type === "incident").length;
+
+  // Baseline evidence floor: every submission needs at least one before AND
+  // one after photo, in any mode. Without this, standard mode derives its
+  // required rooms from the photos that already exist (`requiredRooms ??
+  // observedRooms`), so a zero-photo submission requires nothing and passes
+  // silently. (App Review: a job could reach review with no photos.)
+  if (beforeCount < 1) {
+    errors.push("At least one before photo is required before submitting.");
+  }
+  if (afterCount < 1) {
+    errors.push("At least one after photo is required before submitting.");
+  }
 
   const skippedRooms = dedupeRoomNames(
     (args.skippedRooms ?? []).map((room) => room.roomName),
@@ -416,6 +392,13 @@ async function sealSubmission(
     type: photo.type,
     uploadedAt: photo.uploadedAt,
     uploadedBy: photo.uploadedBy,
+    // Phase 4a of video-support — sealed submissions need to know whether
+    // each entry was an image or a video so the immutable approval record
+    // renders correctly in the lightbox even after the live `photos` row
+    // is deleted/archived. `undefined` ≡ "image" for backward compat with
+    // snapshots sealed before this writer was extended.
+    // See Docs/video-support/ ADR-0001.
+    mediaKind: photo.mediaKind,
   }));
 
   const incidentSnapshot = incidents.map((incident) => ({
@@ -453,6 +436,26 @@ async function sealSubmission(
     createdAt: args.submittedAtServer,
   });
 
+  // Mirror thin metadata into jobSubmissionsMeta for cheap history reads.
+  // See Docs/2026-04-28-convex-bandwidth-optimization-plan.md (Wave 2).
+  const beforeCount = photoSnapshot.filter((p) => p.type === "before").length;
+  const afterCount = photoSnapshot.filter((p) => p.type === "after").length;
+  const incidentCount = photoSnapshot.filter((p) => p.type === "incident").length;
+  await ctx.db.insert("jobSubmissionsMeta", {
+    submissionId,
+    jobId: args.job._id,
+    revision: args.revision,
+    status: "sealed",
+    submittedBy: args.submittedBy,
+    submittedAtServer: args.submittedAtServer,
+    submittedAtDevice: args.submittedAtDevice,
+    photoCount: photoSnapshot.length,
+    beforeCount,
+    afterCount,
+    incidentCount,
+    createdAt: args.submittedAtServer,
+  });
+
   return submissionId;
 }
 
@@ -464,6 +467,12 @@ export const create = mutation({
     notesForCleaner: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Per R7.4 (manager-scope task, 2026-05-17): manual job creation is
+    // admin/ops only. Production jobs come from the Hospitable webhook
+    // automatically; this mutation is the ops escape hatch. Managers and
+    // cleaners are explicitly not allowed.
+    await requireRole(ctx, ["admin", "property_ops"]);
+
     const property = await ctx.db.get(args.propertyId);
     if (!property) {
       throw new ConvexError("Property not found.");
@@ -513,11 +522,20 @@ export const start = mutation({
 
     const revision = getCurrentRevision(job);
 
-    if (
-      user.role === "cleaner" &&
-      !job.assignedCleanerIds.includes(user._id)
-    ) {
-      throw new ConvexError("Cleaner is not assigned to this job.");
+    // Only the assigned cleaner — or an admin/property_ops override — may
+    // start a job (transition it to in_progress). Managers, owners, and
+    // unassigned cleaners cannot. (App Review: a non-cleaner could set a job
+    // in progress.)
+    const isAssignedCleaner =
+      user.role === "cleaner" && job.assignedCleanerIds.includes(user._id);
+    const canOverrideStart =
+      user.role === "admin" || user.role === "property_ops";
+    if (!isAssignedCleaner && !canOverrideStart) {
+      throw new ConvexError(
+        user.role === "cleaner"
+          ? "Cleaner is not assigned to this job."
+          : "Only the assigned cleaner or an admin/property ops user can start this job.",
+      );
     }
 
     if (
@@ -558,30 +576,64 @@ export const start = mutation({
       });
     }
 
-    if (job.status !== "in_progress" || job.actualStartAt === undefined) {
+    const nextAcks =
+      user.role === "cleaner"
+        ? markAcknowledgementAccepted(job.acknowledgements, {
+            cleanerId: user._id,
+            now,
+          })
+        : job.acknowledgements;
+
+    const transitionedToInProgress =
+      job.status !== "in_progress" || job.actualStartAt === undefined;
+
+    if (transitionedToInProgress) {
       await ctx.db.patch(args.jobId, {
         status: "in_progress",
         actualStartAt: job.actualStartAt ?? now,
         currentRevision: revision,
+        acknowledgements: nextAcks,
         updatedAt: now,
       });
-      await syncConversationStatusForJob(ctx, {
-        jobId: args.jobId,
-        nextStatus: "in_progress",
+    } else if (nextAcks !== job.acknowledgements) {
+      await ctx.db.patch(args.jobId, {
+        acknowledgements: nextAcks,
+        updatedAt: now,
       });
     }
 
-    await dismissNotificationsForJob(ctx, {
-      jobId: String(job._id),
-      userIds: [user._id],
-      types: ["job_assigned", "rework_required"],
-    });
+    // Wave 4: defer non-critical side effects (conversation-status sync +
+    // notification dismissal) to a scheduled internal mutation so they
+    // don't add latency or bandwidth to the synchronous start call.
+    // Runs in a separate transaction once this one commits; if this
+    // mutation rolls back, the side effects never fire.
+    await ctx.scheduler.runAfter(
+      0,
+      internal.cleaningJobs.sideEffects.applyTransitionSideEffects,
+      {
+        jobId: args.jobId,
+        syncToStatus: transitionedToInProgress ? "in_progress" : undefined,
+        dismissals: [
+          {
+            userIds: [user._id],
+            types: ["job_assigned", "rework_required"],
+          },
+        ],
+      },
+    );
+
+    // Warn-but-allow: flag when the job was scheduled on an earlier calendar
+    // day (stale). The client surfaces this as a warning; we don't block the
+    // start. (App Review concern: cleaners starting jobs scheduled in the past.)
+    const startOfTodayUtc = now - (now % 86_400_000);
+    const scheduledInPast = job.scheduledStartAt < startOfTodayUtc;
 
     return {
       jobId: args.jobId,
       revision,
       startedAtServer: job.actualStartAt ?? now,
       alreadyStarted: Boolean(session),
+      scheduledInPast,
     };
   },
 });
@@ -592,41 +644,58 @@ export const pingActiveSession = mutation({
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
+    const now = Date.now();
+
+    // Bandwidth: heartbeats fire every ~30s per active cleaner. Reading the
+    // full cleaningJob doc just to compute `revision` was costing ~10 KB per
+    // ping. Fast path: find the latest session for this (jobId, cleanerId)
+    // pair via the existing by_job_and_cleaner_and_revision index using a
+    // prefix query — no job read needed when a session already exists. Most
+    // pings hit this path. See Docs/2026-04-28-convex-bandwidth-optimization-plan.md
+    const existingSession = await ctx.db
+      .query("jobExecutionSessions")
+      .withIndex("by_job_and_cleaner_and_revision", (q) =>
+        q.eq("jobId", args.jobId).eq("cleanerId", user._id),
+      )
+      .order("desc")
+      .first();
+
+    if (existingSession) {
+      await ctx.db.patch(existingSession._id, {
+        lastHeartbeatAt: now,
+        updatedAt: now,
+      });
+      return {
+        jobId: args.jobId,
+        revision: existingSession.revision,
+        lastHeartbeatAt: now,
+        status: existingSession.status,
+      };
+    }
+
+    // Slow path: no session exists yet. Read the job to determine the current
+    // revision and create a fresh session. Only fires once per (job, cleaner).
     const job = await ctx.db.get(args.jobId);
     if (!job) {
       throw new ConvexError("Job not found.");
     }
     const revision = getCurrentRevision(job);
-    const now = Date.now();
-    const session = await findSession(ctx, {
+    await ctx.db.insert("jobExecutionSessions", {
       jobId: args.jobId,
-      cleanerId: user._id,
       revision,
+      cleanerId: user._id,
+      status: "started",
+      startedAtServer: job.actualStartAt ?? now,
+      lastHeartbeatAt: now,
+      createdAt: now,
+      updatedAt: now,
     });
-
-    if (!session) {
-      await ctx.db.insert("jobExecutionSessions", {
-        jobId: args.jobId,
-        revision,
-        cleanerId: user._id,
-        status: "started",
-        startedAtServer: job.actualStartAt ?? now,
-        lastHeartbeatAt: now,
-        createdAt: now,
-        updatedAt: now,
-      });
-    } else {
-      await ctx.db.patch(session._id, {
-        lastHeartbeatAt: now,
-        updatedAt: now,
-      });
-    }
 
     return {
       jobId: args.jobId,
       revision,
       lastHeartbeatAt: now,
-      status: session?.status ?? "started",
+      status: "started" as const,
     };
   },
 });
@@ -767,7 +836,11 @@ async function submitForApprovalInternal(
   }
   validationResult.pass = validationResult.errors.length === 0;
 
-  if (!validationResult.pass && !force) {
+  // Cleaners cannot force past the evidence gate — only admin/ops/manager
+  // (privileged) may override, mirroring the session-gate rule above. Stops a
+  // cleaner from submitting with missing/zero photos via force:true.
+  const canBypassEvidence = force && user.role !== "cleaner";
+  if (!validationResult.pass && !canBypassEvidence) {
     throw new ConvexError(
       `Evidence validation failed: ${validationResult.errors.join(" ")}`,
     );
@@ -782,24 +855,30 @@ async function submitForApprovalInternal(
     validationResult,
   });
 
-  const priorSubmissions = await ctx.db
-    .query("jobSubmissions")
+  // Query priorSubmissions via the thin meta index — heavy snapshot fields
+  // would otherwise be dragged through this read. See Wave 2 in
+  // Docs/2026-04-28-convex-bandwidth-optimization-plan.md
+  const priorMeta = await ctx.db
+    .query("jobSubmissionsMeta")
     .withIndex("by_job", (q) => q.eq("jobId", args.jobId))
     .collect();
+  const toSupersede = priorMeta.filter(
+    (meta) =>
+      meta.revision < revision &&
+      meta.status === "sealed" &&
+      meta.supersededAt === undefined,
+  );
   await Promise.all(
-    priorSubmissions
-      .filter(
-        (submission) =>
-          submission.revision < revision &&
-          submission.status === "sealed" &&
-          submission.supersededAt === undefined,
-      )
-      .map((submission) =>
-        ctx.db.patch(submission._id, {
-          status: "superseded",
-          supersededAt: now,
-        }),
-      ),
+    toSupersede.flatMap((meta) => [
+      ctx.db.patch(meta.submissionId, {
+        status: "superseded" as const,
+        supersededAt: now,
+      }),
+      ctx.db.patch(meta._id, {
+        status: "superseded" as const,
+        supersededAt: now,
+      }),
+    ]),
   );
 
   await ctx.db.patch(args.jobId, {
@@ -818,22 +897,31 @@ async function submitForApprovalInternal(
       completedRefillCount: coverage.completedRefillCount,
     },
   });
-  await syncConversationStatusForJob(ctx, {
-    jobId: args.jobId,
-    nextStatus: "awaiting_approval",
-  });
-
-  await dismissNotificationsForJob(ctx, {
-    jobId: String(job._id),
-    userIds: job.assignedCleanerIds,
-    types: ["job_assigned", "rework_required"],
-  });
+  // Wave 4: defer convo sync + cleaner-side dismissal. The
+  // createOpsNotifications below stays synchronous because admins
+  // expect to see the new "awaiting approval" notification immediately.
+  await ctx.scheduler.runAfter(
+    0,
+    internal.cleaningJobs.sideEffects.applyTransitionSideEffects,
+    {
+      jobId: args.jobId,
+      syncToStatus: "awaiting_approval",
+      dismissals: [
+        {
+          userIds: job.assignedCleanerIds,
+          types: ["job_assigned", "rework_required"],
+        },
+      ],
+    },
+  );
 
   const property = await ctx.db.get(job.propertyId);
   await createOpsNotifications(ctx, {
     type: "awaiting_approval",
     title: "Job Awaiting Approval",
     message: `${property?.name ?? "Property"} is ready for review.`,
+    messageKey: "notifications.messages.awaiting_approval_ready",
+    messageParams: { propertyName: property?.name ?? "Property" },
     data: {
       jobId: job._id,
       propertyId: job.propertyId,
@@ -992,6 +1080,19 @@ export const reopenForRework = mutation({
         status: "superseded",
         supersededAt: now,
       });
+      // Mirror to jobSubmissionsMeta — see Wave 2.
+      const meta = await ctx.db
+        .query("jobSubmissionsMeta")
+        .withIndex("by_submission", (q) =>
+          q.eq("submissionId", job.latestSubmissionId!),
+        )
+        .first();
+      if (meta) {
+        await ctx.db.patch(meta._id, {
+          status: "superseded" as const,
+          supersededAt: now,
+        });
+      }
     }
 
     await ctx.db.patch(args.jobId, {
@@ -1005,22 +1106,25 @@ export const reopenForRework = mutation({
       rejectionReason: args.reason?.trim(),
       updatedAt: now,
     });
-    await syncConversationStatusForJob(ctx, {
-      jobId: args.jobId,
-      nextStatus: "rework_required",
-    });
-
-    await dismissNotificationsForJob(ctx, {
-      jobId: String(job._id),
-      userIds: await listOpsUserIds(ctx),
-      types: ["awaiting_approval"],
-    });
-
-    await dismissNotificationsForJob(ctx, {
-      jobId: String(job._id),
-      userIds: job.assignedCleanerIds,
-      types: ["job_assigned", "job_completed", "rework_required"],
-    });
+    // Wave 4: defer convo sync + both dismissal batches. Ops user IDs
+    // are resolved synchronously (cheap) so the deferred mutation has a
+    // concrete list to act on; the dismissal scans themselves run async.
+    const opsUserIds = await listOpsUserIds(ctx);
+    await ctx.scheduler.runAfter(
+      0,
+      internal.cleaningJobs.sideEffects.applyTransitionSideEffects,
+      {
+        jobId: args.jobId,
+        syncToStatus: "rework_required",
+        dismissals: [
+          { userIds: opsUserIds, types: ["awaiting_approval"] },
+          {
+            userIds: job.assignedCleanerIds,
+            types: ["job_assigned", "job_completed", "rework_required"],
+          },
+        ],
+      },
+    );
 
     return {
       ok: true,
@@ -1058,19 +1162,15 @@ export const assign = mutation({
     let actorCompanyMembership: Doc<"companyMembers"> | null = null;
     if (actor.role === "manager") {
       actorCompanyMembership = await getLatestActiveCompanyMembership(ctx, actor._id);
-      if (
-        !actorCompanyMembership ||
-        (actorCompanyMembership.role !== "manager" &&
-          actorCompanyMembership.role !== "owner")
-      ) {
+      if (!actorCompanyMembership) {
         throw new ConvexError(
-          "As a manager, you need an active cleaning company manager membership before you can assign cleaners.",
+          "As a manager, you need an active cleaning company membership before you can assign cleaners.",
         );
       }
 
       if (!propertyCompanyId) {
         throw new ConvexError(
-          "Property has no assigned cleaning company. Assign one in Companies Hub.",
+          "Property has no assigned cleaning company. Ask admin/property ops to assign it from Team/Properties.",
         );
       }
 
@@ -1083,7 +1183,7 @@ export const assign = mutation({
 
     if (!propertyCompanyId) {
       warnings.push(
-        "Property has no assigned cleaning company. Manage assignment in Companies Hub.",
+        "Property has no assigned cleaning company. Ask admin/property ops to assign it from Team/Properties.",
       );
     }
 
@@ -1093,9 +1193,9 @@ export const assign = mutation({
       if (!cleaner) {
         throw new ConvexError(`Cleaner not found: ${cleanerId}`);
       }
-      if (cleaner.role !== "cleaner") {
+      if (cleaner.role !== "cleaner" && cleaner.role !== "manager") {
         throw new ConvexError(
-          `Only users with cleaner role can be assigned (invalid: ${cleaner.email}).`,
+          `Only cleaners or managers can be assigned (invalid: ${cleaner.email}).`,
         );
       }
 
@@ -1127,23 +1227,70 @@ export const assign = mutation({
     }
 
     const updatedStatus =
-      job.status === "scheduled" ? "assigned" : job.status;
+      args.cleanerIds.length === 0 && job.status === "assigned"
+        ? "scheduled"
+        : job.status === "scheduled" && args.cleanerIds.length > 0
+          ? "assigned"
+          : job.status;
     const previousCleanerIds = job.assignedCleanerIds;
     const removedCleanerIds = previousCleanerIds.filter(
       (cleanerId) => !args.cleanerIds.includes(cleanerId),
     );
 
     const now = Date.now();
+    const nextAcks = reconcileAcknowledgements({
+      assignedCleanerIds: args.cleanerIds,
+      existing: job.acknowledgements,
+      assignedAt: now,
+      scheduledStartAt: job.scheduledStartAt,
+    });
     await ctx.db.patch(args.jobId, {
       assignedCleanerIds: args.cleanerIds,
+      acknowledgements: nextAcks,
       status: updatedStatus,
       updatedAt: now,
     });
-    await syncConversationStatusForJob(ctx, {
-      jobId: args.jobId,
-      nextStatus: updatedStatus,
-    });
 
+    // Sync the userJobAssignments reverse-index. Wave 5 — see
+    // Docs/2026-04-28-convex-bandwidth-optimization-plan.md. The previous
+    // patch (above) is the source of truth for `assignedCleanerIds`; this
+    // table is a denormalized index maintained by every assign call.
+    const previousAssignments = await ctx.db
+      .query("userJobAssignments")
+      .withIndex("by_job", (q) => q.eq("jobId", args.jobId))
+      .collect();
+    const previousByUser = new Map(
+      previousAssignments.map((row) => [row.userId, row]),
+    );
+    const nextUserSet = new Set(args.cleanerIds);
+
+    // Insert new assignments (cleaners added to the job).
+    const additions = args.cleanerIds.filter(
+      (cleanerId) => !previousByUser.has(cleanerId),
+    );
+    await Promise.all(
+      additions.map((cleanerId) =>
+        ctx.db.insert("userJobAssignments", {
+          userId: cleanerId,
+          jobId: args.jobId,
+          createdAt: now,
+        }),
+      ),
+    );
+
+    // Delete removed assignments (cleaners taken off the job).
+    const removals = previousAssignments.filter(
+      (row) => !nextUserSet.has(row.userId),
+    );
+    await Promise.all(removals.map((row) => ctx.db.delete(row._id)));
+
+    await schedulePendingAcknowledgementEscalation(ctx, {
+      jobId: args.jobId,
+      acks: nextAcks,
+    });
+    // The follow-up `seedJobConversationParticipants` only reads/writes
+    // conversation participants — independent of `conversation.status`
+    // that the convo sync mutates — so the sync is safe to defer.
     const conversation = await getJobConversationByJobId(ctx, args.jobId);
     if (conversation) {
       const refreshedJob = await ctx.db.get(args.jobId);
@@ -1167,25 +1314,40 @@ export const assign = mutation({
       createdAt: now,
     });
 
-    await dismissNotificationsForJob(ctx, {
-      jobId: String(job._id),
-      userIds: removedCleanerIds,
-      types: ["job_assigned", "rework_required"],
-    });
-
+    // Wave 4: defer convo sync + dismissal batches. The
+    // createNotificationsForUsers call below stays synchronous so
+    // newly-assigned cleaners see the notification on their next tick.
+    const assignDismissals: Array<{
+      userIds: Id<"users">[];
+      types: Doc<"notifications">["type"][];
+    }> = [
+      { userIds: removedCleanerIds, types: ["job_assigned", "rework_required"] },
+    ];
     if (args.notifyCleaners !== false && args.cleanerIds.length > 0) {
-      const property = await ctx.db.get(job.propertyId);
-      await dismissNotificationsForJob(ctx, {
-        jobId: String(job._id),
+      assignDismissals.push({
         userIds: args.cleanerIds,
         types: ["job_assigned"],
       });
+    }
+    await ctx.scheduler.runAfter(
+      0,
+      internal.cleaningJobs.sideEffects.applyTransitionSideEffects,
+      {
+        jobId: args.jobId,
+        syncToStatus: updatedStatus,
+        dismissals: assignDismissals,
+      },
+    );
 
+    if (args.notifyCleaners !== false && args.cleanerIds.length > 0) {
+      const property = await ctx.db.get(job.propertyId);
       await createNotificationsForUsers(ctx, {
         userIds: args.cleanerIds,
         type: "job_assigned",
         title: "New Job Assigned",
         message: `${property?.name ?? "Property"} has been assigned to you.`,
+        messageKey: "notifications.messages.job_assigned_to_you",
+        messageParams: { propertyName: property?.name ?? "Property" },
         data: {
           jobId: job._id,
           propertyId: job.propertyId,

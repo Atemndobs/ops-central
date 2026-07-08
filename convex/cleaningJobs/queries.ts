@@ -6,6 +6,12 @@ import { getCurrentUser, requireRole } from "../lib/auth";
 import { createExternalReadUrl, getExternalStorageConfigOrNull } from "../lib/externalStorage";
 import { resolvePhotoAccessUrl } from "../lib/photoUrls";
 import { assertReviewerRole } from "./reviewAccess";
+import {
+  canCallerAccessPropertyById,
+  getCallerJobScopeForListing,
+  getLatestActiveCompanyMembership,
+  isActiveCompanyPropertyAssignment,
+} from "../lib/companyScope";
 
 const CLEANER_SESSION_DONE_STATUSES = new Set(["submitted", "excused"]);
 const JOB_STATUS_FILTER = v.union(
@@ -23,10 +29,18 @@ async function enrichJobs(ctx: QueryCtx, jobs: Doc<"cleaningJobs">[]) {
   const uniqueCleanerIds = [
     ...new Set(jobs.flatMap((job) => job.assignedCleanerIds)),
   ];
+  const uniqueStayIds = [
+    ...new Set(
+      jobs
+        .map((job) => job.stayId)
+        .filter((id): id is Id<"stays"> => Boolean(id)),
+    ),
+  ];
 
-  const [fetchedProperties, fetchedCleaners] = await Promise.all([
+  const [fetchedProperties, fetchedCleaners, fetchedStays] = await Promise.all([
     Promise.all(uniquePropertyIds.map((id) => ctx.db.get(id))),
     Promise.all(uniqueCleanerIds.map((id) => ctx.db.get(id))),
+    Promise.all(uniqueStayIds.map((id) => ctx.db.get(id))),
   ]);
 
   const propertyById = new Map(
@@ -40,9 +54,16 @@ async function enrichJobs(ctx: QueryCtx, jobs: Doc<"cleaningJobs">[]) {
               _id: property!._id,
               name: property!.name,
               address: property!.address,
+              city: property!.city ?? null,
+              imageUrl: property!.imageUrl ?? null,
               bedrooms: property!.bedrooms,
               bathrooms: property!.bathrooms,
               rooms: property!.rooms,
+              timezone: property!.timezone ?? null,
+              accessNotes: property!.accessNotes ?? null,
+              keyLocation: property!.keyLocation ?? null,
+              parkingNotes: property!.parkingNotes ?? null,
+              urgentNotes: property!.urgentNotes ?? null,
             },
           ] as const,
       ),
@@ -65,9 +86,29 @@ async function enrichJobs(ctx: QueryCtx, jobs: Doc<"cleaningJobs">[]) {
       ),
   );
 
+  const stayById = new Map(
+    fetchedStays
+      .filter(Boolean)
+      .map(
+        (stay) =>
+          [
+            stay!._id,
+            {
+              numberOfGuests: stay!.numberOfGuests ?? null,
+              checkInAt: stay!.checkInAt,
+              checkOutAt: stay!.checkOutAt,
+              lateCheckout: stay!.lateCheckout,
+              earlyCheckin: stay!.earlyCheckin,
+              partyRiskFlag: stay!.partyRiskFlag,
+            },
+          ] as const,
+      ),
+  );
+
   return jobs.map((job) => ({
     ...job,
     property: propertyById.get(job.propertyId) ?? null,
+    stay: job.stayId ? stayById.get(job.stayId) ?? null : null,
     cleaners: job.assignedCleanerIds
       .map((id) => cleanerById.get(id) ?? null)
       .filter(Boolean),
@@ -114,39 +155,56 @@ function getCurrentRevision(job: Doc<"cleaningJobs">): number {
   return job.currentRevision ?? 1;
 }
 
-function isActiveCompanyPropertyAssignment(
-  assignment: Doc<"companyProperties">,
-): boolean {
-  return assignment.isActive !== false && assignment.unassignedAt === undefined;
-}
-
-function isActiveMembership(membership: Doc<"companyMembers">): boolean {
-  return membership.isActive && membership.leftAt === undefined;
-}
-
-async function getLatestActiveCompanyMembership(
-  ctx: QueryCtx,
-  userId: Id<"users">,
-) {
-  const memberships = await ctx.db
-    .query("companyMembers")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .collect();
-
-  const active = memberships
-    .filter(isActiveMembership)
-    .sort((a, b) => b.joinedAt - a.joinedAt)[0];
-
-  return active ?? null;
-}
+// Hard cap on `getAll` reads. Subscribed reactively across 10+ mount points
+// in admin web (jobs page, dashboard, schedule, settings, team, properties,
+// inventory, companies, review-queue, etc.). Most callers pass `limit: 1000`,
+// but the prior implementation `.collect()`-ed without an index ordering and
+// then sliced in memory — so the read was always unbounded. We also pay for
+// `enrichJobs` which fetches full property docs (including the heavy
+// `instructions` array) for every job in the result set.
+//
+// 500 is a defensive ceiling, not a product-driven number. Real list pages
+// should not be subscribing to this many jobs reactively — that's a
+// follow-up component-level audit. This cap stops the worst case today.
+//
+// Wave 3 — see Docs/2026-04-28-convex-bandwidth-optimization-plan.md.
+const GET_ALL_HARD_CAP = 500;
 
 export const getAll = query({
   args: {
     status: v.optional(JOB_STATUS_FILTER),
     propertyId: v.optional(v.id("properties")),
     limit: v.optional(v.number()),
+    /** Wave 3.b — drop jobs whose `scheduledEndAt` (or
+     *  `scheduledStartAt` as fallback) is before this timestamp.
+     *  Mirrors the client `hidePastJobs` toggle used by the jobs list
+     *  page so already-ended jobs aren't fetched + enriched only to be
+     *  discarded client-side. */
+    notEndedBefore: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    const allowedPropertyIds = await getCallerJobScopeForListing(ctx, user);
+
+    // Fail-closed: managers with no scope (no active company / no
+    // properties assigned) and cleaners calling getAll see nothing.
+    if (allowedPropertyIds && allowedPropertyIds.size === 0) {
+      return [];
+    }
+
+    // Manager filtered to a single property they don't own → empty.
+    if (
+      allowedPropertyIds &&
+      args.propertyId &&
+      !allowedPropertyIds.has(args.propertyId)
+    ) {
+      return [];
+    }
+
+    const requestedLimit = Math.min(
+      args.limit ?? GET_ALL_HARD_CAP,
+      GET_ALL_HARD_CAP,
+    );
     let jobs;
 
     if (args.status && args.propertyId) {
@@ -166,15 +224,45 @@ export const getAll = query({
         .query("cleaningJobs")
         .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId!))
         .collect();
+    } else if (allowedPropertyIds) {
+      // Manager: read per-property via the by_property index, then merge.
+      // Avoids scanning the full by_scheduled list across other companies.
+      const perProperty = await Promise.all(
+        [...allowedPropertyIds].map((propertyId) =>
+          ctx.db
+            .query("cleaningJobs")
+            .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
+            .collect(),
+        ),
+      );
+      jobs = perProperty.flat();
     } else {
+      // Unfiltered case (admin / property_ops): most-recent-N via index
+      // ordering. Avoids reading the entire jobs table just to slice in
+      // memory.
       jobs = await ctx.db
         .query("cleaningJobs")
         .withIndex("by_scheduled")
-        .collect();
+        .order("desc")
+        .take(requestedLimit);
+    }
+
+    // Final scope filter — covers the cases above that didn't already
+    // filter by propertyId (status-only, by_scheduled).
+    if (allowedPropertyIds) {
+      jobs = jobs.filter((job) => allowedPropertyIds.has(job.propertyId));
+    }
+
+    if (typeof args.notEndedBefore === "number") {
+      const cutoff = args.notEndedBefore;
+      jobs = jobs.filter((job) => {
+        const end = job.scheduledEndAt ?? job.scheduledStartAt ?? 0;
+        return end >= cutoff;
+      });
     }
 
     const sorted = jobs.sort((a, b) => b.scheduledStartAt - a.scheduledStartAt);
-    const limited = args.limit != null ? sorted.slice(0, args.limit) : sorted;
+    const limited = sorted.slice(0, requestedLimit);
     return await enrichJobs(ctx, limited);
   },
 });
@@ -184,10 +272,31 @@ export const getById = query({
     jobId: v.id("cleaningJobs"),
   },
   handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
     const detail = await getJobDetailInternal(ctx, args.jobId);
     if (!detail) {
       return null;
     }
+
+    // Direct-ID access guard (R5 scenario 3, manager-scope task).
+    // - admin / property_ops: unrestricted
+    // - manager: only if the job's property is in the manager's company scope
+    // - cleaner: only if assigned to this job
+    if (user.role === "manager") {
+      const allowed = await canCallerAccessPropertyById(
+        ctx,
+        user,
+        detail.job.propertyId,
+      );
+      if (!allowed) {
+        return null;
+      }
+    } else if (user.role === "cleaner") {
+      if (!detail.job.assignedCleanerIds.includes(user._id)) {
+        return null;
+      }
+    }
+
     return {
       ...detail.job,
       property: detail.property,
@@ -207,8 +316,30 @@ export const getMyAssigned = query({
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
 
-    const allJobs = await ctx.db.query("cleaningJobs").collect();
-    let jobs = allJobs.filter((job) => job.assignedCleanerIds.includes(user._id));
+    // Wave 5.b — read from the `userJobAssignments` reverse-index then fetch
+    // only the jobs we actually need. Previously did
+    // `ctx.db.query("cleaningJobs").collect()` and filtered in memory by
+    // `assignedCleanerIds.includes(user._id)`, which read the entire jobs
+    // table on every call. With the reverse-index in place (Wave 5.a, +
+    // backfill complete), we read only the assignment rows for this user
+    // (~10 rows × 200 B) and then `ctx.db.get(jobId)` for the few jobs.
+    //
+    // Pre-requisite: `cleaningJobs/backfillUserJobAssignments:run` must have
+    // populated assignment rows for all existing cleaningJobs on the target
+    // deployment. Verified on whimsical-narwhal-849 (52 rows). Pending on
+    // usable-anaconda-394 (paused; runs at consolidation time).
+    //
+    // See Docs/2026-04-28-convex-bandwidth-optimization-plan.md.
+    const assignments = await ctx.db
+      .query("userJobAssignments")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .collect();
+    const jobDocs = await Promise.all(
+      assignments.map((row) => ctx.db.get(row.jobId)),
+    );
+    let jobs: Doc<"cleaningJobs">[] = jobDocs.filter(
+      (job): job is Doc<"cleaningJobs"> => job !== null,
+    );
 
     if (args.status) {
       jobs = jobs.filter((job) => job.status === args.status);
@@ -240,12 +371,25 @@ export const getMyJobDetail = query({
       return null;
     }
 
-    const isPrivileged =
-      user.role === "admin" || user.role === "manager" || user.role === "property_ops";
+    // Manager-scope task (2026-05-17): managers previously passed the
+    // role gate for any job. Now they only pass for jobs whose property
+    // is in their company scope. Admin/ops still pass unconditionally.
+    let isPrivileged = user.role === "admin" || user.role === "property_ops";
+    if (!isPrivileged && user.role === "manager") {
+      isPrivileged = await canCallerAccessPropertyById(
+        ctx,
+        user,
+        detail.job.propertyId,
+      );
+    }
     const isAssignedCleaner = detail.job.assignedCleanerIds.includes(user._id);
 
     if (!isPrivileged && !isAssignedCleaner) {
-      throw new Error("You are not authorized to access this job.");
+      // Return null (treated as "not found") rather than throwing. A cleaner
+      // who is unassigned from a job while viewing it would otherwise get a
+      // reactive query rejection that crashes the mobile job-detail screen.
+      // Null also avoids leaking that the job exists to unauthorized callers.
+      return null;
     }
 
     return detail;
@@ -340,12 +484,197 @@ export const getForCleaner = query({
     cleanerId: v.id("users"),
   },
   handler: async (ctx, args) => {
-    const allJobs = await ctx.db.query("cleaningJobs").collect();
-    const jobs = allJobs.filter((job) =>
-      job.assignedCleanerIds.includes(args.cleanerId),
+    const user = await getCurrentUser(ctx);
+
+    // Manager-scope task (2026-05-17): caller authorization.
+    // - admin / property_ops: unrestricted.
+    // - manager: only jobs whose property is in their company scope.
+    // - cleaner: only if asking about themselves.
+    if (user.role === "cleaner" && user._id !== args.cleanerId) {
+      return [];
+    }
+
+    // A user viewing their OWN assignments is always in scope for those jobs:
+    // the read below is keyed on `args.cleanerId`, so a self-query can only
+    // ever surface the caller's own jobs. Company-property scoping exists for
+    // manager/ops callers viewing *someone else* — applying it to a self-query
+    // makes getCallerJobScopeForListing return an empty set for cleaners, so
+    // the list comes back empty (the native app's "No jobs assigned" bug while
+    // the PWA — which uses getMyAssigned — showed them fine).
+    const isSelf = user._id === args.cleanerId;
+    const allowedPropertyIds = isSelf
+      ? null
+      : await getCallerJobScopeForListing(ctx, user);
+    if (allowedPropertyIds && allowedPropertyIds.size === 0) {
+      return [];
+    }
+
+    // Use the `userJobAssignments` reverse-index instead of scanning the
+    // whole jobs table. Mirrors the pattern in `getMyAssigned`.
+    const assignments = await ctx.db
+      .query("userJobAssignments")
+      .withIndex("by_user", (q) => q.eq("userId", args.cleanerId))
+      .collect();
+    const jobDocs = await Promise.all(
+      assignments.map((row) => ctx.db.get(row.jobId)),
     );
+    let jobs = jobDocs.filter(
+      (job): job is Doc<"cleaningJobs"> => job !== null,
+    );
+
+    if (allowedPropertyIds) {
+      jobs = jobs.filter((job) => allowedPropertyIds.has(job.propertyId));
+    }
+
     const enriched = await enrichJobs(ctx, jobs);
     return enriched.sort((a, b) => b.scheduledStartAt - a.scheduledStartAt);
+  },
+});
+
+// Wave 3.b — thin counters for "Related Activity" panels.
+// Replace unbounded enriched reads (propertyJobs / getForCleaner)
+// when the consumer only needs a count.
+export const countByProperty = query({
+  args: { propertyId: v.id("properties") },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("cleaningJobs")
+      .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId))
+      .collect();
+    return { total: rows.length };
+  },
+});
+
+export const countByCleaner = query({
+  args: { cleanerId: v.id("users") },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+
+    // Same scope/auth rules as `getForCleaner` so the count and the list
+    // stay in sync. Cleaners can only see their own count.
+    if (user.role === "cleaner" && user._id !== args.cleanerId) {
+      return { total: 0 };
+    }
+    const allowedPropertyIds = await getCallerJobScopeForListing(ctx, user);
+    if (allowedPropertyIds && allowedPropertyIds.size === 0) {
+      return { total: 0 };
+    }
+
+    const rows = await ctx.db
+      .query("userJobAssignments")
+      .withIndex("by_user", (q) => q.eq("userId", args.cleanerId))
+      .collect();
+
+    if (!allowedPropertyIds) {
+      return { total: rows.length };
+    }
+
+    // Manager — count only assignments whose job is in scope.
+    let total = 0;
+    for (const row of rows) {
+      const job = await ctx.db.get(row.jobId);
+      if (job && allowedPropertyIds.has(job.propertyId)) {
+        total += 1;
+      }
+    }
+    return { total };
+  },
+});
+
+// Wave 3.b — narrow team-page subscription to active statuses only.
+// Team page uses `allJobs` exclusively to populate the "Assign job"
+// dropdown, which only renders jobs in active statuses. Previously
+// subscribed to `getAll({ limit: 1000 })`, paying full enrichment for
+// terminal-state jobs (completed/cancelled) the UI never showed.
+const ACTIVE_ASSIGNABLE_STATUSES = [
+  "scheduled",
+  "assigned",
+  "in_progress",
+  "rework_required",
+] as const;
+const GET_ASSIGNABLE_HARD_CAP = 500;
+
+export const getAssignable = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    const cap = Math.min(
+      args.limit ?? GET_ASSIGNABLE_HARD_CAP,
+      GET_ASSIGNABLE_HARD_CAP,
+    );
+
+    // Manager-scope task (2026-05-17): Team-page "Assign job" dropdown
+    // must only surface jobs from the manager's company.
+    const allowedPropertyIds = await getCallerJobScopeForListing(ctx, user);
+    if (allowedPropertyIds && allowedPropertyIds.size === 0) {
+      return [];
+    }
+
+    const perStatus = await Promise.all(
+      ACTIVE_ASSIGNABLE_STATUSES.map((status) =>
+        ctx.db
+          .query("cleaningJobs")
+          .withIndex("by_status", (q) => q.eq("status", status))
+          .collect(),
+      ),
+    );
+    let merged = perStatus.flat();
+    if (allowedPropertyIds) {
+      merged = merged.filter((job) => allowedPropertyIds.has(job.propertyId));
+    }
+    const sorted = merged.sort(
+      (a, b) => a.scheduledStartAt - b.scheduledStartAt,
+    );
+    const limited = sorted.slice(0, cap);
+    return await enrichJobs(ctx, limited);
+  },
+});
+
+// Wave 3.b — windowed read for the schedule calendar grid. Replaces a
+// global `getAll({ limit: 1000 })` subscription with a date-range scan
+// on the `by_scheduled` index. The schedule UI only ever needs jobs in
+// the currently visible date window (typically 1-2 weeks).
+const GET_IN_RANGE_HARD_CAP = 1500;
+
+export const getInDateRange = query({
+  args: {
+    from: v.number(),
+    to: v.number(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    const cap = Math.min(
+      args.limit ?? GET_IN_RANGE_HARD_CAP,
+      GET_IN_RANGE_HARD_CAP,
+    );
+
+    // Manager-scope task (2026-05-17): Schedule calendar must not leak
+    // other companies' jobs to a manager. Cleaners go through
+    // `getMyAssigned`; this query is admin/ops/manager facing.
+    const allowedPropertyIds = await getCallerJobScopeForListing(ctx, user);
+    if (allowedPropertyIds && allowedPropertyIds.size === 0) {
+      return [];
+    }
+
+    // Over-fetch when scoping so the post-filter doesn't underflow.
+    const fetchCap = allowedPropertyIds
+      ? Math.min(cap * 4, GET_IN_RANGE_HARD_CAP * 4)
+      : cap;
+    let jobs = await ctx.db
+      .query("cleaningJobs")
+      .withIndex("by_scheduled", (q) =>
+        q.gte("scheduledStartAt", args.from).lt("scheduledStartAt", args.to),
+      )
+      .take(fetchCap);
+
+    if (allowedPropertyIds) {
+      jobs = jobs
+        .filter((job) => allowedPropertyIds.has(job.propertyId))
+        .slice(0, cap);
+    }
+
+    return await enrichJobs(ctx, jobs);
   },
 });
 
@@ -366,10 +695,7 @@ export const getAssignableCleanersByProperty = query({
         ? await getLatestActiveCompanyMembership(ctx, actor._id)
         : null;
     const managerMissingMembership =
-      actor.role === "manager" &&
-      (!actorCompanyMembership ||
-        (actorCompanyMembership.role !== "manager" &&
-          actorCompanyMembership.role !== "owner"));
+      actor.role === "manager" && !actorCompanyMembership;
 
     const assignmentsByProperty = await Promise.all(
       propertyIds.map(async (propertyId) => {
@@ -422,9 +748,7 @@ export const getAssignableCleanersByProperty = query({
     for (const companyId of companyIds) {
       const members = await ctx.db
         .query("companyMembers")
-        .withIndex("by_company_role", (q) =>
-          q.eq("companyId", companyId).eq("role", "cleaner"),
-        )
+        .withIndex("by_company", (q) => q.eq("companyId", companyId))
         .collect();
 
       const activeMemberIds = members
@@ -437,7 +761,7 @@ export const getAssignableCleanersByProperty = query({
 
       const cleaners = cleanerDocs
         .filter((cleaner): cleaner is Doc<"users"> => cleaner !== null)
-        .filter((cleaner) => cleaner.role === "cleaner")
+        .filter((cleaner) => cleaner.role === "cleaner" || cleaner.role === "manager")
         .map((cleaner) => ({
           _id: cleaner._id,
           name: cleaner.name,
@@ -456,7 +780,7 @@ export const getAssignableCleanersByProperty = query({
 
       if (managerMissingMembership) {
         blockedReason =
-          "As a manager, you need an active cleaning company manager membership before you can assign cleaners.";
+          "As a manager, you need an active cleaning company membership before you can assign cleaners.";
       } else if (!companyId) {
         blockedReason =
           "This property has no cleaning company assigned yet.";
@@ -493,22 +817,54 @@ async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
     : null;
 
   const revision = getCurrentRevision(job);
-  const [sessions, photos, submissions] = await Promise.all([
+  const [sessions, photos, submissionHistoryMeta] = await Promise.all([
     ctx.db
       .query("jobExecutionSessions")
       .withIndex("by_job_and_revision", (q) =>
         q.eq("jobId", jobId).eq("revision", revision),
       )
       .collect(),
+    // Bandwidth: photos for a job have no `revision` field, so we can't
+    // narrow the read to just the current revision without a schema change.
+    // As a defensive cap, take the 200 most-recent rows by creation time.
+    // See Docs/2026-04-28-convex-bandwidth-optimization-plan.md (Wave 1.2).
     ctx.db
       .query("photos")
       .withIndex("by_job", (q) => q.eq("cleaningJobId", jobId))
-      .collect(),
+      .order("desc")
+      .take(200),
+    // Bandwidth: read submission history from the thin `jobSubmissionsMeta`
+    // table (counts only) instead of the heavy `jobSubmissions` table
+    // (which carries 50 KB+ of snapshot data per row). The full latest
+    // submission is fetched separately below via cleaningJob.latestSubmissionId.
+    // Wave 2.b — see Docs/2026-04-28-convex-bandwidth-optimization-plan.md.
     ctx.db
-      .query("jobSubmissions")
-      .withIndex("by_job", (q) => q.eq("jobId", jobId))
-      .collect(),
+      .query("jobSubmissionsMeta")
+      .withIndex("by_job_and_revision", (q) => q.eq("jobId", jobId))
+      .order("desc")
+      .take(20),
   ]);
+
+  // Fetch the one heavy submission doc that the UI actually renders in full
+  // (latestSubmission card with photoSnapshot, checklistSnapshot, etc.).
+  // Strategy:
+  //   - Prefer the submission referenced by job.latestSubmissionId — denormalized
+  //     pointer maintained by sealSubmission / supersede paths.
+  //   - Fall back to scanning meta for the most recent sealed submission, then
+  //     loading just that one doc. Covers edge cases where latestSubmissionId
+  //     was cleared (e.g., reopenForRework) but a sealed snapshot still exists.
+  let latestSubmission: Doc<"jobSubmissions"> | null = null;
+  if (job.latestSubmissionId) {
+    latestSubmission = await ctx.db.get(job.latestSubmissionId);
+  } else {
+    const latestSealedMeta =
+      submissionHistoryMeta.find((meta) => meta.status === "sealed") ??
+      submissionHistoryMeta[0] ??
+      null;
+    if (latestSealedMeta) {
+      latestSubmission = await ctx.db.get(latestSealedMeta.submissionId);
+    }
+  }
 
   const cleanerIdsInSessions = [...new Set(sessions.map((session) => session.cleanerId))];
   const cleanerDocs = await Promise.all(
@@ -522,6 +878,16 @@ async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
 
   const currentPhotoUrls = await Promise.all(
     photos.map((photo) => resolvePhotoAccessUrl(ctx, photo)),
+  );
+  // Phase 3 of video-support: also resolve poster URLs for video rows.
+  // For image rows the resolver falls through to the primary URL, so the
+  // result is harmless to ship as `posterUrl` regardless of mediaKind.
+  const currentPosterUrls = await Promise.all(
+    photos.map((photo) =>
+      photo.mediaKind === "video"
+        ? resolvePhotoAccessUrl(ctx, photo, "poster")
+        : Promise.resolve(null),
+    ),
   );
   const currentPhotos = photos.map((photo, index) => ({
     photoId: photo._id,
@@ -537,6 +903,13 @@ async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
     uploadedAt: photo.uploadedAt,
     uploadedBy: photo.uploadedBy,
     url: currentPhotoUrls[index] ?? null,
+    // Phase 3 of video-support — surface enough metadata for the web
+    // admin to decide whether to render <img> or <video>:
+    mediaKind: photo.mediaKind ?? "image",
+    durationMs: photo.durationMs,
+    width: photo.width,
+    height: photo.height,
+    posterUrl: currentPosterUrls[index] ?? null,
   }));
 
   const currentByRoomMap = new Map<
@@ -562,12 +935,6 @@ async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
     currentByRoomMap.set(roomName, current);
   });
 
-  const sortedSubmissions = submissions.sort((a, b) => b.revision - a.revision);
-  const latestSubmission =
-    sortedSubmissions.find((submission) => submission.status === "sealed") ??
-    sortedSubmissions[0] ??
-    null;
-
   let latestSubmissionEvidence: Array<{
     photoId: Id<"photos">;
     storageId?: Id<"_storage">;
@@ -580,16 +947,49 @@ async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
     uploadedAt: number;
     uploadedBy?: Id<"users">;
     url: string | null;
+    // Phase 3 of video-support — same shape as `currentPhotos`.
+    mediaKind: "image" | "video";
+    durationMs?: number;
+    width?: number;
+    height?: number;
+    posterUrl: string | null;
   }> = [];
 
   if (latestSubmission) {
     const latestUrls = await Promise.all(
       latestSubmission.photoSnapshot.map((photo) => resolveSnapshotPhotoUrl(ctx, photo)),
     );
-    latestSubmissionEvidence = latestSubmission.photoSnapshot.map((photo, index) => ({
-      ...photo,
-      url: latestUrls[index] ?? null,
-    }));
+    // Snapshot rows carry an immutable `mediaKind` (Phase 0 schema). For
+    // video entries we hydrate the poster URL via the live `photos` row
+    // (snapshots don't carry the poster reference).
+    const latestPosterUrls = await Promise.all(
+      latestSubmission.photoSnapshot.map(async (photo) => {
+        if ((photo.mediaKind ?? "image") !== "video") return null;
+        const live = await ctx.db.get(photo.photoId);
+        if (!live) return null;
+        return resolvePhotoAccessUrl(ctx, live, "poster");
+      }),
+    );
+    // Live media metadata (durationMs / width / height) lives on the
+    // `photos` row, not the snapshot. Hydrate the same way as poster.
+    const latestLivePhotos = await Promise.all(
+      latestSubmission.photoSnapshot.map((photo) => ctx.db.get(photo.photoId)),
+    );
+    latestSubmissionEvidence = latestSubmission.photoSnapshot.map((photo, index) => {
+      const live = latestLivePhotos[index];
+      const mediaKind = (photo.mediaKind ?? live?.mediaKind ?? "image") as
+        | "image"
+        | "video";
+      return {
+        ...photo,
+        mediaKind,
+        durationMs: live?.durationMs,
+        width: live?.width,
+        height: live?.height,
+        url: latestUrls[index] ?? null,
+        posterUrl: latestPosterUrls[index] ?? null,
+      };
+    });
   }
 
   const sessionsByCleaner = new Map(
@@ -674,21 +1074,21 @@ async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
             incidentSnapshot: latestSubmission.incidentSnapshot,
           }
         : null,
-      submissionHistory: sortedSubmissions.map((submission) => ({
-        _id: submission._id,
-        revision: submission.revision,
-        status: submission.status,
-        submittedBy: submission.submittedBy,
-        submittedAtServer: submission.submittedAtServer,
-        supersededAt: submission.supersededAt,
-        photoCount: submission.photoSnapshot.length,
-        beforeCount: submission.photoSnapshot.filter((photo) => photo.type === "before")
-          .length,
-        afterCount: submission.photoSnapshot.filter((photo) => photo.type === "after")
-          .length,
-        incidentCount: submission.photoSnapshot.filter(
-          (photo) => photo.type === "incident",
-        ).length,
+      // History reads counts directly from `jobSubmissionsMeta` — no heavy
+      // snapshot data is fetched. Wave 2.b. Note: `_id` here is the *submission*
+      // id (not the meta row id), so the UI key remains stable across the
+      // schema split.
+      submissionHistory: submissionHistoryMeta.map((meta) => ({
+        _id: meta.submissionId,
+        revision: meta.revision,
+        status: meta.status,
+        submittedBy: meta.submittedBy,
+        submittedAtServer: meta.submittedAtServer,
+        supersededAt: meta.supersededAt,
+        photoCount: meta.photoCount,
+        beforeCount: meta.beforeCount,
+        afterCount: meta.afterCount,
+        incidentCount: meta.incidentCount,
       })),
     },
   };
@@ -791,6 +1191,224 @@ export const getJobLivePresence = query({
       },
       pendingCleanerIds,
       sessions: enrichedSessions,
+    };
+  },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Wave 3 (bandwidth optimization) — thin aggregate queries.
+//
+// These return only the numbers UI surfaces actually need, instead of having
+// the client subscribe to the full enriched job set just to compute counts.
+// `getAll`-with-limit-1000 reads ~1000 jobs + their property/cleaner/stay
+// docs reactively per call site; the queries below walk the
+// `cleaningJobs.by_status` and `by_scheduled` indexes and return scalars.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const JOB_STATUSES_ALL: Array<Doc<"cleaningJobs">["status"]> = [
+  "scheduled",
+  "assigned",
+  "in_progress",
+  "awaiting_approval",
+  "rework_required",
+  "completed",
+  "cancelled",
+];
+
+/** Cap on how many rows any single index range scan pulls. We never need more
+ *  than this for counting; if we ever do, switch to a paginated counter
+ *  table. 5000 is well above current per-status cardinality. */
+const COUNT_SCAN_CAP = 5000;
+
+/**
+ * Per-status job counts — what the Jobs page filter-tab chips need. Walks
+ * the `by_status` index for each status. No relational enrichment.
+ *
+ * Optional `propertyId` filter narrows via the `by_property_status` index
+ * (also no enrichment).
+ *
+ * Replaces the second `getAll({ limit: 1000 })` that `jobs-page-client`
+ * was making just to derive these chips.
+ */
+export const getStatusCounts = query({
+  args: {
+    propertyId: v.optional(v.id("properties")),
+    /** When set, only count jobs whose `scheduledEndAt` (or
+     *  `scheduledStartAt` as fallback) is >= this timestamp. Mirrors the
+     *  client-side `hidePastJobs` toggle so the chip counts match what
+     *  the user actually sees in the table. Caller usually passes
+     *  `Date.now()`. */
+    notEndedBefore: v.optional(v.number()),
+  },
+  returns: v.object({
+    all: v.number(),
+    scheduled: v.number(),
+    assigned: v.number(),
+    in_progress: v.number(),
+    awaiting_approval: v.number(),
+    rework_required: v.number(),
+    completed: v.number(),
+    cancelled: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    const cutoff = args.notEndedBefore;
+    const isPast = (job: Doc<"cleaningJobs">): boolean => {
+      if (cutoff === undefined) return false;
+      const end = job.scheduledEndAt ?? job.scheduledStartAt ?? 0;
+      return end < cutoff;
+    };
+
+    const zeroCounts = {
+      all: 0,
+      scheduled: 0,
+      assigned: 0,
+      in_progress: 0,
+      awaiting_approval: 0,
+      rework_required: 0,
+      completed: 0,
+      cancelled: 0,
+    };
+
+    // Manager-scope task (2026-05-17): chip counts must match the
+    // (scoped) list. If the caller has no scope, return zeros.
+    const allowedPropertyIds = await getCallerJobScopeForListing(ctx, user);
+    if (allowedPropertyIds && allowedPropertyIds.size === 0) {
+      return zeroCounts;
+    }
+    // If a single-property filter was requested but the property is out
+    // of scope for a manager, also return zeros.
+    if (
+      args.propertyId &&
+      allowedPropertyIds &&
+      !allowedPropertyIds.has(args.propertyId)
+    ) {
+      return zeroCounts;
+    }
+
+    const counts: Record<string, number> = { ...zeroCounts };
+
+    for (const status of JOB_STATUSES_ALL) {
+      const rows = args.propertyId
+        ? await ctx.db
+            .query("cleaningJobs")
+            .withIndex("by_property_status", (q) =>
+              q.eq("propertyId", args.propertyId!).eq("status", status),
+            )
+            .take(COUNT_SCAN_CAP)
+        : await ctx.db
+            .query("cleaningJobs")
+            .withIndex("by_status", (q) => q.eq("status", status))
+            .take(COUNT_SCAN_CAP);
+      let filtered = cutoff === undefined ? rows : rows.filter((j) => !isPast(j));
+      // Apply manager scope when no single-property filter narrowed already.
+      if (allowedPropertyIds && !args.propertyId) {
+        filtered = filtered.filter((j) => allowedPropertyIds.has(j.propertyId));
+      }
+      counts[status] = filtered.length;
+      counts.all += filtered.length;
+    }
+
+    return {
+      all: counts.all,
+      scheduled: counts.scheduled,
+      assigned: counts.assigned,
+      in_progress: counts.in_progress,
+      awaiting_approval: counts.awaiting_approval,
+      rework_required: counts.rework_required,
+      completed: counts.completed,
+      cancelled: counts.cancelled,
+    };
+  },
+});
+
+/**
+ * Scheduling metrics surfaced on the admin Settings → Scheduling tab.
+ *
+ * Replaces the `getAll({ limit: 1000 })` that `settings-page-client` was
+ * making just to derive these 7 numbers. Walks the `by_status` index for
+ * each lifecycle status, plus a windowed `by_scheduled` scan for the
+ * "next 24h" cohorts. No relational enrichment.
+ */
+export const getSchedulingMetrics = query({
+  args: {},
+  returns: v.object({
+    scheduled: v.number(),
+    assigned: v.number(),
+    inProgress: v.number(),
+    reworkRequired: v.number(),
+    unassignedUpcoming: v.number(),
+    urgentUpcoming: v.number(),
+    hospitableJobs: v.number(),
+  }),
+  handler: async (ctx) => {
+    // Manager-scope task (2026-05-17): admin/ops surface only. Settings →
+    // Scheduling tab is not exposed to managers; restrict at the backend
+    // so a direct call leaks no global counts.
+    await requireRole(ctx, ["admin", "property_ops"]);
+
+    const now = Date.now();
+    const nextTwentyFourHours = now + 24 * 60 * 60 * 1000;
+
+    const countByStatus = async (
+      status: Doc<"cleaningJobs">["status"],
+    ): Promise<number> =>
+      (
+        await ctx.db
+          .query("cleaningJobs")
+          .withIndex("by_status", (q) => q.eq("status", status))
+          .take(COUNT_SCAN_CAP)
+      ).length;
+
+    const [scheduled, assigned, inProgress, reworkRequired] = await Promise.all([
+      countByStatus("scheduled"),
+      countByStatus("assigned"),
+      countByStatus("in_progress"),
+      countByStatus("rework_required"),
+    ]);
+
+    // Upcoming-24h cohorts — scan the by_scheduled index over the window
+    // (range scan, no full-table walk) and count what matches.
+    const upcomingWindow = await ctx.db
+      .query("cleaningJobs")
+      .withIndex("by_scheduled", (q) =>
+        q.gte("scheduledStartAt", now).lte("scheduledStartAt", nextTwentyFourHours),
+      )
+      .take(COUNT_SCAN_CAP);
+
+    const unassignedUpcoming = upcomingWindow.filter(
+      (job) =>
+        (job.status === "scheduled" || job.status === "assigned") &&
+        (job.assignedCleanerIds?.length ?? 0) === 0,
+    ).length;
+
+    const urgentUpcoming = upcomingWindow.filter(
+      (job) => job.isUrgent || job.partyRiskFlag || job.opsRiskFlag,
+    ).length;
+
+    // Hospitable-sourced job count — single index walk, filter by metadata
+    // source. Caller previously did this client-side over 1000 enriched
+    // jobs; the index walk is free.
+    const allJobsForSourceCount = await ctx.db
+      .query("cleaningJobs")
+      .withIndex("by_scheduled")
+      .take(COUNT_SCAN_CAP);
+    const hospitableJobs = allJobsForSourceCount.filter(
+      (job) =>
+        job.metadata &&
+        typeof job.metadata === "object" &&
+        !Array.isArray(job.metadata) &&
+        (job.metadata as Record<string, unknown>).source === "hospitable",
+    ).length;
+
+    return {
+      scheduled,
+      assigned,
+      inProgress,
+      reworkRequired,
+      unassignedUpcoming,
+      urgentUpcoming,
+      hospitableJobs,
     };
   },
 });

@@ -6,6 +6,9 @@ import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   Building2,
   CalendarDays,
   Check,
@@ -25,6 +28,7 @@ import {
 } from "@/components/jobs/job-status";
 import { JobCountdown } from "@/components/jobs/job-countdown";
 import { CreateJobModal } from "@/components/jobs/create-job-modal";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 const workflowStatuses: JobStatus[] = [
   "scheduled",
@@ -37,9 +41,54 @@ type JobsPageClientProps = {
   initialStatus?: JobStatus | "all";
 };
 type MobileJobsFilterPanel = "search" | "property" | "cleaner" | "date" | null;
+type SortKey = "urgency" | "job" | "property" | "cleaner" | "scheduled" | "status";
+type SortDir = "asc" | "desc";
+
+const STATUS_ORDER: Record<string, number> = {
+  in_progress: 0,
+  assigned: 1,
+  scheduled: 2,
+  awaiting_approval: 3,
+  rework_required: 4,
+  completed: 5,
+  cancelled: 6,
+};
+
+function urgencyScore(
+  job: {
+    status: string;
+    scheduledStartAt?: number | null;
+    actualStartAt?: number | null;
+    actualEndAt?: number | null;
+  },
+  now: number,
+): number {
+  // Running timer (in-progress, started, not ended) — most urgent
+  if (job.status === "in_progress" && job.actualStartAt && !job.actualEndAt) {
+    return -Number.MAX_SAFE_INTEGER + (job.actualStartAt ?? 0);
+  }
+  if (job.status === "completed" || job.status === "cancelled") {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  if (!job.scheduledStartAt) {
+    return Number.MAX_SAFE_INTEGER - 1;
+  }
+  // Smaller (incl. negative = "Now") = more urgent
+  return job.scheduledStartAt - now;
+}
 
 export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
   const { isAuthenticated } = useConvexAuth();
+  // Gate the "+ New Job" button to roles the backend actually accepts.
+  // convex/cleaningJobs/mutations.ts:create requires admin or property_ops
+  // (requireRole(["admin", "property_ops"])). Managers and cleaners would
+  // get a 401 on submit, so hiding the button avoids surfacing an action
+  // the user can't complete. Same pattern dashboard-client.tsx already uses.
+  const me = useQuery(
+    api.users.queries.getMyProfile,
+    isAuthenticated ? {} : "skip",
+  ) as { role?: string } | null | undefined;
+  const canCreateJob = me?.role === "admin" || me?.role === "property_ops";
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<JobStatus | "all">(initialStatus);
   const [propertyId, setPropertyId] = useState("all");
@@ -50,6 +99,8 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
   const [openJobMenuId, setOpenJobMenuId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [nowTs, setNowTs] = useState<number | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("urgency");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const jobs = useQuery(
     api.cleaningJobs.queries.getAll,
@@ -58,13 +109,33 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
           status: status === "all" ? undefined : status,
           propertyId: propertyId === "all" ? undefined : propertyId as Id<"properties">,
           limit: 1000,
+          // Wave 3.b — when "Hide past jobs" is on (default), filter
+          // ended jobs at the server instead of fetching + enriching
+          // them only to discard client-side. Mirrors the arg already
+          // used by `getStatusCounts` below.
+          notEndedBefore: hidePastJobs && nowTs !== null ? nowTs : undefined,
         }
       : "skip",
   );
 
-  const allJobs = useQuery(
-    api.cleaningJobs.queries.getAll,
-    isAuthenticated ? { limit: 1000 } : "skip",
+  // Wave 3 (bandwidth optimization): we previously made a SECOND
+  // `getAll({ limit: 1000 })` here just to derive (a) per-status filter
+  // chip counts, (b) property-name option list, and (c) cleaner-name
+  // option list. (a) now comes from a thin `getStatusCounts` query;
+  // (b)+(c) already had dedicated lightweight sources
+  // (`propertiesForCreate`, `cleanerOptionsFromUsers`) and the
+  // job-derived merge was a no-op in practice.
+  const statusCounts = useQuery(
+    api.cleaningJobs.queries.getStatusCounts,
+    isAuthenticated
+      ? {
+          propertyId:
+            propertyId === "all"
+              ? undefined
+              : (propertyId as Id<"properties">),
+          notEndedBefore: hidePastJobs && nowTs !== null ? nowTs : undefined,
+        }
+      : "skip",
   );
 
   const cleanerOptionsFromUsers = useQuery(
@@ -84,14 +155,6 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
     return () => window.clearInterval(intervalId);
   }, []);
 
-  const scopedAllJobs = useMemo(() => {
-    const source = allJobs ?? [];
-    if (!hidePastJobs || nowTs === null) {
-      return source;
-    }
-    return source.filter((job) => !isPastJob(job, nowTs));
-  }, [allJobs, hidePastJobs, nowTs]);
-
   const scopedJobs = useMemo(() => {
     const source = jobs ?? [];
     if (!hidePastJobs || nowTs === null) {
@@ -100,63 +163,37 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
     return source.filter((job) => !isPastJob(job, nowTs));
   }, [jobs, hidePastJobs, nowTs]);
 
-  const propertyOptionsFromJobs = useMemo(() => {
-    const optionMap = new Map<string, string>();
-    scopedAllJobs.forEach((job) => {
-      const name = job.property?.name?.trim();
-      if (!name) {
-        return;
-      }
-      optionMap.set(job.propertyId, name);
-    });
-    return Array.from(optionMap.entries()).map(([id, name]) => ({ id, name }));
-  }, [scopedAllJobs]);
-
   const propertyOptions = useMemo(() => {
     const map = new Map<string, string>();
     (propertiesForCreate ?? []).forEach((property) => {
       map.set(property._id, property.name);
     });
-    propertyOptionsFromJobs.forEach((property) => {
-      map.set(property.id, property.name);
-    });
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-  }, [propertiesForCreate, propertyOptionsFromJobs]);
-
-  const cleanerOptionsFromJobs = useMemo(() => {
-    const optionMap = new Map<string, string>();
-    scopedAllJobs.forEach((job) => {
-      const cleaner = job.cleaners?.[0];
-      if (!cleaner?._id) {
-        return;
-      }
-      const name = cleaner.name || `Cleaner ${cleaner._id.slice(-6)}`;
-      optionMap.set(cleaner._id, name);
-    });
-    return Array.from(optionMap.entries()).map(([id, name]) => ({ id, name }));
-  }, [scopedAllJobs]);
+  }, [propertiesForCreate]);
 
   const cleanerOptions = useMemo(() => {
     const map = new Map<string, string>();
     (cleanerOptionsFromUsers ?? []).forEach((cleaner) => {
       map.set(cleaner._id, cleaner.name?.trim() || `Cleaner ${cleaner._id.slice(-6)}`);
     });
-    cleanerOptionsFromJobs.forEach((cleaner) => {
-      map.set(cleaner.id, cleaner.name);
-    });
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-  }, [cleanerOptionsFromJobs, cleanerOptionsFromUsers]);
+  }, [cleanerOptionsFromUsers]);
 
   const counts = useMemo(() => {
-    const all = scopedAllJobs;
-    const values: Record<string, number> = { all: all.length };
+    const values: Record<string, number> = { all: 0 };
     JOB_STATUSES.forEach((itemStatus) => {
-      values[itemStatus] = all.filter((job) => job.status === itemStatus).length;
+      values[itemStatus] = 0;
     });
+    if (statusCounts) {
+      values.all = statusCounts.all;
+      JOB_STATUSES.forEach((itemStatus) => {
+        values[itemStatus] = statusCounts[itemStatus] ?? 0;
+      });
+    }
     return values;
-  }, [scopedAllJobs]);
+  }, [statusCounts]);
 
-  const isLoading = jobs === undefined || allJobs === undefined;
+  const isLoading = jobs === undefined || statusCounts === undefined;
 
   useEffect(() => {
     if (!openJobMenuId) {
@@ -191,20 +228,70 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
       list = list.filter((job) => (job.assignedCleanerIds ?? []).includes(cleanerId as Id<"users">));
     }
 
-    if (!selectedDate) {
-      return list;
+    if (selectedDate) {
+      const start = new Date(selectedDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 1);
+
+      list = list.filter((job) => {
+        const when = job.scheduledStartAt ?? 0;
+        return when >= start.getTime() && when < end.getTime();
+      });
     }
 
-    const start = new Date(selectedDate);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
-
-    return list.filter((job) => {
-      const when = job.scheduledStartAt ?? 0;
-      return when >= start.getTime() && when < end.getTime();
+    const now = nowTs ?? Date.now();
+    const dir = sortDir === "asc" ? 1 : -1;
+    const sorted = [...list].sort((a, b) => {
+      switch (sortKey) {
+        case "urgency":
+          return (urgencyScore(a, now) - urgencyScore(b, now)) * dir;
+        case "job": {
+          const aLabel = (a.notesForCleaner?.split("\n")[0] || "Cleaning Job").toLowerCase();
+          const bLabel = (b.notesForCleaner?.split("\n")[0] || "Cleaning Job").toLowerCase();
+          return aLabel.localeCompare(bLabel) * dir;
+        }
+        case "property":
+          return (a.property?.name ?? "").localeCompare(b.property?.name ?? "") * dir;
+        case "cleaner":
+          return (a.cleaners?.[0]?.name ?? "").localeCompare(b.cleaners?.[0]?.name ?? "") * dir;
+        case "scheduled":
+          return ((a.scheduledStartAt ?? 0) - (b.scheduledStartAt ?? 0)) * dir;
+        case "status":
+          return ((STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99)) * dir;
+        default:
+          return 0;
+      }
     });
-  }, [scopedJobs, selectedDate, search, cleanerId]);
+    return sorted;
+  }, [scopedJobs, selectedDate, search, cleanerId, sortKey, sortDir, nowTs]);
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  const SortHeader = ({ label, k }: { label: string; k: SortKey }) => {
+    const active = sortKey === k;
+    const Icon = !active ? ArrowUpDown : sortDir === "asc" ? ArrowUp : ArrowDown;
+    return (
+      <button
+        type="button"
+        onClick={() => toggleSort(k)}
+        className={`inline-flex items-center gap-1 uppercase tracking-wide ${
+          active ? "text-[var(--foreground)]" : ""
+        }`}
+        aria-label={`Sort by ${label}`}
+      >
+        {label}
+        <Icon className="h-3 w-3 opacity-70" />
+      </button>
+    );
+  };
 
   return (
     <div className="space-y-4 md:space-y-8">
@@ -316,39 +403,31 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
           ) : null}
 
           {mobileFilterPanel === "property" ? (
-            <select
-              value={propertyId}
-              onChange={(event) => {
-                setPropertyId(event.target.value);
+            <SearchableSelect
+              value={propertyId === "all" ? null : propertyId}
+              onChange={(id) => {
+                setPropertyId(id ?? "all");
                 setMobileFilterPanel(null);
               }}
-              className="w-full rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm"
-            >
-              <option value="all">All Properties</option>
-              {propertyOptions.map((property) => (
-                <option key={property.id} value={property.id}>
-                  {property.name}
-                </option>
-              ))}
-            </select>
+              placeholder="All Properties"
+              searchPlaceholder="Search properties…"
+              aria-label="Filter by property"
+              items={propertyOptions.map((p) => ({ id: p.id, label: p.name }))}
+            />
           ) : null}
 
           {mobileFilterPanel === "cleaner" ? (
-            <select
-              value={cleanerId}
-              onChange={(event) => {
-                setCleanerId(event.target.value);
+            <SearchableSelect
+              value={cleanerId === "all" ? null : cleanerId}
+              onChange={(id) => {
+                setCleanerId(id ?? "all");
                 setMobileFilterPanel(null);
               }}
-              className="w-full rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm"
-            >
-              <option value="all">All Cleaners</option>
-              {cleanerOptions.map((cleaner) => (
-                <option key={cleaner.id} value={cleaner.id}>
-                  {cleaner.name}
-                </option>
-              ))}
-            </select>
+              placeholder="All Cleaners"
+              searchPlaceholder="Search cleaners…"
+              aria-label="Filter by cleaner"
+              items={cleanerOptions.map((c) => ({ id: c.id, label: c.name }))}
+            />
           ) : null}
 
           {mobileFilterPanel === "date" ? (
@@ -377,31 +456,27 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
             />
           </div>
 
-          <select
-            value={propertyId}
-            onChange={(event) => setPropertyId(event.target.value)}
-            className="rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm"
-          >
-            <option value="all">All Properties</option>
-            {propertyOptions.map((property) => (
-              <option key={property.id} value={property.id}>
-                {property.name}
-              </option>
-            ))}
-          </select>
+          <div className="w-48">
+            <SearchableSelect
+              value={propertyId === "all" ? null : propertyId}
+              onChange={(id) => setPropertyId(id ?? "all")}
+              placeholder="All Properties"
+              searchPlaceholder="Search properties…"
+              aria-label="Filter by property"
+              items={propertyOptions.map((p) => ({ id: p.id, label: p.name }))}
+            />
+          </div>
 
-          <select
-            value={cleanerId}
-            onChange={(event) => setCleanerId(event.target.value)}
-            className="rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm"
-          >
-            <option value="all">All Cleaners</option>
-            {cleanerOptions.map((cleaner) => (
-              <option key={cleaner.id} value={cleaner.id}>
-                {cleaner.name}
-              </option>
-            ))}
-          </select>
+          <div className="w-44">
+            <SearchableSelect
+              value={cleanerId === "all" ? null : cleanerId}
+              onChange={(id) => setCleanerId(id ?? "all")}
+              placeholder="All Cleaners"
+              searchPlaceholder="Search cleaners…"
+              aria-label="Filter by cleaner"
+              items={cleanerOptions.map((c) => ({ id: c.id, label: c.name }))}
+            />
+          </div>
 
           <input
             type="date"
@@ -426,13 +501,15 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
           </button>
         </div>
 
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex w-full items-center justify-center gap-2 rounded-none bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90 md:w-auto"
-        >
-          <Plus className="h-4 w-4" />
-          New Job
-        </button>
+        {canCreateJob && (
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex w-full items-center justify-center gap-2 rounded-none bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90 md:w-auto"
+          >
+            <Plus className="h-4 w-4" />
+            New Job
+          </button>
+        )}
       </div>
 
       <div className="flex gap-1 overflow-x-auto border-b">
@@ -551,13 +628,13 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
           <table className="min-w-full text-left text-sm">
           <thead className="border-b border-[var(--border)] text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
             <tr>
-              <th className="px-4 py-3">Job</th>
-              <th className="px-4 py-3">Property</th>
-              <th className="px-4 py-3">Cleaner</th>
-              <th className="px-4 py-3">Scheduled</th>
-              <th className="px-4 py-3">Countdown</th>
+              <th className="px-4 py-3"><SortHeader label="Job" k="job" /></th>
+              <th className="px-4 py-3"><SortHeader label="Property" k="property" /></th>
+              <th className="px-4 py-3"><SortHeader label="Cleaner" k="cleaner" /></th>
+              <th className="px-4 py-3"><SortHeader label="Scheduled" k="scheduled" /></th>
+              <th className="px-4 py-3"><SortHeader label="Countdown" k="urgency" /></th>
               <th className="px-4 py-3">Workflow</th>
-              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3"><SortHeader label="Status" k="status" /></th>
               <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>

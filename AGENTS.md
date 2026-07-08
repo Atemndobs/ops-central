@@ -25,7 +25,7 @@ OpsCentral is the admin web dashboard for J&A Business Solutions' property care 
 ```
 
 - **Frontend:** Next.js 16 (App Router) + Tailwind CSS + shadcn/ui
-- **Backend:** Convex (shared deployment `dev:usable-anaconda-394`)
+- **Backend:** Convex (prod deployment `prod:lovable-oriole-182`, US region)
 - **Auth:** Clerk (`good-bluejay-68.clerk.accounts.dev`)
 - **Charts:** Recharts
 - **Icons:** Lucide React
@@ -34,14 +34,22 @@ OpsCentral is the admin web dashboard for J&A Business Solutions' property care 
 
 ## Convex Deployment
 
-**CRITICAL:** This app shares a Convex deployment with the cleaners mobile app.
+**CRITICAL:** This app shares its Convex deployment with the cleaners mobile app.
 
-- URL: `https://usable-anaconda-394.eu-west-1.convex.cloud`
-- Deployment: `dev:usable-anaconda-394`
-- Team: `bertrand-atemkeng`
-- Project: `opscentral-admin`
+- **Prod URL:** `https://lovable-oriole-182.convex.cloud`
+- **Prod deployment:** `prod:lovable-oriole-182` (US region)
+- **Team:** `bertrand-atemkeng`
+- **Project:** `opscentral-admin-us`
+
+> Migrated 2026-05-02 from the EU-region `whimsical-narwhal-849` /
+> `usable-anaconda-394` deployments. Those are retired — do not push
+> to them.
 
 **Any schema change affects both apps.** Coordinate carefully.
+
+**Shipping backend changes:** use `npx convex deploy` (with
+`PROD_CONVEX_DEPLOY_KEY` from `.env.local`), not `npx convex dev`.
+Node 20+ required (`nvm use lts/jod` if you're on nvm).
 
 ## 🚨 BIG FAT WARNING: CONVEX OWNER REPO
 
@@ -166,3 +174,95 @@ When working on Convex code, **always read `convex/_generated/ai/guidelines.md` 
 
 Convex agent skills for common tasks can be installed by running `npx convex ai-files install`.
 <!-- convex-ai-end -->
+
+---
+
+## Multi-Agent Orchestration (READ BEFORE STARTING WORK)
+
+This repo runs with multiple parallel agent sessions (Claude Code, Codex, etc.). Coordination is **not** ad-hoc — there is a written protocol in `.harness/`.
+
+### Two roles
+
+- **Main session** = this checkout at `apps-ja/opscentral-admin/`. Owns integration, testing, Convex deploy, merge sequencing. Does **not** build features directly.
+- **Worktree session** = a `git worktree` outside this checkout. Owns one branch, one task, one PR.
+
+### If you are a worktree session
+
+1. You are **not** in `apps-ja/opscentral-admin/`. You are in `~/sites/opscentral-admin-<task-name>/`.
+2. Never run `npx convex deploy` or `npx convex dev`.
+3. Rebase on `origin/main` before push and before PR.
+4. Branch lifetime < 3 days. One feature only. No stacking.
+5. When done: open PR, write `.harness/handoffs/<TASK-ID>/worktree-handoff.md`, append to `.harness/integration-queue.md`. Then stop.
+
+### If you are the main session
+
+1. You are in `apps-ja/opscentral-admin/` on `main`.
+2. Read `.harness/integration-queue.md` for ready tasks.
+3. Merge PR, pull, run lint/build, run `npx convex dev --once` only if `Schema impact` ≠ `none`.
+4. Write `.harness/handoffs/<TASK-ID>/integration-result.md`.
+5. Move queue entry from `## Ready` → `## Done`.
+
+### Schema migration policy
+
+- **Schema-first by default.** New required fields, renames, type changes, removed fields, migrations → ship as separate schema-only PR first.
+- **Combined PR** allowed only for additive optional fields with no migration. See `.harness/convex.md`.
+
+### Full rules
+
+- `.harness/project-rules.md` — roles, lifecycle, forbidden actions
+- `.harness/convex.md` — Convex command ownership and migration policy
+- `.harness/worktrees.md` — exact `git worktree` commands
+- `.harness/integration-queue.md` — current ready queue
+- `.harness/handoffs/README.md` — handoff file template
+
+---
+
+## graphify
+
+This project has a graphify knowledge graph at graphify-out/.
+
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- For cross-module "how does X relate to Y" questions, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, or `graphify explain "<concept>"` over grep — these traverse the graph's EXTRACTED + INFERRED edges instead of scanning files
+- After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)
+
+<!-- atem:agents:begin -->
+# ATEM Session Contract
+
+This repository is participating in an ATEM session-handoff workflow.
+Active task: `claude-code:0c6014` (type: `implementation`), current provider: `codex`.
+
+## Before doing anything
+
+Read the active session files. Prefer the stable URL form — same path
+regardless of harness mode or future layout changes:
+
+- `atem://current/brief` — what this task is
+- `atem://current/state` — current state
+- `atem://current/handoff` — what the previous provider left for you
+- `atem://current/next` — what to do next
+- `atem://current/decisions` — past decisions you must respect
+
+Dereference from a shell with `atem resolve <url>`. Same files are
+symlinked under `~/.atem/handles/current/*.md` for providers whose
+tools only accept literal local paths.
+
+Concrete paths for this harness (snapshot):
+- `../../.atem/harness/sessions/claude-code:0c6014/brief.md`
+- `../../.atem/harness/sessions/claude-code:0c6014/state.md`
+- `../../.atem/harness/sessions/claude-code:0c6014/handoff.md`
+- `../../.atem/harness/sessions/claude-code:0c6014/next.md`
+- `../../.atem/harness/sessions/claude-code:0c6014/decisions.md`
+
+## Repository boundary
+
+Only modify files inside `/Users/atem/sites/opscentral-admin-team-redesign`. Never touch sibling repos or sibling worktrees.
+
+## Before stopping
+
+Update the session files (`handoff.md`, `state.md`, `next.md`, `log.md`, and `decisions.md` when relevant).
+Never end without updating `handoff.md`.
+
+Managed by ATEM. Edit content above/below this block, but leave this block intact — `atem handoff` regenerates it.
+<!-- atem:agents:end -->

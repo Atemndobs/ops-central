@@ -7,6 +7,7 @@ import { AlertTriangle, Loader2, Plus, Search } from "lucide-react";
 import type { Id } from "@convex/_generated/dataModel";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/components/ui/toast-provider";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 type InventoryStatus = "ok" | "low_stock" | "out_of_stock" | "reorder_pending";
 
@@ -276,18 +277,16 @@ export default function InventoryPage() {
                     className="w-44 bg-transparent text-sm outline-none"
                   />
                 </div>
-                <select
-                  value={propertyFilter}
-                  onChange={(event) => setPropertyFilter(event.target.value)}
-                  className="rounded-md border bg-[var(--card)] px-2 py-1.5 text-sm"
-                >
-                  <option value="all">All Properties</option>
-                  {properties!.map((property) => (
-                    <option key={property._id} value={property._id}>
-                      {property.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="w-48">
+                  <SearchableSelect
+                    value={propertyFilter === "all" ? null : propertyFilter}
+                    onChange={(id) => setPropertyFilter(id ?? "all")}
+                    placeholder="All Properties"
+                    searchPlaceholder="Search properties…"
+                    aria-label="Filter by property"
+                    items={(properties ?? []).map((p) => ({ id: p._id, label: p.name }))}
+                  />
+                </div>
                 <select
                   value={statusFilter}
                   onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}

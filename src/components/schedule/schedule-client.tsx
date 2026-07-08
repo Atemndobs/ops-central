@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import Link from "next/link";
@@ -9,7 +9,6 @@ import type { Id } from "@convex/_generated/dataModel";
 import {
   Calendar,
   Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Eye,
@@ -30,8 +29,11 @@ import {
   type JobStatus,
 } from "@/components/jobs/job-status";
 import { useToast } from "@/components/ui/toast-provider";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { cn } from "@/lib/utils";
 import type { PropertyStatus } from "@/types/property";
+import { ScheduleCellTaskOverlay } from "@/components/schedule/schedule-cell-task-overlay";
+import { ScheduleDateHeaderTaskOverlay } from "@/components/schedule/schedule-date-header-task-overlay";
 
 type JobWithRelations = {
   _id: Id<"cleaningJobs">;
@@ -132,8 +134,30 @@ export function ScheduleClient() {
   // --- Filters ---
   const [search, setSearch] = useState("");
   const [propertyFilter, setPropertyFilter] = useState("all");
+  const [cityFilter, setCityFilter] = useState("all");
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+
+  // --- Tasks "Mine only" filter (architecture.md §3b) ---
+  // Per-user persisted via localStorage. Off by default for ops.
+  const MINE_ONLY_KEY = "schedule.tasks.mineOnly";
+  const [mineOnly, setMineOnlyState] = useState<boolean>(false);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(MINE_ONLY_KEY);
+      if (raw === "1") setMineOnlyState(true);
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }, []);
+  const setMineOnly = (v: boolean) => {
+    setMineOnlyState(v);
+    try {
+      window.localStorage.setItem(MINE_ONLY_KEY, v ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  };
 
   // --- Desktop toggles ---
   const [isCleanerPanelVisible, setIsCleanerPanelVisible] = useState(false);
@@ -142,8 +166,29 @@ export function ScheduleClient() {
   // --- Mobile-specific ---
   const [mobileTab, setMobileTab] = useState<"schedule" | "team">("schedule");
   const [propertyLabelMode, setPropertyLabelMode] = useState<"full" | "initials" | "hidden">("full");
-  const [showIdleProperties, setShowIdleProperties] = useState(false);
   const [selectedCell, setSelectedCell] = useState<{ propertyId: string; dayKey: string } | null>(null);
+
+  // --- Mobile-default applier (2026-05-19) ---
+  // On a narrow viewport, the 7-day grid crams six tiny columns + a 180px
+  // property column into ~360px and most managers can't read anything.
+  // On mount only (not on every resize — that would override an explicit
+  // user toggle mid-session), if we look mobile, swap to 3-day view +
+  // initials labels. Frees ~140px for the day columns and surfaces the
+  // 3-day window the manager actually cares about. User can still hit
+  // "7" or "Aa" in the toolbar to override.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.innerWidth < 768) {
+      setDayCount(3);
+      setPropertyLabelMode("initials");
+      // Without grid-fit mode, day columns have `minmax(120px, 1fr)` which
+      // overflows a 360px viewport (40px col + 3*120px = 400px). Fit mode
+      // drops the floor so the 3 columns share the available width.
+      setIsGridFitMode(true);
+    }
+    // Intentional: empty dep array → mount-only. Don't react to resize.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // --- Quick assign ---
   const [quickAssignJobId, setQuickAssignJobId] = useState<Id<"cleaningJobs"> | null>(null);
@@ -155,9 +200,77 @@ export function ScheduleClient() {
 
   // --- Convex queries ---
   const properties = useQuery(api.properties.queries.getAll, isAuthenticated ? { limit: 500 } : "skip");
-  const jobs = useQuery(api.cleaningJobs.queries.getAll, isAuthenticated ? { limit: 1000 } : "skip");
-  const cleaners = useQuery(api.users.queries.getByRole, isAuthenticated ? { role: "cleaner" } : "skip");
+  // Wave 3.b — only fetch jobs in the currently-visible date window via the
+  // `by_scheduled` index instead of subscribing to `getAll({ limit: 1000 })`
+  // and slicing in memory. The schedule grid never renders jobs outside the
+  // visible range.
+  const rangeStartTime = startOfDay(rangeStart).getTime();
+  const rangeEndExclusiveTime = addDays(startOfDay(rangeEnd), 1).getTime();
+  const jobs = useQuery(
+    api.cleaningJobs.queries.getInDateRange,
+    isAuthenticated ? { from: rangeStartTime, to: rangeEndExclusiveTime } : "skip",
+  );
+  const cleaners = useQuery(api.users.queries.getCleaners, isAuthenticated ? {} : "skip");
   const assignJob = useMutation(api.cleaningJobs.mutations.assign);
+
+  // Current user — drives the "Mine only" filter on task overlays.
+  const me = useQuery(api.users.queries.getMyProfile, isAuthenticated ? {} : "skip") as
+    | { _id: Id<"users">; role: string }
+    | null
+    | undefined;
+  const myUserId: Id<"users"> | null = me?._id ?? null;
+
+  // Batched per-cell avatar/count projection for the visible window
+  // (architecture.md §4a, R6a). Replaces N×M `listForCell` round-trips.
+  //
+  // `anchorDate` is stored as UTC start-of-day (see startOfUtcDay in
+  // convex/opsTasks/mutations.ts). We MUST pass UTC-midnight bounds here —
+  // the existing rangeStartTime / rangeEndExclusiveTime are local-midnight
+  // (used by jobs with wall-clock scheduledStartAt) and would skip tasks
+  // in tz != UTC.
+  const utcStartOfDay = (d: Date) =>
+    Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  const taskRangeStartUtc = utcStartOfDay(rangeStart);
+  const taskRangeEndUtcExclusive = utcStartOfDay(rangeEnd) + oneDayMs;
+  const taskAvatarRange = useQuery(
+    api.opsTasks.queries.listAssigneeAvatarsForRange,
+    isAuthenticated
+      ? { rangeStart: taskRangeStartUtc, rangeEnd: taskRangeEndUtcExclusive }
+      : "skip",
+  );
+  const taskCellSummaries = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        assignees: Array<{
+          _id: Id<"users">;
+          name?: string;
+          email?: string;
+          avatarUrl?: string | null;
+        }>;
+        unassignedCount: number;
+        openCount: number;
+      }
+    >();
+    if (!taskAvatarRange?.cells) return map;
+    for (const cell of taskAvatarRange.cells) {
+      map.set(`${cell.cellKey}@${cell.anchorDate}`, {
+        assignees: cell.assignees.map((a) => ({
+          _id: a._id,
+          name: a.name,
+          email: a.email,
+          avatarUrl: a.avatarUrl,
+        })),
+        unassignedCount: cell.unassignedCount,
+        openCount: cell.openCount,
+      });
+    }
+    return map;
+  }, [taskAvatarRange]);
+  const taskCellAnchor = (day: Date) =>
+    Date.UTC(day.getFullYear(), day.getMonth(), day.getDate());
+  const summaryFor = (cellKey: string, day: Date) =>
+    taskCellSummaries.get(`${cellKey}@${taskCellAnchor(day)}`);
 
   // --- Computed: days ---
   const rangeDays = useMemo(() => listDaysBetween(rangeStart, rangeEnd), [rangeEnd, rangeStart]);
@@ -169,8 +282,20 @@ export function ScheduleClient() {
     [effectiveDayOffset, rangeDays, visibleDaysCount],
   );
 
-  const rangeStartTime = startOfDay(rangeStart).getTime();
-  const rangeEndExclusiveTime = addDays(startOfDay(rangeEnd), 1).getTime();
+  // --- Computed: city options (from properties) ---
+  const cityOptions = useMemo(() => {
+    const seen = new Map<string, { value: string; label: string }>();
+    for (const p of properties ?? []) {
+      const city = (p.city ?? "").trim();
+      if (!city) continue;
+      const state = (p.state ?? "").trim();
+      const value = state ? `${city}|${state}` : city;
+      if (!seen.has(value)) {
+        seen.set(value, { value, label: state ? `${city}, ${state}` : city });
+      }
+    }
+    return Array.from(seen.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [properties]);
 
   // --- Computed: filtered properties ---
   const filteredProperties = useMemo(() => {
@@ -179,9 +304,16 @@ export function ScheduleClient() {
     return source.filter((property) => {
       const propertyMatches = propertyFilter === "all" || property._id === propertyFilter;
       const textMatches = !q || property.name.toLowerCase().includes(q) || property.address.toLowerCase().includes(q);
-      return propertyMatches && textMatches;
+      let cityMatches = true;
+      if (cityFilter !== "all") {
+        const city = (property.city ?? "").trim();
+        const state = (property.state ?? "").trim();
+        const propValue = state ? `${city}|${state}` : city;
+        cityMatches = propValue === cityFilter;
+      }
+      return propertyMatches && textMatches && cityMatches;
     });
-  }, [properties, propertyFilter, search]);
+  }, [properties, propertyFilter, search, cityFilter]);
 
   const filteredPropertyIds = useMemo(
     () => filteredProperties.map((property) => property._id),
@@ -297,18 +429,21 @@ export function ScheduleClient() {
     setSliderValue(0);
   };
 
-  const handleQuickAssign = async (jobId: Id<"cleaningJobs">, cleanerId: Id<"users">) => {
+  const handleQuickAssign = async (
+    jobId: Id<"cleaningJobs">,
+    cleanerId: Id<"users"> | null,
+  ) => {
     setAssigningJobId(jobId);
     try {
       const result = await assignJob({
         jobId,
-        cleanerIds: [cleanerId],
+        cleanerIds: cleanerId ? [cleanerId] : [],
         notifyCleaners: false,
-        source: "schedule_quick_assign",
+        source: cleanerId ? "schedule_quick_assign" : "schedule_quick_unassign",
         returnWarnings: true,
       });
       setQuickAssignJobId(null);
-      showToast("Cleaner assigned successfully.");
+      showToast(cleanerId ? "Cleaner assigned successfully." : "Cleaner unassigned.");
       const warnings = getAssignWarnings(result);
       if (warnings.length > 0) {
         showToast(`Dispatch warning: ${warnings.join(" ")}`, "error");
@@ -359,22 +494,30 @@ export function ScheduleClient() {
 
     if (propertyLabelMode === "initials") {
       return (
-        <div className="sticky left-0 z-10 flex items-center justify-center border-r bg-[var(--card)] p-1" title={property.name}>
+        <Link
+          href={`/properties/${property._id}`}
+          className="sticky left-0 z-10 flex items-center justify-center border-r bg-[var(--card)] p-1 hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
+          title={property.name}
+        >
           <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${readinessDotClass[pStatus]}`} />
           <span className="text-[10px] font-bold">{propertyInitials(property.name)}</span>
-        </div>
+        </Link>
       );
     }
 
     return (
-      <div className="sticky left-0 z-10 border-r bg-[var(--card)] p-2 sm:p-3">
-        <p className="truncate text-xs font-bold sm:text-sm">{property.name}</p>
+      <Link
+        href={`/properties/${property._id}`}
+        className="sticky left-0 z-10 block border-r bg-[var(--card)] p-2 hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] sm:p-3"
+        title={`Open ${property.name}`}
+      >
+        <p className="truncate text-xs font-bold underline-offset-2 hover:underline sm:text-sm">{property.name}</p>
         <p className="hidden truncate text-xs text-[var(--muted-foreground)] sm:block">{property.address}</p>
         <div className="mt-1 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] sm:mt-2 sm:px-2 sm:text-xs">
           <span className={`h-1.5 w-1.5 rounded-full sm:h-2 sm:w-2 ${readinessDotClass[pStatus]}`} />
           <span className="hidden sm:inline">{pStatus.replace("_", " ")}</span>
         </div>
-      </div>
+      </Link>
     );
   };
 
@@ -382,13 +525,28 @@ export function ScheduleClient() {
     const key = `${propertyId}-${dateKeyFn(day)}`;
 
     if (cellJobs.length === 0) {
-      return <div key={key} className="h-10 border-l sm:h-16" />;
+      return (
+        <div key={key} className="relative h-10 border-l sm:h-16">
+          <ScheduleCellTaskOverlay mineOnly={mineOnly} myUserId={myUserId} summary={summaryFor(propertyId, day)}
+            propertyId={propertyId as Id<"properties">}
+            day={day}
+            variant="compact"
+          />
+        </div>
+      );
     }
 
     // 7-day compact mode: dots on mobile only, desktop always shows full cards
     if (dayCount === 7) {
       return (
-        <div key={key} className="border-l">
+        <div key={key} className="relative border-l">
+          <div className="md:hidden">
+            <ScheduleCellTaskOverlay mineOnly={mineOnly} myUserId={myUserId} summary={summaryFor(propertyId, day)}
+              propertyId={propertyId as Id<"properties">}
+              day={day}
+              variant="compact"
+            />
+          </div>
           {/* Mobile: mini card view */}
           <button
             type="button"
@@ -464,6 +622,16 @@ export function ScheduleClient() {
                           {availableAssignment.blockedReason}
                         </p>
                       ) : null}
+                      {hasAssignedCleaner ? (
+                        <button
+                          type="button"
+                          disabled={assigningJobId === job._id}
+                          onClick={() => void handleQuickAssign(job._id, null)}
+                          className="mb-1 flex w-full items-center justify-between rounded px-2 py-1 text-left text-[11px] text-[var(--destructive)] hover:bg-[var(--accent)] disabled:opacity-60"
+                        >
+                          <span className="truncate">Unassign cleaner</span>
+                        </button>
+                      ) : null}
                       {companyCleaners.length === 0 ? (
                         <p className="text-[11px] text-[var(--muted-foreground)]">
                           {availableAssignment?.blockedReason ?? "No eligible cleaners."}
@@ -495,6 +663,11 @@ export function ScheduleClient() {
             {cellJobs.length > 3 ? (
               <p className="text-[10px] text-[var(--muted-foreground)]">+{cellJobs.length - 3} more</p>
             ) : null}
+            <ScheduleCellTaskOverlay mineOnly={mineOnly} myUserId={myUserId} summary={summaryFor(propertyId, day)}
+              propertyId={propertyId as Id<"properties">}
+              day={day}
+              variant="full"
+            />
           </div>
         </div>
       );
@@ -549,6 +722,16 @@ export function ScheduleClient() {
                       {availableAssignment.blockedReason}
                     </p>
                   ) : null}
+                  {hasAssignedCleaner ? (
+                    <button
+                      type="button"
+                      disabled={assigningJobId === job._id}
+                      onClick={() => void handleQuickAssign(job._id, null)}
+                      className="mb-1 flex w-full items-center justify-between rounded px-2 py-1 text-left text-[11px] text-[var(--destructive)] hover:bg-[var(--accent)] disabled:opacity-60"
+                    >
+                      <span className="truncate">Unassign cleaner</span>
+                    </button>
+                  ) : null}
                   {companyCleaners.length === 0 ? (
                     <p className="text-[11px] text-[var(--muted-foreground)]">
                       {availableAssignment?.blockedReason ?? "No eligible cleaners."}
@@ -580,6 +763,11 @@ export function ScheduleClient() {
         {cellJobs.length > 3 ? (
           <p className="text-[10px] text-[var(--muted-foreground)]">+{cellJobs.length - 3} more</p>
         ) : null}
+        <ScheduleCellTaskOverlay mineOnly={mineOnly} myUserId={myUserId} summary={summaryFor(propertyId, day)}
+          propertyId={propertyId as Id<"properties">}
+          day={day}
+          variant="full"
+        />
       </div>
     );
   };
@@ -687,17 +875,48 @@ export function ScheduleClient() {
               />
             </div>
 
+            {/* City filter (desktop) */}
+            <div className="hidden w-36 md:block">
+              <SearchableSelect
+                value={cityFilter === "all" ? null : cityFilter}
+                onChange={(id) => setCityFilter(id ?? "all")}
+                placeholder="All Cities"
+                searchPlaceholder="Search cities…"
+                aria-label="Filter by city"
+                items={cityOptions.map((o) => ({ id: o.value, label: o.label }))}
+              />
+            </div>
+
             {/* Property filter (desktop) */}
-            <select
-              value={propertyFilter}
-              onChange={(event) => setPropertyFilter(event.target.value)}
-              className="hidden rounded-md border bg-[var(--card)] px-2 py-1 text-xs md:block"
+            <div className="hidden w-48 md:block">
+              <SearchableSelect
+                value={propertyFilter === "all" ? null : propertyFilter}
+                onChange={(id) => setPropertyFilter(id ?? "all")}
+                placeholder="All Properties"
+                searchPlaceholder="Search properties…"
+                aria-label="Filter by property"
+                items={(properties ?? []).map((p) => ({ id: p._id, label: p.name }))}
+              />
+            </div>
+
+            {/* Tasks: mine-only toggle */}
+            <label
+              className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-semibold transition ${
+                mineOnly
+                  ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]"
+                  : "bg-[var(--card)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+              }`}
+              title="Show only tasks assigned to me"
             >
-              <option value="all">All Properties</option>
-              {(properties ?? []).map((property) => (
-                <option key={property._id} value={property._id}>{property.name}</option>
-              ))}
-            </select>
+              <input
+                type="checkbox"
+                className="h-3 w-3"
+                checked={mineOnly}
+                onChange={(e) => setMineOnly(e.target.checked)}
+                aria-label="Mine only"
+              />
+              My tasks
+            </label>
 
             {/* Show/hide team (desktop) */}
             <button
@@ -808,16 +1027,27 @@ export function ScheduleClient() {
               </button>
             )}
 
-            <select
-              value={propertyFilter}
-              onChange={(event) => setPropertyFilter(event.target.value)}
-              className="max-w-[120px] truncate rounded-md border bg-[var(--card)] px-1.5 py-1 text-[10px]"
-            >
-              <option value="all">All</option>
-              {(properties ?? []).map((property) => (
-                <option key={property._id} value={property._id}>{property.name}</option>
-              ))}
-            </select>
+            <div className="max-w-[120px]">
+              <SearchableSelect
+                value={cityFilter === "all" ? null : cityFilter}
+                onChange={(id) => setCityFilter(id ?? "all")}
+                placeholder="All Cities"
+                searchPlaceholder="Search…"
+                aria-label="Filter by city"
+                items={cityOptions.map((o) => ({ id: o.value, label: o.label }))}
+              />
+            </div>
+
+            <div className="max-w-[160px]">
+              <SearchableSelect
+                value={propertyFilter === "all" ? null : propertyFilter}
+                onChange={(id) => setPropertyFilter(id ?? "all")}
+                placeholder="All"
+                searchPlaceholder="Search…"
+                aria-label="Filter by property"
+                items={(properties ?? []).map((p) => ({ id: p._id, label: p.name }))}
+              />
+            </div>
           </div>
         ) : null}
       </header>
@@ -948,6 +1178,7 @@ export function ScheduleClient() {
                 <p className="text-sm font-extrabold leading-none sm:text-lg">
                   {day.toLocaleDateString([], { day: "2-digit" })}
                 </p>
+                <ScheduleDateHeaderTaskOverlay day={day} mineOnly={mineOnly} myUserId={myUserId} summary={summaryFor("global", day)} />
               </div>
             ))}
           </div>
@@ -962,8 +1193,9 @@ export function ScheduleClient() {
             <div className="px-4 py-10 text-sm text-[var(--muted-foreground)]">No properties match your filter.</div>
           ) : (
             <>
-              {/* Active properties (with jobs) */}
-              {activeProperties.map((property) => (
+              {/* All properties — show active and idle together. Portfolio is
+                  too small to make hiding idle rows worthwhile. */}
+              {[...activeProperties, ...idleProperties].map((property) => (
                 <div
                   key={property._id}
                   className="grid border-b last:border-b-0"
@@ -977,35 +1209,6 @@ export function ScheduleClient() {
                   })}
                 </div>
               ))}
-
-              {/* Idle properties (no jobs in range) */}
-              {idleProperties.length > 0 ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setShowIdleProperties((v) => !v)}
-                    className="flex w-full items-center justify-center gap-2 border-b py-2 text-xs text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
-                  >
-                    <ChevronDown className={cn("h-3 w-3 transition", showIdleProperties && "rotate-180")} />
-                    {idleProperties.length} {idleProperties.length === 1 ? "property" : "properties"} with no jobs
-                    <ChevronDown className={cn("h-3 w-3 transition", showIdleProperties && "rotate-180")} />
-                  </button>
-                  {showIdleProperties
-                    ? idleProperties.map((property) => (
-                        <div
-                          key={property._id}
-                          className="grid border-b last:border-b-0"
-                          style={{ gridTemplateColumns: scheduleGridTemplateColumns }}
-                        >
-                          {renderPropertyCell(property as { _id: string; name: string; address: string; status?: unknown })}
-                          {visibleDays.map((day) => (
-                            <div key={`${property._id}-${dateKeyFn(day)}`} className="h-8 border-l sm:h-10" />
-                          ))}
-                        </div>
-                      ))
-                    : null}
-                </>
-              ) : null}
             </>
           )}
 
@@ -1060,6 +1263,16 @@ export function ScheduleClient() {
                           </button>
                           {isAssigning ? (
                             <div className="mt-2 space-y-1">
+                              {hasAssignedCleaner ? (
+                                <button
+                                  type="button"
+                                  disabled={assigningJobId === job._id}
+                                  onClick={() => void handleQuickAssign(job._id, null)}
+                                  className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[11px] text-[var(--destructive)] hover:bg-black/10 disabled:opacity-60"
+                                >
+                                  <span className="truncate">Unassign cleaner</span>
+                                </button>
+                              ) : null}
                               {companyCleaners.length === 0 ? (
                                 <p className="text-[11px] opacity-60">
                                   {availableAssignment?.blockedReason ??

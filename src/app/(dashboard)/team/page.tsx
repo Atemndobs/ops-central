@@ -1,12 +1,14 @@
 "use client";
 
-import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, type FormEvent, Fragment, useEffect, useMemo, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import Image from "next/image";
 import { useToast } from "@/components/ui/toast-provider";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import { TeamDetailDrawer, type DrawerMember } from "@/components/team/team-detail-drawer";
 import { uploadImageFile } from "@/lib/upload-image";
 import {
   getRoleFromMetadata,
@@ -25,13 +27,43 @@ import {
   Users,
 } from "lucide-react";
 
-type UserRole = "cleaner" | "manager" | "property_ops" | "admin";
+import { getRoleDefinition, type RoleKey } from "@/lib/roles";
+type UserRole = RoleKey;
 type CompanyMemberRole = "cleaner" | "manager" | "owner";
 type AvailabilityFilter = "all" | "active" | "working" | "available" | "off";
 type TeamViewMode = "card" | "list";
 type MobileFilterPanel = "search" | "role" | "status" | null;
 
+// Items for the role-assignment SearchableSelect (Add Member + Edit Member).
+// Order mirrors the legacy <select> for muscle memory: cleaner → owner.
+const ROLE_ASSIGN_ITEMS: { id: UserRole; label: string }[] = [
+  { id: "cleaner", label: "Cleaner" },
+  { id: "manager", label: "Manager" },
+  { id: "property_ops", label: "Property Ops" },
+  { id: "admin", label: "Admin" },
+  { id: "owner", label: "Owner" },
+];
+
+// Items for the role-filter SearchableSelect (mobile + desktop). The "all"
+// affordance is the SearchableSelect's `clearable` clear button — when the
+// selection is cleared, we map back to "all" in onChange.
+const ROLE_FILTER_ITEMS: { id: UserRole; label: string }[] = [
+  { id: "admin", label: "Admin" },
+  { id: "cleaner", label: "Cleaner" },
+  { id: "manager", label: "Manager" },
+  { id: "property_ops", label: "Property Ops" },
+  { id: "owner", label: "Owner" },
+];
+
 const TEAM_VIEW_MODE_STORAGE_KEY = "opscentral.team.defaultViewMode";
+const TEAM_DENSITY_STORAGE_KEY = "opscentral.team.density";
+const TEAM_GROUP_BY_STORAGE_KEY = "opscentral.team.groupBy";
+const TEAM_FILTER_CHIP_KEY = "opscentral.team.filterChip";
+type FilterChip = "none" | "unassignedRole" | "unassignedCompany" | "inactive30d";
+const TEAM_RAIL_OPEN_STORAGE_KEY = "opscentral.team.railOpen";
+
+type TeamDensity = "comfortable" | "compact";
+type TeamGroupBy = "none" | "company";
 
 type MemberActionTarget = {
   userId: Id<"users">;
@@ -41,6 +73,7 @@ type MemberActionTarget = {
   avatarUrl?: string;
   role: UserRole;
   companyId: Id<"cleaningCompanies"> | null;
+  companyName?: string | null;
   companyMemberRole: CompanyMemberRole | null;
 };
 
@@ -51,10 +84,18 @@ export default function TeamPage() {
   const [availabilityFilter, setAvailabilityFilter] =
     useState<AvailabilityFilter>("all");
   const [viewMode, setViewMode] = useState<TeamViewMode>("list");
+  const [density, setDensity] = useState<TeamDensity>("compact");
+  const [groupBy, setGroupBy] = useState<TeamGroupBy>("none");
+  const [railOpen, setRailOpen] = useState<boolean>(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [filterChip, setFilterChip] = useState<FilterChip>("none");
+  // Mounted flag — chip counts depend on Date.now() (inactive cutoff), which
+  // mismatches between SSR and CSR. Render counts only after mount.
+  const [hasMounted, setHasMounted] = useState(false);
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
   const [mobileFilterPanel, setMobileFilterPanel] = useState<MobileFilterPanel>(null);
-  const [openMenuForUserId, setOpenMenuForUserId] = useState<Id<"users"> | null>(
-    null,
-  );
 
   const [roleEditor, setRoleEditor] = useState<MemberActionTarget | null>(null);
   const [roleDraft, setRoleDraft] = useState<UserRole>("cleaner");
@@ -98,6 +139,7 @@ export default function TeamPage() {
     email: "",
     role: "cleaner" as UserRole,
     phone: "",
+    companyId: "" as string,
   });
 
   const { isLoaded: isClerkLoaded, isSignedIn, sessionClaims, userId } = useAuth();
@@ -115,6 +157,10 @@ export default function TeamPage() {
   const roleFromMetadata = getRoleFromMetadata(user?.publicMetadata);
   const currentRole = roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "manager";
   const canManageTeam = currentRole === "admin";
+  const canDispatchCleaners =
+    currentRole === "admin" ||
+    currentRole === "property_ops" ||
+    currentRole === "manager";
   const teamMetrics = useQuery(
     api.admin.queries.getTeamMetrics,
     isAuthenticated ? {} : "skip",
@@ -127,9 +173,13 @@ export default function TeamPage() {
     api.properties.queries.getAll,
     isAuthenticated ? { limit: 500 } : "skip",
   );
+  // Wave 3.b — only active-status jobs are ever rendered (assign-job
+  // dropdown filters on these four statuses). Use the thin `getAssignable`
+  // query instead of `getAll({ limit: 1000 })` to skip enrichment for
+  // terminal-state jobs the UI never shows.
   const allJobs = useQuery(
-    api.cleaningJobs.queries.getAll,
-    isAuthenticated ? { limit: 1000 } : "skip",
+    api.cleaningJobs.queries.getAssignable,
+    isAuthenticated ? {} : "skip",
   );
   const assignUserCompanyMembership = useMutation(
     api.admin.mutations.assignUserCompanyMembership,
@@ -137,21 +187,6 @@ export default function TeamPage() {
   const updateUser = useMutation(api.admin.mutations.updateUser);
   const assignCleanerToJob = useMutation(api.cleaningJobs.mutations.assign);
   const assignPropertyToCompany = useMutation(api.admin.mutations.assignPropertyToCompany);
-
-  useEffect(() => {
-    if (!openMenuForUserId) {
-      return;
-    }
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target?.closest("[data-team-member-menu]")) {
-        return;
-      }
-      setOpenMenuForUserId(null);
-    };
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, [openMenuForUserId]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -170,6 +205,31 @@ export default function TeamPage() {
     setViewMode(mobileDefault);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const d = window.localStorage.getItem(TEAM_DENSITY_STORAGE_KEY) as TeamDensity | null;
+    if (d === "compact" || d === "comfortable") setDensity(d);
+    const g = window.localStorage.getItem(TEAM_GROUP_BY_STORAGE_KEY) as TeamGroupBy | null;
+    if (g === "company" || g === "none") setGroupBy(g);
+    const r = window.localStorage.getItem(TEAM_RAIL_OPEN_STORAGE_KEY);
+    if (r === "true") setRailOpen(true);
+    const f = window.localStorage.getItem(TEAM_FILTER_CHIP_KEY) as FilterChip | null;
+    if (
+      f === "unassignedRole" ||
+      f === "unassignedCompany" ||
+      f === "inactive30d" ||
+      f === "none"
+    )
+      setFilterChip(f);
+  }, []);
+
+  function setFilterChipPreference(next: FilterChip) {
+    setFilterChip(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(TEAM_FILTER_CHIP_KEY, next);
+    }
+  }
+
   function setViewPreference(nextMode: TeamViewMode) {
     setViewMode(nextMode);
     if (typeof window === "undefined") {
@@ -178,10 +238,44 @@ export default function TeamPage() {
     window.localStorage.setItem(TEAM_VIEW_MODE_STORAGE_KEY, nextMode);
   }
 
+  function setDensityPreference(next: TeamDensity) {
+    setDensity(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(TEAM_DENSITY_STORAGE_KEY, next);
+    }
+  }
+
+  function setGroupByPreference(next: TeamGroupBy) {
+    setGroupBy(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(TEAM_GROUP_BY_STORAGE_KEY, next);
+    }
+  }
+
+  function toggleRail() {
+    setRailOpen((prev) => {
+      const next = !prev;
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(TEAM_RAIL_OPEN_STORAGE_KEY, String(next));
+      }
+      return next;
+    });
+  }
+
+  function toggleGroupCollapsed(key: string) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   const members = useMemo(() => {
     const combined = [...(teamMetrics?.members ?? [])];
     const q = search.trim().toLowerCase();
 
+    const inactiveCutoff = Date.now() - 30 * 86_400_000;
     const filtered = combined.filter((member) => {
       const roleMatches = roleFilter === "all" || member.role === roleFilter;
       const availabilityMatches =
@@ -192,11 +286,64 @@ export default function TeamPage() {
         !q ||
         member.name?.toLowerCase().includes(q) ||
         member.email?.toLowerCase().includes(q);
-      return roleMatches && availabilityMatches && textMatches;
+      const chipMatches = (() => {
+        if (filterChip === "none") return true;
+        if (filterChip === "unassignedRole")
+          return !member.role || (member.role as string) === "unassigned";
+        if (filterChip === "unassignedCompany") return !member.companyId;
+        if (filterChip === "inactive30d") {
+          const last = (member as { lastActiveAt?: number }).lastActiveAt;
+          return !last || last < inactiveCutoff;
+        }
+        return true;
+      })();
+      return roleMatches && availabilityMatches && textMatches && chipMatches;
     });
 
     return filtered;
-  }, [availabilityFilter, roleFilter, search, teamMetrics]);
+  }, [availabilityFilter, roleFilter, search, teamMetrics, filterChip]);
+
+  const chipCounts = useMemo(() => {
+    const all = teamMetrics?.members ?? [];
+    const inactiveCutoff = Date.now() - 30 * 86_400_000;
+    return {
+      unassignedRole: all.filter(
+        (m) => !m.role || (m.role as string) === "unassigned",
+      ).length,
+      unassignedCompany: all.filter((m) => !m.companyId).length,
+      inactive30d: all.filter((m) => {
+        const last = (m as { lastActiveAt?: number }).lastActiveAt;
+        return !last || last < inactiveCutoff;
+      }).length,
+    };
+  }, [teamMetrics]);
+
+  const groupedMembers = useMemo(() => {
+    if (groupBy !== "company") return null;
+    const groups = new Map<
+      string,
+      { key: string; label: string; companyId: string | null; rows: typeof members }
+    >();
+    for (const m of members) {
+      const cid = (m.companyId as string | null | undefined) ?? null;
+      const key = cid ?? "__unassigned__";
+      const label =
+        m.companyName ?? (cid ? "Unknown company" : "Unassigned");
+      const existing = groups.get(key);
+      if (existing) {
+        existing.rows.push(m);
+      } else {
+        groups.set(key, { key, label, companyId: cid, rows: [m] });
+      }
+    }
+    // Sort: Unassigned first, then alphabetical
+    return Array.from(groups.values()).sort((a, b) => {
+      if (a.key === "__unassigned__") return -1;
+      if (b.key === "__unassigned__") return 1;
+      return a.label.localeCompare(b.label);
+    });
+  }, [groupBy, members]);
+
   const assignableJobs = useMemo(
     () =>
       (allJobs ?? [])
@@ -218,8 +365,13 @@ export default function TeamPage() {
       avatarUrl: member.avatarUrl,
       role: member.role,
       companyId: member.companyId,
+      companyName: member.companyName,
       companyMemberRole: member.companyMemberRole,
     };
+  }
+
+  function canDispatchMember(member: { role: UserRole }) {
+    return canDispatchCleaners && (member.role === "cleaner" || member.role === "manager");
   }
 
   const summary = useMemo(() => {
@@ -255,6 +407,21 @@ export default function TeamPage() {
       avgQuality,
     };
   }, [members, teamMetrics]);
+
+  const companyMembershipRows = useMemo(() => {
+    return [...(teamMetrics?.members ?? [])]
+      .filter((member) => member.role === "cleaner" || member.role === "manager")
+      .sort((a, b) => {
+        const companyRank =
+          Number(Boolean(a.companyId)) - Number(Boolean(b.companyId));
+        if (companyRank !== 0) {
+          return companyRank;
+        }
+        const nameA = (a.name?.trim() || a.email || "").toLowerCase();
+        const nameB = (b.name?.trim() || b.email || "").toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+  }, [teamMetrics]);
 
   const leaderboard = useMemo(() => {
     return [...members]
@@ -305,7 +472,6 @@ export default function TeamPage() {
     setRoleEditor(member);
     setRoleDraft(member.role);
     setMemberActionSheet(null);
-    setOpenMenuForUserId(null);
   }
 
   function openProfileEditor(member: MemberActionTarget) {
@@ -316,7 +482,6 @@ export default function TeamPage() {
       avatarUrl: member.avatarUrl ?? "",
     });
     setMemberActionSheet(null);
-    setOpenMenuForUserId(null);
   }
 
   function openCompanyEditor(member: MemberActionTarget) {
@@ -327,21 +492,18 @@ export default function TeamPage() {
         (member.role === "manager" ? "manager" : "cleaner"),
     );
     setMemberActionSheet(null);
-    setOpenMenuForUserId(null);
   }
 
   function openJobEditor(member: MemberActionTarget) {
     setJobEditor(member);
     setJobDraft("");
     setMemberActionSheet(null);
-    setOpenMenuForUserId(null);
   }
 
   function openPropertyEditor(member: MemberActionTarget) {
     setPropertyEditor(member);
     setPropertyDraft("");
     setMemberActionSheet(null);
-    setOpenMenuForUserId(null);
   }
 
   async function handleRoleUpdate(event: FormEvent<HTMLFormElement>) {
@@ -736,20 +898,18 @@ export default function TeamPage() {
                 </div>
               ) : null}
               {mobileFilterPanel === "role" ? (
-                <select
-                  value={roleFilter}
-                  onChange={(event) => {
-                    setRoleFilter(event.target.value as typeof roleFilter);
+                <SearchableSelect
+                  value={roleFilter === "all" ? null : roleFilter}
+                  onChange={(id) => {
+                    setRoleFilter((id ?? "all") as typeof roleFilter);
                     setMobileFilterPanel(null);
                   }}
-                  className="w-full min-w-0 rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm outline-none"
-                >
-                  <option value="all">All Roles</option>
-                  <option value="admin">Admin</option>
-                  <option value="cleaner">Cleaner</option>
-                  <option value="manager">Manager</option>
-                  <option value="property_ops">Property Ops</option>
-                </select>
+                  items={ROLE_FILTER_ITEMS}
+                  placeholder="All Roles"
+                  searchPlaceholder="Search roles…"
+                  aria-label="Filter team by role"
+                  clearable
+                />
               ) : null}
               {mobileFilterPanel === "status" ? (
                 <select
@@ -778,17 +938,19 @@ export default function TeamPage() {
                   className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)] md:w-44"
                 />
               </div>
-              <select
-                value={roleFilter}
-                onChange={(event) => setRoleFilter(event.target.value as typeof roleFilter)}
-                className="w-full min-w-0 rounded-none border bg-[var(--card)] px-3 py-1.5 text-sm outline-none md:w-auto"
-              >
-                <option value="all">All Roles</option>
-                <option value="admin">Admin</option>
-                <option value="cleaner">Cleaner</option>
-                <option value="manager">Manager</option>
-                <option value="property_ops">Property Ops</option>
-              </select>
+              <div className="w-full min-w-0 md:w-44">
+                <SearchableSelect
+                  value={roleFilter === "all" ? null : roleFilter}
+                  onChange={(id) =>
+                    setRoleFilter((id ?? "all") as typeof roleFilter)
+                  }
+                  items={ROLE_FILTER_ITEMS}
+                  placeholder="All Roles"
+                  searchPlaceholder="Search roles…"
+                  aria-label="Filter team by role"
+                  clearable
+                />
+              </div>
               <select
                 value={availabilityFilter}
                 onChange={(event) =>
@@ -803,53 +965,141 @@ export default function TeamPage() {
                 <option value="off">Off</option>
               </select>
             </div>
-            <div className="inline-flex w-full overflow-hidden rounded-none border bg-[var(--card)] sm:w-auto">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex w-full overflow-hidden rounded-none border bg-[var(--card)] sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setViewPreference("card")}
+                  className={`inline-flex flex-1 items-center justify-center gap-2 px-3 py-1.5 text-sm sm:flex-none ${
+                    viewMode === "card"
+                      ? "bg-[var(--accent)] text-[var(--foreground)]"
+                      : "text-[var(--muted-foreground)]"
+                  }`}
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                  Card
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewPreference("list")}
+                  className={`inline-flex flex-1 items-center justify-center gap-2 border-l px-3 py-1.5 text-sm sm:flex-none ${
+                    viewMode === "list"
+                      ? "bg-[var(--accent)] text-[var(--foreground)]"
+                      : "text-[var(--muted-foreground)]"
+                  }`}
+                >
+                  <List className="h-4 w-4" />
+                  List
+                </button>
+              </div>
+              {viewMode === "list" ? (
+                <div className="inline-flex overflow-hidden rounded-none border bg-[var(--card)]">
+                  <button
+                    type="button"
+                    onClick={() => setDensityPreference("comfortable")}
+                    className={`px-3 py-1.5 text-xs ${
+                      density === "comfortable"
+                        ? "bg-[var(--accent)] text-[var(--foreground)]"
+                        : "text-[var(--muted-foreground)]"
+                    }`}
+                    aria-pressed={density === "comfortable"}
+                    title="Comfortable rows"
+                  >
+                    Comfortable
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDensityPreference("compact")}
+                    className={`border-l px-3 py-1.5 text-xs ${
+                      density === "compact"
+                        ? "bg-[var(--accent)] text-[var(--foreground)]"
+                        : "text-[var(--muted-foreground)]"
+                    }`}
+                    aria-pressed={density === "compact"}
+                    title="Compact rows"
+                  >
+                    Compact
+                  </button>
+                </div>
+              ) : null}
               <button
                 type="button"
-                onClick={() => setViewPreference("card")}
-                className={`inline-flex flex-1 items-center justify-center gap-2 px-3 py-1.5 text-sm sm:flex-none ${
-                  viewMode === "card"
+                onClick={() =>
+                  setGroupByPreference(groupBy === "company" ? "none" : "company")
+                }
+                className={`inline-flex items-center gap-1 rounded-none border px-3 py-1.5 text-xs ${
+                  groupBy === "company"
                     ? "bg-[var(--accent)] text-[var(--foreground)]"
-                    : "text-[var(--muted-foreground)]"
+                    : "bg-[var(--card)] text-[var(--muted-foreground)]"
                 }`}
+                aria-pressed={groupBy === "company"}
+                title="Group by company"
               >
-                <LayoutGrid className="h-4 w-4" />
-                Card
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewPreference("list")}
-                className={`inline-flex flex-1 items-center justify-center gap-2 border-l px-3 py-1.5 text-sm sm:flex-none ${
-                  viewMode === "list"
-                    ? "bg-[var(--accent)] text-[var(--foreground)]"
-                    : "text-[var(--muted-foreground)]"
-                }`}
-              >
-                <List className="h-4 w-4" />
-                List
+                Group: {groupBy === "company" ? "Company" : "None"}
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-2 md:gap-4">
-            <StatBox
-              label="Total Cleaners"
+          <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+            {(
+              [
+                { id: "unassignedRole" as const, label: "Unassigned role", count: chipCounts.unassignedRole },
+                { id: "unassignedCompany" as const, label: "No company", count: chipCounts.unassignedCompany },
+                { id: "inactive30d" as const, label: "Inactive 30d", count: chipCounts.inactive30d },
+              ]
+            ).map((chip) => {
+              const active = filterChip === chip.id;
+              return (
+                <button
+                  key={chip.id}
+                  type="button"
+                  onClick={() => setFilterChipPreference(active ? "none" : chip.id)}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition ${
+                    active
+                      ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]"
+                      : "bg-[var(--card)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+                  }`}
+                  aria-pressed={active}
+                >
+                  {chip.label}
+                  <span className="rounded-full bg-[var(--accent)] px-1.5 text-[10px] font-semibold" suppressHydrationWarning>
+                    {hasMounted ? chip.count : "—"}
+                  </span>
+                </button>
+              );
+            })}
+            {filterChip !== "none" ? (
+              <button
+                type="button"
+                onClick={() => setFilterChipPreference("none")}
+                className="text-xs text-[var(--muted-foreground)] underline underline-offset-2 hover:text-[var(--foreground)]"
+              >
+                Clear filter
+              </button>
+            ) : null}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-y border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm">
+            <StatChip
+              label="Cleaners"
               value={summary.totalCleaners}
               tone="text-orange-600"
               onClick={() =>
                 drillToMembers({ role: "cleaner", availability: "all" })
               }
             />
-            <StatBox
-              label="Active Now"
+            <span className="text-[var(--border)]">·</span>
+            <StatChip
+              label="Active"
               value={summary.activeNow}
               tone="text-emerald-600"
               onClick={() =>
                 drillToMembers({ role: "all", availability: "active" })
               }
             />
-            <StatBox
-              label="On-Time Avg"
+            <span className="text-[var(--border)]">·</span>
+            <StatChip
+              label="On-time"
               value={
                 summary.avgOnTime === null ? "—" : `${summary.avgOnTime}%`
               }
@@ -857,12 +1107,15 @@ export default function TeamPage() {
                 drillToMembers({ role: "cleaner", availability: "all" })
               }
             />
-            <StatBox
-              label="Avg Quality"
+            <span className="text-[var(--border)]">·</span>
+            <StatChip
+              label="Quality"
               value={summary.avgQuality === null ? "—" : `${summary.avgQuality}/5`}
               onClick={() => scrollToSection("team-leaderboard-section")}
             />
           </div>
+
+          {/* Company Membership management moved to /companies → click a company → Members section. */}
 
           <div id="team-members-section">
             {loading ? (
@@ -902,6 +1155,11 @@ export default function TeamPage() {
                         </p>
                         <p className="mt-1 text-[11px] uppercase tracking-wider text-[var(--muted-foreground)]">
                           {formatRoleLabel(member.role)}
+                          {member.role === "owner" && member.ownedPropertyCount === 0 ? (
+                            <span className="ml-2 font-semibold text-amber-600">
+                              No properties linked
+                            </span>
+                          ) : null}
                         </p>
                         <p className="mt-1 truncate text-xs text-[var(--muted-foreground)]">
                           {member.companyName
@@ -914,60 +1172,14 @@ export default function TeamPage() {
                         </p>
                       </div>
                     </div>
-                    {canManageTeam ? (
-                      <div className="relative" data-team-member-menu>
-                        <button
-                          className="text-2xl leading-none"
-                          onClick={() =>
-                            setOpenMenuForUserId((current) =>
-                              current === member._id ? null : member._id,
-                            )
-                          }
-                          aria-haspopup="menu"
-                          aria-expanded={openMenuForUserId === member._id}
-                        >
-                          ⋮
-                        </button>
-                        {openMenuForUserId === member._id ? (
-                          <div className="absolute right-0 top-8 z-20 w-44 rounded-none border bg-[var(--card)] py-1 shadow-lg">
-                            <button
-                              type="button"
-                              className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                              onClick={() => openProfileEditor(toMemberActionTarget(member))}
-                            >
-                              Edit Profile
-                            </button>
-                            <button
-                              type="button"
-                              className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                              onClick={() => openRoleEditor(toMemberActionTarget(member))}
-                            >
-                              Assign Role
-                            </button>
-                            <button
-                              type="button"
-                              className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                              onClick={() => openCompanyEditor(toMemberActionTarget(member))}
-                            >
-                              Assign Company
-                            </button>
-                            <button
-                              type="button"
-                              className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                              onClick={() => openJobEditor(toMemberActionTarget(member))}
-                            >
-                              Assign Job
-                            </button>
-                            <button
-                              type="button"
-                              className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                              onClick={() => openPropertyEditor(toMemberActionTarget(member))}
-                            >
-                              Assign Property
-                            </button>
-                          </div>
-                        ) : null}
-                      </div>
+                    {canManageTeam || canDispatchMember(member) ? (
+                      <button
+                        type="button"
+                        onClick={() => setMemberActionSheet(toMemberActionTarget(member))}
+                        className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-[var(--accent)]"
+                      >
+                        Manage
+                      </button>
                     ) : null}
                   </div>
 
@@ -1039,102 +1251,37 @@ export default function TeamPage() {
                         </p>
                         <p className="mt-0.5 text-[11px] uppercase tracking-wide text-[var(--muted-foreground)]">
                           {formatRoleLabel(member.role)} · {member.availability}
+                          {member.role === "owner" && member.ownedPropertyCount === 0 ? (
+                            <span className="ml-2 font-semibold text-amber-600">
+                              No properties linked
+                            </span>
+                          ) : null}
                         </p>
                       </div>
-                      <div className="relative" data-team-member-menu>
+                      {canManageTeam || canDispatchMember(member) ? (
                         <button
                           type="button"
-                          className="rounded-md border px-2 py-1 text-sm leading-none"
-                          onClick={() =>
-                            setOpenMenuForUserId((current) =>
-                              current === member._id ? null : member._id,
-                            )
-                          }
-                          aria-haspopup="menu"
-                          aria-expanded={openMenuForUserId === member._id}
+                          onClick={() => setMemberActionSheet(toMemberActionTarget(member))}
+                          className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-[var(--accent)]"
                         >
-                          ⋮
+                          Manage
                         </button>
-                        {openMenuForUserId === member._id ? (
-                          <div className="absolute right-0 top-9 z-20 w-64 rounded-none border bg-[var(--card)] p-2 shadow-lg">
-                            <div className="space-y-1 border-b pb-2 text-xs text-[var(--muted-foreground)]">
-                              <p className="truncate">{member.email || "—"}</p>
-                              <p className="truncate">
-                                {member.companyName
-                                  ? `${member.companyName}${
-                                      member.companyMemberRole
-                                        ? ` · ${formatCompanyRoleLabel(member.companyMemberRole)}`
-                                        : ""
-                                    }`
-                                  : "No company assigned"}
-                              </p>
-                              <p>Quality: {formatQualityScore(member.qualityScore)}</p>
-                              <p>On-Time: {formatPercent(member.onTimePct)}</p>
-                              <p>Assignments: {member.activeAssignmentsCount}</p>
-                            </div>
-                            {canManageTeam ? (
-                              <div className="mt-2 grid gap-1">
-                                <button
-                                  type="button"
-                                  className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                  onClick={() => openProfileEditor(toMemberActionTarget(member))}
-                                >
-                                  Edit Profile
-                                </button>
-                                <button
-                                  type="button"
-                                  className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                  onClick={() => openRoleEditor(toMemberActionTarget(member))}
-                                >
-                                  Assign Role
-                                </button>
-                                <button
-                                  type="button"
-                                  className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                  onClick={() => openCompanyEditor(toMemberActionTarget(member))}
-                                >
-                                  Assign Company
-                                </button>
-                                <button
-                                  type="button"
-                                  className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                  onClick={() => openJobEditor(toMemberActionTarget(member))}
-                                >
-                                  Assign Job
-                                </button>
-                                <button
-                                  type="button"
-                                  className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                  onClick={() => openPropertyEditor(toMemberActionTarget(member))}
-                                >
-                                  Assign Property
-                                </button>
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </div>
+                      ) : null}
                     </div>
                   </article>
                 ))}
               </div>
               <div className="hidden overflow-x-auto md:block">
-                <table className="w-full min-w-[760px] text-left text-sm">
-                <thead className="bg-[var(--accent)] text-xs uppercase tracking-wider text-[var(--muted-foreground)]">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">Member</th>
-                    <th className="px-4 py-3 font-medium">Role</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 font-medium">Quality</th>
-                    <th className="px-4 py-3 font-medium">On-Time</th>
-                    <th className="px-4 py-3 font-medium">Assignments</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {members.map((member) => (
-                    <tr key={member._id} className="border-t">
-                      <td className="px-4 py-3">
-                        {canManageTeam ? (
+                {(() => {
+                  const isCompact = density === "compact";
+                  const cellPad = isCompact ? "px-3 py-1.5" : "px-4 py-3";
+                  const headPad = isCompact ? "px-3 py-2" : "px-4 py-3";
+                  const avatarCls = isCompact ? "h-7 w-7" : "h-10 w-10";
+
+                  const renderMemberRow = (member: (typeof members)[number]) => (
+                    <tr key={member._id} className="border-t hover:bg-[var(--accent)]/40">
+                      <td className={cellPad}>
+                        {canManageTeam || canDispatchMember(member) ? (
                           <button
                             type="button"
                             onClick={() => setMemberActionSheet(toMemberActionTarget(member))}
@@ -1144,18 +1291,22 @@ export default function TeamPage() {
                               <ProfileImage
                                 avatarUrl={member.avatarUrl}
                                 label={member.name || member.email || "Member"}
-                                className="h-10 w-10"
+                                className={avatarCls}
                               />
                               <div className="min-w-0">
                                 <p className="truncate font-semibold text-[var(--foreground)]">
                                   {member.name || member.email || "Unknown"}
                                 </p>
-                                <p className="truncate text-xs text-[var(--muted-foreground)]">
-                                  {member.email || "—"}
-                                </p>
-                                <p className="text-[10px] uppercase tracking-wider text-[var(--primary)]">
-                                  Click to edit or assign
-                                </p>
+                                {isCompact ? null : (
+                                  <p className="truncate text-xs text-[var(--muted-foreground)]">
+                                    {member.email || "—"}
+                                  </p>
+                                )}
+                                {isCompact ? null : (
+                                  <p className="text-[10px] uppercase tracking-wider text-[var(--primary)]">
+                                    {canManageTeam ? "Click to edit or dispatch" : "Click to dispatch"}
+                                  </p>
+                                )}
                               </div>
                             </div>
                           </button>
@@ -1164,23 +1315,40 @@ export default function TeamPage() {
                             <ProfileImage
                               avatarUrl={member.avatarUrl}
                               label={member.name || member.email || "Member"}
-                              className="h-10 w-10"
+                              className={avatarCls}
                             />
                             <div className="min-w-0">
                               <p className="truncate font-semibold text-[var(--foreground)]">
                                 {member.name || member.email || "Unknown"}
                               </p>
-                              <p className="truncate text-xs text-[var(--muted-foreground)]">
-                                {member.email || "—"}
-                              </p>
+                              {isCompact ? null : (
+                                <p className="truncate text-xs text-[var(--muted-foreground)]">
+                                  {member.email || "—"}
+                                </p>
+                              )}
                             </div>
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-[var(--muted-foreground)]">
+                      {isCompact ? (
+                        <td className={`${cellPad} truncate text-xs text-[var(--muted-foreground)]`}>
+                          {member.email || "—"}
+                        </td>
+                      ) : null}
+                      <td className={`${cellPad} text-[var(--muted-foreground)]`}>
                         {formatRoleLabel(member.role)}
+                        {member.role === "owner" && member.ownedPropertyCount === 0 ? (
+                          <span className="ml-2 text-[11px] font-semibold uppercase tracking-wider text-amber-600">
+                            No properties linked
+                          </span>
+                        ) : null}
                       </td>
-                      <td className="px-4 py-3">
+                      {groupBy !== "company" ? (
+                        <td className={`${cellPad} truncate text-xs text-[var(--muted-foreground)]`}>
+                          {member.companyName ?? "—"}
+                        </td>
+                      ) : null}
+                      <td className={cellPad}>
                         <span
                           className={`text-xs font-semibold uppercase tracking-wider ${
                             member.availability === "working"
@@ -1193,11 +1361,11 @@ export default function TeamPage() {
                           {member.availability}
                         </span>
                       </td>
-                      <td className="px-4 py-3 font-semibold">
+                      <td className={`${cellPad} font-semibold`}>
                         {formatQualityScore(member.qualityScore)}
                       </td>
-                      <td className="px-4 py-3">{formatPercent(member.onTimePct)}</td>
-                      <td className="px-4 py-3">
+                      <td className={cellPad}>{formatPercent(member.onTimePct)}</td>
+                      <td className={cellPad}>
                         {member.activeAssignmentsCount > 0 ? (
                           <span className="rounded-none border border-orange-500/30 bg-orange-500/10 px-2 py-1 text-[11px] font-medium uppercase tracking-wider text-orange-400">
                             {member.activeAssignmentsCount} Active
@@ -1207,16 +1375,103 @@ export default function TeamPage() {
                         )}
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  );
+
+                  const columnsCount =
+                    1 /* Member */ +
+                    (isCompact ? 1 : 0) /* Email */ +
+                    1 /* Role */ +
+                    (groupBy !== "company" ? 1 : 0) /* Company */ +
+                    1 /* Status */ +
+                    1 /* Quality */ +
+                    1 /* On-Time */ +
+                    1; /* Assignments */
+
+                  return (
+                    <table className="w-full min-w-[760px] text-left text-sm">
+                      <thead className="bg-[var(--accent)] text-xs uppercase tracking-wider text-[var(--muted-foreground)]">
+                        <tr>
+                          <th className={`${headPad} font-medium`}>Member</th>
+                          {isCompact ? (
+                            <th className={`${headPad} font-medium`}>Email</th>
+                          ) : null}
+                          <th className={`${headPad} font-medium`}>Role</th>
+                          {groupBy !== "company" ? (
+                            <th className={`${headPad} font-medium`}>Company</th>
+                          ) : null}
+                          <th className={`${headPad} font-medium`}>Status</th>
+                          <th className={`${headPad} font-medium`}>Quality</th>
+                          <th className={`${headPad} font-medium`}>On-Time</th>
+                          <th className={`${headPad} font-medium`}>Assignments</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {groupedMembers ? (
+                          groupedMembers.map((group) => {
+                            const collapsed = collapsedGroups.has(group.key);
+                            const isUnassigned = group.key === "__unassigned__";
+                            return (
+                              <Fragment key={group.key}>
+                                <tr className="bg-[var(--accent)]/60">
+                                  <td
+                                    colSpan={columnsCount}
+                                    className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider"
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleGroupCollapsed(group.key)}
+                                      className="inline-flex items-center gap-2 hover:underline"
+                                      aria-expanded={!collapsed}
+                                    >
+                                      <span className="inline-block w-3 text-center">
+                                        {collapsed ? "▸" : "▾"}
+                                      </span>
+                                      <span
+                                        className={
+                                          isUnassigned
+                                            ? "text-amber-600"
+                                            : "text-[var(--foreground)]"
+                                        }
+                                      >
+                                        {group.label}
+                                      </span>
+                                      <span className="text-[var(--muted-foreground)]">
+                                        ({group.rows.length})
+                                      </span>
+                                    </button>
+                                  </td>
+                                </tr>
+                                {collapsed ? null : group.rows.map(renderMemberRow)}
+                              </Fragment>
+                            );
+                          })
+                        ) : (
+                          members.map(renderMemberRow)
+                        )}
+                      </tbody>
+                    </table>
+                  );
+                })()}
               </div>
             </div>
           )}
           </div>
         </div>
 
-        <aside className="xl:col-span-4 space-y-6">
+        <aside
+          className={`xl:col-span-4 ${railOpen ? "space-y-6" : "space-y-2"}`}
+        >
+          <button
+            type="button"
+            onClick={toggleRail}
+            className="flex w-full items-center justify-between rounded-none border bg-[var(--card)] px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+            aria-expanded={railOpen}
+          >
+            <span>Insights & Leaderboard</span>
+            <span aria-hidden>{railOpen ? "▾" : "▸"}</span>
+          </button>
+          {railOpen ? (
+          <>
           <section id="team-leaderboard-section" className="rounded-none border bg-[var(--card)]">
             <div className="border-b border-[var(--border)] p-6">
               <div className="flex items-center gap-3">
@@ -1266,6 +1521,8 @@ export default function TeamPage() {
               </div>
             </div>
           </section>
+          </>
+          ) : null}
         </aside>
       </div>
 
@@ -1318,6 +1575,7 @@ export default function TeamPage() {
                     email: "",
                     role: "cleaner",
                     phone: "",
+                    companyId: "",
                   });
                   setIsCreateOpen(false);
                 } catch (error) {
@@ -1358,21 +1616,20 @@ export default function TeamPage() {
 
               <label className="block text-sm">
                 <span className="mb-1 block text-[var(--muted-foreground)]">Role</span>
-                <select
+                <SearchableSelect
                   value={newMember.role}
-                  onChange={(event) =>
+                  onChange={(id) => {
+                    if (!id) return;
                     setNewMember((prev) => ({
                       ...prev,
-                      role: event.target.value as UserRole,
-                    }))
-                  }
-                  className="w-full rounded-md border bg-transparent px-3 py-2"
-                >
-                  <option value="cleaner">Cleaner</option>
-                  <option value="manager">Manager</option>
-                  <option value="property_ops">Property Ops</option>
-                  <option value="admin">Admin</option>
-                </select>
+                      role: id as UserRole,
+                    }));
+                  }}
+                  items={ROLE_ASSIGN_ITEMS}
+                  placeholder="Select role"
+                  searchPlaceholder="Search roles…"
+                  aria-label="Member role"
+                />
               </label>
 
               <label className="block text-sm">
@@ -1385,6 +1642,27 @@ export default function TeamPage() {
                   className="w-full rounded-md border bg-transparent px-3 py-2"
                 />
               </label>
+
+              {newMember.role === "cleaner" || newMember.role === "manager" ? (
+                <label className="block text-sm">
+                  <span className="mb-1 block text-[var(--muted-foreground)]">
+                    Attach to company (optional)
+                  </span>
+                  <SearchableSelect
+                    value={newMember.companyId || null}
+                    onChange={(id) =>
+                      setNewMember((prev) => ({ ...prev, companyId: id ?? "" }))
+                    }
+                    items={[
+                      { id: "", label: "— Skip (assign later) —" },
+                      ...(companies ?? []).map((c) => ({ id: c._id, label: c.name })),
+                    ]}
+                    placeholder="Skip (assign later)"
+                    searchPlaceholder="Search companies…"
+                    aria-label="Company"
+                  />
+                </label>
+              ) : null}
 
               {createError ? (
                 <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -1404,63 +1682,35 @@ export default function TeamPage() {
         </div>
       ) : null}
 
-      {memberActionSheet ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-xl border bg-[var(--card)] p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-bold">Manage Member</h2>
-              <button
-                className="rounded-md px-2 py-1 text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
-                onClick={() => setMemberActionSheet(null)}
-              >
-                Close
-              </button>
-            </div>
-
-            <p className="mb-4 text-sm text-[var(--muted-foreground)]">
-              {memberActionSheet.name || memberActionSheet.email || "Selected user"}
-            </p>
-
-            <div className="grid gap-2">
-              <button
-                type="button"
-                className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                onClick={() => openProfileEditor(memberActionSheet)}
-              >
-                Edit Profile
-              </button>
-              <button
-                type="button"
-                className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                onClick={() => openRoleEditor(memberActionSheet)}
-              >
-                Edit Role
-              </button>
-              <button
-                type="button"
-                className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                onClick={() => openCompanyEditor(memberActionSheet)}
-              >
-                Assign Company
-              </button>
-              <button
-                type="button"
-                className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                onClick={() => openJobEditor(memberActionSheet)}
-              >
-                Assign to Job
-              </button>
-              <button
-                type="button"
-                className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                onClick={() => openPropertyEditor(memberActionSheet)}
-              >
-                Assign to Property
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <TeamDetailDrawer
+        member={
+          memberActionSheet
+            ? ({
+                userId: memberActionSheet.userId,
+                name: memberActionSheet.name,
+                email: memberActionSheet.email,
+                avatarUrl: memberActionSheet.avatarUrl,
+                role: memberActionSheet.role,
+                companyId: memberActionSheet.companyId,
+                companyName: memberActionSheet.companyName ?? null,
+                companyMemberRole: memberActionSheet.companyMemberRole,
+              } satisfies DrawerMember)
+            : null
+        }
+        open={!!memberActionSheet}
+        onClose={() => setMemberActionSheet(null)}
+        canManageTeam={canManageTeam}
+        canDispatch={memberActionSheet ? canDispatchMember(memberActionSheet) : false}
+        onEditProfile={() => memberActionSheet && openProfileEditor(memberActionSheet)}
+        onEditRole={() => memberActionSheet && openRoleEditor(memberActionSheet)}
+        onEditCompany={() => memberActionSheet && openCompanyEditor(memberActionSheet)}
+        onDispatchJob={() => memberActionSheet && openJobEditor(memberActionSheet)}
+        onAssignProperty={() => memberActionSheet && openPropertyEditor(memberActionSheet)}
+        formatRoleLabel={(r) => formatRoleLabel((r as UserRole) ?? "cleaner")}
+        formatCompanyRoleLabel={(r) =>
+          r ? formatCompanyRoleLabel(r as CompanyMemberRole) : "Not visible to any manager"
+        }
+      />
 
       {profileEditor ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -1579,17 +1829,49 @@ export default function TeamPage() {
             <form className="space-y-3" onSubmit={handleRoleUpdate}>
               <label className="block text-sm">
                 <span className="mb-1 block text-[var(--muted-foreground)]">Role</span>
-                <select
+                <SearchableSelect
                   value={roleDraft}
-                  onChange={(event) => setRoleDraft(event.target.value as UserRole)}
-                  className="w-full rounded-md border bg-transparent px-3 py-2"
-                >
-                  <option value="cleaner">Cleaner</option>
-                  <option value="manager">Manager</option>
-                  <option value="property_ops">Property Ops</option>
-                  <option value="admin">Admin</option>
-                </select>
+                  onChange={(id) => {
+                    if (id) setRoleDraft(id as UserRole);
+                  }}
+                  items={ROLE_ASSIGN_ITEMS}
+                  placeholder="Select role"
+                  searchPlaceholder="Search roles…"
+                  aria-label="Role"
+                />
               </label>
+
+              {(() => {
+                const fromDef = getRoleDefinition(roleEditor.role);
+                const toDef = getRoleDefinition(roleDraft);
+                if (!fromDef || !toDef || fromDef.key === toDef.key) return null;
+
+                const tags: string[] = [];
+                if (!fromDef.requiresCompany && toDef.requiresCompany && !roleEditor.companyId)
+                  tags.push("No company assigned");
+                if (!fromDef.requiresProperty && toDef.requiresProperty)
+                  tags.push("No property assigned");
+                if (fromDef.scope === "tenant" && toDef.scope !== "tenant")
+                  tags.push("Loses portfolio access");
+                if (fromDef.requiresCompany && !toDef.requiresCompany && roleEditor.companyId)
+                  tags.push("Company membership ignored");
+                if (toDef.scope === "ownership")
+                  tags.push("Needs ownership rows on a property");
+
+                if (tags.length === 0) return null;
+                return (
+                  <div className="flex flex-wrap gap-1.5">
+                    {tags.map((t) => (
+                      <span
+                        key={t}
+                        className="inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300"
+                      >
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
 
               <button
                 type="submit"
@@ -1624,24 +1906,24 @@ export default function TeamPage() {
             <form className="space-y-3" onSubmit={handleJobAssignment}>
               <label className="block text-sm">
                 <span className="mb-1 block text-[var(--muted-foreground)]">Job</span>
-                <select
-                  value={jobDraft}
-                  onChange={(event) =>
-                    setJobDraft(event.target.value as Id<"cleaningJobs"> | "")
+                <SearchableSelect
+                  value={jobDraft || null}
+                  onChange={(id) =>
+                    setJobDraft((id as Id<"cleaningJobs"> | null) ?? "")
                   }
-                  className="w-full rounded-md border bg-transparent px-3 py-2"
-                >
-                  <option value="">Select Job</option>
-                  {assignableJobs.map((job) => (
-                    <option key={job._id} value={job._id}>
-                      {(job.property?.name ?? "Unknown property") +
-                        " · " +
-                        formatRoleDate(job.scheduledStartAt) +
-                        " · " +
-                        job.status.replace("_", " ")}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Select Job"
+                  searchPlaceholder="Search jobs…"
+                  aria-label="Job"
+                  items={assignableJobs.map((job) => ({
+                    id: job._id,
+                    label:
+                      (job.property?.name ?? "Unknown property") +
+                      " · " +
+                      formatRoleDate(job.scheduledStartAt) +
+                      " · " +
+                      job.status.replace("_", " "),
+                  }))}
+                />
               </label>
 
               <button
@@ -1660,7 +1942,7 @@ export default function TeamPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-xl border bg-[var(--card)] p-4">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-bold">Assign Company</h2>
+              <h2 className="text-lg font-bold">Attach to Cleaning Company</h2>
               <button
                 className="rounded-md px-2 py-1 text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
                 onClick={() => setCompanyEditor(null)}
@@ -1677,24 +1959,20 @@ export default function TeamPage() {
             <form className="space-y-3" onSubmit={handleCompanyAssignment}>
               <label className="block text-sm">
                 <span className="mb-1 block text-[var(--muted-foreground)]">Company</span>
-                <select
-                  value={companyDraft}
-                  onChange={(event) =>
-                    setCompanyDraft(event.target.value as Id<"cleaningCompanies"> | "")
+                <SearchableSelect
+                  value={companyDraft || null}
+                  onChange={(id) =>
+                    setCompanyDraft((id as Id<"cleaningCompanies"> | null) ?? "")
                   }
-                  className="w-full rounded-md border bg-transparent px-3 py-2"
-                >
-                  <option value="">No Company</option>
-                  {(companies ?? []).map((company) => (
-                    <option key={company._id} value={company._id}>
-                      {company.name}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="No Company"
+                  searchPlaceholder="Search companies…"
+                  aria-label="Company"
+                  items={(companies ?? []).map((c) => ({ id: c._id, label: c.name }))}
+                />
               </label>
 
               <label className="block text-sm">
-                <span className="mb-1 block text-[var(--muted-foreground)]">Company role</span>
+                <span className="mb-1 block text-[var(--muted-foreground)]">Membership role</span>
                 <select
                   value={companyRoleDraft}
                   onChange={(event) =>
@@ -1714,7 +1992,7 @@ export default function TeamPage() {
                 disabled={isUpdatingCompany}
                 className="w-full rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-black disabled:opacity-60"
               >
-                {isUpdatingCompany ? "Saving..." : "Save Company Assignment"}
+                {isUpdatingCompany ? "Saving..." : "Save Membership"}
               </button>
             </form>
           </div>
@@ -1748,20 +2026,20 @@ export default function TeamPage() {
             <form className="space-y-3" onSubmit={handlePropertyAssignment}>
               <label className="block text-sm">
                 <span className="mb-1 block text-[var(--muted-foreground)]">Property</span>
-                <select
-                  value={propertyDraft}
-                  onChange={(event) =>
-                    setPropertyDraft(event.target.value as Id<"properties"> | "")
+                <SearchableSelect
+                  value={propertyDraft || null}
+                  onChange={(id) =>
+                    setPropertyDraft((id as Id<"properties"> | null) ?? "")
                   }
-                  className="w-full rounded-md border bg-transparent px-3 py-2"
-                >
-                  <option value="">Select Property</option>
-                  {(allProperties ?? []).map((property) => (
-                    <option key={property._id} value={property._id}>
-                      {property.name} · {property.address}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Select Property"
+                  searchPlaceholder="Search properties…"
+                  aria-label="Property"
+                  items={(allProperties ?? []).map((p) => ({
+                    id: p._id,
+                    label: p.name,
+                    hint: p.address ?? undefined,
+                  }))}
+                />
               </label>
 
               <button
@@ -1779,7 +2057,7 @@ export default function TeamPage() {
   );
 }
 
-function StatBox({
+function StatChip({
   label,
   value,
   tone,
@@ -1790,39 +2068,28 @@ function StatBox({
   tone?: string;
   onClick?: () => void;
 }) {
-  const content = (
+  const inner = (
     <>
-      <p className="text-[9px] font-medium uppercase tracking-wide text-[var(--muted-foreground)] md:text-[11px] md:tracking-wider">
+      <span className="text-[10px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
         {label}
-      </p>
-      <p className={`mt-1 text-lg font-semibold md:mt-2 md:text-3xl ${tone ?? "text-[var(--foreground)]"}`}>
+      </span>
+      <span className={`text-sm font-semibold ${tone ?? "text-[var(--foreground)]"}`}>
         {value}
-      </p>
-      {onClick ? (
-        <p className="mt-2 hidden text-xs font-semibold text-[var(--primary)] opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100 md:block">
-          View details
-        </p>
-      ) : null}
+      </span>
     </>
   );
-
   if (onClick) {
     return (
       <button
         type="button"
         onClick={onClick}
-        className="group rounded-none border bg-[var(--card)] p-2 text-left transition hover:border-[var(--primary)]/40 hover:bg-[var(--accent)]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40 md:p-4"
+        className="inline-flex items-center gap-1.5 rounded-none px-1 py-0.5 hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
       >
-        {content}
+        {inner}
       </button>
     );
   }
-
-  return (
-    <div className="rounded-none border bg-[var(--card)] p-2 md:p-4">
-      {content}
-    </div>
-  );
+  return <span className="inline-flex items-center gap-1.5">{inner}</span>;
 }
 
 function MiniMetric({ label, value }: { label: string; value: string | number }) {
@@ -1924,6 +2191,8 @@ function formatRoleLabel(role: UserRole): string {
       return "Admin";
     case "manager":
       return "Manager";
+    case "owner":
+      return "Owner";
     case "cleaner":
     default:
       return "Cleaner";

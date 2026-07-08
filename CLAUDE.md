@@ -25,7 +25,7 @@ OpsCentral is the admin web dashboard for J&A Business Solutions' property care 
 ```
 
 - **Frontend:** Next.js 16 (App Router) + Tailwind CSS + shadcn/ui
-- **Backend:** Convex (shared deployment `dev:usable-anaconda-394`)
+- **Backend:** Convex — `prod:lovable-oriole-182` (US, ja-bs.com prod). `dev:usable-anaconda-394` (EU) is the legacy/sandbox deployment, retired after the 2026-05-02 migration.
 - **Auth:** Clerk (`good-bluejay-68.clerk.accounts.dev`)
 - **Charts:** Recharts
 - **Icons:** Lucide React
@@ -34,14 +34,40 @@ OpsCentral is the admin web dashboard for J&A Business Solutions' property care 
 
 ## Convex Deployment
 
-**CRITICAL:** This app shares a Convex deployment with the cleaners mobile app.
+**CRITICAL:** This app shares its Convex deployment with the cleaners mobile app.
 
-- URL: `https://usable-anaconda-394.eu-west-1.convex.cloud`
-- Deployment: `dev:usable-anaconda-394`
+- **Prod (live, used by ja-bs.com):** `lovable-oriole-182` (US, `https://lovable-oriole-182.convex.cloud` / `.convex.site`)
+- **Dev/sandbox:** `usable-anaconda-394` (EU, legacy — kept only as historical reference, no live traffic)
 - Team: `bertrand-atemkeng`
 - Project: `opscentral-admin`
 
 **Any schema change affects both apps.** Coordinate carefully.
+
+## ja-bs.com prod = `lovable-oriole-182` (US)
+
+Migrated from `whimsical-narwhal-849` to `lovable-oriole-182` on 2026-05-02 (US-region prod). Vercel prod env vars (`CONVEX_DEPLOY_KEY`, `NEXT_PUBLIC_CONVEX_URL`, `NEXT_PUBLIC_CONVEX_SITE_URL`) all point at `lovable-oriole-182.convex.{cloud,site}`.
+
+**Commands in this repo:**
+- `npx convex deploy` → pushes to `lovable-oriole-182` (real prod). Use this for prod backend releases.
+- `npx convex dev` → spins up against the `dev:` deployment configured in `.env.local` (sandbox).
+
+**Old note about `usable-anaconda-394` being effectively-prod is OBSOLETE** — that was the pre-2026-05-02 state when ja-bs.com was pointed at the EU "Development" deployment. Do not act on it.
+
+### Deploying backend changes to prod
+
+```bash
+cd /Users/atem/sites/jnabusiness_solutions/apps-ja/opscentral-admin
+# Node 20+ required (the Convex CLI uses regex `v` flag).
+# If you're on nvm: `nvm use lts/jod` (Node 22) before running.
+export $(grep -v '^#' .env.local | grep PROD_CONVEX_DEPLOY_KEY | xargs)
+CONVEX_DEPLOY_KEY="$PROD_CONVEX_DEPLOY_KEY" npx convex deploy
+```
+
+Then mirror to cleaners (see warning below):
+```bash
+cd /Users/atem/sites/jnabusiness_solutions/apps-ja/jna-cleaners-app
+npm run sync:convex-backend
+```
 
 ## 🚨 BIG FAT WARNING: VERY DANGEROUS CONVEX DEPLOYMENT RULE
 
@@ -100,16 +126,24 @@ src/app/
 
 ## Design System
 
+**Canonical tokens and specs: [design-system/](design-system/)** — source of truth for both this web app and the mobile cleaner app. Import tokens via `@/design-system/tokens` (or relative path).
+
+### Admin dashboard (ops-facing)
 - **Dark mode by default** (operations dashboard aesthetic)
 - **Geist Sans** for UI text, **Geist Mono** for IDs/timestamps
-- **Colors:**
-  - Primary: Blue (actions)
-  - Success: Green (completed)
-  - Warning: Yellow (in-progress)
-  - Destructive: Red (issues/rework)
-  - Muted: Gray (scheduled/neutral)
-- **Job status colors:** Gray → Blue → Yellow → Green → Red
+- **Colors:** oklch-based shadcn palette (see [design-system/tokens/colors.ts](design-system/tokens/colors.ts) `adminColors`)
 - **Sidebar navigation** always visible on desktop
+- **Job status colors on admin views:** Gray → Blue → Yellow → Green → Red (internal convention)
+
+### Cleaner PWA (`/cleaner` routes)
+- **Light mode default**, mobile-first, max-width `402px`
+- **Fonts:** Spectral (display), Montserrat (body), Atkinson Hyperlegible (meta/mono)
+- **Primary:** purple `#9b51e0` (light) / `#bd77ff` (dark)
+- **Status pill appearances:** `open` · `in_review` · `completed` · `rework` — see [design-system/specs/StatusPill.md](design-system/specs/StatusPill.md)
+- **Countdown tiers:** `calm` → `soon` → `urgent` — see [design-system/specs/CountdownBadge.md](design-system/specs/CountdownBadge.md)
+- **Full component specs:** [design-system/specs/](design-system/specs/)
+
+> **Note:** the workspace-level `CLAUDE.md` cites Navy `#1a237e` + Gold `#ffd700` as brand colors. Neither app currently uses those — the design-system tokens reflect actual current state. Brand-color consolidation is a separate effort.
 
 ---
 
@@ -145,6 +179,17 @@ npm run lint       # ESLint
 5. **Keep pages as Server Components** by default — push `'use client'` down
 6. **All request APIs are async** — `await params`, `await searchParams`, etc.
 
+## Multi-Agent Orchestration
+
+This repo coordinates multiple parallel agent sessions via a written protocol. **Read `.harness/project-rules.md` before starting any task.**
+
+- This checkout (`apps-ja/opscentral-admin/` on `main`) is the **integration/test/deploy** session. Do not build features directly here.
+- Feature work happens in `git worktree` checkouts under `~/sites/opscentral-admin-<task>/` with branches `task/<name>` off `origin/main`.
+- Convex `deploy`/`dev` runs only from this main session.
+- Schema changes are **schema-first by default** — see `.harness/convex.md`.
+- Worktree → main handoff is via PR + `.harness/handoffs/<TASK-ID>/worktree-handoff.md` + entry in `.harness/integration-queue.md`.
+- See also `AGENTS.md` (this folder) and `../AGENTS.md` (workspace).
+
 <!-- convex-ai-start -->
 This project uses [Convex](https://convex.dev) as its backend.
 
@@ -152,3 +197,13 @@ When working on Convex code, **always read `convex/_generated/ai/guidelines.md` 
 
 Convex agent skills for common tasks can be installed by running `npx convex ai-files install`.
 <!-- convex-ai-end -->
+
+## graphify
+
+This project has a graphify knowledge graph at graphify-out/.
+
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- For cross-module "how does X relate to Y" questions, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, or `graphify explain "<concept>"` over grep — these traverse the graph's EXTRACTED + INFERRED edges instead of scanning files
+- After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)

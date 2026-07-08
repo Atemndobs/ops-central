@@ -1,17 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 
 export default function AuthLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
-  const isSignUp = pathname?.startsWith("/sign-up");
-  const isSignIn = !isSignUp;
-
   return (
     <>
       {/* Force black body/html to prevent white bleed on mobile overscroll */}
@@ -35,32 +30,22 @@ export default function AuthLayout({
       <div className="relative flex h-full flex-col items-center overflow-y-auto bg-[rgba(10,10,10,0.6)] px-5 py-12 backdrop-blur-[80px] sm:justify-center sm:px-8 sm:pt-20 sm:pb-16">
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.04] via-transparent to-black/20" />
 
-        {/* Pill tab toggle — matches mobile's tabContainer */}
-        <div className="relative mb-8 inline-flex rounded-full border border-white/5 bg-black/50 p-1">
-          <Link
-            href="/sign-up"
-            className={`rounded-full px-6 py-2.5 text-sm font-semibold transition ${
-              isSignUp
-                ? "border border-white/10 bg-white/10 text-white"
-                : "text-white/50 hover:bg-white/10 hover:text-white"
-            }`}
-          >
-            Sign up
-          </Link>
-          <Link
-            href="/sign-in"
-            className={`rounded-full px-6 py-2.5 text-sm font-semibold transition ${
-              isSignIn
-                ? "border border-white/10 bg-white/10 text-white"
-                : "text-white/50 hover:bg-white/10 hover:text-white"
-            }`}
-          >
-            Sign in
-          </Link>
-        </div>
+        {/* Sign-up is intentionally hidden: accounts are provisioned
+            internally, not self-service. Only the sign-in surface is exposed. */}
 
         {/* Auth form container */}
         <div className="relative w-full max-w-[480px]">{children}</div>
+
+        {/* Footer with legal links — public, crawlable */}
+        <div className="relative mt-8 text-center text-xs text-white/50">
+          <Link href="/privacy" className="hover:text-white/80">
+            Privacy Policy
+          </Link>
+          <span className="px-2 text-white/30">·</span>
+          <Link href="/delete-account" className="hover:text-white/80">
+            Delete Account
+          </Link>
+        </div>
       </div>
     </div>
     </>

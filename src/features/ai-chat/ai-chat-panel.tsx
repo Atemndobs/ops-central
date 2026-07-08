@@ -2,8 +2,27 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useChat } from "@ai-sdk/react";
-import { Send, X, Loader2, Square, CheckCircle2 } from "lucide-react";
+import { useConvexAuth, useQuery } from "convex/react";
+import {
+  CheckCircle2,
+  Loader2,
+  PanelRightClose,
+  PanelRightOpen,
+  Send,
+  Square,
+  X,
+} from "lucide-react";
 import Markdown from "react-markdown";
+import { api } from "@convex/_generated/api";
+
+type Mode = "floating" | "drawer";
+const MODE_STORAGE_KEY = "opscentral-ai-mode";
+
+function readMode(): Mode {
+  if (typeof window === "undefined") return "floating";
+  const v = window.localStorage.getItem(MODE_STORAGE_KEY);
+  return v === "drawer" ? "drawer" : "floating";
+}
 
 const SUGGESTED_QUERIES = [
   "What's open today?",
@@ -13,10 +32,30 @@ const SUGGESTED_QUERIES = [
   "Who are my cleaners?",
 ];
 
+// Only these roles get the AI assistant. Managers and cleaners are hidden.
+const ALLOWED_ROLES = new Set(["admin", "property_ops"]);
+
 export function AiChatPanel() {
+  const { isAuthenticated } = useConvexAuth();
+  const profile = useQuery(
+    api.users.queries.getMyProfile,
+    isAuthenticated ? {} : "skip",
+  ) as { role?: string } | null | undefined;
   const [isOpen, setIsOpen] = useState(false);
+  const [mode, setMode] = useState<Mode>("floating");
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setMode(readMode());
+  }, []);
+
+  function persistMode(next: Mode) {
+    setMode(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(MODE_STORAGE_KEY, next);
+    }
+  }
 
   const { messages, sendMessage, stop, status, error, setMessages } = useChat({
     onError(err) {
@@ -50,11 +89,20 @@ export function AiChatPanel() {
     setMessages([]);
   }
 
+  // Gate the whole panel to admins and ops only. Managers and cleaners
+  // don't see it. While the profile query is loading we hide it too to
+  // avoid a flash before role is known.
+  if (!profile || !profile.role || !ALLOWED_ROLES.has(profile.role)) {
+    return null;
+  }
+
   if (!isOpen) {
     return (
       <button
         onClick={() => setIsOpen(true)}
         style={{
+          // Bottom-right floating action button (FAB). Drawer mode opens
+          // the panel docked to the right edge instead.
           position: "fixed",
           bottom: 24,
           right: 24,
@@ -78,15 +126,34 @@ export function AiChatPanel() {
     );
   }
 
-  return (
-    <div
-      style={{
+  const isDrawer = mode === "drawer";
+  const panelStyle: React.CSSProperties = isDrawer
+    ? {
+        // Edge Copilot / Confluence Rovo — full-height right drawer.
+        position: "fixed",
+        top: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 9999,
+        width: 420,
+        maxWidth: "100vw",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+        borderLeft: "1px solid var(--border)",
+        backgroundColor: "var(--card)",
+        color: "var(--card-foreground)",
+        boxShadow: "-12px 0 30px rgba(0,0,0,0.18)",
+      }
+    : {
+        // Bottom-right floating popover anchored above the FAB.
         position: "fixed",
         bottom: 24,
         right: 24,
         zIndex: 9999,
         width: 384,
         height: 520,
+        maxHeight: "calc(100vh - 48px)",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
@@ -95,8 +162,10 @@ export function AiChatPanel() {
         backgroundColor: "var(--card)",
         color: "var(--card-foreground)",
         boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
-      }}
-    >
+      };
+
+  return (
+    <div style={panelStyle}>
       {/* Header */}
       <div
         style={{
@@ -159,6 +228,25 @@ export function AiChatPanel() {
               Clear
             </button>
           )}
+          <button
+            onClick={() => persistMode(isDrawer ? "floating" : "drawer")}
+            style={{
+              padding: 6,
+              borderRadius: 8,
+              border: "none",
+              background: "none",
+              color: "var(--muted-foreground)",
+              cursor: "pointer",
+            }}
+            aria-label={isDrawer ? "Undock to floating popover" : "Dock to side drawer"}
+            title={isDrawer ? "Undock to floating popover" : "Dock to side drawer"}
+          >
+            {isDrawer ? (
+              <PanelRightClose style={{ width: 16, height: 16 }} />
+            ) : (
+              <PanelRightOpen style={{ width: 16, height: 16 }} />
+            )}
+          </button>
           <button
             onClick={() => setIsOpen(false)}
             style={{
@@ -342,7 +430,8 @@ export function AiChatPanel() {
             backgroundColor: "var(--background)",
             color: "var(--foreground)",
             padding: "8px 14px",
-            fontSize: 14,
+            // iOS Safari zooms inputs with font-size < 16px; keep at 16 to prevent auto-zoom.
+            fontSize: 16,
             outline: "none",
           }}
         />

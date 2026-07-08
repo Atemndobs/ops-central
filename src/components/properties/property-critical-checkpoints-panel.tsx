@@ -5,12 +5,14 @@ import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import type { Id } from "@convex/_generated/dataModel";
 import { api } from "@convex/_generated/api";
 import { useToast } from "@/components/ui/toast-provider";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { getErrorMessage } from "@/lib/errors";
 
 type InventoryItemOption = {
   _id: Id<"inventoryItems">;
   name: string;
   room?: string;
+  categoryName?: string | null;
 };
 
 type CheckpointRow = {
@@ -48,8 +50,10 @@ function defaultDraft(): NewCheckpointDraft {
 
 export function PropertyCriticalCheckpointsPanel({
   propertyId,
+  propertyRooms,
 }: {
   propertyId: string;
+  propertyRooms?: Array<{ name: string; type?: string }>;
 }) {
   const { isAuthenticated } = useConvexAuth();
   const { showToast } = useToast();
@@ -79,6 +83,7 @@ export function PropertyCriticalCheckpointsPanel({
   const setCheckpointActive = useMutation(api.propertyChecks.mutations.setActive);
 
   const [draft, setDraft] = useState<NewCheckpointDraft>(defaultDraft);
+  const [itemCategoryFilter, setItemCategoryFilter] = useState<string>("all");
   const [isSaving, setIsSaving] = useState(false);
   const [pendingCheckpointId, setPendingCheckpointId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +99,58 @@ export function PropertyCriticalCheckpointsPanel({
       return acc;
     }, {});
   }, [checkpoints]);
+
+  const roomSuggestions = useMemo(() => {
+    const fromProperty = (propertyRooms ?? []).map((r) => r.name.trim()).filter(Boolean);
+    const fromCheckpoints = Object.keys(groupedByRoom);
+    return Array.from(new Set([...fromProperty, ...fromCheckpoints])).sort((a, b) =>
+      a.localeCompare(b),
+    );
+  }, [propertyRooms, groupedByRoom]);
+
+  const roomFamily = useMemo(() => {
+    const propertyRoomByName = new Map<string, string>();
+    for (const r of propertyRooms ?? []) {
+      const name = r.name?.trim().toLowerCase();
+      const type = r.type?.trim().toLowerCase();
+      if (name && type) {
+        propertyRoomByName.set(name, type.replace(/^full_/, "").replace(/_/g, " "));
+      }
+    }
+    return (raw: string | undefined | null): string => {
+      if (!raw) return "";
+      const lower = raw.trim().toLowerCase();
+      if (!lower) return "";
+      const byProperty = propertyRoomByName.get(lower);
+      if (byProperty) return byProperty;
+      // Strip "all ", trailing numbers, and plurals.
+      return lower
+        .replace(/^all\s+/, "")
+        .replace(/\s*\d+$/, "")
+        .replace(/s$/, "")
+        .trim();
+    };
+  }, [propertyRooms]);
+
+  const itemCategoryOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const item of inventoryItems ?? []) {
+      if (item.categoryName) names.add(item.categoryName);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [inventoryItems]);
+
+  const filteredInventoryItems = useMemo(() => {
+    let items = inventoryItems ?? [];
+    if (itemCategoryFilter !== "all") {
+      items = items.filter((item) => (item.categoryName ?? "") === itemCategoryFilter);
+    }
+    const draftFamily = roomFamily(draft.roomName);
+    if (draftFamily) {
+      items = items.filter((item) => roomFamily(item.room) === draftFamily);
+    }
+    return items;
+  }, [inventoryItems, itemCategoryFilter, draft.roomName, roomFamily]);
 
   const roomNames = useMemo(
     () => Object.keys(groupedByRoom).sort((a, b) => a.localeCompare(b)),
@@ -202,32 +259,59 @@ export function PropertyCriticalCheckpointsPanel({
         </p>
         <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
           <input
+            list={`room-suggestions-${propertyId}`}
             value={draft.roomName}
             onChange={(event) => setDraft((prev) => ({ ...prev, roomName: event.target.value }))}
             placeholder="Room (e.g. Kitchen)"
             className="rounded-md border bg-[var(--card)] px-2 py-1.5 text-sm"
           />
+          <datalist id={`room-suggestions-${propertyId}`}>
+            {roomSuggestions.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
           <input
             value={draft.title}
             onChange={(event) => setDraft((prev) => ({ ...prev, title: event.target.value }))}
             placeholder="Checkpoint title"
             className="rounded-md border bg-[var(--card)] px-2 py-1.5 text-sm"
           />
-          <select
-            value={draft.linkedInventoryItemId}
-            onChange={(event) =>
-              setDraft((prev) => ({ ...prev, linkedInventoryItemId: event.target.value }))
-            }
-            className="rounded-md border bg-[var(--card)] px-2 py-1.5 text-sm"
-          >
-            <option value="">Link inventory item (optional)</option>
-            {(inventoryItems ?? []).map((item) => (
-              <option key={item._id} value={item._id}>
-                {item.room ? `${item.room}: ` : ""}
-                {item.name}
-              </option>
-            ))}
-          </select>
+          <div className="flex gap-2">
+            <select
+              value={itemCategoryFilter}
+              onChange={(event) => setItemCategoryFilter(event.target.value)}
+              className="w-32 shrink-0 rounded-md border bg-[var(--card)] px-2 py-1.5 text-sm"
+              aria-label="Filter items by category"
+            >
+              <option value="all">All categories</option>
+              {itemCategoryOptions.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+            <div className="min-w-0 flex-1">
+              <SearchableSelect
+                value={draft.linkedInventoryItemId || null}
+                onChange={(id) =>
+                  setDraft((prev) => ({ ...prev, linkedInventoryItemId: id ?? "" }))
+                }
+                placeholder={
+                  filteredInventoryItems.length > 0
+                    ? `Link inventory item (optional) — ${filteredInventoryItems.length} available`
+                    : "Link inventory item (optional)"
+                }
+                searchPlaceholder="Search inventory…"
+                aria-label="Link inventory item"
+                items={filteredInventoryItems.map((item) => ({
+                  id: item._id,
+                  label: item.name,
+                  group: item.room || "Ungrouped",
+                  hint: item.categoryName ?? undefined,
+                }))}
+              />
+            </div>
+          </div>
           <input
             value={draft.referenceImageUrl}
             onChange={(event) =>

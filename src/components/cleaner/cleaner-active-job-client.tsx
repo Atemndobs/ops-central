@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { AlertTriangle, Check, Clapperboard, Play, X } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { SyncBanner } from "@/components/cleaner/sync-banner";
@@ -28,6 +29,7 @@ import { getIncidentPhotoPreviews } from "@/features/cleaner/incident-photo-prev
 import type { DraftIncident, DraftProgress, PendingUpload } from "@/features/cleaner/offline/types";
 import { JobConversationPanel } from "@/components/conversations/job-conversation-panel";
 import { getErrorMessage } from "@/lib/errors";
+import { useIsVideoEnabled } from "@/hooks/use-is-video-enabled";
 
 // Steps: cleaning step removed — skip is merged into before_photos
 type ActivePhase = "before_photos" | "after_photos" | "incidents" | "review";
@@ -39,7 +41,9 @@ const STEPS: Array<{ phase: ActivePhase; labelKey: string; shortLabelKey: string
   { phase: "review", labelKey: "cleaner.active.steps.review.label", shortLabelKey: "cleaner.active.steps.review.short" },
 ];
 
-const DEFAULT_ROOM_KEYS = [
+// Fallback shown only when property.rooms has not been synced from Hospitable yet.
+// Property.rooms is the source of truth — see Docs/cleaner-rollout-and-saas/2026-04-21-property-rooms-from-hospitable-plan.md
+const FALLBACK_ROOM_KEYS = [
   "cleaner.rooms.livingRoom",
   "cleaner.rooms.kitchen",
   "cleaner.rooms.bedroom",
@@ -52,10 +56,24 @@ function readRoomName(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function buildRoomList(detail: JobDetailLike | null | undefined, defaultRooms: string[]): string[] {
-  const set = new Set<string>(defaultRooms);
-  if (!detail) return [...set];
+function buildRoomList(detail: JobDetailLike | null | undefined, fallbackRooms: string[]): string[] {
+  if (!detail) return [...fallbackRooms];
 
+  const propertyRooms = detail.property?.rooms ?? [];
+  const hasPropertyRooms = propertyRooms.length > 0;
+
+  const set = new Set<string>();
+  if (hasPropertyRooms) {
+    propertyRooms.forEach((room) => {
+      const name = readRoomName(room?.name);
+      if (name) set.add(name);
+    });
+  } else {
+    fallbackRooms.forEach((name) => set.add(name));
+  }
+
+  // Merge in any legacy rooms referenced by existing evidence so in-flight jobs
+  // keep their uploaded photos visible even if a room was renamed upstream.
   const byRoom = detail.evidence?.current?.byRoom ?? [];
   byRoom.forEach((row) => {
     const name = readRoomName((row as { roomName?: unknown }).roomName);
@@ -71,6 +89,13 @@ function buildRoomList(detail: JobDetailLike | null | undefined, defaultRooms: s
   return [...set];
 }
 
+// Phase 4a: photo helpers now exclude video rows so the photo count
+// stays photo-only (video has its own per-room count + thumbnail strip).
+// `mediaKind === undefined` is treated as image for legacy rows.
+function isImageRow(p: unknown): boolean {
+  return (p as { mediaKind?: "image" | "video" }).mediaKind !== "video";
+}
+
 function getCountByRoom(args: {
   roomName: string;
   type: "before" | "after" | "incident";
@@ -78,7 +103,9 @@ function getCountByRoom(args: {
   pendingUploads: PendingUpload[];
 }) {
   const serverCount = (args.detail?.evidence?.current?.byType?.[args.type] ?? []).filter(
-    (p) => readRoomName((p as { roomName?: unknown }).roomName) === args.roomName,
+    (p) =>
+      readRoomName((p as { roomName?: unknown }).roomName) === args.roomName &&
+      isImageRow(p),
   ).length;
   const localCount = args.pendingUploads.filter(
     (u) => u.roomName === args.roomName && u.photoType === args.type,
@@ -93,7 +120,11 @@ function getPhotoUrlsByRoom(args: {
   pendingUploads: PendingUpload[];
 }): string[] {
   const serverUrls = (args.detail?.evidence?.current?.byType?.[args.type] ?? [])
-    .filter((p) => readRoomName((p as { roomName?: unknown }).roomName) === args.roomName)
+    .filter(
+      (p) =>
+        readRoomName((p as { roomName?: unknown }).roomName) === args.roomName &&
+        isImageRow(p),
+    )
     .map((p) => (p as { url?: string | null }).url)
     .filter((u): u is string => typeof u === "string" && u.length > 0);
   const localUrls = args.pendingUploads
@@ -103,6 +134,57 @@ function getPhotoUrlsByRoom(args: {
   return [...serverUrls, ...localUrls];
 }
 
+// Phase 4a: video-only helpers. Returns server-side rows where
+// `mediaKind === "video"` for the given (room, type).
+function getVideoCountByRoom(args: {
+  roomName: string;
+  type: "before" | "after" | "incident";
+  detail: JobDetailLike | null | undefined;
+}): number {
+  return (args.detail?.evidence?.current?.byType?.[args.type] ?? []).filter(
+    (p) =>
+      readRoomName((p as { roomName?: unknown }).roomName) === args.roomName &&
+      (p as { mediaKind?: "image" | "video" }).mediaKind === "video",
+  ).length;
+}
+
+function getVideoPostersByRoom(args: {
+  roomName: string;
+  type: "before" | "after";
+  detail: JobDetailLike | null | undefined;
+}): Array<{ posterUrl: string | null; url: string | null; durationMs?: number }> {
+  return (args.detail?.evidence?.current?.byType?.[args.type] ?? [])
+    .filter(
+      (p) =>
+        readRoomName((p as { roomName?: unknown }).roomName) === args.roomName &&
+        (p as { mediaKind?: "image" | "video" }).mediaKind === "video",
+    )
+    .map((p) => ({
+      posterUrl: (p as { posterUrl?: string | null }).posterUrl ?? null,
+      url: (p as { url?: string | null }).url ?? null,
+      durationMs: (p as { durationMs?: number }).durationMs,
+    }));
+}
+
+function getPendingUploadPreviews(
+  photoRefs: string[],
+  pendingUploads: PendingUpload[],
+  previewCache: Record<string, string> = {},
+): Array<{ photoRef: string; url: string }> {
+  return photoRefs
+    .map((photoRef) => {
+      // Prefer the in-memory cache — it survives the local-id -> server-id
+      // swap. Fall back to the pending-uploads queue for backward compat.
+      const cached = previewCache[photoRef];
+      if (typeof cached === "string" && cached.length > 0) {
+        return { photoRef, url: cached };
+      }
+      const url = pendingUploads.find((upload) => upload.id === photoRef)?.fileDataUrl;
+      return typeof url === "string" && url.length > 0 ? { photoRef, url } : null;
+    })
+    .filter((preview): preview is { photoRef: string; url: string } => preview !== null);
+}
+
 type JobDetailLike = {
   job: {
     _id: Id<"cleaningJobs">;
@@ -110,7 +192,11 @@ type JobDetailLike = {
     propertyId: Id<"properties">;
     notesForCleaner?: string;
   };
-  property?: { name?: string | null; address?: string | null } | null;
+  property?: {
+    name?: string | null;
+    address?: string | null;
+    rooms?: Array<{ name: string; type: string }> | null;
+  } | null;
   evidence: {
     current: {
       byType: {
@@ -161,7 +247,7 @@ function StepIndicator({
                     : "border-[var(--border)] bg-[var(--muted)] text-[var(--muted-foreground)]",
                 ].join(" ")}
               >
-                {isCompleted ? "✓" : index + 1}
+                {isCompleted ? <Check className="h-4 w-4" aria-hidden /> : index + 1}
               </span>
               <span
                 className={[
@@ -201,6 +287,12 @@ function RoomPhotoCard({
   onSkip,
   onUnskip,
   onPreview,
+  // Phase 4a video-support — optional video affordance.
+  videoEnabled,
+  videoCount,
+  videoPosters,
+  videoUploading,
+  onAddVideoFile,
 }: {
   t: ReturnType<typeof useTranslations>;
   roomName: string;
@@ -211,6 +303,11 @@ function RoomPhotoCard({
   onSkip: (reason: string) => void;
   onUnskip: () => void;
   onPreview: (url: string) => void;
+  videoEnabled?: boolean;
+  videoCount?: number;
+  videoPosters?: Array<{ posterUrl: string | null; url: string | null; durationMs?: number }>;
+  videoUploading?: boolean;
+  onAddVideoFile?: (file: File) => Promise<void>;
 }) {
   const [showSkipInput, setShowSkipInput] = useState(false);
   const [skipReason, setSkipReason] = useState("");
@@ -293,6 +390,81 @@ function RoomPhotoCard({
           }}
         />
       </label>
+
+      {/* Phase 4a video-support — optional video affordance. Sits below
+          the photo input; gated by `videoEnabled` (env + admin runtime
+          flag). Strict-add: photo count above stays photo-only. */}
+      {videoEnabled && onAddVideoFile ? (
+        <>
+          {/* Video poster strip — server-side rendered when uploads land. */}
+          {videoPosters && videoPosters.length > 0 ? (
+            <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+              {videoPosters.map((video, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => video.url && onPreview(video.url)}
+                  className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-[var(--border)] active:opacity-70"
+                  aria-label="Preview video"
+                >
+                  {video.posterUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={video.posterUrl}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-black/20">
+                      <Clapperboard className="h-5 w-5 text-white/80" aria-hidden />
+                    </div>
+                  )}
+                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                    <span className="rounded-full bg-black/55 p-1 text-white">
+                      <Play className="h-2.5 w-2.5 fill-current" aria-hidden />
+                    </span>
+                  </div>
+                  {video.durationMs && video.durationMs > 0 ? (
+                    <span className="pointer-events-none absolute bottom-0.5 right-0.5 rounded bg-black/70 px-1 text-[9px] font-medium text-white tabular-nums">
+                      {`${Math.floor(video.durationMs / 60000)}:${String(
+                        Math.floor((video.durationMs % 60000) / 1000),
+                      ).padStart(2, "0")}`}
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          <label
+            className={`mt-2 flex cursor-pointer items-center justify-center gap-2 rounded-[12px] border border-dashed border-[var(--border)] py-2.5 text-xs text-[var(--muted-foreground)] transition-colors hover:border-[var(--primary)] hover:text-[var(--primary)] active:opacity-70 ${
+              videoUploading ? "pointer-events-none opacity-50" : ""
+            }`}
+          >
+            <span>
+              {videoUploading
+                ? "Uploading video…"
+                : (videoCount ?? 0) > 0
+                  ? `+ Record video (${videoCount})`
+                  : "+ Record video"}
+            </span>
+            <input
+              type="file"
+              accept="video/mp4,video/webm,video/quicktime"
+              capture="environment"
+              className="sr-only"
+              disabled={videoUploading}
+              onChange={async (event) => {
+                const file = event.target.files?.[0];
+                event.currentTarget.value = "";
+                if (file) {
+                  await onAddVideoFile(file);
+                }
+              }}
+            />
+          </label>
+        </>
+      ) : null}
 
       {/* Skip toggle */}
       {!showSkipInput && (
@@ -377,6 +549,10 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
   completeExternalUploadRef.current = completeExternalUpload;
   const deleteJobPhoto             = useMutation(api.files.mutations.deleteJobPhoto);
   const deleteJobPhotoRef          = useRef(deleteJobPhoto);
+  // Phase 4a — video-support flag (env + admin runtime). Drives the
+  // per-room "Record video" affordance below the photo input.
+  const videoEnabled               = useIsVideoEnabled();
+  const [videoUploadingRoom, setVideoUploadingRoom] = useState<string | null>(null);
   deleteJobPhotoRef.current        = deleteJobPhoto;
 
   // Stepper
@@ -408,6 +584,11 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
 
   // Offline / sync
   const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
+  // Preview cache — survives the pendingUploads -> server photoId swap so the
+  // thumbnail in the incident composer doesn't vanish once the upload lands.
+  // Keyed by current photoRef (starts as the local upload id, gets migrated to
+  // the server photo id on completion).
+  const [photoPreviewCache, setPhotoPreviewCache] = useState<Record<string, string>>({});
   const [isOnline, setIsOnline]             = useState(true);
   const [isSyncing, setIsSyncing]           = useState(false);
   const isSyncingRef                        = useRef(false);
@@ -425,11 +606,11 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
   const [canForceSubmit, setCanForceSubmit] = useState(false);
   const [submitSuccess, setSubmitSuccess]   = useState<string | null>(null);
 
-  const translatedDefaultRooms = useMemo(
-    () => DEFAULT_ROOM_KEYS.map((key) => t(key)),
+  const translatedFallbackRooms = useMemo(
+    () => FALLBACK_ROOM_KEYS.map((key) => t(key)),
     [t],
   );
-  const roomList  = useMemo(() => buildRoomList(detail, translatedDefaultRooms), [detail, translatedDefaultRooms]);
+  const roomList  = useMemo(() => buildRoomList(detail, translatedFallbackRooms), [detail, translatedFallbackRooms]);
   const syncState = useMemo(
     () => buildSyncState({ queue: pendingUploads, isOnline, isSyncing, lastError: syncError ?? undefined }),
     [isOnline, isSyncing, pendingUploads, syncError],
@@ -531,7 +712,11 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
 
               let photoId: Id<"photos">;
               try {
-                // Try B2 external storage first
+                // Try B2 external storage first.
+                // Note: getExternalUploadUrl returns a discriminated union
+                // since the Phase 1 video-support change. We don't pass
+                // `mediaKind` here so we get the image branch; narrow
+                // explicitly so TS sees `url` / `objectKey` as defined.
                 const ticket = await getExternalUploadUrlRef.current({
                   jobId,
                   roomName: syncing.roomName,
@@ -541,6 +726,11 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                   fileName: `${syncing.photoType}-${Date.now()}.jpg`,
                   byteSize: blob.size,
                 });
+                if (ticket.mediaKind !== "image") {
+                  throw new Error(
+                    "Unexpected video upload ticket on the image upload path",
+                  );
+                }
 
                 const putRes = await fetch(ticket.url, {
                   method: "PUT",
@@ -595,6 +785,17 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
               setNewIncidentPhotoIds((current) =>
                 current.map((photoRef) => (photoRef === syncing.id ? String(photoId) : photoRef)),
               );
+
+              // Carry the preview blob under the new server photo id so the
+              // composer thumbnail stays visible after the upload completes.
+              setPhotoPreviewCache((current) => {
+                const blob = current[syncing.id];
+                if (!blob) return current;
+                const next = { ...current };
+                next[String(photoId)] = blob;
+                delete next[syncing.id];
+                return next;
+              });
 
               await deletePendingUpload(syncing.id);
               queue = await loadJobQueue();
@@ -724,6 +925,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
       };
       await upsertPendingUpload(upload);
       setPendingUploads((current) => enqueueUpload(current, upload));
+      setPhotoPreviewCache((current) => ({ ...current, [upload.id]: fileDataUrl }));
       if (isOnline) void drainQueue();
       return upload.id;
     },
@@ -732,6 +934,13 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
 
   const removeIncidentPhotoRef = useCallback(
     async (photoRef: string) => {
+      setPhotoPreviewCache((current) => {
+        if (!(photoRef in current)) return current;
+        const next = { ...current };
+        delete next[photoRef];
+        return next;
+      });
+
       const pendingUpload = pendingUploads.find((upload) => upload.id === photoRef);
       if (pendingUpload) {
         await deletePendingUpload(photoRef);
@@ -917,7 +1126,178 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
               const photoType = phase === "before_photos" ? "before" : "after";
               const count = getCountByRoom({ roomName, type: photoType, detail, pendingUploads });
               const urls = getPhotoUrlsByRoom({ roomName, type: photoType, detail, pendingUploads });
+              // Phase 4a — per-room video data + upload handler.
+              const videoCount = getVideoCountByRoom({ roomName, type: photoType, detail });
+              const videoPosters = getVideoPostersByRoom({ roomName, type: photoType, detail });
+              const videoUploading = videoUploadingRoom === `${photoType}:${roomName}`;
               const skippedEntry = skippedRooms.find((r) => r.roomName === roomName);
+
+              const handleAddVideoFile = async (file: File) => {
+                if (videoUploadingRoom) return;
+                if (file.size > 25 * 1024 * 1024) {
+                  window.alert("Video too large. Max 25 MB.");
+                  return;
+                }
+                setVideoUploadingRoom(`${photoType}:${roomName}`);
+                try {
+                  // Probe duration via a hidden <video> element so we can
+                  // reject overlong clips before burning bandwidth.
+                  // iOS Safari may never fire onloadedmetadata for some
+                  // camera-captured .mov HEVC files — guard with a timeout
+                  // so the whole upload can't deadlock on a probe failure.
+                  const probedDurationMs = await new Promise<number | null>(
+                    (resolve) => {
+                      const url = URL.createObjectURL(file);
+                      const v = document.createElement("video");
+                      v.preload = "metadata";
+                      v.muted = true;
+                      v.playsInline = true;
+                      let settled = false;
+                      const settle = (value: number | null) => {
+                        if (settled) return;
+                        settled = true;
+                        URL.revokeObjectURL(url);
+                        v.src = "";
+                        clearTimeout(timer);
+                        resolve(value);
+                      };
+                      const timer = setTimeout(() => settle(null), 5000);
+                      v.onloadedmetadata = () => {
+                        const ms = Number.isFinite(v.duration)
+                          ? Math.round(v.duration * 1000)
+                          : null;
+                        settle(ms);
+                      };
+                      v.onerror = () => settle(null);
+                      v.src = url;
+                    },
+                  );
+                  if (probedDurationMs != null && probedDurationMs > 60_000) {
+                    window.alert("Video too long. Max 60s.");
+                    return;
+                  }
+
+                  // Extract a poster as a JPEG blob via canvas. Same iOS
+                  // timeout safety — a missing poster is fine, a hung
+                  // upload is not.
+                  const posterBlob = await new Promise<Blob | null>(
+                    (resolve) => {
+                      const url = URL.createObjectURL(file);
+                      const v = document.createElement("video");
+                      v.preload = "metadata";
+                      v.muted = true;
+                      v.playsInline = true;
+                      let settled = false;
+                      const settle = (value: Blob | null) => {
+                        if (settled) return;
+                        settled = true;
+                        URL.revokeObjectURL(url);
+                        v.src = "";
+                        clearTimeout(timer);
+                        resolve(value);
+                      };
+                      const timer = setTimeout(() => settle(null), 6000);
+                      v.onloadedmetadata = () => {
+                        v.currentTime = 0.1;
+                      };
+                      v.onseeked = () => {
+                        const canvas = document.createElement("canvas");
+                        canvas.width = v.videoWidth || 320;
+                        canvas.height = v.videoHeight || 180;
+                        const ctx = canvas.getContext("2d");
+                        if (!ctx) {
+                          settle(null);
+                          return;
+                        }
+                        try {
+                          ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+                        } catch {
+                          settle(null);
+                          return;
+                        }
+                        canvas.toBlob(
+                          (blob) => settle(blob),
+                          "image/jpeg",
+                          0.8,
+                        );
+                      };
+                      v.onerror = () => settle(null);
+                      v.src = url;
+                    },
+                  );
+
+                  // Dual-ticket upload (B2 / external). Server validates
+                  // and writes a `photos` row with mediaKind: "video".
+                  const ticket = (await getExternalUploadUrlRef.current({
+                    jobId: detail.job._id,
+                    roomName,
+                    photoType,
+                    source: "app",
+                    contentType: file.type || "video/mp4",
+                    fileName: file.name || `video-${Date.now()}.mp4`,
+                    byteSize: file.size,
+                    mediaKind: "video",
+                    posterContentType: "image/jpeg",
+                  })) as {
+                    mediaKind: "video";
+                    videoUploadUrl: string;
+                    videoObjectKey: string;
+                    posterUploadUrl: string;
+                    posterObjectKey: string;
+                    bucket: string;
+                    provider: string;
+                  };
+                  if (ticket.mediaKind !== "video") {
+                    throw new Error("Expected video upload ticket");
+                  }
+
+                  const [videoRes, posterRes] = await Promise.all([
+                    fetch(ticket.videoUploadUrl, {
+                      method: "PUT",
+                      headers: { "Content-Type": file.type || "video/mp4" },
+                      body: file,
+                    }),
+                    posterBlob
+                      ? fetch(ticket.posterUploadUrl, {
+                          method: "PUT",
+                          headers: { "Content-Type": "image/jpeg" },
+                          body: posterBlob,
+                        })
+                      : Promise.resolve(new Response(null, { status: 200 })),
+                  ]);
+                  if (!videoRes.ok || !posterRes.ok) {
+                    throw new Error(
+                      `Upload failed (video=${videoRes.status} poster=${posterRes.status}).`,
+                    );
+                  }
+
+                  await completeExternalUploadRef.current({
+                    jobId: detail.job._id,
+                    roomName,
+                    photoType,
+                    source: "app",
+                    provider: ticket.provider,
+                    bucket: ticket.bucket,
+                    objectKey: ticket.videoObjectKey,
+                    contentType: file.type || "video/mp4",
+                    byteSize: file.size,
+                    mediaKind: "video",
+                    durationMs: probedDurationMs ?? undefined,
+                    posterObjectKey: ticket.posterObjectKey,
+                    posterBucket: ticket.bucket,
+                    posterProvider: ticket.provider,
+                    posterByteSize: posterBlob?.size,
+                    posterContentType: "image/jpeg",
+                  });
+                  // Convex reactive query will surface the new row in
+                  // detail.evidence.current.byType.[type] on next tick.
+                } catch (error) {
+                  console.warn("[active] video upload failed", error);
+                  window.alert(getErrorMessage(error, "Video upload failed."));
+                } finally {
+                  setVideoUploadingRoom(null);
+                }
+              };
 
               return (
                 <RoomPhotoCard
@@ -940,6 +1320,11 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                     setSkippedRooms((current) => current.filter((r) => r.roomName !== roomName));
                   }}
                   onPreview={setLightboxUrl}
+                  videoEnabled={videoEnabled}
+                  videoCount={videoCount}
+                  videoPosters={videoPosters}
+                  videoUploading={videoUploading}
+                  onAddVideoFile={handleAddVideoFile}
                 />
               );
             })}
@@ -950,7 +1335,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
       {/* ── Incident prompt — shown when leaving after_photos ────────────── */}
       {phase === "after_photos" && showIncidentPrompt && (
         <section className="space-y-4 rounded-md border border-[var(--border)] bg-[var(--card)] p-6 text-center">
-          <p className="text-3xl">⚠️</p>
+          <AlertTriangle className="mx-auto h-9 w-9 text-amber-500" aria-hidden />
           <h3 className="text-base font-semibold text-[var(--foreground)]">{t("cleaner.active.incidentPromptTitle")}</h3>
           <p className="text-sm text-[var(--muted-foreground)]">
             {t("cleaner.active.incidentPromptDescription")}
@@ -997,12 +1382,18 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
               placeholder={t("cleaner.active.incidentTitlePlaceholder")}
             />
             <div className="grid grid-cols-2 gap-2">
-              <input
+              <select
                 value={newIncidentRoomName}
                 onChange={(e) => setNewIncidentRoomName(e.target.value)}
-                className="rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
-                placeholder={t("cleaner.active.incidentRoomOptional")}
-              />
+                className="rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--ring)]"
+              >
+                <option value="">{t("cleaner.active.incidentRoomOptional")}</option>
+                {roomList.map((roomName) => (
+                  <option key={roomName} value={roomName}>
+                    {roomName}
+                  </option>
+                ))}
+              </select>
               <select
                 value={newIncidentSeverity}
                 onChange={(e) => setNewIncidentSeverity(e.target.value as "low" | "medium" | "high" | "critical")}
@@ -1035,7 +1426,12 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                     const files = event.target.files;
                     if (!files || files.length === 0) return;
 
-                    const roomName = newIncidentRoomName.trim() || t("cleaner.incident");
+                    // Fall back to a translated "Incident" label rather than
+                    // the key "cleaner.incident" — that key resolves to an
+                    // object (nested strings), so calling t() on it returned
+                    // the literal key and leaked "cleaner.incident" as a room
+                    // name into the after-photos step.
+                    const roomName = newIncidentRoomName.trim() || t("cleaner.incidentNav");
                     const addedPhotoIds: string[] = [];
 
                     for (const file of Array.from(files)) {
@@ -1069,10 +1465,10 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                               void removeIncidentPhotoRef(photoRef);
                               setNewIncidentPhotoIds((current) => current.filter((id) => id !== photoRef));
                             }}
-                            className="absolute right-1 top-1 rounded bg-black/65 px-1 text-[10px] text-white"
+                            className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded bg-black/65 text-white"
                             aria-label={t("cleaner.active.removeIncidentPhoto", { index: index + 1 })}
                           >
-                            ✕
+                            <X className="h-3 w-3" aria-hidden />
                           </button>
                         </div>
                       );
@@ -1139,8 +1535,9 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                     type="button"
                     className="shrink-0 text-[var(--destructive)] hover:opacity-80"
                     onClick={() => { void removeIncident(incident.id); }}
+                    aria-label="Remove incident"
                   >
-                    ✕
+                    <X className="h-4 w-4" aria-hidden />
                   </button>
                 </li>
               ))}
@@ -1307,7 +1704,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                     ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
                     : "border-[var(--border)] bg-[var(--card)]",
                 ].join(" ")}>
-                  {guestReady ? "✓" : ""}
+                  {guestReady ? <Check className="h-3 w-3" aria-hidden /> : null}
                 </span>
                 <input type="checkbox" checked={guestReady} className="sr-only" onChange={(e) => setGuestReady(e.target.checked)} />
                 <span className="text-sm text-[var(--foreground)]">{t("cleaner.active.unitGuestReady")}</span>
@@ -1385,7 +1782,7 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
             className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/30"
             aria-label={t("common.close")}
           >
-            ✕
+            <X className="h-4 w-4" aria-hidden />
           </button>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img

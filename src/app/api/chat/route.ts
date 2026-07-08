@@ -5,6 +5,11 @@ import { auth } from "@clerk/nextjs/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@convex/_generated/api";
 import { z } from "zod";
+import {
+  ADAPTERS,
+  getAdapter,
+  type ProviderKey,
+} from "@convex/serviceUsage/providers";
 
 export const maxDuration = 30;
 
@@ -42,7 +47,39 @@ function buildSystemPrompt(): string {
     "- You can call multiple tools in sequence to build a complete answer.",
     "- Be concise. Use bullet points for lists. Flag urgent items.",
     "- You are read-only — you cannot make changes. If asked to modify something, suggest the user navigate to the relevant page.",
+    "- For platform usage, quotas, billing limits, or 'are we running out of X' questions, call getServiceUsage. It hits each provider's API directly — never answer from memory; numbers change constantly.",
   ].join("\n");
+}
+
+const SERVICE_KEY_SCHEMA = z.enum(["convex", "clerk", "b2"]);
+
+function summarizeQuotas(
+  snapshots: Array<{
+    serviceKey: string;
+    quotaKey: string;
+    used: number;
+    limit: number;
+    unit: string;
+    fetchedAt: number;
+  }>,
+): string {
+  if (snapshots.length === 0) return "No quota data available.";
+  const critical: string[] = [];
+  const warning: string[] = [];
+  const ok: string[] = [];
+  for (const s of snapshots) {
+    const pct = s.limit > 0 ? (s.used / s.limit) * 100 : 0;
+    const line = `${s.serviceKey}/${s.quotaKey}: ${pct.toFixed(1)}% (${s.used} / ${s.limit} ${s.unit})`;
+    if (pct >= 90) critical.push(line);
+    else if (pct >= 80) warning.push(line);
+    else ok.push(line);
+  }
+  const parts: string[] = [];
+  if (critical.length) parts.push(`CRITICAL (≥90%): ${critical.join("; ")}`);
+  if (warning.length) parts.push(`WARNING (≥80%): ${warning.join("; ")}`);
+  if (ok.length && parts.length === 0)
+    parts.push(`All clear (<80%): ${ok.join("; ")}`);
+  return parts.join(" | ");
 }
 
 function buildTools(convex: ConvexHttpClient) {
@@ -408,6 +445,74 @@ function buildTools(convex: ConvexHttpClient) {
       },
     }),
 
+    getServiceUsage: tool({
+      description:
+        "Check live quota usage for the paid platforms we depend on (Convex, Clerk, Backblaze B2). Calls each provider's billing API directly and returns current usage vs. plan limit, plus a percentage. Use whenever the user asks about quotas, usage, limits, billing pressure, or 'are we running out of X'. Always call this — never answer from cached memory.",
+      inputSchema: z.object({
+        serviceKey: SERVICE_KEY_SCHEMA.optional().describe(
+          "Which platform to check. Omit to check ALL providers (recommended when the user just asks 'how is our usage?').",
+        ),
+      }),
+      execute: async ({ serviceKey }) => {
+        const targets: Array<[ProviderKey, () => Promise<unknown>]> = serviceKey
+          ? [[serviceKey, getAdapter(serviceKey)!]]
+          : (Object.entries(ADAPTERS) as Array<[ProviderKey, () => Promise<unknown>]>);
+
+        const results = await Promise.allSettled(
+          targets.map(async ([key, adapter]) => ({
+            key,
+            snapshots: (await adapter()) as Array<{
+              serviceKey: string;
+              quotaKey: string;
+              used: number;
+              limit: number;
+              unit: string;
+              fetchedAt: number;
+            }>,
+          })),
+        );
+
+        const flat: Array<{
+          serviceKey: string;
+          quotaKey: string;
+          used: number;
+          limit: number;
+          unit: string;
+          pct: number;
+          fetchedAt: number;
+        }> = [];
+        const errors: Array<{ serviceKey: string; error: string }> = [];
+
+        for (let i = 0; i < results.length; i++) {
+          const r = results[i];
+          const [key] = targets[i];
+          if (r.status === "fulfilled") {
+            for (const s of r.value.snapshots) {
+              flat.push({
+                ...s,
+                pct: s.limit > 0 ? (s.used / s.limit) * 100 : 0,
+              });
+            }
+          } else {
+            errors.push({
+              serviceKey: key,
+              error:
+                r.reason instanceof Error
+                  ? r.reason.message
+                  : String(r.reason),
+            });
+          }
+        }
+
+        return {
+          summary: summarizeQuotas(flat),
+          quotas: flat,
+          errors,
+          fetchedAt: new Date().toISOString(),
+        };
+      },
+    }),
+
     getRefillQueue: tool({
       description:
         "Get items in the refill/restocking queue with their priority level and status.",
@@ -468,12 +573,13 @@ export async function POST(req: Request) {
     }
     convex.setAuth(convexToken);
 
-    // 3. Role gate — only admin, property_ops, manager
+    // 3. Role gate — only admin and property_ops. Cleaning managers and
+    //    cleaners are not allowed.
     const profile = await convex.query(api.users.queries.getMyProfile, {});
-    const allowedRoles = ["admin", "property_ops", "manager"];
+    const allowedRoles = ["admin", "property_ops"];
     if (!allowedRoles.includes(profile.role)) {
       return Response.json(
-        { error: "Only admins and managers can use the AI assistant" },
+        { error: "Only admins and property ops can use the AI assistant" },
         { status: 403 },
       );
     }
@@ -489,18 +595,93 @@ export async function POST(req: Request) {
     console.log("[OpsBot] Calling Gemini model:", modelId);
     console.log("[OpsBot] API key present:", !!process.env.GOOGLE_GENERATIVE_AI_API_KEY);
 
+    const startedAt = Date.now();
+
     const result = streamText({
       model: google(modelId),
       system: buildSystemPrompt(),
       messages: modelMessages,
       tools: buildTools(convex),
       stopWhen: stepCountIs(5),
-      onError: (error) => {
+      onError: (errorContainer) => {
+        const error = (errorContainer as { error?: unknown })?.error ?? errorContainer;
         console.error("[OpsBot] streamText error:", error);
+        // Fire-and-forget usage log for failures. `ConvexHttpClient` keeps
+        // the auth token set earlier in this function.
+        const message =
+          error instanceof Error ? error.message : String(error ?? "unknown");
+        void convex
+          .mutation(api.serviceUsage.logger.logFromClient, {
+            serviceKey: "gemini",
+            feature: "admin_ai_chat",
+            status: "unknown_error",
+            durationMs: Date.now() - startedAt,
+            errorMessage: message.slice(0, 500),
+            metadata: { model: modelId },
+          })
+          .catch((logError) => {
+            console.warn("[OpsBot] failed to log usage failure:", logError);
+          });
+      },
+      onFinish: async (finish) => {
+        // AI SDK v5+ exposes totalUsage on the finish payload. Different
+        // model providers populate different field names, so we defensively
+        // read the two common shapes.
+        const usage = (finish as {
+          totalUsage?: {
+            inputTokens?: number;
+            outputTokens?: number;
+            promptTokens?: number;
+            completionTokens?: number;
+          };
+          usage?: {
+            inputTokens?: number;
+            outputTokens?: number;
+            promptTokens?: number;
+            completionTokens?: number;
+          };
+        }).totalUsage ?? (finish as { usage?: unknown }).usage ?? {};
+        const u = usage as {
+          inputTokens?: number;
+          outputTokens?: number;
+          promptTokens?: number;
+          completionTokens?: number;
+        };
+        const inputTokens = u.inputTokens ?? u.promptTokens;
+        const outputTokens = u.outputTokens ?? u.completionTokens;
+
+        try {
+          await convex.mutation(api.serviceUsage.logger.logFromClient, {
+            serviceKey: "gemini",
+            feature: "admin_ai_chat",
+            status: "success",
+            durationMs: Date.now() - startedAt,
+            inputTokens,
+            outputTokens,
+            metadata: { model: modelId, messages: modelMessages.length },
+          });
+        } catch (logError) {
+          console.warn("[OpsBot] failed to log usage:", logError);
+        }
       },
     });
 
-    return result.toUIMessageStreamResponse();
+    // Surface real error messages to the client. Without this, ai-sdk
+    // returns a generic "An error occurred" and the chat appears to die
+    // silently when a tool call throws (e.g. a Convex auth/permission
+    // error for non-admin users).
+    return result.toUIMessageStreamResponse({
+      onError: (error) => {
+        if (error == null) return "Unknown error";
+        if (typeof error === "string") return error;
+        if (error instanceof Error) return error.message;
+        try {
+          return JSON.stringify(error);
+        } catch {
+          return "Unknown error";
+        }
+      },
+    });
   } catch (error) {
     console.error("[OpsBot] Error:", error);
     return Response.json(

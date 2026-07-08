@@ -14,12 +14,17 @@ const users = defineTable({
   clerkId: v.string(),
   email: v.string(),
   name: v.optional(v.string()),
+  // Owner's company / legal entity — what prints on the Chez Soi Stays owner
+  // statement when this user is the statement client. Optional + additive; when
+  // absent the statement falls back to `name`. See strCosts/views.listStatementClients.
+  company: v.optional(v.string()),
   avatarUrl: v.optional(v.string()),
   role: v.union(
     v.literal("cleaner"),
     v.literal("manager"),
     v.literal("property_ops"),
-    v.literal("admin")
+    v.literal("admin"),
+    v.literal("owner")
   ),
   pushToken: v.optional(v.string()),
   phone: v.optional(v.string()),
@@ -52,6 +57,10 @@ const cleaningCompanies = defineTable({
   contactEmail: v.optional(v.string()),
   contactPhone: v.optional(v.string()),
   logoUrl: v.optional(v.string()),
+  // Service city — a cleaning company only covers one city (e.g. "Dallas",
+  // "Austin", "Houston"). Used to filter the company dropdown on the property
+  // assignment table so admins only see companies in the property's city.
+  city: v.optional(v.string()),
   isActive: v.boolean(),
   settings: v.optional(v.object({
     autoAssign: v.optional(v.boolean()),
@@ -130,8 +139,62 @@ const properties = defineTable({
   // Media
   imageUrl: v.optional(v.string()),
 
+  // Access / field-ops context (shown to cleaners on the job detail)
+  accessNotes: v.optional(v.string()),
+  keyLocation: v.optional(v.string()),
+  parkingNotes: v.optional(v.string()),
+  urgentNotes: v.optional(v.string()),
+
+  // Extensible property instructions — admin-managed, shown to cleaners.
+  // Categories are a closed list so the cleaner UI can render a matching icon.
+  instructions: v.optional(
+    v.array(
+      v.object({
+        id: v.string(),
+        category: v.union(
+          v.literal("access"),
+          v.literal("trash"),
+          v.literal("lawn"),
+          v.literal("hot_tub"),
+          v.literal("pool"),
+          v.literal("parking"),
+          v.literal("wifi"),
+          v.literal("checkout"),
+          v.literal("pets"),
+          v.literal("other"),
+        ),
+        title: v.string(),
+        body: v.string(),
+        // Source language of the human-authored title/body (defaults to "en"
+        // for legacy rows). Auto-translations live in `translations`.
+        sourceLang: v.optional(v.union(v.literal("en"), v.literal("es"))),
+        translations: v.optional(
+          v.object({
+            en: v.optional(
+              v.object({ title: v.string(), body: v.string() }),
+            ),
+            es: v.optional(
+              v.object({ title: v.string(), body: v.string() }),
+            ),
+          }),
+        ),
+        updatedAt: v.number(),
+      }),
+    ),
+  ),
+
   // Config
   isActive: v.boolean(),
+  // Monthly-close / portfolio P&L status. Optional + additive: existing rows
+  // have no value and the engine derives status from `isActive` when absent
+  // (isActive ? "active" : "dropped"). "managed" = mgmt-fee unit, excluded
+  // from the arbitrage P&L. See convex/strCosts/portfolio.ts.
+  // Named `pnlStatus` (not `status`) because `properties/queries.ts` attaches
+  // a derived readiness `status` ("ready"|"dirty"|"in_progress"|"vacant") to
+  // its query results, which would collide on the Doc<"properties"> type.
+  pnlStatus: v.optional(
+    v.union(v.literal("active"), v.literal("dropped"), v.literal("managed")),
+  ),
   currency: v.optional(v.string()),
 
   // Amenities
@@ -206,6 +269,13 @@ const stays = defineTable({
   totalAmount: v.optional(v.number()),
   currency: v.optional(v.string()),
 
+  // Owner-portal: cancellation marker. The fee engine excludes stays with
+  // cancelledAt != null from grossRevenue. Populated by the Hospitable
+  // webhook handler on RESERVATION_CANCELLED, or manually by ops.
+  // Additive optional field — every existing row is valid without backfill.
+  cancelledAt: v.optional(v.number()),
+  cancellationSource: v.optional(v.string()),
+
   metadata: v.optional(v.any()),
   createdAt: v.number(),
   updatedAt: v.optional(v.number()),
@@ -271,6 +341,22 @@ const cleaningJobs = defineTable({
     label: v.string(),
     completed: v.boolean(),
     completedAt: v.optional(v.number()),
+  }))),
+
+  // Per-cleaner assignment acknowledgements (accept/decline with expiry)
+  acknowledgements: v.optional(v.array(v.object({
+    cleanerId: v.id("users"),
+    state: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("declined"),
+      v.literal("expired"),
+    ),
+    assignedAt: v.number(),
+    expiresAt: v.number(),
+    respondedAt: v.optional(v.number()),
+    reason: v.optional(v.string()),
+    notifiedOpsAt: v.optional(v.number()),
   }))),
 
   metadata: v.optional(v.any()),
@@ -340,6 +426,12 @@ const jobSubmissions = defineTable({
       ),
       uploadedAt: v.number(),
       uploadedBy: v.optional(v.id("users")),
+      // Phase 0 of video-support: snapshot the mediaKind so the immutable
+      // approval record knows whether each entry is an image or a video.
+      // Undefined ≡ "image" for any snapshot written before this change.
+      mediaKind: v.optional(
+        v.union(v.literal("image"), v.literal("video")),
+      ),
     }),
   ),
   checklistSnapshot: v.optional(
@@ -392,6 +484,38 @@ const jobSubmissions = defineTable({
   supersededAt: v.optional(v.number()),
   createdAt: v.number(),
 })
+  .index("by_job", ["jobId"])
+  .index("by_job_and_revision", ["jobId", "revision"])
+  .index("by_job_and_created", ["jobId", "createdAt"]);
+
+// Thin parallel index for jobSubmissions. Populated alongside every
+// jobSubmissions insert/patch. Carries metadata + denormalized counts only —
+// no heavy snapshots. `getJobDetailInternal` reads from here for the history
+// list (cheap), and uses `cleaningJobs.latestSubmissionId` to fetch the one
+// full `jobSubmissions` doc actually needed for current-submission rendering.
+//
+// Bandwidth motivation: a single heavy `jobSubmissions` doc carries
+// photoSnapshot + checklistSnapshot + incidentSnapshot + roomReviewSnapshot,
+// often 50 KB+ each. Reading 5 submissions per job = 250 KB. Reading 5 rows
+// from this thin table = ~1 KB. See
+// Docs/2026-04-28-convex-bandwidth-optimization-plan.md (Wave 2).
+const jobSubmissionsMeta = defineTable({
+  submissionId: v.id("jobSubmissions"),
+  jobId: v.id("cleaningJobs"),
+  revision: v.number(),
+  status: v.union(v.literal("sealed"), v.literal("superseded")),
+  submittedBy: v.optional(v.id("users")),
+  submittedAtServer: v.number(),
+  submittedAtDevice: v.optional(v.number()),
+  supersededAt: v.optional(v.number()),
+  // Denormalized counts derived from the corresponding heavy snapshots.
+  photoCount: v.number(),
+  beforeCount: v.number(),
+  afterCount: v.number(),
+  incidentCount: v.number(),
+  createdAt: v.number(),
+})
+  .index("by_submission", ["submissionId"])
   .index("by_job", ["jobId"])
   .index("by_job_and_revision", ["jobId", "revision"])
   .index("by_job_and_created", ["jobId", "createdAt"]);
@@ -488,6 +612,17 @@ const conversationMessages = defineTable({
     v.literal("email"),
   ),
   body: v.string(),
+  // Source language of the human-authored body (sender's UI locale at send
+  // time). Rows without sourceLang are treated as "en" for backwards compat.
+  sourceLang: v.optional(v.union(v.literal("en"), v.literal("es"))),
+  // Lazy-filled cache of body translations, written by the translateMessage
+  // action on first read in a different locale.
+  translations: v.optional(
+    v.object({
+      en: v.optional(v.string()),
+      es: v.optional(v.string()),
+    }),
+  ),
   metadata: v.optional(v.any()),
   createdAt: v.number(),
 })
@@ -538,7 +673,35 @@ const conversationMessageAttachments = defineTable({
   conversationId: v.id("conversations"),
   messageId: v.id("conversationMessages"),
   storageId: v.optional(v.id("_storage")),
-  attachmentKind: v.union(v.literal("image"), v.literal("document")),
+  attachmentKind: v.union(
+    v.literal("image"),
+    v.literal("document"),
+    v.literal("audio"),
+    // Phase 0 of video-support: outbound video attached as `video`. Inbound
+    // WhatsApp/SMS video is also stored as `video` with its original MIME
+    // (no transcode in v1, see Docs/video-support/adr/0003-…).
+    v.literal("video"),
+  ),
+  // Audio-specific metadata (populated only when attachmentKind === "audio").
+  // The recorded length in milliseconds — used for the player UI and for
+  // later aggregate cost analysis (seconds-of-audio-retained × storage rate).
+  audioDurationMs: v.optional(v.number()),
+  // ─── Video support (Phase 0) ───────────────────────────────────────────────
+  /** Duration of the video in milliseconds. Set on outbound video; may be
+   *  undefined on inbound until we probe the file (left undefined-tolerant
+   *  in v1). */
+  videoDurationMs: v.optional(v.number()),
+  /** Pixel dimensions of the video. Optional on inbound. */
+  width: v.optional(v.number()),
+  height: v.optional(v.number()),
+  /** Poster reference for video attachments. Outbound: extracted client-side
+   *  before upload (Phase 4a). Inbound: typically absent in v1 — UI shows
+   *  a generic "video" tile. */
+  posterStorageId: v.optional(v.id("_storage")),
+  posterProvider: v.optional(v.string()),
+  posterBucket: v.optional(v.string()),
+  posterObjectKey: v.optional(v.string()),
+  // ───────────────────────────────────────────────────────────────────────────
   channel: v.union(
     v.literal("internal"),
     v.literal("sms"),
@@ -616,12 +779,21 @@ const jobTemplates = defineTable({
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const photos = defineTable({
-  cleaningJobId: v.id("cleaningJobs"),
+  // Optional since Phase 4a-extended: standalone incidents can hold photos
+  // (and now videos) without a linked cleaning job. The `by_job` /
+  // `by_job_room` / `by_job_type` / `by_job_kind` indexes still work for
+  // job-linked rows; standalone rows just don't appear in those queries.
+  // Existing rows all have `cleaningJobId` set, so backward compatible.
+  cleaningJobId: v.optional(v.id("cleaningJobs")),
   storageId: v.optional(v.id("_storage")),
   provider: v.optional(v.string()),
   bucket: v.optional(v.string()),
   objectKey: v.optional(v.string()),
   objectVersion: v.optional(v.string()),
+  /** Byte size of the stored object, if known. Populated by
+   *  `completeExternalUpload` for B2/MinIO-backed photos. Enables accurate
+   *  storage-cost snapshots — see `convex/serviceUsage/b2Snapshot.ts`. */
+  byteSize: v.optional(v.number()),
   archivedTier: v.optional(v.string()),
   archivedAt: v.optional(v.number()),
 
@@ -637,6 +809,31 @@ const photos = defineTable({
     v.literal("manual")
   ),
 
+  // ─── Video support (Phase 0, see Docs/video-support/) ──────────────────────
+  /** Discriminator added in the video-support feature. `undefined` is treated
+   *  as `"image"` everywhere — every existing row reads as an image without
+   *  migration. See Docs/video-support/adr/0001-extend-photos-table-with-media-kind.md. */
+  mediaKind: v.optional(
+    v.union(v.literal("image"), v.literal("video"))
+  ),
+  /** Duration of the stored video in milliseconds. Only set when
+   *  `mediaKind === "video"`. */
+  durationMs: v.optional(v.number()),
+  /** Pixel width / height of the stored media. Captured for video to enable
+   *  correct aspect-ratio rendering before the player has loaded metadata.
+   *  May also be set for images opportunistically. */
+  width: v.optional(v.number()),
+  height: v.optional(v.number()),
+  /** Poster (first-frame JPEG) for video rows. For Convex `_storage`-backed
+   *  posters use `posterStorageId`; for B2/MinIO-backed posters use the
+   *  external triple. Per ADR-0002 video MUST use external storage, so
+   *  `posterStorageId` is reserved for completeness only. */
+  posterStorageId: v.optional(v.id("_storage")),
+  posterProvider: v.optional(v.string()),
+  posterBucket: v.optional(v.string()),
+  posterObjectKey: v.optional(v.string()),
+  // ───────────────────────────────────────────────────────────────────────────
+
   annotations: v.optional(v.any()),
   notes: v.optional(v.string()),
   uploadedBy: v.optional(v.id("users")),
@@ -645,6 +842,8 @@ const photos = defineTable({
   .index("by_job", ["cleaningJobId"])
   .index("by_job_room", ["cleaningJobId", "roomName"])
   .index("by_job_type", ["cleaningJobId", "type"])
+  // Lets a gallery query "videos only on this job" without scanning every photo.
+  .index("by_job_kind", ["cleaningJobId", "mediaKind"])
   .index("by_uploaded_at", ["uploadedAt"]);
 
 const photoArchives = defineTable({
@@ -667,6 +866,56 @@ const photoArchives = defineTable({
   .index("by_photo", ["photoId"])
   .index("by_status", ["status"])
   .index("by_archived_at", ["archivedAt"]);
+
+// Single-row running aggregate of B2/MinIO-backed photo storage.
+// Maintained incrementally on photo insert/delete so the nightly snapshot
+// can read one row instead of scanning the whole photos table.
+// Seeded by internal.serviceUsage.b2Snapshot.backfillPhotoStorageAggregate.
+const photoStorageAggregate = defineTable({
+  totalBytes: v.number(),
+  photoCount: v.number(),
+  photosWithSize: v.number(),
+  updatedAt: v.number(),
+});
+
+// Tracks every external upload ticket we hand out so the orphan-cleanup cron
+// can sweep bucket objects whose upload completed at the storage layer but
+// whose `completeExternalUpload` callback never landed (network drop, app
+// crash mid-upload, tab close). Rows are inserted by `getExternalUploadUrl`
+// and marked "completed" by `completeExternalUpload`. The cron runs daily,
+// finds rows still "pending" past `expiresAt + grace`, and deletes the
+// bucket objects (best-effort). See Phase 1 of Docs/video-support/.
+const pendingMediaUploads = defineTable({
+  /** Job the upload is for (matches the photo row that would be inserted).
+   *  Optional since Phase 4a-extended: standalone-incident videos have
+   *  no linked job. */
+  cleaningJobId: v.optional(v.id("cleaningJobs")),
+  /** Discriminator. Posters are tracked alongside their parent video row, so
+   *  this is the *primary* media kind. */
+  mediaKind: v.union(v.literal("image"), v.literal("video")),
+  provider: v.string(),
+  bucket: v.string(),
+  /** Primary object key (the image or the video). */
+  objectKey: v.string(),
+  /** Poster object key when `mediaKind === "video"`. */
+  posterObjectKey: v.optional(v.string()),
+  /** Wall-clock when the upload ticket expires; orphan sweep waits an
+   *  additional grace period beyond this before deleting. */
+  expiresAt: v.number(),
+  /** Lifecycle of the ticket. */
+  status: v.union(
+    v.literal("pending"),
+    v.literal("completed"),
+    v.literal("abandoned"),
+  ),
+  /** Set when the cleanup cron decides this ticket is orphaned. */
+  abandonedAt: v.optional(v.number()),
+  /** Last error from the cleanup attempt, for debugging. */
+  lastCleanupError: v.optional(v.string()),
+  createdAt: v.number(),
+})
+  .index("by_status_and_expiry", ["status", "expiresAt"])
+  .index("by_object_key", ["objectKey"]);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // INCIDENTS
@@ -713,6 +962,13 @@ const incidents = defineTable({
   resolvedBy: v.optional(v.id("users")),
   resolutionNotes: v.optional(v.string()),
 
+  // Trello integration — card created on the Ops board when the incident is opened
+  trelloCardId: v.optional(v.string()),
+  trelloCardUrl: v.optional(v.string()),
+  trelloCardShortLink: v.optional(v.string()),
+  trelloSyncedAt: v.optional(v.number()),
+  trelloSyncError: v.optional(v.string()),
+
   createdAt: v.number(),
   updatedAt: v.optional(v.number()),
 })
@@ -721,7 +977,8 @@ const incidents = defineTable({
   .index("by_created_at", ["createdAt"])
   .index("by_property_and_created_at", ["propertyId", "createdAt"])
   .index("by_status", ["status"])
-  .index("by_severity", ["severity"]);
+  .index("by_severity", ["severity"])
+  .index("by_reporter_and_created_at", ["reportedBy", "createdAt"]);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // INVENTORY
@@ -889,10 +1146,26 @@ const notifications = defineTable({
     v.literal("incident_created"),
     v.literal("low_stock"),
     v.literal("message_received"),
-    v.literal("system")
+    v.literal("task_assigned"),
+    v.literal("system"),
+    v.literal("owner_statement_issued"),
+    v.literal("owner_approval_request"),
+    v.literal("owner_incident_reported")
   ),
   title: v.string(),
+  // English fallback body. Kept for back-compat with old clients and for
+  // push payloads (FCM/APNs don't run our i18n). New clients prefer
+  // `messageKey` + `messageParams` and fall back to `message` if absent.
+  // See Docs/2026-05-21-notification-message-i18n-design.md.
   message: v.string(),
+  // i18n key under `notifications.messages.*` in the client message
+  // catalogs. Optional — old rows have no key and clients render
+  // `message` verbatim.
+  messageKey: v.optional(v.string()),
+  // Params to interpolate into the resolved translation string
+  // (e.g. `{ propertyName: "Casa Bonita" }`). Shape is per-key; not
+  // validated server-side. See design doc §3 for the worked examples.
+  messageParams: v.optional(v.any()),
   data: v.optional(v.any()),
 
   readAt: v.optional(v.number()),
@@ -904,7 +1177,33 @@ const notifications = defineTable({
 })
   .index("by_user", ["userId"])
   .index("by_unread", ["userId", "readAt"])
+  // Bandwidth: lets `dismissNotificationsForJob` (called from the hot
+  // start/approve paths) read only undismissed notifications for the user
+  // instead of scanning the user's entire notification history. Wave 4 in
+  // Docs/2026-04-28-convex-bandwidth-optimization-plan.md.
+  .index("by_user_and_dismissed", ["userId", "dismissedAt"])
   .index("by_type", ["type"]);
+
+// Reverse-index of cleaningJobs.assignedCleanerIds. Convex doesn't natively
+// index array fields, so `getMyAssigned` previously had to `.collect()` the
+// entire cleaningJobs table and filter in memory by
+// `assignedCleanerIds.includes(userId)`. With ~150 jobs and growing, that's
+// hundreds of KB per call — mounted reactively in the cleaner mobile app.
+//
+// Maintained by the `assign` mutation: when assignedCleanerIds changes,
+// additions get inserted, removals get deleted. Status/scheduledStartAt
+// are NOT denormalized — keeping this table thin so its rows are cheap.
+// Callers do `ctx.db.get(jobId)` for the few jobs they actually need.
+//
+// Wave 5 — see Docs/2026-04-28-convex-bandwidth-optimization-plan.md.
+const userJobAssignments = defineTable({
+  userId: v.id("users"),
+  jobId: v.id("cleaningJobs"),
+  createdAt: v.number(),
+})
+  .index("by_user", ["userId"])
+  .index("by_job", ["jobId"])
+  .index("by_user_and_job", ["userId", "jobId"]);
 
 const notificationSchedules = defineTable({
   jobId: v.id("cleaningJobs"),
@@ -1012,6 +1311,791 @@ const hospitableConfig = defineTable({
   updatedAt: v.optional(v.number()),
 });
 
+const guestReviews = defineTable({
+  hospitableReviewId: v.string(),
+  propertyId: v.id("properties"),
+  platform: v.union(v.literal("airbnb"), v.literal("direct")),
+  rating: v.number(),
+  publicReview: v.string(),
+  privateFeedback: v.optional(v.string()),
+  guestFirstName: v.string(),
+  guestLastName: v.string(),
+  reviewedAt: v.number(),
+  canRespond: v.boolean(),
+  status: v.union(
+    v.literal("needs_draft"),
+    v.literal("drafted"),
+    v.literal("sending"),
+    v.literal("sent"),
+    v.literal("dismissed"),
+    v.literal("send_failed"),
+  ),
+  aiDraftText: v.optional(v.string()),
+  aiDraftGeneratedAt: v.optional(v.number()),
+  respondedText: v.optional(v.string()),
+  respondedAt: v.optional(v.number()),
+  respondedBy: v.optional(v.id("users")),
+  sendError: v.optional(v.string()),
+})
+  .index("by_hospitable_review_id", ["hospitableReviewId"])
+  .index("by_property", ["propertyId"])
+  .index("by_status", ["status"]);
+
+// Inbound Hospitable webhook deliveries. Insert-on-receive provides
+// idempotency (Hospitable retries up to 5 times) and a debug trail for the
+// 24h header-discovery window before signature verification is enforced.
+const hospitableWebhookEvents = defineTable({
+  hospitableEventId: v.string(),
+  action: v.string(),
+  receivedAt: v.number(),
+  processedAt: v.optional(v.number()),
+  processingError: v.optional(v.string()),
+  rawPayload: v.any(),
+  // Log-only signature observation (PR B). Both fields removed in PR C
+  // once verification is enforced at the route boundary.
+  signatureValid: v.optional(v.boolean()),
+  signatureHeaders: v.optional(v.any()),
+}).index("by_event_id", ["hospitableEventId"]);
+
+// AI PROVIDERS (admin-configurable)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Single-row-per-feature table that controls which external AI provider is
+// used for a given server-side feature (e.g. voice transcription). Admins
+// change this from the /settings page — no redeploy needed.
+
+const aiProviderSettings = defineTable({
+  feature: v.union(
+    v.literal("voice_transcription")
+  ),
+  providerKey: v.union(
+    v.literal("gemini-flash"),
+    v.literal("groq-whisper-turbo"),
+    v.literal("openai-whisper")
+  ),
+  updatedBy: v.id("users"),
+  updatedAt: v.number(),
+  createdAt: v.number(),
+})
+  .index("by_feature", ["feature"]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FEATURE FLAGS (admin-configurable UI gates)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Generic one-row-per-flag table for toggling UI features on/off without a
+// redeploy. Contract for the client:
+//   - If no row exists for a given key → treat as DISABLED (safe default).
+//   - If a row exists → use its `enabled` boolean.
+// This lets us ship a flag off-by-default without a seeding mutation, and
+// requires an admin to explicitly opt in before anything lights up.
+//
+// Adopt this pattern for every new user-facing feature:
+//   1. Add the feature's key to the literal union below.
+//   2. Add matching metadata in `convex/admin/featureFlags.ts`.
+//   3. Gate the client render on `api.admin.featureFlags.isFeatureEnabled`.
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SERVICE USAGE TRACKING (Phase A — see Docs/usage-tracking/ADR.md)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const serviceUsageEvents = defineTable({
+  serviceKey: v.union(
+    v.literal("gemini"),
+    v.literal("groq"),
+    v.literal("openai"),
+    v.literal("clerk"),
+    v.literal("hospitable"),
+    v.literal("resend"),
+    v.literal("sentry"),
+    v.literal("posthog"),
+    v.literal("convex"),
+    v.literal("b2"),
+  ),
+  feature: v.string(),
+  status: v.union(
+    v.literal("success"),
+    v.literal("rate_limited"),
+    v.literal("quota_exceeded"),
+    v.literal("auth_error"),
+    v.literal("client_error"),
+    v.literal("server_error"),
+    v.literal("timeout"),
+    v.literal("unknown_error"),
+  ),
+  userId: v.optional(v.id("users")),
+  durationMs: v.optional(v.number()),
+  requestBytes: v.optional(v.number()),
+  responseBytes: v.optional(v.number()),
+  inputTokens: v.optional(v.number()),
+  outputTokens: v.optional(v.number()),
+  audioSeconds: v.optional(v.number()),
+  estimatedCostUsd: v.optional(v.number()),
+  errorCode: v.optional(v.string()),
+  errorMessage: v.optional(v.string()),
+  metadata: v.optional(v.any()),
+  createdAt: v.number(),
+})
+  .index("by_service_created", ["serviceKey", "createdAt"])
+  .index("by_feature_created", ["feature", "createdAt"])
+  .index("by_status_created", ["status", "createdAt"])
+  .index("by_user_created", ["userId", "createdAt"]);
+
+const serviceUsageRollups = defineTable({
+  serviceKey: v.string(),
+  feature: v.string(),
+  bucketStart: v.number(),
+  bucketSize: v.literal("1h"),
+  successCount: v.number(),
+  errorCount: v.number(),
+  totalDurationMs: v.number(),
+  totalInputTokens: v.number(),
+  totalOutputTokens: v.number(),
+  totalAudioSeconds: v.number(),
+  totalCostUsd: v.number(),
+})
+  .index("by_service_bucket", ["serviceKey", "bucketStart"])
+  .index("by_feature_bucket", ["feature", "bucketStart"]);
+
+/**
+ * Rolling-window quota counters. One row per
+ * (serviceKey, quotaId, bucketStart) — updated on every `logServiceUsage`
+ * call. Reading the counter is O(1), so the hot write path no longer has
+ * to scan serviceUsageEvents to check quota thresholds.
+ *
+ * `bucketStart` is unix ms aligned to the start of the quota window
+ * (minute/hour/day/month). Expired buckets are left in place and reclaimed
+ * by the daily retention cron (see `convex/serviceUsage/crons.ts`).
+ *
+ * `lastNotifiedPct` is the highest notifyAtPct threshold we've already
+ * fired for *this bucket*. Lets us replace the old
+ * "1-hour + dayBucket dedupe" workaround with a precise "just crossed"
+ * decision.
+ */
+const serviceQuotaCounters = defineTable({
+  serviceKey: v.string(),
+  quotaId: v.string(),
+  /** Unix ms aligned to window start. */
+  bucketStart: v.number(),
+  /** Rolling sum (count, tokens, or costUsd depending on the quota metric). */
+  consumed: v.number(),
+  /** Highest notifyAtPct that's already fired inside this bucket; -1 when none. */
+  lastNotifiedPct: v.number(),
+  updatedAt: v.number(),
+  /**
+   * Origin of this row. "self" = derived from our own serviceUsageEvents
+   * (estimate). "provider" = fetched directly from the provider's billing
+   * API (ground truth). UI prefers "provider" when both exist for the same
+   * (serviceKey, quotaId, bucketStart).
+   */
+  source: v.optional(v.union(v.literal("self"), v.literal("provider"))),
+  /**
+   * Hard limit for this quota inside this bucket (e.g. plan ceiling).
+   * Optional because pre-existing self-rows didn't track it; provider
+   * adapters always populate it.
+   */
+  limit: v.optional(v.number()),
+  /**
+   * Render unit: "calls" | "bytes" | "users" | "events" | "usd" | "seconds".
+   */
+  unit: v.optional(v.string()),
+  /**
+   * When the provider was last polled for this row. Distinct from
+   * updatedAt (which moves on every write, including notification fires).
+   */
+  fetchedAt: v.optional(v.number()),
+})
+  .index("by_service_quota_bucket", ["serviceKey", "quotaId", "bucketStart"])
+  .index("by_bucketStart", ["bucketStart"]);
+
+const featureFlags = defineTable({
+  key: v.union(
+    v.literal("theme_switcher"),
+    v.literal("voice_messages"),
+    v.literal("messages_granola_chips"),
+    v.literal("messages_granola_composer"),
+    v.literal("voice_audio_attachments"),
+    v.literal("usage_dashboard"),
+    v.literal("video_support"),
+    v.literal("messages_granola_composer"),
+    // Owner portal: show the mgmt-fee row inside the MonthSummary card on
+    // the per-property page. Default OFF — ops team A/B's whether owners
+    // want to see "what J&A charged" inline vs. only on the issued PDF.
+    v.literal("owner_show_mgmt_fee"),
+    // Owner portal: show the "Your payout" tile inside the MonthSummary
+    // card on the per-property page. Default ON — the payout is the
+    // headline number — toggle OFF to demo a "gross + fee only" view.
+    v.literal("owner_show_payout"),
+    // Admin Owner Overview: if ON, a monthly cron auto-creates a DRAFT
+    // statement for every (owner, property, prev-month). Default OFF —
+    // admins opt in once they trust the flow.
+    v.literal("owner_overview_auto_drafts"),
+    // Guest-review AI reply workflow (inbox + property-detail section).
+    // Default OFF — enable for the J&A team once real Hospitable review
+    // data is flowing (requires reviews:read/reviews:write OAuth scope).
+    v.literal("reviewsAiReply"),
+    // Owner portal: show the gross-revenue figure. Default OFF — ship dark
+    // until the ops team is ready to expose owner-facing financials.
+    v.literal("owner_show_gross_revenue"),
+    // Owner portal: show the statements list + statement-detail screens.
+    // Default OFF — financial statement surfaces stay hidden until enabled.
+    v.literal("owner_show_statements"),
+    // WhatsApp messaging lane (per-cleaner WhatsApp channel + invite links).
+    // Default OFF — WhatsApp comms ship dark until the integration is ready
+    // to turn on from admin.
+    v.literal("whatsapp_messaging"),
+    // Cleaner app: interactive per-room "mark as cleaned" checklist step in
+    // the job execution wizard (standard flow). Default OFF — before/after
+    // photos are the proof-of-work; when ON, cleaners also tick each room.
+    v.literal("cleaner_room_checklist")
+    // future flags go here
+  ),
+  enabled: v.boolean(),
+  updatedBy: v.id("users"),
+  updatedAt: v.number(),
+  createdAt: v.number(),
+}).index("by_key", ["key"]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OPS TASKS & SHIFT HANDOVER  (Docs/ops-tasks-and-handover/)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const opsTasks = defineTable({
+  title: v.string(),
+  description: v.optional(v.string()),
+  status: v.union(
+    v.literal("open"),
+    v.literal("in_progress"),
+    v.literal("done"),
+  ),
+  priority: v.union(
+    v.literal("low"),
+    v.literal("normal"),
+    v.literal("high"),
+    v.literal("urgent"),
+  ),
+  anchorDate: v.number(),
+  dueDate: v.optional(v.number()),
+  closedAt: v.optional(v.number()),
+  closedBy: v.optional(v.id("users")),
+  createdBy: v.id("users"),
+  assigneeId: v.optional(v.id("users")),
+  assigneeRole: v.optional(
+    v.union(
+      v.literal("admin"),
+      v.literal("property_ops"),
+      v.literal("manager"),
+      v.literal("cleaner"),
+    ),
+  ),
+  propertyId: v.optional(v.id("properties")),
+  jobId: v.optional(v.id("cleaningJobs")),
+  incidentId: v.optional(v.id("incidents")),
+  workOrderId: v.optional(v.string()),
+  conversationId: v.optional(v.id("conversations")),
+  photoIds: v.optional(v.array(v.string())),
+  templateId: v.optional(v.id("opsTaskTemplates")),
+  authoredLocale: v.optional(v.union(v.literal("en"), v.literal("es"))),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+})
+  .index("by_assignee_status", ["assigneeId", "status"])
+  .index("by_property_anchor", ["propertyId", "anchorDate"])
+  .index("by_anchor_status", ["anchorDate", "status"])
+  .index("by_status_priority", ["status", "priority"])
+  .index("by_template", ["templateId"])
+  .index("by_created", ["createdAt"]);
+
+const opsTaskComments = defineTable({
+  taskId: v.id("opsTasks"),
+  authorId: v.id("users"),
+  body: v.string(),
+  authoredLocale: v.optional(v.union(v.literal("en"), v.literal("es"))),
+  createdAt: v.number(),
+}).index("by_task", ["taskId", "createdAt"]);
+
+const opsTaskTemplates = defineTable({
+  name: v.string(),
+  title: v.string(),
+  description: v.optional(v.string()),
+  defaultAssigneeId: v.optional(v.id("users")),
+  defaultPriority: v.union(
+    v.literal("low"),
+    v.literal("normal"),
+    v.literal("high"),
+    v.literal("urgent"),
+  ),
+  scope: v.union(v.literal("property"), v.literal("portfolio")),
+  active: v.boolean(),
+  createdBy: v.id("users"),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+}).index("by_active", ["active"]);
+
+const opsTaskRecurrences = defineTable({
+  templateId: v.id("opsTaskTemplates"),
+  propertyId: v.optional(v.id("properties")),
+  rule: v.object({
+    freq: v.union(
+      v.literal("daily"),
+      v.literal("weekly"),
+      v.literal("monthly"),
+    ),
+    interval: v.number(),
+    byWeekday: v.optional(v.array(v.number())),
+    byMonthDay: v.optional(v.array(v.number())),
+    timeOfDay: v.optional(v.string()),
+  }),
+  startDate: v.number(),
+  endDate: v.optional(v.number()),
+  active: v.boolean(),
+  createdAt: v.number(),
+}).index("by_active", ["active"]);
+
+const userPresence = defineTable({
+  userId: v.id("users"),
+  lastSeenAt: v.number(),
+  lastSignedOutAt: v.optional(v.number()),
+}).index("by_user", ["userId"]);
+
+const handoverNotes = defineTable({
+  authorId: v.id("users"),
+  body: v.string(),
+  bodySource: v.optional(
+    v.union(v.literal("typed"), v.literal("dictated"), v.literal("mixed")),
+  ),
+  authoredLocale: v.optional(v.union(v.literal("en"), v.literal("es"))),
+  validFrom: v.number(),
+  validUntil: v.optional(v.number()),
+  referencedTaskIds: v.optional(v.array(v.id("opsTasks"))),
+  checklistResponses: v.optional(
+    v.array(
+      v.object({
+        itemKey: v.string(),
+        checked: v.boolean(),
+        note: v.optional(v.string()),
+      }),
+    ),
+  ),
+  acknowledgedBy: v.optional(
+    v.array(
+      v.object({
+        userId: v.id("users"),
+        at: v.number(),
+      }),
+    ),
+  ),
+  createdAt: v.number(),
+}).index("by_validFrom", ["validFrom"]);
+
+const handoverChecklistConfig = defineTable({
+  items: v.array(
+    v.object({
+      key: v.string(),
+      label: v.string(),
+      labelEs: v.optional(v.string()),
+      required: v.boolean(),
+      order: v.number(),
+    }),
+  ),
+  updatedAt: v.number(),
+  updatedBy: v.id("users"),
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OWNER PORTAL — FINANCE & COSTS (Wave 1; spec §3 + §4)
+// Ported verbatim from archive jna-bs-admin/convex/schema.ts. The owner-facing
+// queries/mutations land in Wave 3; this wave only adds storage.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const manualAdjustments = defineTable({
+  month: v.string(),                        // "YYYY-MM"
+  propertyId: v.optional(v.id("properties")),
+  type: v.union(
+    v.literal("revenue"),
+    v.literal("expense"),
+    v.literal("cash"),
+  ),
+  category: v.string(),
+  amount: v.number(),
+  reason: v.string(),
+  createdBy: v.id("users"),
+  createdAt: v.number(),
+})
+  .index("by_month", ["month"])
+  .index("by_property", ["propertyId"]);
+
+const capitalExpenditures = defineTable({
+  propertyId: v.id("properties"),
+  amount: v.number(),
+  category: v.string(),
+  description: v.string(),
+  vendor: v.optional(v.string()),
+  purchaseDate: v.number(),
+  receiptStorageIds: v.array(v.id("_storage")),
+  createdBy: v.optional(v.id("users")),
+  approvedBy: v.optional(v.id("users")),
+  createdAt: v.number(),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_date", ["purchaseDate"]);
+
+const costCategories = defineTable({
+  name: v.string(),
+  description: v.optional(v.string()),
+  color: v.optional(v.string()),
+  icon: v.optional(v.string()),
+  isFixed: v.boolean(),
+  sortOrder: v.number(),
+  // Owner-portal: bucket classification for statement rendering. Required
+  // post-Wave-2 backfill (2026-05-22) — every prod row now has a value, and
+  // future writers MUST validate via `isBucket()` from `convex/owner/constants.ts`.
+  bucket: v.union(
+    v.literal("lease"),
+    v.literal("cleaning"),
+    v.literal("supplies"),
+    v.literal("utilities"),
+    v.literal("maintenance"),
+    v.literal("lawnPoolOutdoor"),
+    v.literal("platformFees"),
+    v.literal("subscriptions"),
+    v.literal("labor"),
+    v.literal("insurance"),
+    v.literal("taxes"),
+    v.literal("managementFee"),
+    v.literal("other"),
+  ),
+  createdAt: v.number(),
+})
+  .index("by_name", ["name"])
+  .index("by_order", ["sortOrder"])
+  .index("by_bucket", ["bucket"]);
+
+const costItems = defineTable({
+  categoryId: v.id("costCategories"),
+  name: v.string(),
+  description: v.optional(v.string()),
+  defaultAmount: v.optional(v.number()),
+  isActive: v.boolean(),
+  createdAt: v.number(),
+})
+  .index("by_category", ["categoryId"])
+  .index("by_active", ["isActive"]);
+
+const costTemplates = defineTable({
+  name: v.string(),
+  description: v.optional(v.string()),
+  isDefault: v.boolean(),
+  isActive: v.optional(v.boolean()),
+  items: v.array(v.object({
+    categoryId: v.string(),
+    itemName: v.string(),
+    amount: v.number(),
+  })),
+  createdBy: v.optional(v.id("users")),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_default", ["isDefault"])
+  .index("by_name", ["name"]);
+
+const propertyCostItems = defineTable({
+  propertyId: v.id("properties"),
+  categoryId: v.id("costCategories"),
+  costItemId: v.optional(v.id("costItems")),
+  name: v.string(),
+  amount: v.number(),
+  frequency: v.union(
+    v.literal("one_time"),
+    v.literal("monthly"),
+    v.literal("quarterly"),
+    v.literal("annual"),
+    v.literal("yearly"),
+    v.literal("per_booking"),
+    v.literal("revenue_percentage"),
+  ),
+  percentageRate: v.optional(v.number()),
+  startDate: v.optional(v.number()),
+  endDate: v.optional(v.number()),
+  isActive: v.boolean(),
+  // Owner-portal: receipts that back this cost line. Optional so existing
+  // prod rows remain valid; UI renders [] and undefined identically.
+  receiptStorageIds: v.optional(v.array(v.id("_storage"))),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_category", ["categoryId"]);
+
+const monthlyCalculations = defineTable({
+  propertyId: v.id("properties"),
+  month: v.string(),
+  grossRevenue: v.number(),
+  platformFees: v.number(),
+  netRevenue: v.number(),
+  totalCosts: v.number(),
+  costBreakdown: v.optional(v.any()),
+  netProfit: v.number(),
+  marginPercent: v.optional(v.number()),
+  occupancyRate: v.optional(v.number()),
+  totalNights: v.optional(v.number()),
+  bookedNights: v.optional(v.number()),
+  scenarioName: v.optional(v.string()),
+  isActual: v.optional(v.boolean()),
+  totalBookings: v.optional(v.number()),
+  totalDays: v.optional(v.number()),
+  profitOptimization: v.optional(v.any()),
+  optimizationSource: v.optional(v.string()),
+  damageCost: v.optional(v.number()),
+  claimsReceived: v.optional(v.number()),
+  netDamageImpact: v.optional(v.number()),
+  adjustedProfit: v.optional(v.number()),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_month", ["month"])
+  .index("by_property_month", ["propertyId", "month"]);
+
+const propertyMonthlySettings = defineTable({
+  propertyId: v.id("properties"),
+  month: v.string(),
+  settings: v.object({
+    cleaningModel: v.optional(v.union(v.literal("percent"), v.literal("flat_cap"))),
+    cleaningPercent: v.optional(v.number()),
+    cleaningFlatCap: v.optional(v.number()),
+    utilitiesOverride: v.optional(v.number()),
+    customCosts: v.optional(v.array(v.object({
+      name: v.string(),
+      amount: v.number(),
+    }))),
+  }),
+  configurationName: v.optional(v.string()),
+  monthlyBookingsAssumption: v.optional(v.number()),
+  totalRevenueAssumption: v.optional(v.number()),
+  occupancyRateAssumption: v.optional(v.number()),
+  avgBookingValueAssumption: v.optional(v.number()),
+  notes: v.optional(v.string()),
+  isActive: v.optional(v.boolean()),
+  bookedNights: v.optional(v.number()),
+  importSource: v.optional(v.string()),
+  externalPropertyId: v.optional(v.string()),
+  damageCost: v.optional(v.number()),
+  claimsReceived: v.optional(v.number()),
+  createdBy: v.optional(v.id("users")),
+  updatedBy: v.optional(v.id("users")),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_property_month", ["propertyId", "month"]);
+
+// Saved per-partner property subsets for the Monthly Close page. `clientName`
+// is the optional company/owner label printed on the Chez Soi Stays statement
+// ("Statement prepared for: {clientName}"). See convex/strCosts/views.ts.
+const portfolioViews = defineTable({
+  name: v.string(),
+  clientName: v.optional(v.string()),
+  propertyIds: v.array(v.id("properties")),
+  // When set, the view is BOUND to this owner: clientName + propertyIds are
+  // derived LIVE from users + propertyOwners at read time (strCosts/views.
+  // listViews). The stored clientName/propertyIds become a fallback snapshot,
+  // used only if the owner loses all active stakes or the user row is gone.
+  ownerUserId: v.optional(v.id("users")),
+  createdAt: v.optional(v.number()),
+  updatedAt: v.optional(v.number()),
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OWNER PORTAL — NET-NEW TABLES (Wave 1; spec §4)
+// Order matters: propertyOwners + propertyFeeConfig must appear BEFORE
+// ownerStatements + maintenanceApprovalRequests, which reference them via v.id().
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const propertyOwners = defineTable({
+  propertyId: v.id("properties"),
+  userId: v.id("users"),
+  stakePct: v.number(),
+  role: v.union(v.literal("landlord"), v.literal("investor")),
+  isPrimaryApprover: v.boolean(),
+  effectiveFrom: v.number(),
+  effectiveTo: v.optional(v.number()),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_user", ["userId"])
+  .index("by_property_and_effective", ["propertyId", "effectiveFrom"])
+  .index("by_user_and_active", ["userId", "effectiveTo"]);
+
+const propertyFeeConfig = defineTable({
+  propertyId: v.id("properties"),
+  feePct: v.number(),
+  feeBase: v.union(
+    v.literal("grossRevenue"),
+    v.literal("netRevenue"),
+    v.literal("netOperatingProfit"),
+  ),
+  approvalThreshold: v.number(),
+  autoApproveAfterDays: v.optional(v.number()),
+  effectiveFrom: v.number(),
+  effectiveTo: v.optional(v.number()),
+  createdBy: v.id("users"),
+  createdAt: v.number(),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_property_and_effective", ["propertyId", "effectiveFrom"]);
+
+const ownerStatements = defineTable({
+  propertyId: v.id("properties"),
+  periodStart: v.number(),
+  periodEnd: v.number(),
+  status: v.union(
+    v.literal("draft"),
+    v.literal("ready"),
+    v.literal("issued"),
+    v.literal("sent"),
+    v.literal("recalled"),
+  ),
+  snapshotTotals: v.object({
+    grossRevenue: v.number(),
+    platformFees: v.number(),
+    netRevenue: v.number(),
+    costsByBucket: v.array(v.object({
+      bucket: v.string(),
+      amount: v.number(),
+    })),
+    operatingCosts: v.number(),
+    noi: v.number(),
+    feeBase: v.union(
+      v.literal("grossRevenue"),
+      v.literal("netRevenue"),
+      v.literal("netOperatingProfit"),
+    ),
+    feePct: v.number(),
+    mgmtFee: v.number(),
+    ownerPayout: v.number(),
+    capExMemo: v.number(),
+    perOwner: v.array(v.object({
+      ownerId: v.id("propertyOwners"),
+      userId: v.id("users"),
+      stakePct: v.number(),
+      payout: v.number(),
+    })),
+  }),
+  feeConfigSnapshot: v.object({
+    feeConfigId: v.id("propertyFeeConfig"),
+    feePct: v.number(),
+    feeBase: v.string(),
+    effectiveFrom: v.number(),
+  }),
+  sourceRefs: v.array(v.union(
+    v.object({
+      table: v.literal("propertyCostItems"),
+      rowId: v.id("propertyCostItems"),
+      amount: v.number(),
+      bucket: v.string(),
+    }),
+    v.object({
+      table: v.literal("manualAdjustments"),
+      rowId: v.id("manualAdjustments"),
+      amount: v.number(),
+      bucket: v.optional(v.string()),
+    }),
+    v.object({
+      table: v.literal("stays"),
+      rowId: v.id("stays"),
+      amount: v.number(),
+    }),
+    v.object({
+      table: v.literal("capitalExpenditures"),
+      rowId: v.id("capitalExpenditures"),
+      amount: v.number(),
+    }),
+  )),
+  issuedAt: v.optional(v.number()),
+  issuedBy: v.optional(v.id("users")),
+  // Server-rendered PDF artifact. Populated by `renderOwnerStatementPdf`
+  // action scheduled by the issuance mutation. undefined ≡ still generating.
+  pdfStorageId: v.optional(v.id("_storage")),
+  pdfTemplateVersion: v.optional(v.number()),
+  // Admin Owner Overview (Wave 5 — 2026-05-25): per-statement editor state.
+  // All optional/additive so pre-Wave-5 rows still validate.
+  overrides: v.optional(v.object({
+    show_mortgage: v.optional(v.boolean()),
+    show_mgmt_fee: v.optional(v.boolean()),
+    show_payout: v.optional(v.boolean()),
+    show_cost_line_items: v.optional(v.boolean()),
+  })),
+  excludedStayIds: v.optional(v.array(v.id("stays"))),
+  excludedCostItemIds: v.optional(v.array(v.id("propertyCostItems"))),
+  costBucketOverrides: v.optional(v.array(v.object({
+    costItemId: v.id("propertyCostItems"),
+    bucket: v.string(),
+  }))),
+  notes: v.optional(v.string()),
+  auditTrail: v.optional(v.array(v.object({
+    at: v.number(),
+    actorUserId: v.id("users"),
+    action: v.string(),
+    note: v.optional(v.string()),
+  }))),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_property_and_period", ["propertyId", "periodStart"])
+  .index("by_status", ["status"]);
+
+const maintenanceApprovalRequests = defineTable({
+  propertyId: v.id("properties"),
+  ownerId: v.id("propertyOwners"),
+  proposedCost: v.number(),
+  description: v.string(),
+  photoIds: v.array(v.id("photos")),
+  requestedBy: v.id("users"),
+  status: v.union(
+    v.literal("pending"),
+    v.literal("approved"),
+    v.literal("declined"),
+    v.literal("auto_approved"),
+  ),
+  decidedAt: v.optional(v.number()),
+  decidedBy: v.optional(v.id("users")),
+  decidedNote: v.optional(v.string()),
+  resultingCostItemId: v.optional(v.id("propertyCostItems")),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_owner", ["ownerId"])
+  .index("by_status", ["status"])
+  .index("by_property_and_status", ["propertyId", "status"]);
+
+const ownerDateBlocks = defineTable({
+  propertyId: v.id("properties"),
+  ownerId: v.id("propertyOwners"),
+  startDate: v.number(),
+  endDate: v.number(),
+  note: v.optional(v.string()),
+  syncedToChannelsAt: v.optional(v.number()),
+  createdAt: v.number(),
+})
+  .index("by_property", ["propertyId"])
+  .index("by_owner", ["ownerId"])
+  .index("by_property_and_start", ["propertyId", "startDate"]);
+
+const ownerNotificationPrefs = defineTable({
+  userId: v.id("users"),
+  channel: v.union(v.literal("email"), v.literal("sms"), v.literal("push")),
+  statementIssued: v.boolean(),
+  approvalRequest: v.boolean(),
+  incidentReport: v.boolean(),
+  updatedAt: v.number(),
+})
+  .index("by_user", ["userId"])
+  .index("by_user_and_channel", ["userId", "channel"]);
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // EXPORT SCHEMA
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1040,6 +2124,7 @@ export default defineSchema({
   jobTemplates,
   jobExecutionSessions,
   jobSubmissions,
+  jobSubmissionsMeta,
   jobAssignmentAuditEvents,
   conversations,
   conversationParticipants,
@@ -1052,6 +2137,8 @@ export default defineSchema({
   // Photos
   photos,
   photoArchives,
+  photoStorageAggregate,
+  pendingMediaUploads,
 
   // Incidents
   incidents,
@@ -1068,6 +2155,7 @@ export default defineSchema({
   // Notifications
   notifications,
   notificationSchedules,
+  userJobAssignments,
 
   // Instructions
   instructionCategories,
@@ -1078,4 +2166,43 @@ export default defineSchema({
 
   // Integration
   hospitableConfig,
+  hospitableWebhookEvents,
+  guestReviews,
+
+  // AI Providers (admin-configurable)
+  aiProviderSettings,
+
+  // Feature Flags (admin-controlled UI gates)
+  featureFlags,
+
+  // Service Usage Tracking (Phase A)
+  serviceUsageEvents,
+  serviceUsageRollups,
+  serviceQuotaCounters,
+
+  // Ops Tasks & Handover (Docs/ops-tasks-and-handover/)
+  opsTasks,
+  opsTaskComments,
+  opsTaskTemplates,
+  opsTaskRecurrences,
+  userPresence,
+  handoverNotes,
+  handoverChecklistConfig,
+
+  // Owner Portal — Wave 1 (spec §3 + §4)
+  manualAdjustments,
+  capitalExpenditures,
+  costCategories,
+  costItems,
+  costTemplates,
+  propertyCostItems,
+  monthlyCalculations,
+  propertyMonthlySettings,
+  portfolioViews,
+  propertyOwners,
+  propertyFeeConfig,
+  ownerStatements,
+  maintenanceApprovalRequests,
+  ownerDateBlocks,
+  ownerNotificationPrefs,
 });

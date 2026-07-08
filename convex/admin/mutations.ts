@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
-import { mutation } from "../_generated/server";
+import { mutation, internalMutation } from "../_generated/server";
+import { internal } from "../_generated/api";
 import { type Doc, type Id } from "../_generated/dataModel";
 import { requireRole } from "../lib/auth";
 import {
@@ -12,6 +13,7 @@ const appRoleValidator = v.union(
   v.literal("manager"),
   v.literal("property_ops"),
   v.literal("admin"),
+  v.literal("owner"),
 );
 
 const companyMemberRoleValidator = v.union(
@@ -174,6 +176,8 @@ export const updateUser = mutation({
     phone: v.optional(v.string()),
     avatarUrl: v.optional(v.string()),
     role: v.optional(appRoleValidator),
+    // Owner's company for the Chez Soi Stays statement (empty string clears it).
+    company: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireRole(ctx, ["admin"]);
@@ -213,12 +217,27 @@ export const updateUser = mutation({
     if (fields.role !== undefined) {
       updates.role = fields.role;
     }
+    if (fields.company !== undefined) {
+      const normalizedCompany = fields.company.trim();
+      updates.company = normalizedCompany.length > 0 ? normalizedCompany : undefined;
+    }
 
     if (nextMetadata !== user.metadata) {
       updates.metadata = nextMetadata;
     }
 
     await ctx.db.patch(id, updates);
+
+    // If role changed, sync to Clerk publicMetadata + revoke active sessions
+    // so the new role takes effect on next request. Fire-and-forget — the
+    // mutation succeeds even if Clerk is down (eventual consistency).
+    // Without this, middleware reads stale role from JWT (cf. Randalls hot-fix).
+    if (fields.role !== undefined && fields.role !== user.role) {
+      await ctx.scheduler.runAfter(0, internal.clerk.actions.syncUserRoleToClerk, {
+        clerkId: user.clerkId,
+        role: fields.role,
+      });
+    }
 
     return { success: true };
   },
@@ -315,6 +334,7 @@ export const createCleaningCompany = mutation({
     name: v.string(),
     contactEmail: v.optional(v.string()),
     contactPhone: v.optional(v.string()),
+    city: v.optional(v.string()),
     ownerUserId: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
@@ -348,6 +368,7 @@ export const createCleaningCompany = mutation({
       ownerId: args.ownerUserId,
       contactEmail: args.contactEmail?.trim(),
       contactPhone: args.contactPhone?.trim(),
+      city: args.city?.trim() || undefined,
       isActive: true,
       createdAt: now,
       updatedAt: now,
@@ -378,6 +399,7 @@ export const updateCleaningCompany = mutation({
     contactEmail: v.optional(v.string()),
     contactPhone: v.optional(v.string()),
     logoUrl: v.optional(v.string()),
+    city: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireRole(ctx, ["admin"]);
@@ -413,6 +435,7 @@ export const updateCleaningCompany = mutation({
       contactEmail: hasValue(args.contactEmail) ? args.contactEmail.trim() : undefined,
       contactPhone: hasValue(args.contactPhone) ? args.contactPhone.trim() : undefined,
       logoUrl: hasValue(args.logoUrl) ? args.logoUrl.trim() : undefined,
+      city: hasValue(args.city) ? args.city.trim() : undefined,
       updatedAt: now,
     });
 
@@ -679,5 +702,27 @@ export const upsertUserFromClerkWebhook = mutation({
       userId,
       created: true,
     };
+  },
+});
+
+/**
+ * Ops one-off: set (or clear) an owner's statement company by email. Internal —
+ * not client-callable; run via `npx convex run admin/mutations:setOwnerCompanyByEmail`.
+ * Used to backfill owner companies (e.g. Randalls → "J&A Business Solutions LLC").
+ */
+export const setOwnerCompanyByEmail = internalMutation({
+  args: { email: v.string(), company: v.string() },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", args.email))
+      .first();
+    if (!user) throw new ConvexError(`No user with email ${args.email}`);
+    const company = args.company.trim();
+    await ctx.db.patch(user._id, {
+      company: company.length > 0 ? company : undefined,
+      updatedAt: Date.now(),
+    });
+    return { userId: user._id, name: user.name ?? null, company: company || null };
   },
 });

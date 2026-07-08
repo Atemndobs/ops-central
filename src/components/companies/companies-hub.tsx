@@ -4,8 +4,17 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { Building2, Loader2, Plus, RefreshCcw, ShieldCheck, Users } from "lucide-react";
+import {
+  Building2,
+  ChevronDown,
+  Loader2,
+  Plus,
+  RefreshCcw,
+  ShieldCheck,
+  Users,
+} from "lucide-react";
 import { useToast } from "@/components/ui/toast-provider";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { getErrorMessage } from "@/lib/errors";
 
 type DraftAssignments = Record<string, string>;
@@ -26,6 +35,24 @@ function isActiveAssignment(assignment: {
 
 function companyNameKey(name: string) {
   return name.trim().toLowerCase();
+}
+
+const destructiveGhostBtn =
+  "rounded-md border border-red-500/40 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-500/10 disabled:opacity-60";
+
+function RolePill({ role }: { role: string }) {
+  const isManager = role === "manager";
+  return (
+    <span
+      className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+        isManager
+          ? "bg-[var(--primary)]/15 text-[var(--primary)]"
+          : "border border-blue-500/30 bg-blue-500/10 text-blue-600"
+      }`}
+    >
+      {role}
+    </span>
+  );
 }
 
 export function CompaniesHub() {
@@ -52,12 +79,14 @@ export function CompaniesHub() {
   const [companyName, setCompanyName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
+  const [companyCity, setCompanyCity] = useState("");
   const [isCreatingCompany, setIsCreatingCompany] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editName, setEditName] = useState("");
   const [editContactEmail, setEditContactEmail] = useState("");
   const [editContactPhone, setEditContactPhone] = useState("");
   const [editLogoUrl, setEditLogoUrl] = useState("");
+  const [editCity, setEditCity] = useState("");
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [isUpdatingCompany, setIsUpdatingCompany] = useState(false);
   const [isArchivingCompany, setIsArchivingCompany] = useState(false);
@@ -70,6 +99,15 @@ export function CompaniesHub() {
   const removePropertyCompanyAssignment = useMutation(
     api.admin.mutations.removePropertyCompanyAssignment,
   );
+  const assignUserCompanyMembership = useMutation(
+    api.admin.mutations.assignUserCompanyMembership,
+  );
+  const allUsersData = useQuery(api.admin.queries.getAllUsers, {});
+  const [memberAttachUserId, setMemberAttachUserId] = useState<string>("");
+  const [isAttachingMember, setIsAttachingMember] = useState(false);
+  const [detachingMemberUserId, setDetachingMemberUserId] = useState<string | null>(null);
+  const [isAttachOpen, setIsAttachOpen] = useState(false);
+  const [propertiesView, setPropertiesView] = useState<"active" | "history">("active");
 
   const allCompanies = useMemo(() => {
     const newestByName = new Map<string, NonNullable<typeof companies>[number]>();
@@ -113,6 +151,11 @@ export function CompaniesHub() {
     [allCompanies, selectedCompanyId],
   );
 
+  useEffect(() => {
+    setIsAttachOpen(false);
+    setPropertiesView("active");
+  }, [selectedCompanyId]);
+
   const companyDetail = useQuery(
     api.admin.queries.getCompanyById,
     isAuthenticated && selectedCompanyId
@@ -141,6 +184,22 @@ export function CompaniesHub() {
         (member) => member.isActive && member.leftAt === undefined,
       ).length,
     [companyDetail],
+  );
+
+  const sortedMembers = useMemo(
+    () =>
+      (companyDetail?.members ?? [])
+        .slice()
+        .sort((a, b) => b.joinedAt - a.joinedAt),
+    [companyDetail],
+  );
+  const activeMembers = useMemo(
+    () => sortedMembers.filter((member) => member.isActive),
+    [sortedMembers],
+  );
+  const inactiveMembers = useMemo(
+    () => sortedMembers.filter((member) => !member.isActive),
+    [sortedMembers],
   );
 
   const activePropertyAssignments = useMemo(
@@ -183,11 +242,13 @@ export function CompaniesHub() {
         name: companyName.trim(),
         contactEmail: contactEmail.trim() || undefined,
         contactPhone: contactPhone.trim() || undefined,
+        city: companyCity.trim() || undefined,
       });
 
       setCompanyName("");
       setContactEmail("");
       setContactPhone("");
+      setCompanyCity("");
       setIsCreateOpen(false);
       setSelectedCompanyId(result.companyId);
       showToast("Cleaning company created.");
@@ -206,6 +267,7 @@ export function CompaniesHub() {
     setEditContactEmail(selectedCompany.contactEmail ?? "");
     setEditContactPhone(selectedCompany.contactPhone ?? "");
     setEditLogoUrl(selectedCompany.logoUrl ?? "");
+    setEditCity(selectedCompany.city ?? "");
     setIsEditOpen(true);
   }
 
@@ -223,6 +285,7 @@ export function CompaniesHub() {
         contactEmail: editContactEmail.trim() || undefined,
         contactPhone: editContactPhone.trim() || undefined,
         logoUrl: editLogoUrl.trim() || undefined,
+        city: editCity.trim() || undefined,
       });
       setIsEditOpen(false);
       showToast("Company updated.");
@@ -357,44 +420,15 @@ export function CompaniesHub() {
               history.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            {selectedCompany ? (
-              <>
-                <button
-                  type="button"
-                  onClick={openEditCompany}
-                  className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium hover:bg-[var(--accent)]"
-                >
-                  Edit Company
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsArchiveConfirmOpen(true)}
-                  disabled={isArchivingCompany || selectedCompanyActivePropertyCount > 0}
-                  className="inline-flex items-center gap-2 rounded-md border border-red-500/40 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-500/10 disabled:opacity-60"
-                >
-                  {isArchivingCompany ? "Archiving..." : "Archive Company"}
-                </button>
-              </>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => setIsCreateOpen((previous) => !previous)}
-              className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium hover:bg-[var(--accent)]"
-            >
-              <Plus className="h-4 w-4" />
-              New Company
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setIsCreateOpen((previous) => !previous)}
+            className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium hover:bg-[var(--accent)]"
+          >
+            <Plus className="h-4 w-4" />
+            New Company
+          </button>
         </div>
-
-        {selectedCompany && selectedCompanyActivePropertyCount > 0 ? (
-          <p className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700">
-            Unassign {selectedCompanyActivePropertyCount} active propert
-            {selectedCompanyActivePropertyCount === 1 ? "y" : "ies"} from{" "}
-            {selectedCompany.name} before archiving.
-          </p>
-        ) : null}
 
         {isCreateOpen ? (
           <form onSubmit={handleCreateCompany} className="mt-4 grid gap-3 rounded-xl border p-4 md:grid-cols-4">
@@ -425,6 +459,18 @@ export function CompaniesHub() {
                 className="w-full rounded-md border bg-[var(--background)] px-3 py-2"
                 placeholder="+1 ..."
               />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-[var(--muted-foreground)]">Service City</span>
+              <input
+                value={companyCity}
+                onChange={(event) => setCompanyCity(event.target.value)}
+                className="w-full rounded-md border bg-[var(--background)] px-3 py-2"
+                placeholder="Dallas"
+              />
+              <span className="block text-xs text-[var(--muted-foreground)]">
+                Company will only be shown when assigning properties in this city.
+              </span>
             </label>
             <div className="md:col-span-4 flex justify-end gap-2">
               <button
@@ -474,6 +520,18 @@ export function CompaniesHub() {
                 className="w-full rounded-md border bg-[var(--background)] px-3 py-2"
                 placeholder="+1 ..."
               />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-[var(--muted-foreground)]">Service City</span>
+              <input
+                value={editCity}
+                onChange={(event) => setEditCity(event.target.value)}
+                className="w-full rounded-md border bg-[var(--background)] px-3 py-2"
+                placeholder="Dallas"
+              />
+              <span className="block text-xs text-[var(--muted-foreground)]">
+                Only shown when assigning properties in this city.
+              </span>
             </label>
             <div className="space-y-1 text-sm md:col-span-4">
               <span className="text-[var(--muted-foreground)]">Logo</span>
@@ -668,20 +726,57 @@ export function CompaniesHub() {
         </aside>
 
         <div className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-2xl border bg-[var(--card)] p-4">
-              <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">Selected Company</p>
-              <p className="mt-2 text-lg font-bold">{selectedCompany?.name ?? "—"}</p>
+          {selectedCompany ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-[var(--card)] p-4">
+              <div className="flex min-w-0 items-center gap-3">
+                {selectedCompany.logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={selectedCompany.logoUrl}
+                    alt=""
+                    className="h-9 w-9 shrink-0 rounded-lg border bg-white object-contain"
+                  />
+                ) : (
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-xs font-bold text-[var(--muted-foreground)]">
+                    {selectedCompany.name.slice(0, 2).toUpperCase()}
+                  </span>
+                )}
+                <div className="min-w-0">
+                  <p className="truncate text-base font-semibold">{selectedCompany.name}</p>
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    {activeMemberCount} member{activeMemberCount === 1 ? "" : "s"} ·{" "}
+                    {activePropertyAssignments.length} propert
+                    {activePropertyAssignments.length === 1 ? "y" : "ies"} ·{" "}
+                    {selectedCompany.isActive ? "active" : "inactive"}
+                  </p>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={openEditCompany}
+                  className="rounded-md border px-3 py-2 text-sm font-medium hover:bg-[var(--accent)]"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsArchiveConfirmOpen(true)}
+                  disabled={isArchivingCompany || selectedCompanyActivePropertyCount > 0}
+                  title={
+                    selectedCompanyActivePropertyCount > 0
+                      ? `Unassign ${selectedCompanyActivePropertyCount} active propert${
+                          selectedCompanyActivePropertyCount === 1 ? "y" : "ies"
+                        } before archiving`
+                      : undefined
+                  }
+                  className="rounded-md border border-red-500/40 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-500/10 disabled:opacity-60"
+                >
+                  {isArchivingCompany ? "Archiving..." : "Archive"}
+                </button>
+              </div>
             </div>
-            <div className="rounded-2xl border bg-[var(--card)] p-4">
-              <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">Active Members</p>
-              <p className="mt-2 text-lg font-bold">{activeMemberCount}</p>
-            </div>
-            <div className="rounded-2xl border bg-[var(--card)] p-4">
-              <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">Active Properties</p>
-              <p className="mt-2 text-lg font-bold">{activePropertyAssignments.length}</p>
-            </div>
-          </div>
+          ) : null}
 
           <div className="grid gap-4 xl:grid-cols-2">
             <section className="rounded-2xl border bg-[var(--card)]">
@@ -690,23 +785,136 @@ export function CompaniesHub() {
                   <Users className="h-4 w-4 text-[var(--muted-foreground)]" />
                   <h2 className="text-sm font-bold uppercase tracking-wide">Members</h2>
                 </div>
+                {companyDetail ? (
+                  <button
+                    type="button"
+                    aria-label="Add member"
+                    onClick={() => setIsAttachOpen((previous) => !previous)}
+                    className={`flex h-6 w-6 items-center justify-center rounded-md border hover:bg-[var(--accent)] ${
+                      isAttachOpen ? "border-[var(--primary)] text-[var(--primary)]" : ""
+                    }`}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
               </div>
-              <div className="max-h-64 overflow-y-auto px-4 py-3">
-                {companyDetail?.members?.length ? (
+              {companyDetail && isAttachOpen ? (
+                <div className="border-b px-4 py-3">
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+                    Attach user to this company
+                  </label>
+                  <div className="flex gap-2">
+                    <select
+                      value={memberAttachUserId}
+                      onChange={(e) => setMemberAttachUserId(e.target.value)}
+                      className="flex-1 rounded-md border bg-[var(--card)] px-3 py-2 text-sm"
+                      disabled={isAttachingMember}
+                    >
+                      <option value="">Select a user...</option>
+                      {(allUsersData?.users ?? [])
+                        .filter(
+                          (u) =>
+                            (u.role === "cleaner" || u.role === "manager") &&
+                            !(companyDetail.members ?? []).some(
+                              (m) => m.userId === u._id && m.isActive,
+                            ),
+                        )
+                        .map((u) => (
+                          <option key={u._id} value={u._id}>
+                            {u.name ?? u.email ?? "Unknown"} · {u.role}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={!memberAttachUserId || isAttachingMember}
+                      onClick={async () => {
+                        if (!memberAttachUserId || !companyDetail?._id) return;
+                        setIsAttachingMember(true);
+                        try {
+                          await assignUserCompanyMembership({
+                            userId: memberAttachUserId as Id<"users">,
+                            companyId: companyDetail._id,
+                          });
+                          setMemberAttachUserId("");
+                          setIsAttachOpen(false);
+                        } finally {
+                          setIsAttachingMember(false);
+                        }
+                      }}
+                      className="rounded-md border border-[var(--primary)] bg-[var(--primary)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] disabled:opacity-50"
+                    >
+                      {isAttachingMember ? "Attaching..." : "Attach"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              <div className="max-h-80 overflow-y-auto px-4 py-3">
+                {activeMembers.length || inactiveMembers.length ? (
                   <div className="space-y-2">
-                    {companyDetail.members
-                      .slice()
-                      .sort((a, b) => b.joinedAt - a.joinedAt)
-                      .map((member) => (
-                        <div key={member._id} className="rounded-lg border px-3 py-2 text-sm">
-                          <p className="font-semibold">
+                    {activeMembers.map((member) => (
+                      <div
+                        key={member._id}
+                        className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          <p className="truncate font-semibold">
                             {member.user?.name ?? member.user?.email ?? "Unknown user"}
                           </p>
-                          <p className="text-xs text-[var(--muted-foreground)]">
-                            {member.role} · {member.isActive ? "active" : "inactive"}
-                          </p>
+                          <RolePill role={member.role} />
                         </div>
-                      ))}
+                        {member.user?._id ? (
+                          <button
+                            type="button"
+                            disabled={detachingMemberUserId === member.user._id}
+                            onClick={async () => {
+                              if (!member.user?._id) return;
+                              setDetachingMemberUserId(member.user._id);
+                              try {
+                                await assignUserCompanyMembership({
+                                  userId: member.user._id,
+                                  companyId: null,
+                                });
+                              } finally {
+                                setDetachingMemberUserId(null);
+                              }
+                            }}
+                            className={destructiveGhostBtn}
+                          >
+                            {detachingMemberUserId === member.user._id
+                              ? "Removing..."
+                              : "Detach"}
+                          </button>
+                        ) : null}
+                      </div>
+                    ))}
+
+                    {inactiveMembers.length > 0 ? (
+                      <details className="mt-1 rounded-lg">
+                        <summary className="flex cursor-pointer items-center gap-1 px-1 py-1.5 text-xs text-[var(--muted-foreground)]">
+                          <ChevronDown className="h-3 w-3" />
+                          {inactiveMembers.length} inactive
+                        </summary>
+                        <div className="mt-1 space-y-2 opacity-60">
+                          {inactiveMembers.map((member) => (
+                            <div
+                              key={member._id}
+                              className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
+                            >
+                              <div className="flex min-w-0 items-center gap-2">
+                                <p className="truncate">
+                                  {member.user?.name ?? member.user?.email ?? "Unknown user"}
+                                </p>
+                                <RolePill role={member.role} />
+                              </div>
+                              <span className="text-xs text-[var(--muted-foreground)]">
+                                left team
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    ) : null}
                   </div>
                 ) : (
                   <p className="text-sm text-[var(--muted-foreground)]">No members assigned yet.</p>
@@ -718,14 +926,81 @@ export function CompaniesHub() {
               <div className="flex items-center justify-between border-b px-4 py-3">
                 <div className="flex items-center gap-2">
                   <Building2 className="h-4 w-4 text-[var(--muted-foreground)]" />
-                  <h2 className="text-sm font-bold uppercase tracking-wide">Assignment History</h2>
+                  <h2 className="text-sm font-bold uppercase tracking-wide">
+                    Properties ({activePropertyAssignments.length})
+                  </h2>
+                </div>
+                <div className="flex gap-1 rounded-md bg-[var(--accent)] p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setPropertiesView("active")}
+                    className={`rounded px-2.5 py-1 text-xs font-medium ${
+                      propertiesView === "active"
+                        ? "bg-[var(--card)] text-[var(--foreground)]"
+                        : "text-[var(--muted-foreground)]"
+                    }`}
+                  >
+                    Active
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPropertiesView("history")}
+                    className={`rounded px-2.5 py-1 text-xs font-medium ${
+                      propertiesView === "history"
+                        ? "bg-[var(--card)] text-[var(--foreground)]"
+                        : "text-[var(--muted-foreground)]"
+                    }`}
+                  >
+                    History
+                  </button>
                 </div>
               </div>
-              <div className="max-h-64 overflow-y-auto px-4 py-3">
-                {propertyAssignmentHistory.length ? (
+              <div className="max-h-80 overflow-y-auto px-4 py-3">
+                {propertiesView === "active" ? (
+                  activePropertyAssignments.length ? (
+                    <div className="space-y-2">
+                      {activePropertyAssignments.map((assignment) => {
+                        const propertyId = assignment.propertyId;
+                        const isBusy = busyPropertyId === propertyId;
+                        return (
+                          <div
+                            key={assignment._id}
+                            className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate font-semibold">
+                                {assignment.property?.name ?? "Unknown property"}
+                              </p>
+                              <p className="text-xs text-[var(--muted-foreground)]">
+                                Assigned {formatDateTime(assignment.assignedAt)}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void handleUnassignActiveAssignment(assignment)}
+                              disabled={isBusy}
+                              className={destructiveGhostBtn}
+                            >
+                              {isBusy ? "..." : "Unassign"}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-[var(--muted-foreground)]">
+                      No active properties assigned.
+                    </p>
+                  )
+                ) : propertyAssignmentHistory.length ? (
                   <div className="space-y-2">
                     {propertyAssignmentHistory.map((assignment) => (
-                      <div key={assignment._id} className="rounded-lg border px-3 py-2 text-sm">
+                      <div
+                        key={assignment._id}
+                        className={`rounded-lg border px-3 py-2 text-sm ${
+                          isActiveAssignment(assignment) ? "" : "opacity-60"
+                        }`}
+                      >
                         <p className="font-semibold">
                           {assignment.property?.name ?? "Unknown property"}
                         </p>
@@ -742,56 +1017,6 @@ export function CompaniesHub() {
               </div>
             </section>
           </div>
-
-          <section className="rounded-2xl border bg-[var(--card)]">
-            <div className="flex items-center justify-between border-b px-4 py-3">
-              <div className="flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-[var(--muted-foreground)]" />
-                <h2 className="text-sm font-bold uppercase tracking-wide">
-                  Active Properties ({activePropertyAssignments.length})
-                </h2>
-              </div>
-            </div>
-            <div className="max-h-64 overflow-y-auto px-4 py-3">
-              {activePropertyAssignments.length ? (
-                <div className="space-y-2">
-                  {activePropertyAssignments.map((assignment) => {
-                    const propertyId = assignment.propertyId;
-                    const isBusy = busyPropertyId === propertyId;
-                    return (
-                      <div
-                        key={assignment._id}
-                        className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate font-semibold">
-                            {assignment.property?.name ?? "Unknown property"}
-                          </p>
-                          <p className="text-xs text-[var(--muted-foreground)]">
-                            Assigned {formatDateTime(assignment.assignedAt)}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void handleUnassignActiveAssignment(assignment)
-                          }
-                          disabled={isBusy}
-                          className="rounded-md border border-red-500/40 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-500/10 disabled:opacity-60"
-                        >
-                          {isBusy ? "..." : "Unassign"}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-sm text-[var(--muted-foreground)]">
-                  No active properties assigned.
-                </p>
-              )}
-            </div>
-          </section>
         </div>
       </section>
 
@@ -829,6 +1054,21 @@ export function CompaniesHub() {
               {assignmentRows.map((row) => {
                 const draftCompany = getDraftCompanyValue(row);
                 const isBusy = busyPropertyId === row.propertyId;
+                const propertyCityKey = (row.city ?? "").trim().toLowerCase();
+                const cityScopedCompanies = propertyCityKey
+                  ? allCompanies.filter(
+                      (c) => (c.city ?? "").trim().toLowerCase() === propertyCityKey,
+                    )
+                  : allCompanies;
+                // If strict filter yields nothing, fall back to the full list
+                // so an admin is never locked out (common while backfilling
+                // city data across existing companies).
+                const eligibleCompanies =
+                  cityScopedCompanies.length > 0 ? cityScopedCompanies : allCompanies;
+                const usingFallback =
+                  propertyCityKey &&
+                  cityScopedCompanies.length === 0 &&
+                  allCompanies.length > 0;
                 return (
                   <tr key={row.propertyId} className="border-t">
                     <td className="px-4 py-3">
@@ -858,24 +1098,30 @@ export function CompaniesHub() {
                       {row.assignmentsCount} record(s)
                     </td>
                     <td className="px-4 py-3">
-                      <select
-                        value={draftCompany}
-                        onChange={(event) =>
+                      <SearchableSelect
+                        value={draftCompany || null}
+                        onChange={(id) =>
                           setDraftAssignments((current) => ({
                             ...current,
-                            [row.propertyId]: event.target.value,
+                            [row.propertyId]: id ?? "",
                           }))
                         }
-                        className="w-full rounded-md border bg-[var(--background)] px-3 py-2 text-sm"
+                        placeholder="No company"
+                        searchPlaceholder="Search companies…"
+                        aria-label="Assign company"
                         disabled={isBusy}
-                      >
-                        <option value="">No company</option>
-                        {allCompanies.map((company) => (
-                          <option key={company._id} value={company._id}>
-                            {company.name}
-                          </option>
-                        ))}
-                      </select>
+                        items={eligibleCompanies.map((company) => ({
+                          id: company._id,
+                          label: company.name,
+                          hint: company.city ?? undefined,
+                        }))}
+                      />
+                      {usingFallback ? (
+                        <p className="mt-1 text-[11px] text-amber-500">
+                          No companies set for {row.city}. Showing all — set a
+                          Service City on each company to tighten this list.
+                        </p>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">

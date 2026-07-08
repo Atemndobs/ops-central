@@ -18,9 +18,9 @@ import { navigation } from "@/components/layout/navigation";
 import {
   HelpCircle,
   LogOut,
+  Menu,
   Moon,
   Sun,
-  Menu,
   X,
 } from "lucide-react";
 
@@ -96,6 +96,12 @@ export function Sidebar() {
     api.users.queries.getThemePreference,
     isConvexAuthenticated ? {} : "skip",
   );
+  // Admin-controlled flag. When off (default), the theme toggle button is
+  // hidden — keeps the working theme code in place without exposing the UI.
+  const themeSwitcherEnabled = useQuery(
+    api.admin.featureFlags.isFeatureEnabled,
+    { key: "theme_switcher" },
+  );
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
   const setThemePreferenceRef = useRef(setThemePreference);
   const convexUser = useQuery(
@@ -131,6 +137,7 @@ export function Sidebar() {
     property_ops: t("roles.property_ops"),
     manager: t("roles.manager"),
     cleaner: t("roles.cleaner"),
+    owner: t("roles.owner"),
   };
   const quickLinks = navigation
     .filter((item) => item.roles.includes(role))
@@ -194,11 +201,11 @@ export function Sidebar() {
       <div className={cn("pb-4 pt-6", isCollapsed ? "px-2" : "px-6")}>
         <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3")}>
           <Image
-            src="https://chezsoistays.com/wp-content/uploads/2026/02/cropped-chezsoi_favicon@2x.png"
+            src="/icons/chezsoi-icon-192.png"
             alt="ChezSoi logo"
             width={44}
             height={44}
-            className="h-11 w-11 bg-[var(--primary)] p-2 object-contain"
+            className="h-11 w-11 rounded-md object-contain"
             priority
           />
           {!isCollapsed ? <p className="text-3xl font-black tracking-tighter">ChezSoi</p> : null}
@@ -293,24 +300,39 @@ export function Sidebar() {
             <LogOut className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
             {!isCollapsed ? t("common.logout") : null}
           </button>
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className={cn(
-              "flex w-full rounded-none text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
-              isCollapsed
-                ? "mx-auto h-11 w-11 items-center justify-center"
-                : "items-center gap-3 px-3 py-2.5 text-sm",
-            )}
-            title={isCollapsed ? (isDarkMode ? t("nav.lightMode") : t("nav.darkMode")) : undefined}
-          >
-            {isDarkMode ? (
-              <Sun className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
-            ) : (
-              <Moon className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
-            )}
-            {!isCollapsed ? (isDarkMode ? t("nav.lightMode") : t("nav.darkMode")) : null}
-          </button>
+          {themeSwitcherEnabled ? (
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className={cn(
+                "flex w-full rounded-none text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
+                isCollapsed
+                  ? "mx-auto h-11 w-11 items-center justify-center"
+                  : "items-center gap-3 px-3 py-2.5 text-sm",
+              )}
+              title={
+                isCollapsed
+                  ? isDarkMode
+                    ? t("nav.lightMode")
+                    : t("nav.darkMode")
+                  : undefined
+              }
+              aria-label={
+                isDarkMode ? t("nav.lightMode") : t("nav.darkMode")
+              }
+            >
+              {isDarkMode ? (
+                <Sun className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
+              ) : (
+                <Moon className={cn(isCollapsed ? "h-6 w-6" : "h-4 w-4")} />
+              )}
+              {!isCollapsed
+                ? isDarkMode
+                  ? t("nav.lightMode")
+                  : t("nav.darkMode")
+                : null}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => setIsCollapsed((prev) => !prev)}

@@ -7,6 +7,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Camera, CheckCircle2, Clock3, Loader2, RotateCcw } from "lucide-react";
 import { JOB_STATUSES, STATUS_CLASSNAMES, STATUS_LABELS, type JobStatus } from "@/components/jobs/job-status";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 function startOfDay(dateString: string): number | undefined {
   if (!dateString) {
@@ -30,12 +31,25 @@ function endOfDay(dateString: string): number | undefined {
 
 export function ReviewQueueClient() {
   const { isAuthenticated } = useConvexAuth();
+  const profile = useQuery(api.users.queries.getMyProfile, isAuthenticated ? {} : "skip");
+  // Per R7.4 (2026-05-17), approval is admin + property_ops only. Calling
+  // `getReviewQueue` as any other role throws "Reviewer-only query.". Gate
+  // the underlying query and render an unauthorized state instead of
+  // letting the throw bubble.
+  const canReview =
+    profile !== undefined &&
+    profile !== null &&
+    (profile.role === "admin" || profile.role === "property_ops");
+
   const [status, setStatus] = useState<JobStatus | "all">("awaiting_approval");
   const [propertyId, setPropertyId] = useState("all");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
-  const properties = useQuery(api.properties.queries.getAll, isAuthenticated ? { limit: 500 } : "skip");
+  const properties = useQuery(
+    api.properties.queries.getAll,
+    isAuthenticated && canReview ? { limit: 500 } : "skip",
+  );
 
   const queryArgs = useMemo(
     () => ({
@@ -48,7 +62,21 @@ export function ReviewQueueClient() {
     [fromDate, propertyId, status, toDate],
   );
 
-  const jobs = useQuery(api.cleaningJobs.queries.getReviewQueue, isAuthenticated ? queryArgs : "skip");
+  const jobs = useQuery(
+    api.cleaningJobs.queries.getReviewQueue,
+    isAuthenticated && canReview ? queryArgs : "skip",
+  );
+
+  if (isAuthenticated && profile && !canReview) {
+    return (
+      <div className="space-y-3">
+        <h1 className="text-3xl font-extrabold tracking-tight">Review Queue</h1>
+        <p className="text-sm text-[var(--muted-foreground)]">
+          Approval is restricted to admin and operations roles.
+        </p>
+      </div>
+    );
+  }
 
   const counts = useMemo(() => {
     const source = jobs ?? [];
@@ -154,18 +182,14 @@ export function ReviewQueueClient() {
 
           <div>
             <label className="mb-1 block text-xs text-[var(--muted-foreground)]">Property</label>
-            <select
-              value={propertyId}
-              onChange={(event) => setPropertyId(event.target.value)}
-              className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-            >
-              <option value="all">All properties</option>
-              {(properties ?? []).map((property) => (
-                <option key={property._id} value={property._id}>
-                  {property.name}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={propertyId === "all" ? null : propertyId}
+              onChange={(id) => setPropertyId(id ?? "all")}
+              placeholder="All properties"
+              searchPlaceholder="Search properties…"
+              aria-label="Filter by property"
+              items={(properties ?? []).map((p) => ({ id: p._id, label: p.name }))}
+            />
           </div>
 
           <div>

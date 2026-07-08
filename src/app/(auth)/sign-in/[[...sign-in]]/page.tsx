@@ -1,11 +1,5 @@
-import { TestableSignIn } from "@/components/auth/testable-sign-in";
-import {
-  getTestAuthPresets,
-  shouldShowTestAuthPresets,
-} from "@/lib/test-auth-presets";
+import { SignInForm } from "@/components/auth/sign-in-form";
 
 export default function SignInPage() {
-  const presets = getTestAuthPresets();
-
-  return <TestableSignIn presets={presets} showTestPresets={shouldShowTestAuthPresets(presets)} />;
+  return <SignInForm />;
 }

@@ -50,6 +50,7 @@ export const archiveSevenDayPhotos = internalAction({
         sourceObjectKey: candidate.sourceObjectKey,
       });
 
+      const copyStartedAt = Date.now();
       try {
         if (!dryRun) {
           await copyObjectBetweenStores({
@@ -73,6 +74,27 @@ export const archiveSevenDayPhotos = internalAction({
           });
         }
 
+        // Log the copy as a B2 op (read from B2 hot + write to archive).
+        // The archive bucket may be MinIO, but the read leg hits B2 so we
+        // attribute it there for quota visibility.
+        try {
+          await ctx.runMutation(internal.serviceUsage.logger.log, {
+            serviceKey: "b2",
+            feature: "b2_archive_copy",
+            status: dryRun ? "success" : "success",
+            durationMs: Date.now() - copyStartedAt,
+            metadata: {
+              sourceBucket: candidate.sourceBucket,
+              archiveBucket: archiveConfig.bucket,
+              archiveProvider: archiveConfig.provider,
+              photoId: candidate.photoId,
+              dryRun,
+            },
+          });
+        } catch {
+          // best-effort
+        }
+
         archived += 1;
       } catch (error) {
         failed += 1;
@@ -87,6 +109,23 @@ export const archiveSevenDayPhotos = internalAction({
           error: stringifyError(error),
           failedAt: Date.now(),
         });
+        try {
+          await ctx.runMutation(internal.serviceUsage.logger.log, {
+            serviceKey: "b2",
+            feature: "b2_archive_copy",
+            status: "unknown_error",
+            durationMs: Date.now() - copyStartedAt,
+            errorMessage: stringifyError(error).slice(0, 500),
+            metadata: {
+              sourceBucket: candidate.sourceBucket,
+              archiveBucket: archiveConfig.bucket,
+              archiveProvider: archiveConfig.provider,
+              photoId: candidate.photoId,
+            },
+          });
+        } catch {
+          // best-effort
+        }
       }
     }
 

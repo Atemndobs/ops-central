@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
@@ -10,8 +10,14 @@ import { localeNames, type Locale, locales } from "@/lib/locales";
 export function LanguageSwitcher() {
   const t = useTranslations();
   const router = useRouter();
+  const { isAuthenticated } = useConvexAuth();
   const setLocalePreference = useMutation(api.users.mutations.setLocalePreference);
-  const localePreference = useQuery(api.users.queries.getLocalePreference);
+  // Gate the query on auth so cold loads / signed-out sessions don't trip
+  // the error boundary with "Not authenticated" from getCurrentUser.
+  const localePreference = useQuery(
+    api.users.queries.getLocalePreference,
+    isAuthenticated ? {} : "skip",
+  );
 
   const [currentLocale, setCurrentLocale] = useState<Locale>("en");
   const [isChanging, setIsChanging] = useState(false);

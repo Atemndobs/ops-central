@@ -27,6 +27,7 @@ const pageTitleKeys: Record<string, string> = {
   "/properties": "common.properties",
   "/companies": "nav.companies",
   "/team": "common.team",
+  "/admin/owner-overview": "nav.ownerOverview",
   "/inventory": "common.inventory",
   "/work-orders": "common.workOrders",
   "/reports": "common.reports",
@@ -119,9 +120,23 @@ export function Header() {
     setThemePreferenceRef.current = setThemePreference;
   }, [setThemePreference]);
 
+  // Mobile bottom-nav "More" tab opens this same drawer via a window event,
+  // so we don't have to lift drawer state into a shared parent.
+  useEffect(() => {
+    const open = () => setIsMobileMenuOpen(true);
+    window.addEventListener("opscentral:open-mobile-menu", open);
+    return () => window.removeEventListener("opscentral:open-mobile-menu", open);
+  }, []);
+
   const convexUser = useQuery(
     api.users.queries.getByClerkId,
     isLoaded && isSignedIn && userId ? { clerkId: userId } : "skip",
+  );
+  // Admin-controlled flag. When off (default), the theme toggle button is
+  // hidden — keeps the working theme code in place without exposing the UI.
+  const themeSwitcherEnabled = useQuery(
+    api.admin.featureFlags.isFeatureEnabled,
+    { key: "theme_switcher" },
   );
   const roleFromClaims = getRoleFromSessionClaimsOrNull(
     sessionClaims as Record<string, unknown> | null,
@@ -129,6 +144,7 @@ export function Header() {
   const roleFromMetadata = getRoleFromMetadata(user?.publicMetadata);
   const role: UserRole = roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "manager";
   const canViewSettings = isLoaded && canAccessPath(role, "/settings");
+  const canViewReports = isLoaded && canAccessPath(role, "/reports");
   const mobileNavigation = navigation.filter((item) => item.roles.includes(role));
   const unreadMessageCount = useQuery(
     api.conversations.queries.getUnreadConversationCount,
@@ -250,9 +266,11 @@ export function Header() {
             <Link href="/" className="text-sm font-bold text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
               Dashboard
             </Link>
-            <Link href="/reports" className="text-sm font-bold text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
-              Reports
-            </Link>
+            {canViewReports ? (
+              <Link href="/reports" className="text-sm font-bold text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+                Reports
+              </Link>
+            ) : null}
           </nav>
         </div>
         <div className="flex items-center gap-4">
@@ -359,15 +377,21 @@ export function Header() {
             {currentLocale}
           </button>
 
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="rounded-none p-2 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
-            aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
-            title={isDarkMode ? "Light mode" : "Dark mode"}
-          >
-            {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </button>
+          {themeSwitcherEnabled ? (
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="rounded-none p-2 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+              aria-label={isDarkMode ? t("nav.lightMode") : t("nav.darkMode")}
+              title={isDarkMode ? t("nav.lightMode") : t("nav.darkMode")}
+            >
+              {isDarkMode ? (
+                <Sun className="h-4 w-4" />
+              ) : (
+                <Moon className="h-4 w-4" />
+              )}
+            </button>
+          ) : null}
 
           {isSignedIn ? (
             <div className="flex items-center">
@@ -448,15 +472,6 @@ export function Header() {
               >
                 <span className="inline-flex h-4 w-4 items-center justify-center text-[10px] font-bold uppercase">{currentLocale}</span>
                 {currentLocale === "en" ? "Cambiar a Español" : "Switch to English"}
-              </button>
-
-              <button
-                type="button"
-                onClick={toggleTheme}
-                className="flex w-full items-center gap-3 rounded-none px-3 py-3 text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
-              >
-                {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                {isDarkMode ? "Light Mode" : "Dark Mode"}
               </button>
 
               <button

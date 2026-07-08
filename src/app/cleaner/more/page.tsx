@@ -49,7 +49,7 @@ export default function CleanerMorePage() {
   return (
     <div className="space-y-4">
       {menuSections.map((section) => (
-        <CleanerSection key={section.titleKey} eyebrow={t(section.titleKey)} title={t("cleaner.more")}>
+        <CleanerSection key={section.titleKey} eyebrow={t(section.titleKey)}>
           <div className="space-y-3">
             {section.items.map((item) => (
               <Link

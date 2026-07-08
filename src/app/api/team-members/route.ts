@@ -3,17 +3,25 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@convex/_generated/api";
 import { z } from "zod";
+import { ROLE_KEYS } from "@/lib/roles";
+
+// This endpoint is upsert — used for both invites AND in-place role updates
+// (the role-editor modal on /team posts here too). Accept every role.
+const ALLOWED_ROLES = ROLE_KEYS;
 
 const createPayloadSchema = z.object({
   email: z.string().email(),
   fullName: z.string().min(2),
-  role: z.union([
-    z.literal("cleaner"),
-    z.literal("manager"),
-    z.literal("property_ops"),
-    z.literal("admin"),
-  ]),
-  phone: z.string().optional(),
+  role: z.enum(ALLOWED_ROLES as [string, ...string[]]),
+  // Treat empty strings as "not provided" — the form sends "" when skipped.
+  phone: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : undefined)),
+  companyId: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : undefined)),
 });
 
 function splitFullName(fullName: string) {
@@ -71,9 +79,14 @@ export async function POST(request: Request) {
     try {
       const json = await request.json();
       payload = createPayloadSchema.parse(json);
-    } catch {
+    } catch (err) {
+      const issues =
+        err instanceof z.ZodError
+          ? err.issues.map((i) => `${i.path.join(".")}: ${i.message}`)
+          : undefined;
+      console.error("team-members POST validation failed", issues ?? err);
       return NextResponse.json(
-        { error: "Invalid request payload." },
+        { error: "Invalid request payload.", issues },
         { status: 400 },
       );
     }
@@ -94,7 +107,7 @@ export async function POST(request: Request) {
         lastName: lastName || undefined,
         publicMetadata: {
           ...(clerkUser.publicMetadata ?? {}),
-          role: payload.role,
+          role: payload.role as (typeof ALLOWED_ROLES)[number],
         },
       });
     } else {
@@ -132,7 +145,7 @@ export async function POST(request: Request) {
           name: payload.fullName,
           email: payload.email,
           phone: payload.phone,
-          role: payload.role,
+          role: payload.role as (typeof ALLOWED_ROLES)[number],
         },
       );
     } else {
@@ -143,9 +156,28 @@ export async function POST(request: Request) {
           email: payload.email,
           name: payload.fullName,
           phone: payload.phone,
-          role: payload.role,
+          role: payload.role as (typeof ALLOWED_ROLES)[number],
         },
       );
+    }
+
+    // Optional company attach
+    let attachedCompanyId: string | null = null;
+    if (payload.companyId && (payload.role === "cleaner" || payload.role === "manager")) {
+      const convexUserAfter = await convex.query(api.users.queries.getByClerkId, {
+        clerkId: clerkUser.id,
+      });
+      if (convexUserAfter?._id) {
+        try {
+          await convex.mutation(api.admin.mutations.assignUserCompanyMembership, {
+            userId: convexUserAfter._id as never,
+            companyId: payload.companyId as never,
+          });
+          attachedCompanyId = payload.companyId;
+        } catch (e) {
+          console.error("Failed to attach new user to company", e);
+        }
+      }
     }
 
     return NextResponse.json({
@@ -153,6 +185,7 @@ export async function POST(request: Request) {
       clerkUserId: clerkUser.id,
       email: payload.email,
       role: payload.role,
+      companyId: attachedCompanyId,
     });
   } catch (error) {
     const message =

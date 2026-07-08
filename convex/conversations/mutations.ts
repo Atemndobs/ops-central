@@ -84,6 +84,61 @@ export const sendMessage = mutation({
   args: {
     conversationId: v.id("conversations"),
     body: v.string(),
+    sourceLang: v.optional(v.union(v.literal("en"), v.literal("es"))),
+    // Optional audio attachment — populated by the voice composer when the
+    // `voice_audio_attachments` feature flag is ON. The storageId must come
+    // from the `transcribe` action's `retainedAudio` response (the action
+    // skips its own delete when retention is on, handing ownership to the
+    // message this mutation creates).
+    audioAttachment: v.optional(
+      v.object({
+        storageId: v.id("_storage"),
+        mimeType: v.string(),
+        byteSize: v.number(),
+        durationMs: v.optional(v.number()),
+      }),
+    ),
+    // Phase 4a video-support — outbound video attachment uploaded via the
+    // existing Convex `_storage` two-step (`generateUploadUrl` → PUT →
+    // `sendMessage`). The composer hands ownership of the storageId to
+    // this attachment row. The optional poster, when present, was
+    // extracted client-side via a `<video>` + `<canvas>` capture before
+    // upload (similar to the audio composer's retain-then-attach pattern).
+    videoAttachment: v.optional(
+      v.object({
+        storageId: v.id("_storage"),
+        mimeType: v.string(),
+        byteSize: v.number(),
+        fileName: v.optional(v.string()),
+        durationMs: v.optional(v.number()),
+        width: v.optional(v.number()),
+        height: v.optional(v.number()),
+        posterStorageId: v.optional(v.id("_storage")),
+      }),
+    ),
+    // Image attachment — uploaded via the same Convex two-step
+    // (`generateUploadUrl` → PUT → `sendMessage`) and persisted as an
+    // `image` row on `conversationMessageAttachments`.
+    imageAttachment: v.optional(
+      v.object({
+        storageId: v.id("_storage"),
+        mimeType: v.string(),
+        byteSize: v.number(),
+        fileName: v.optional(v.string()),
+        width: v.optional(v.number()),
+        height: v.optional(v.number()),
+      }),
+    ),
+    // Generic file attachment — anything not photo/video/audio. Persisted
+    // as a `document` row.
+    fileAttachment: v.optional(
+      v.object({
+        storageId: v.id("_storage"),
+        mimeType: v.string(),
+        byteSize: v.number(),
+        fileName: v.optional(v.string()),
+      }),
+    ),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
@@ -101,7 +156,15 @@ export const sendMessage = mutation({
     }
 
     const body = args.body.trim();
-    if (!body) {
+    // Allow empty body when a video attachment is present (a clip alone is a
+    // valid message). Audio still requires the transcript body — that's
+    // enforced upstream by the transcribe action returning text.
+    if (
+      !body &&
+      !args.videoAttachment &&
+      !args.imageAttachment &&
+      !args.fileAttachment
+    ) {
       throw new ConvexError("Message body cannot be empty.");
     }
     if (body.length > 4000) {
@@ -133,13 +196,112 @@ export const sendMessage = mutation({
       messageKind: "user",
       channel: "internal",
       body,
+      sourceLang: args.sourceLang ?? "en",
       createdAt: now,
     });
 
+    // If this is a voice message with retained audio, attach the blob as a
+    // playable "audio" attachment. The storageId was handed over to us by
+    // the `transcribe` action; ownership now belongs to this attachment row.
+    if (args.audioAttachment) {
+      const audio = args.audioAttachment;
+      // Derive a filename from timestamp + extension for download UX. Opus
+      // in webm is the common case; mp4/aac on Safari.
+      const ext = audio.mimeType.includes("mp4")
+        ? "m4a"
+        : audio.mimeType.includes("ogg")
+          ? "ogg"
+          : "webm";
+      await ctx.db.insert("conversationMessageAttachments", {
+        conversationId: conversation._id,
+        messageId,
+        storageId: audio.storageId,
+        attachmentKind: "audio",
+        channel: "internal",
+        mimeType: audio.mimeType,
+        fileName: `voice-${now}.${ext}`,
+        byteSize: audio.byteSize,
+        audioDurationMs: audio.durationMs,
+        createdAt: now,
+      });
+    }
+
+    // Phase 4a — video attachment writer. Mirrors the audio block.
+    if (args.videoAttachment) {
+      const video = args.videoAttachment;
+      // Standardise the filename so download UX stays predictable.
+      const ext = video.mimeType.includes("mp4")
+        ? "mp4"
+        : video.mimeType.includes("webm")
+          ? "webm"
+          : video.mimeType.includes("quicktime") ||
+              video.mimeType.includes("mov")
+            ? "mov"
+            : "mp4";
+      await ctx.db.insert("conversationMessageAttachments", {
+        conversationId: conversation._id,
+        messageId,
+        storageId: video.storageId,
+        attachmentKind: "video",
+        channel: "internal",
+        mimeType: video.mimeType,
+        fileName: video.fileName ?? `video-${now}.${ext}`,
+        byteSize: video.byteSize,
+        videoDurationMs: video.durationMs,
+        width: video.width,
+        height: video.height,
+        posterStorageId: video.posterStorageId,
+        createdAt: now,
+      });
+    }
+
+    if (args.imageAttachment) {
+      const image = args.imageAttachment;
+      await ctx.db.insert("conversationMessageAttachments", {
+        conversationId: conversation._id,
+        messageId,
+        storageId: image.storageId,
+        attachmentKind: "image",
+        channel: "internal",
+        mimeType: image.mimeType,
+        fileName: image.fileName ?? `photo-${now}`,
+        byteSize: image.byteSize,
+        width: image.width,
+        height: image.height,
+        createdAt: now,
+      });
+    }
+
+    if (args.fileAttachment) {
+      const file = args.fileAttachment;
+      await ctx.db.insert("conversationMessageAttachments", {
+        conversationId: conversation._id,
+        messageId,
+        storageId: file.storageId,
+        attachmentKind: "document",
+        channel: "internal",
+        mimeType: file.mimeType,
+        fileName: file.fileName ?? `file-${now}`,
+        byteSize: file.byteSize,
+        createdAt: now,
+      });
+    }
+
+    // Phase 4a: attachment-only messages need a non-empty preview so the
+    // inbox row reads "📹 Video" / "📷 Photo" / "📎 File" rather than going blank.
+    const previewSource =
+      body ||
+      (args.videoAttachment
+        ? "📹 Video"
+        : args.imageAttachment
+          ? "📷 Photo"
+          : args.fileAttachment
+            ? "📎 File"
+            : "");
     await ctx.db.patch(conversation._id, {
       status: "open",
       lastMessageAt: now,
-      lastMessagePreview: buildConversationPreview(body),
+      lastMessagePreview: buildConversationPreview(previewSource),
       updatedAt: now,
     });
 
@@ -178,7 +340,12 @@ export const sendMessage = mutation({
         title: property?.name
           ? `New message for ${property.name}`
           : "New job message",
-        message: `${user.name ?? user.email}: ${buildConversationPreview(body)}`,
+        message: `${user.name ?? user.email}: ${buildConversationPreview(previewSource)}`,
+        messageKey: "notifications.messages.new_message_from_user",
+        messageParams: {
+          senderName: user.name ?? user.email,
+          preview: buildConversationPreview(previewSource),
+        },
         data: {
           conversationId: conversation._id,
           jobId: linkedJob?._id ?? conversation.linkedJobId,

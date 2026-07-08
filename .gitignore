@@ -28,6 +28,8 @@ yarn-error.log*
 # env files
 .env*.local
 .env.production
+.env.vercel*
+.env.*.production
 
 # vercel
 .vercel
@@ -38,3 +40,27 @@ next-env.d.ts
 
 # clerk configuration (can include secrets)
 /.clerk/
+
+# Runtime-only — scheduled-task lock file
+.claude/scheduled_tasks.lock
+
+# Tooling state (per-agent, never commit)
+.claude/worktrees/
+.claude/settings.json
+.codex/
+graphify-out/
+
+# Convex AI-files install — multi-tool skill scatter (ignore all)
+# Most entries are symlinks to ../.agents/skills/convex; no trailing slash so symlinks match too.
+.claude/skills/convex
+.commandcode/
+.continue/skills/convex
+.goose/skills/convex
+.kiro/skills/convex
+.pi/skills/convex
+.qoder/skills/convex
+.roo/skills/convex
+.trae/skills/convex
+.windsurf/skills/convex
+skills/convex
+SESSIONS.md

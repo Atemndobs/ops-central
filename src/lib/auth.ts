@@ -1,4 +1,4 @@
-export const USER_ROLES = ["admin", "property_ops", "manager", "cleaner"] as const;
+export const USER_ROLES = ["admin", "property_ops", "manager", "cleaner", "owner"] as const;
 
 export type UserRole = (typeof USER_ROLES)[number];
 
@@ -6,9 +6,13 @@ type ClaimsLike = Record<string, unknown> | null | undefined;
 
 const ROUTE_ACCESS: Record<UserRole, string[]> = {
   admin: ["/"],
-  property_ops: ["/", "/schedule", "/jobs", "/messages", "/review", "/properties", "/companies", "/team", "/reports"],
-  manager: ["/", "/schedule", "/jobs", "/messages", "/review", "/properties", "/companies", "/team", "/reports"],
+  property_ops: ["/", "/schedule", "/jobs", "/tasks", "/messages", "/review", "/properties", "/companies", "/team", "/incidents", "/maintenance", "/reports"],
+  manager: ["/", "/schedule", "/jobs", "/tasks", "/messages", "/review", "/properties", "/team", "/incidents", "/maintenance"],
   cleaner: ["/cleaner"],
+  // Wave 1 of owner portal is schema-only — `/owner` routes ship in Wave 4.
+  // Until then owners hitting the app land on `/owner` and get a 404 from Next,
+  // which is the correct interim behavior (no leakage to other surfaces).
+  owner: ["/owner"],
 };
 
 function isUserRole(value: unknown): value is UserRole {
@@ -127,6 +131,8 @@ export function getDefaultRouteForRole(role: UserRole): string {
       return "/jobs";
     case "cleaner":
       return "/cleaner";
+    case "owner":
+      return "/owner";
     default:
       return "/";
   }

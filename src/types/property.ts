@@ -1,5 +1,31 @@
 export type PropertyStatus = "ready" | "dirty" | "in_progress" | "vacant";
 
+export type PropertyInstructionCategory =
+  | "access"
+  | "trash"
+  | "lawn"
+  | "hot_tub"
+  | "pool"
+  | "parking"
+  | "wifi"
+  | "checkout"
+  | "pets"
+  | "other";
+
+export type PropertyInstructionLang = "en" | "es";
+
+export interface PropertyInstruction {
+  id: string;
+  category: PropertyInstructionCategory;
+  title: string;
+  body: string;
+  sourceLang?: PropertyInstructionLang;
+  translations?: Partial<
+    Record<PropertyInstructionLang, { title: string; body: string }>
+  >;
+  updatedAt: number;
+}
+
 export function isPropertyStatus(value: unknown): value is PropertyStatus {
   return (
     value === "ready" ||
@@ -21,8 +47,14 @@ export interface PropertyRecord {
   propertyType?: string;
   bedrooms?: number;
   bathrooms?: number;
+  rooms?: Array<{ name: string; type: string }>;
+  hospitableId?: string;
   estimatedCleaningMinutes?: number;
   accessNotes?: string;
+  keyLocation?: string;
+  parkingNotes?: string;
+  urgentNotes?: string;
+  instructions?: PropertyInstruction[];
   tag?: string;
   primaryPhotoUrl?: string;
   photoUrls?: string[];
@@ -47,6 +79,9 @@ export interface PropertyFormValues {
   bathrooms?: number;
   estimatedCleaningMinutes?: number;
   accessNotes?: string;
+  keyLocation?: string;
+  parkingNotes?: string;
+  urgentNotes?: string;
   tag?: string;
   primaryPhotoUrl?: string;
   photoUrls?: string[];
