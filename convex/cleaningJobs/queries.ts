@@ -385,7 +385,11 @@ export const getMyJobDetail = query({
     const isAssignedCleaner = detail.job.assignedCleanerIds.includes(user._id);
 
     if (!isPrivileged && !isAssignedCleaner) {
-      throw new Error("You are not authorized to access this job.");
+      // Return null (treated as "not found") rather than throwing. A cleaner
+      // who is unassigned from a job while viewing it would otherwise get a
+      // reactive query rejection that crashes the mobile job-detail screen.
+      // Null also avoids leaking that the job exists to unauthorized callers.
+      return null;
     }
 
     return detail;
@@ -489,7 +493,18 @@ export const getForCleaner = query({
     if (user.role === "cleaner" && user._id !== args.cleanerId) {
       return [];
     }
-    const allowedPropertyIds = await getCallerJobScopeForListing(ctx, user);
+
+    // A user viewing their OWN assignments is always in scope for those jobs:
+    // the read below is keyed on `args.cleanerId`, so a self-query can only
+    // ever surface the caller's own jobs. Company-property scoping exists for
+    // manager/ops callers viewing *someone else* — applying it to a self-query
+    // makes getCallerJobScopeForListing return an empty set for cleaners, so
+    // the list comes back empty (the native app's "No jobs assigned" bug while
+    // the PWA — which uses getMyAssigned — showed them fine).
+    const isSelf = user._id === args.cleanerId;
+    const allowedPropertyIds = isSelf
+      ? null
+      : await getCallerJobScopeForListing(ctx, user);
     if (allowedPropertyIds && allowedPropertyIds.size === 0) {
       return [];
     }

@@ -1,7 +1,9 @@
 import { v } from "convex/values";
 import { mutation } from "../_generated/server";
+import { internal } from "../_generated/api";
 import { upsertSingleReservation } from "./mutations";
 import { normalizeReservation } from "./actions";
+import { normalizeGuestReview } from "../guestReviews/normalize";
 
 // Event names per Hospitable v2 webhooks help doc. The SDK README uses
 // "reservation.updated" while the help doc uses "reservation.changed" — we
@@ -11,6 +13,8 @@ const RESERVATION_EVENT_ACTIONS = new Set([
   "reservation.changed",
   "reservation.updated",
 ]);
+
+const REVIEW_EVENT_ACTIONS = new Set(["review.created"]);
 
 const RECEIVE_OUTCOME = {
   processed: "processed",
@@ -76,35 +80,60 @@ export const ingestEvent = mutation({
       signatureHeaders: args.signatureHeaders,
     });
 
-    if (!RESERVATION_EVENT_ACTIONS.has(args.action)) {
-      await ctx.db.patch(eventDocId, { processedAt: Date.now() });
-      return { outcome: RECEIVE_OUTCOME.ignoredAction, eventDocId };
+    if (RESERVATION_EVENT_ACTIONS.has(args.action)) {
+      const rawReservation = (args.rawPayload as { data?: unknown })?.data;
+      const { reservation, error } = normalizeReservation(rawReservation, "");
+
+      if (!reservation) {
+        await ctx.db.patch(eventDocId, {
+          processedAt: Date.now(),
+          processingError: error ?? "Failed to normalize reservation payload.",
+        });
+        return { outcome: RECEIVE_OUTCOME.normalizationFailed, eventDocId };
+      }
+
+      try {
+        await upsertSingleReservation(ctx, {
+          reservation,
+          syncedAt: args.receivedAt,
+        });
+        await ctx.db.patch(eventDocId, { processedAt: Date.now() });
+      } catch (err) {
+        await ctx.db.patch(eventDocId, {
+          processedAt: Date.now(),
+          processingError: err instanceof Error ? err.message : String(err),
+        });
+      }
+
+      return { outcome: RECEIVE_OUTCOME.processed, eventDocId };
     }
 
-    const rawReservation = (args.rawPayload as { data?: unknown })?.data;
-    const { reservation, error } = normalizeReservation(rawReservation, "");
+    if (REVIEW_EVENT_ACTIONS.has(args.action)) {
+      const rawReview = (args.rawPayload as { data?: unknown })?.data;
+      const { review, error } = normalizeGuestReview(rawReview);
 
-    if (!reservation) {
-      await ctx.db.patch(eventDocId, {
-        processedAt: Date.now(),
-        processingError: error ?? "Failed to normalize reservation payload.",
-      });
-      return { outcome: RECEIVE_OUTCOME.normalizationFailed, eventDocId };
+      if (!review) {
+        await ctx.db.patch(eventDocId, {
+          processedAt: Date.now(),
+          processingError: error ?? "Failed to normalize review payload.",
+        });
+        return { outcome: RECEIVE_OUTCOME.normalizationFailed, eventDocId };
+      }
+
+      try {
+        await ctx.runMutation(internal.hospitable.mutations.upsertGuestReview, review);
+        await ctx.db.patch(eventDocId, { processedAt: Date.now() });
+      } catch (err) {
+        await ctx.db.patch(eventDocId, {
+          processedAt: Date.now(),
+          processingError: err instanceof Error ? err.message : String(err),
+        });
+      }
+
+      return { outcome: RECEIVE_OUTCOME.processed, eventDocId };
     }
 
-    try {
-      await upsertSingleReservation(ctx, {
-        reservation,
-        syncedAt: args.receivedAt,
-      });
-      await ctx.db.patch(eventDocId, { processedAt: Date.now() });
-    } catch (err) {
-      await ctx.db.patch(eventDocId, {
-        processedAt: Date.now(),
-        processingError: err instanceof Error ? err.message : String(err),
-      });
-    }
-
-    return { outcome: RECEIVE_OUTCOME.processed, eventDocId };
+    await ctx.db.patch(eventDocId, { processedAt: Date.now() });
+    return { outcome: RECEIVE_OUTCOME.ignoredAction, eventDocId };
   },
 });

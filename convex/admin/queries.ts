@@ -15,6 +15,7 @@ import { v } from "convex/values";
 import { query, type QueryCtx } from "../_generated/server";
 import { type Doc, type Id } from "../_generated/dataModel";
 import { requireRole, requireAuth } from "../lib/auth";
+import { groupActiveByUser } from "../lib/ownership";
 
 type TeamAvailability = "working" | "available" | "off";
 
@@ -189,11 +190,13 @@ export const getTeamMetrics = query({
     const lookbackStart = now - lookbackDays * 24 * 60 * 60 * 1000;
     const horizonEnd = now + horizonHours * 60 * 60 * 1000;
 
-    const [users, jobs, memberships] = await Promise.all([
+    const [users, jobs, memberships, ownerships] = await Promise.all([
       ctx.db.query("users").collect(),
       ctx.db.query("cleaningJobs").collect(),
       ctx.db.query("companyMembers").collect(),
+      ctx.db.query("propertyOwners").collect(),
     ]);
+    const stakesByUser = groupActiveByUser(ownerships);
 
     const activeMembershipByUserId = new Map<Id<"users">, Doc<"companyMembers">>();
     for (const membership of memberships) {
@@ -346,6 +349,14 @@ export const getTeamMetrics = query({
           phone: user.phone,
           avatarUrl: user.avatarUrl,
           role: user.role,
+          // Owners only: how many distinct properties they hold an ACTIVE
+          // stake in. 0 = role/ownership drift (flagged in the UI).
+          ownedPropertyCount:
+            user.role === "owner"
+              ? new Set(
+                  (stakesByUser.get(user._id) ?? []).map((o) => o.propertyId),
+                ).size
+              : null,
           availability: pickAvailability(assignedJobs, now, horizonEnd),
           onTimePct,
           qualityScore,

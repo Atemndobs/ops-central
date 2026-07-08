@@ -14,6 +14,10 @@ const users = defineTable({
   clerkId: v.string(),
   email: v.string(),
   name: v.optional(v.string()),
+  // Owner's company / legal entity — what prints on the Chez Soi Stays owner
+  // statement when this user is the statement client. Optional + additive; when
+  // absent the statement falls back to `name`. See strCosts/views.listStatementClients.
+  company: v.optional(v.string()),
   avatarUrl: v.optional(v.string()),
   role: v.union(
     v.literal("cleaner"),
@@ -181,6 +185,16 @@ const properties = defineTable({
 
   // Config
   isActive: v.boolean(),
+  // Monthly-close / portfolio P&L status. Optional + additive: existing rows
+  // have no value and the engine derives status from `isActive` when absent
+  // (isActive ? "active" : "dropped"). "managed" = mgmt-fee unit, excluded
+  // from the arbitrage P&L. See convex/strCosts/portfolio.ts.
+  // Named `pnlStatus` (not `status`) because `properties/queries.ts` attaches
+  // a derived readiness `status` ("ready"|"dirty"|"in_progress"|"vacant") to
+  // its query results, which would collide on the Doc<"properties"> type.
+  pnlStatus: v.optional(
+    v.union(v.literal("active"), v.literal("dropped"), v.literal("managed")),
+  ),
   currency: v.optional(v.string()),
 
   // Amenities
@@ -1317,6 +1331,36 @@ const hospitableConfig = defineTable({
   updatedAt: v.optional(v.number()),
 });
 
+const guestReviews = defineTable({
+  hospitableReviewId: v.string(),
+  propertyId: v.id("properties"),
+  platform: v.union(v.literal("airbnb"), v.literal("direct")),
+  rating: v.number(),
+  publicReview: v.string(),
+  privateFeedback: v.optional(v.string()),
+  guestFirstName: v.string(),
+  guestLastName: v.string(),
+  reviewedAt: v.number(),
+  canRespond: v.boolean(),
+  status: v.union(
+    v.literal("needs_draft"),
+    v.literal("drafted"),
+    v.literal("sending"),
+    v.literal("sent"),
+    v.literal("dismissed"),
+    v.literal("send_failed"),
+  ),
+  aiDraftText: v.optional(v.string()),
+  aiDraftGeneratedAt: v.optional(v.number()),
+  respondedText: v.optional(v.string()),
+  respondedAt: v.optional(v.number()),
+  respondedBy: v.optional(v.id("users")),
+  sendError: v.optional(v.string()),
+})
+  .index("by_hospitable_review_id", ["hospitableReviewId"])
+  .index("by_property", ["propertyId"])
+  .index("by_status", ["status"]);
+
 // Inbound Hospitable webhook deliveries. Insert-on-receive provides
 // idempotency (Hospitable retries up to 5 times) and a debug trail for the
 // 24h header-discovery window before signature verification is enforced.
@@ -1505,7 +1549,25 @@ const featureFlags = defineTable({
     // Admin Owner Overview: if ON, a monthly cron auto-creates a DRAFT
     // statement for every (owner, property, prev-month). Default OFF —
     // admins opt in once they trust the flow.
-    v.literal("owner_overview_auto_drafts")
+    v.literal("owner_overview_auto_drafts"),
+    // Guest-review AI reply workflow (inbox + property-detail section).
+    // Default OFF — enable for the J&A team once real Hospitable review
+    // data is flowing (requires reviews:read/reviews:write OAuth scope).
+    v.literal("reviewsAiReply"),
+    // Owner portal: show the gross-revenue figure. Default OFF — ship dark
+    // until the ops team is ready to expose owner-facing financials.
+    v.literal("owner_show_gross_revenue"),
+    // Owner portal: show the statements list + statement-detail screens.
+    // Default OFF — financial statement surfaces stay hidden until enabled.
+    v.literal("owner_show_statements"),
+    // WhatsApp messaging lane (per-cleaner WhatsApp channel + invite links).
+    // Default OFF — WhatsApp comms ship dark until the integration is ready
+    // to turn on from admin.
+    v.literal("whatsapp_messaging"),
+    // Cleaner app: interactive per-room "mark as cleaned" checklist step in
+    // the job execution wizard (standard flow). Default OFF — before/after
+    // photos are the proof-of-work; when ON, cleaners also tick each room.
+    v.literal("cleaner_room_checklist")
     // future flags go here
   ),
   enabled: v.boolean(),
@@ -1848,6 +1910,22 @@ const propertyMonthlySettings = defineTable({
   .index("by_property", ["propertyId"])
   .index("by_property_month", ["propertyId", "month"]);
 
+// Saved per-partner property subsets for the Monthly Close page. `clientName`
+// is the optional company/owner label printed on the Chez Soi Stays statement
+// ("Statement prepared for: {clientName}"). See convex/strCosts/views.ts.
+const portfolioViews = defineTable({
+  name: v.string(),
+  clientName: v.optional(v.string()),
+  propertyIds: v.array(v.id("properties")),
+  // When set, the view is BOUND to this owner: clientName + propertyIds are
+  // derived LIVE from users + propertyOwners at read time (strCosts/views.
+  // listViews). The stored clientName/propertyIds become a fallback snapshot,
+  // used only if the owner loses all active stakes or the user row is gone.
+  ownerUserId: v.optional(v.id("users")),
+  createdAt: v.optional(v.number()),
+  updatedAt: v.optional(v.number()),
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // OWNER PORTAL — NET-NEW TABLES (Wave 1; spec §4)
 // Order matters: propertyOwners + propertyFeeConfig must appear BEFORE
@@ -2109,6 +2187,7 @@ export default defineSchema({
   // Integration
   hospitableConfig,
   hospitableWebhookEvents,
+  guestReviews,
 
   // AI Providers (admin-configurable)
   aiProviderSettings,
@@ -2139,6 +2218,7 @@ export default defineSchema({
   propertyCostItems,
   monthlyCalculations,
   propertyMonthlySettings,
+  portfolioViews,
   propertyOwners,
   propertyFeeConfig,
   ownerStatements,

@@ -1,5 +1,6 @@
 import { v, type Infer } from "convex/values";
 import { internalMutation, type MutationCtx } from "../_generated/server";
+import { internal } from "../_generated/api";
 import { syncConversationStatusForJob } from "../conversations/lib";
 
 const SIX_HOURS_IN_MS = 6 * 60 * 60 * 1000;
@@ -503,5 +504,82 @@ export const patchStayFinancials = internalMutation({
     if (Object.keys(patch).length === 1) return { patched: false };
     await ctx.db.patch(args.stayId, patch);
     return { patched: true };
+  },
+});
+
+/**
+ * Idempotent upsert of a single normalized guest review, called from both
+ * the `review.created` webhook branch (convex/hospitable/webhooks.ts) and
+ * the daily backstop sync (convex/hospitable/actions.ts::syncGuestReviews).
+ *
+ * Only review FACTS (rating, text, canRespond) are refreshed on repeat
+ * delivery — our own workflow `status` (drafted/sent/dismissed/...) is
+ * preserved once set, so a re-sync never resets an in-progress or completed
+ * reply. On first insert, schedules AI draft generation.
+ */
+export const upsertGuestReview = internalMutation({
+  args: {
+    hospitableReviewId: v.string(),
+    hospitablePropertyId: v.string(),
+    platform: v.union(v.literal("airbnb"), v.literal("direct")),
+    rating: v.number(),
+    publicReview: v.string(),
+    privateFeedback: v.optional(v.string()),
+    guestFirstName: v.string(),
+    guestLastName: v.string(),
+    reviewedAt: v.number(),
+    canRespond: v.boolean(),
+  },
+  handler: async (ctx, args): Promise<{ outcome: "inserted" | "updated" | "skipped_no_property" }> => {
+    const property = await ctx.db
+      .query("properties")
+      .withIndex("by_hospitable", (q) => q.eq("hospitableId", args.hospitablePropertyId))
+      .first();
+
+    if (!property) {
+      return { outcome: "skipped_no_property" };
+    }
+
+    const existing = await ctx.db
+      .query("guestReviews")
+      .withIndex("by_hospitable_review_id", (q) => q.eq("hospitableReviewId", args.hospitableReviewId))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        rating: args.rating,
+        publicReview: args.publicReview,
+        privateFeedback: args.privateFeedback,
+        canRespond: args.canRespond,
+      });
+      // A row can be stuck in "needs_draft" if a prior generateDraft call
+      // failed (e.g. a transient Gemini error) — re-schedule on every
+      // re-sync until it succeeds, since the daily backstop is also our
+      // only retry mechanism for that failure mode.
+      if (existing.status === "needs_draft") {
+        await ctx.scheduler.runAfter(0, internal.guestReviews.actions.generateDraft, {
+          reviewId: existing._id,
+        });
+      }
+      return { outcome: "updated" };
+    }
+
+    const reviewId = await ctx.db.insert("guestReviews", {
+      hospitableReviewId: args.hospitableReviewId,
+      propertyId: property._id,
+      platform: args.platform,
+      rating: args.rating,
+      publicReview: args.publicReview,
+      privateFeedback: args.privateFeedback,
+      guestFirstName: args.guestFirstName,
+      guestLastName: args.guestLastName,
+      reviewedAt: args.reviewedAt,
+      canRespond: args.canRespond,
+      status: "needs_draft",
+    });
+
+    await ctx.scheduler.runAfter(0, internal.guestReviews.actions.generateDraft, { reviewId });
+
+    return { outcome: "inserted" };
   },
 });

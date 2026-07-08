@@ -25,6 +25,9 @@ export default function AdminOwnerOverviewIndexPage() {
     );
   }
 
+  const linked = owners.filter((o) => !o.unlinked);
+  const unlinked = owners.filter((o) => o.unlinked);
+
   return (
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-4">
@@ -37,7 +40,34 @@ export default function AdminOwnerOverviewIndexPage() {
         </div>
       </header>
 
-      {owners.length === 0 ? (
+      {unlinked.length > 0 && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
+          <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
+            {unlinked.length === 1
+              ? "1 user has the Owner role but no properties linked"
+              : `${unlinked.length} users have the Owner role but no properties linked`}
+          </p>
+          <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+            They won&apos;t appear in statements or the owner portal until
+            linked. Fix under Properties → (their property) → Owners &amp; Fees
+            → Edit.
+          </p>
+          <ul className="mt-2 space-y-1 text-sm">
+            {unlinked.map((o) => (
+              <li key={o.userId}>
+                <span className="font-medium">{o.name}</span>
+                {o.email && (
+                  <span className="ml-2 text-xs text-[var(--muted-foreground)]">
+                    {o.email}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {linked.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-muted/20 p-12 text-center">
           <UserCog className="mx-auto h-10 w-10 text-muted-foreground" />
           <p className="mt-3 text-sm text-muted-foreground">
@@ -63,7 +93,7 @@ export default function AdminOwnerOverviewIndexPage() {
               </tr>
             </thead>
             <tbody>
-              {owners.map((o) => (
+              {linked.map((o) => (
                 <tr
                   key={o.userId}
                   className="border-t border-border transition-colors hover:bg-muted/30"

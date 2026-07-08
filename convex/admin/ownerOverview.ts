@@ -23,6 +23,7 @@ import {
   type QueryCtx,
 } from "../_generated/server";
 import { requireRole } from "../lib/auth";
+import { filterActiveOwnerships } from "../lib/ownership";
 import { loadEngineInputs } from "../owner/engineInputs";
 import {
   computeStatementForPeriod,
@@ -37,7 +38,7 @@ async function loadActiveOwnerships(
   ctx: QueryCtx,
 ): Promise<Doc<"propertyOwners">[]> {
   const all = await ctx.db.query("propertyOwners").collect();
-  return all.filter((o) => o.effectiveTo === undefined);
+  return filterActiveOwnerships(all);
 }
 
 /** Find the draft for (property, period), or null. At most one draft per pair. */
@@ -151,6 +152,8 @@ export const listOwners = query({
       } | null;
       draftsPending: number;
       activePlatformClaims: number;
+      /** true = has the "owner" ROLE but zero active propertyOwners stakes. */
+      unlinked: boolean;
     }> = [];
 
     for (const [userId, ownerships] of byUser.entries()) {
@@ -191,6 +194,25 @@ export const listOwners = query({
         activePlatformClaims: platformClaims.filter((claim) =>
           isActivePlatformClaim(claim.platformClaim),
         ).length,
+        unlinked: false,
+      });
+    }
+
+    // Role↔ownership drift: users flagged role="owner" who hold no active
+    // stake. Surfaced here (instead of silently omitted) so admins see WHY
+    // someone is missing from statements/portal and where to fix it.
+    const allUsers = await ctx.db.query("users").collect();
+    for (const u of allUsers) {
+      if (u.role !== "owner" || byUser.has(u._id)) continue;
+      rows.push({
+        userId: u._id,
+        name: u.name ?? u.email ?? "(unnamed owner)",
+        email: u.email,
+        propertyCount: 0,
+        lastStatement: null,
+        draftsPending: 0,
+        activePlatformClaims: 0,
+        unlinked: true,
       });
     }
 

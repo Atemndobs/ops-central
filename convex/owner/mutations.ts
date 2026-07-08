@@ -12,6 +12,7 @@ import {
   type MutationCtx,
 } from "../_generated/server";
 import { requireRole } from "../lib/auth";
+import { firstEffectiveFromMs } from "../lib/effectiveFrom";
 import { assertOwnerOfProperty, requireOwnerUser } from "./auth";
 import { BUCKETS, isBucket } from "./constants";
 import { loadEngineInputs } from "./engineInputs";
@@ -38,6 +39,21 @@ async function assertStatementMutable(
 }
 
 // ─── Admin/ops mutations (setup) ────────────────────────────────────────────
+
+/** Earliest non-cancelled check-in on the property, or null if no stays. */
+async function earliestCheckInMs(
+  ctx: MutationCtx,
+  propertyId: Id<"properties">,
+): Promise<number | null> {
+  const stays = await ctx.db
+    .query("stays")
+    .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
+    .collect();
+  const earliest = stays
+    .filter((s) => s.cancelledAt === undefined)
+    .reduce((min, s) => Math.min(min, s.checkInAt), Infinity);
+  return Number.isFinite(earliest) ? earliest : null;
+}
 
 /**
  * Append-only fee-config upsert: close current row (set effectiveTo=now),
@@ -74,13 +90,20 @@ export const upsertPropertyFeeConfig = mutation({
         await ctx.db.patch(row._id, { effectiveTo: now });
       }
     }
+    // First-ever config on this property → backdate to first activity so
+    // pre-onboarding months compute (see Docs/2026-07-04-fix-owner-statement-draft-crash.md).
+    // Any later config change keeps append-only effectiveFrom=now.
+    const effectiveFrom =
+      open.length === 0
+        ? firstEffectiveFromMs(await earliestCheckInMs(ctx, args.propertyId), now)
+        : now;
     const newId = await ctx.db.insert("propertyFeeConfig", {
       propertyId: args.propertyId,
       feePct: args.feePct,
       feeBase: args.feeBase,
       approvalThreshold: args.approvalThreshold,
       autoApproveAfterDays: args.autoApproveAfterDays,
-      effectiveFrom: now,
+      effectiveFrom,
       createdBy: caller._id,
       createdAt: now,
     });
@@ -130,6 +153,12 @@ export const upsertPropertyOwners = mutation({
         await ctx.db.patch(row._id, { effectiveTo: now, updatedAt: now });
       }
     }
+    // Mirror upsertPropertyFeeConfig: first-ever ownership rows backdate to
+    // first activity so pickOwnersForPeriod finds them in historical months.
+    const effectiveFrom =
+      existing.length === 0
+        ? firstEffectiveFromMs(await earliestCheckInMs(ctx, args.propertyId), now)
+        : now;
     const insertedIds: Id<"propertyOwners">[] = [];
     for (const o of args.owners) {
       const id = await ctx.db.insert("propertyOwners", {
@@ -138,7 +167,7 @@ export const upsertPropertyOwners = mutation({
         stakePct: o.stakePct,
         role: o.role,
         isPrimaryApprover: o.isPrimaryApprover,
-        effectiveFrom: now,
+        effectiveFrom,
         createdAt: now,
       });
       insertedIds.push(id);

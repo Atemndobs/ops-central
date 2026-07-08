@@ -37,6 +37,28 @@ function currentMonthKey(): string {
   return `${d.getUTCFullYear()}-${(d.getUTCMonth() + 1).toString().padStart(2, "0")}`;
 }
 
+/**
+ * Owner-portal visibility flags, read from the admin featureFlags table.
+ * Single source of truth for every owner query so the dashboard, per-property
+ * page, and statement detail honour the same admin toggles.
+ * Defaults: showMgmtFee OFF, showPayout ON, showGrossRevenue OFF,
+ * showStatements OFF (financial surfaces ship dark; admin opts in).
+ */
+async function readOwnerPortalFlags(ctx: QueryCtx) {
+  const [mgmtFee, payout, grossRevenue, statements] = await Promise.all([
+    ctx.db.query("featureFlags").withIndex("by_key", (q) => q.eq("key", "owner_show_mgmt_fee")).unique(),
+    ctx.db.query("featureFlags").withIndex("by_key", (q) => q.eq("key", "owner_show_payout")).unique(),
+    ctx.db.query("featureFlags").withIndex("by_key", (q) => q.eq("key", "owner_show_gross_revenue")).unique(),
+    ctx.db.query("featureFlags").withIndex("by_key", (q) => q.eq("key", "owner_show_statements")).unique(),
+  ]);
+  return {
+    showMgmtFee: mgmtFee?.enabled ?? false,
+    showPayout: payout?.enabled ?? true,
+    showGrossRevenue: grossRevenue?.enabled ?? false,
+    showStatements: statements?.enabled ?? false,
+  };
+}
+
 // ─── Queries ────────────────────────────────────────────────────────────────
 
 /**
@@ -159,16 +181,7 @@ export const getOwnerDashboard = query({
     // dashboard cards/list honour the same admin toggles.
     //   - showMgmtFee defaults OFF (ships dark)
     //   - showPayout  defaults ON  (payout is the headline number)
-    const [showMgmtFeeFlag, showPayoutFlag] = await Promise.all([
-      ctx.db
-        .query("featureFlags")
-        .withIndex("by_key", (q) => q.eq("key", "owner_show_mgmt_fee"))
-        .unique(),
-      ctx.db
-        .query("featureFlags")
-        .withIndex("by_key", (q) => q.eq("key", "owner_show_payout"))
-        .unique(),
-    ]);
+    const ownerFlags = await readOwnerPortalFlags(ctx);
 
     return {
       mode: perPropertyWithStatus.length === 1 ? ("single" as const) : ("portfolio" as const),
@@ -181,10 +194,7 @@ export const getOwnerDashboard = query({
         cities: Array.from(citySet).sort(),
         states: Array.from(stateSet).sort(),
       },
-      flags: {
-        showMgmtFee: showMgmtFeeFlag?.enabled ?? false,
-        showPayout: showPayoutFlag?.enabled ?? true,
-      },
+      flags: ownerFlags,
     };
   },
 });
@@ -218,16 +228,7 @@ export const getOwnerProperty = query({
     //   - showMgmtFee defaults OFF (ships dark, admin opts in)
     //   - showPayout  defaults ON (payout is the headline number;
     //                  admin opts OUT to demo a "gross + fee only" view)
-    const [showMgmtFeeFlag, showPayoutFlag] = await Promise.all([
-      ctx.db
-        .query("featureFlags")
-        .withIndex("by_key", (q) => q.eq("key", "owner_show_mgmt_fee"))
-        .unique(),
-      ctx.db
-        .query("featureFlags")
-        .withIndex("by_key", (q) => q.eq("key", "owner_show_payout"))
-        .unique(),
-    ]);
+    const ownerFlags = await readOwnerPortalFlags(ctx);
     // First-activity month — earliest non-cancelled stay on this
     // property. Used by the per-property month picker to clamp `←` so
     // users can't page back into months that pre-date the property's
@@ -253,10 +254,7 @@ export const getOwnerProperty = query({
       },
       user: pickUser(user),
       firstActivityMonth,
-      flags: {
-        showMgmtFee: showMgmtFeeFlag?.enabled ?? false,
-        showPayout: showPayoutFlag?.enabled ?? true,
-      },
+      flags: ownerFlags,
     };
   },
 });
@@ -271,9 +269,19 @@ export const getOwnerStatementDraft = query({
     await assertOwnerOfProperty(ctx, args.propertyId);
     const month = args.month ?? currentMonthKey();
     const { start, end } = monthRange(month);
-    const inputs = await loadEngineInputs(ctx, args.propertyId, start, end);
-    const output = computeStatementForPeriod(inputs);
-    return { month, periodStart: start, periodEnd: end, draft: output };
+    // Engine failures (e.g. no propertyFeeConfig active in this period —
+    // a just-onboarded owner viewing a pre-onboarding month) must not
+    // crash the whole property page. Return the same `{ error }` envelope
+    // getOwnerDashboard uses per property; the mobile hook already
+    // branches on it, and the web client guards with `"totals" in`.
+    let draft: FeeEngineOutput | { error: string };
+    try {
+      const inputs = await loadEngineInputs(ctx, args.propertyId, start, end);
+      draft = computeStatementForPeriod(inputs);
+    } catch (e) {
+      draft = { error: e instanceof Error ? e.message : String(e) };
+    }
+    return { month, periodStart: start, periodEnd: end, draft };
   },
 });
 
@@ -288,22 +296,10 @@ export const getOwnerStatement = query({
     // detail surface stays in sync with the dashboard + summary card
     // (single source of truth: the featureFlags table). Defaults match
     // getOwnerProperty: showMgmtFee OFF, showPayout ON.
-    const [showMgmtFeeFlag, showPayoutFlag] = await Promise.all([
-      ctx.db
-        .query("featureFlags")
-        .withIndex("by_key", (q) => q.eq("key", "owner_show_mgmt_fee"))
-        .unique(),
-      ctx.db
-        .query("featureFlags")
-        .withIndex("by_key", (q) => q.eq("key", "owner_show_payout"))
-        .unique(),
-    ]);
+    const ownerFlags = await readOwnerPortalFlags(ctx);
     return {
       statement,
-      flags: {
-        showMgmtFee: showMgmtFeeFlag?.enabled ?? false,
-        showPayout: showPayoutFlag?.enabled ?? true,
-      },
+      flags: ownerFlags,
     };
   },
 });

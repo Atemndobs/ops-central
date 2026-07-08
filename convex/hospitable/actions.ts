@@ -3,6 +3,7 @@ import { action, internalAction } from "../_generated/server";
 import type { ActionCtx } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
+import { normalizeGuestReview } from "../guestReviews/normalize";
 
 const DEFAULT_HOSPITABLE_BASE_URL = "https://public.api.hospitable.com/v2";
 const DEFAULT_SYNC_WINDOW_DAYS = 30;
@@ -1596,6 +1597,81 @@ export const backfillReservationFinancials = internalAction({
 });
 
 /**
+ * Daily backstop sync for guest reviews. The `review.created` webhook
+ * (convex/hospitable/webhooks.ts) is the primary ingestion path; this sweep
+ * catches deliveries that failed before our ingest mutation ran, and
+ * backfills review history the first time this runs against a property.
+ * Iterates OUR properties table (not Hospitable's) — only properties with
+ * hospitableId set are queryable against the reviews endpoint.
+ */
+export const syncGuestReviews = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{
+    propertiesScanned: number;
+    reviewsUpserted: number;
+    reviewsSkipped: number;
+    errors: string[];
+  }> => {
+    const apiKey = process.env.HOSPITABLE_API_KEY ?? process.env.HOSPITABLE_API_TOKEN;
+    if (!apiKey) {
+      throw new Error("Missing HOSPITABLE_API_KEY/HOSPITABLE_API_TOKEN environment variable.");
+    }
+    const baseUrl = process.env.HOSPITABLE_API_URL ?? DEFAULT_HOSPITABLE_BASE_URL;
+
+    const properties: Array<Doc<"properties">> = await ctx.runQuery(
+      internal.hospitable.queries.listPropertiesWithHospitableId,
+      {},
+    );
+
+    let reviewsUpserted = 0;
+    let reviewsSkipped = 0;
+    const errors: string[] = [];
+
+    for (const property of properties) {
+      if (!property.hospitableId) continue;
+
+      let rawReviews: unknown[];
+      try {
+        rawReviews = await fetchAllHospitablePages(
+          apiKey,
+          `${baseUrl}/properties/${property.hospitableId}/reviews`,
+          ctx,
+          "hospitable_reviews_sync",
+        );
+      } catch (error) {
+        errors.push(
+          `Property ${property.hospitableId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        continue;
+      }
+
+      for (const rawReview of rawReviews) {
+        const { review, error } = normalizeGuestReview(rawReview);
+        if (!review) {
+          if (error) errors.push(error);
+          reviewsSkipped++;
+          continue;
+        }
+
+        const result = await ctx.runMutation(internal.hospitable.mutations.upsertGuestReview, review);
+        if (result.outcome === "skipped_no_property") {
+          reviewsSkipped++;
+        } else {
+          reviewsUpserted++;
+        }
+      }
+    }
+
+    return {
+      propertiesScanned: properties.length,
+      reviewsUpserted,
+      reviewsSkipped,
+      errors,
+    };
+  },
+});
+
+/**
  * One-shot backfill for stays whose `platform` was dropped during ingest
  * (Hospitable swaps which field carries the channel name across API
  * versions — see `extractPlatform`). Re-fetches each missing stay and
@@ -1683,3 +1759,94 @@ export const backfillReservationPlatforms = internalAction({
     };
   },
 });
+
+/**
+ * POST /v2/reviews/{uuid}/respond — publishes a reply to a guest review on
+ * Airbnb (also supports Booking.com per Hospitable's docs, but we don't
+ * operate there). Plain exported function, NOT a Convex action — called
+ * in-process from convex/guestReviews/actions.ts::sendApprovedReply to
+ * avoid an unnecessary action-to-action runtime hop (both run on the
+ * default V8 runtime; see convex/_generated/ai/guidelines.md).
+ */
+export async function postReviewResponse(args: {
+  apiKey: string;
+  baseUrl: string;
+  hospitableReviewId: string;
+  responseText: string;
+  ctx?: UsageLogCtx;
+}): Promise<{ id: string; respondedAt: string }> {
+  const url = `${args.baseUrl}/reviews/${args.hospitableReviewId}/respond`;
+  const startedAt = Date.now();
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${args.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ response: args.responseText }),
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error ?? "unknown");
+    if (args.ctx) {
+      try {
+        await args.ctx.runMutation(internal.serviceUsage.logger.log, {
+          serviceKey: "hospitable",
+          feature: "hospitable_review_respond",
+          status: "timeout",
+          durationMs: Date.now() - startedAt,
+          errorMessage: errorMessage.slice(0, 500),
+          metadata: { url: stripUrlSecrets(url) },
+        });
+      } catch {
+        // best-effort
+      }
+    }
+    throw new Error(`Network error posting review response: ${errorMessage}`);
+  }
+
+  const durationMs = Date.now() - startedAt;
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    if (args.ctx) {
+      try {
+        await args.ctx.runMutation(internal.serviceUsage.logger.log, {
+          serviceKey: "hospitable",
+          feature: "hospitable_review_respond",
+          status: classifyHttpStatus(response.status),
+          durationMs,
+          errorCode: String(response.status),
+          errorMessage: errorBody.slice(0, 500),
+          metadata: { url: stripUrlSecrets(url) },
+        });
+      } catch {
+        // best-effort
+      }
+    }
+    throw new Error(`Hospitable respond-to-review failed (${response.status}): ${errorBody}`);
+  }
+
+  const json = (await response.json()) as { id?: string; responded_at?: string };
+  if (args.ctx) {
+    try {
+      await args.ctx.runMutation(internal.serviceUsage.logger.log, {
+        serviceKey: "hospitable",
+        feature: "hospitable_review_respond",
+        status: "success",
+        durationMs,
+        metadata: { url: stripUrlSecrets(url) },
+      });
+    } catch {
+      // best-effort
+    }
+  }
+
+  return {
+    id: json.id ?? args.hospitableReviewId,
+    respondedAt: json.responded_at ?? new Date().toISOString(),
+  };
+}

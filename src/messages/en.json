@@ -39,8 +39,11 @@
   "nav": {
     "operationsManagement": "Operations Management",
     "review": "Review",
+    "reviews": "Reviews",
     "companies": "Companies",
     "ownerOverview": "Owner Overview",
+    "monthlyClose": "Monthly Close",
+    "propertyCosts": "Property Costs",
     "help": "Help",
     "lightMode": "Light Mode",
     "darkMode": "Dark Mode",
