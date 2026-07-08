@@ -4,7 +4,17 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
-_None._
+### TASK-COMPANIES-HUB-UI-001
+- Branch: task/companies-hub-refined-ui
+- Worktree: ~/sites/opscentral-admin-companies-hub-ui
+- PR: https://github.com/Atemndobs/ops-central/pull/195
+- Schema impact: none (frontend-only)
+- Convex impact: none — no queries/mutations changed
+- Risk: low (single component, no data-shape changes, same handlers reused)
+- What: declutters the Companies Hub detail panel per a design critique — merges 3 redundant stat cards into one summary bar, groups members active-first with role pills + collapsed inactive section, demotes the always-open attach form to a popover trigger, merges duplicate Assignment History / Active Properties panels into one toggle-driven panel, unifies destructive-button styling
+- CI: tsc clean, eslint clean, `npm run build` compiles
+- Not verified: automated browser preview blocked by Clerk auth (no test credentials) — needs a human eyeball on `/companies` post-merge
+- Handoff: .harness/handoffs/TASK-COMPANIES-HUB-UI-001/worktree-handoff.md
 
 ## In progress (main session integrating)
 
