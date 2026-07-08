@@ -1,12 +1,7 @@
-import { SignUp } from "@clerk/nextjs";
-import { mobileAuthAppearance } from "@/lib/clerk-auth-appearance";
+import { redirect } from "next/navigation";
 
+// Self-service sign-up is disabled — accounts are provisioned internally.
+// Any request to /sign-up is sent to the sign-in surface instead.
 export default function SignUpPage() {
-  return (
-    <SignUp
-      signInUrl="/sign-in"
-      fallbackRedirectUrl="/"
-      appearance={mobileAuthAppearance}
-    />
-  );
+  redirect("/sign-in");
 }
