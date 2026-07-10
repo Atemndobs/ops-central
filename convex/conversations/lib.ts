@@ -293,6 +293,43 @@ export async function canAccessJobConversation(
   return false;
 }
 
+/**
+ * Read-time visibility gate for a non-privileged user (cleaner) seeing a
+ * conversation in their inbox / unread count.
+ *
+ * The list and unread-count queries previously returned every conversation a
+ * user was *ever* a participant of — leaking messages after the cleaner was
+ * unassigned or the property was deactivated. This mirrors the detail-view
+ * gate (`canAccessJobConversation`, current job assignment) and additionally
+ * hides conversations for deactivated properties. Privileged roles never call
+ * this — admins/ops/managers keep the full history on purpose.
+ */
+export async function cleanerCanViewConversation(
+  ctx: DbCtx,
+  args: { user: Doc<"users">; conversation: Doc<"conversations"> },
+): Promise<boolean> {
+  const { user, conversation } = args;
+
+  // Deactivated property → hidden from cleaners (admins keep the record).
+  if (conversation.propertyId) {
+    const property = await ctx.db.get(conversation.propertyId);
+    if (property && property.isActive === false) {
+      return false;
+    }
+  }
+
+  // Current entitlement: cleaners may only see a conversation for a job they
+  // are CURRENTLY assigned to. No linked job → no cleaner access (consistent
+  // with canAccessJobConversation, which would deny it on open anyway).
+  const job = conversation.linkedJobId
+    ? await ctx.db.get(conversation.linkedJobId)
+    : null;
+  if (!job) {
+    return false;
+  }
+  return canAccessJobConversation(ctx, { user, job, conversation });
+}
+
 export async function assertConversationAccess(
   ctx: DbCtx,
   args: {

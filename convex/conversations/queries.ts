@@ -11,6 +11,7 @@ import {
   getJobConversationByJobId,
   getJobConversationsByJobId,
   isPrivilegedRole,
+  cleanerCanViewConversation,
 } from "./lib";
 import { isWhatsAppServiceWindowOpen } from "../whatsapp/lib";
 
@@ -262,9 +263,19 @@ export const listMyConversations = query({
           ctx.db.get(conversationId),
         ),
       );
-      activeConversations = conversations.filter(
+      const candidateConversations = conversations.filter(
         (conversation): conversation is Doc<"conversations"> => Boolean(conversation),
       );
+      // Read-time authorization for non-privileged users (cleaners): only show
+      // conversations they are CURRENTLY entitled to (active property + current
+      // job assignment). Stale participant rows must not leak other properties'
+      // or deactivated-property messages into the inbox.
+      const visibility = await Promise.all(
+        candidateConversations.map((conversation) =>
+          cleanerCanViewConversation(ctx, { user, conversation }),
+        ),
+      );
+      activeConversations = candidateConversations.filter((_, index) => visibility[index]);
     }
 
     const jobIds = [
@@ -581,7 +592,10 @@ export const getUnreadConversationCount = query({
       if (
         conversation &&
         typeof conversation.lastMessageAt === "number" &&
-        (participant.lastReadMessageAt ?? 0) < conversation.lastMessageAt
+        (participant.lastReadMessageAt ?? 0) < conversation.lastMessageAt &&
+        // Same read-time gate as listMyConversations — don't count leaked
+        // conversations (unassigned / deactivated property) toward the badge.
+        (await cleanerCanViewConversation(ctx, { user, conversation }))
       ) {
         count += 1;
       }
