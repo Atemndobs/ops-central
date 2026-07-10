@@ -18,6 +18,7 @@ import {
 } from "@/components/cleaner/cleaner-ui";
 import { getErrorMessage } from "@/lib/errors";
 import {
+  AlarmClock,
   AlertTriangle,
   Camera,
   Check,
@@ -44,6 +45,9 @@ type JobDetailData = {
     notesForCleaner?: string | null;
     assignedCleanerIds: string[];
     acknowledgements?: Acknowledgement[];
+    reworkDueAt?: number | null;
+    reworkAckAt?: number | null;
+    rejectionReason?: string | null;
     stay?: {
       partyRiskFlag?: boolean;
       checkInAt?: number | null;
@@ -152,6 +156,11 @@ export function CleanerJobDetailClient({ id }: { id: string }) {
   const { formatted: countdownLabel } = useCountdown(
     detail?.job.scheduledStartAt ?? null,
   );
+  // Rework fix-deadline countdown (Piece 2). Only meaningful when the job is in
+  // rework_required; empty once the deadline passes (→ show OVERDUE).
+  const { formatted: reworkCountdown } = useCountdown(
+    detail?.job.reworkDueAt ?? null,
+  );
 
   if (isLoading || !isAuthenticated || detail === undefined) {
     return <p className="text-sm text-[var(--muted-foreground)]">{t("cleaner.jobDetailLoading")}</p>;
@@ -192,8 +201,34 @@ export function CleanerJobDetailClient({ id }: { id: string }) {
     ? `https://maps.google.com/maps?q=${encodeURIComponent(mapAddress)}`
     : null;
 
+  const isRework = detail.job.status === "rework_required";
+  const reworkDueAt = detail.job.reworkDueAt ?? null;
+
   return (
     <div className="space-y-4">
+      {isRework && reworkDueAt ? (
+        <div
+          className={`flex items-start gap-3 rounded-[16px] border px-4 py-3 ${
+            reworkCountdown
+              ? "border-red-400 bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-200"
+              : "border-red-600 bg-red-600 text-white"
+          }`}
+        >
+          <AlarmClock className="mt-0.5 h-5 w-5 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-sm font-bold uppercase tracking-wide">
+              {reworkCountdown
+                ? tr("cleaner.reworkCountdown", `Rework required — ${reworkCountdown} to fix`)
+                : tr("cleaner.reworkOverdue", "Rework overdue — fix now")}
+            </p>
+            {detail.job.rejectionReason ? (
+              <p className="mt-0.5 text-xs opacity-90">
+                {detail.job.rejectionReason}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       <CleanerSection eyebrow={t("cleaner.jobDetail")} title={detail.property?.name ?? t("cleaner.unknownProperty")}>
         <div className="flex items-start justify-between gap-3">
           <p className="text-base text-[var(--cleaner-muted)]">{detail.property?.address ?? t("cleaner.noAddress")}</p>

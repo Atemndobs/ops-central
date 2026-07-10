@@ -13,6 +13,8 @@ import {
 } from "../lib/opsNotifications";
 import { listOpsUserIds } from "../lib/notificationLifecycle";
 import { CLEANER_REWORK_DISMISSAL_TYPES } from "../lib/reworkNotifications";
+import { computeReworkDueAt } from "../lib/reworkDeadline";
+import { readReworkDeadlineMinutes } from "../appSettings";
 import {
   getJobConversationByJobId,
   seedJobConversationParticipants,
@@ -1096,6 +1098,12 @@ export const reopenForRework = mutation({
       }
     }
 
+    const property = await ctx.db.get(job.propertyId);
+    const reworkDueAt = computeReworkDueAt(
+      now,
+      property?.reworkDeadlineMinutes,
+      await readReworkDeadlineMinutes(ctx),
+    );
     await ctx.db.patch(args.jobId, {
       status: "rework_required",
       currentRevision: nextRevision,
@@ -1105,6 +1113,10 @@ export const reopenForRework = mutation({
       rejectedAt: now,
       rejectedBy: user._id,
       rejectionReason: args.reason?.trim(),
+      // Rework urgency (Piece 2): fresh deadline; clear any prior acknowledgement.
+      reworkDueAt,
+      reworkAckAt: undefined,
+      reworkAckBy: undefined,
       updatedAt: now,
     });
     // Wave 4: defer convo sync + both dismissal batches. Ops user IDs
@@ -1132,7 +1144,6 @@ export const reopenForRework = mutation({
 
     // Reopening to rework must alert the cleaner, exactly like rejectCompletion.
     // Previously this path created no notification at all.
-    const property = await ctx.db.get(job.propertyId);
     const reworkReason = args.reason?.trim();
     await createNotificationsForUsers(ctx, {
       userIds: job.assignedCleanerIds,

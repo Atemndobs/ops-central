@@ -196,6 +196,9 @@ const properties = defineTable({
     v.union(v.literal("active"), v.literal("dropped"), v.literal("managed")),
   ),
   currency: v.optional(v.string()),
+  // Per-property override for the rework fix deadline (minutes). Absent ⇒ fall
+  // back to appSettings.reworkDeadlineMinutes ⇒ 30.
+  reworkDeadlineMinutes: v.optional(v.number()),
 
   // Amenities
   amenities: v.optional(v.array(v.string())),
@@ -324,6 +327,12 @@ const cleaningJobs = defineTable({
   rejectedAt: v.optional(v.number()),
   rejectedBy: v.optional(v.id("users")),
   rejectionReason: v.optional(v.string()),
+  // Rework urgency (Piece 2). `reworkDueAt` = rejectedAt + resolved deadline;
+  // drives the cleaner countdown + escalation. `reworkAckAt/By` = the cleaner's
+  // "On my way" acknowledgement (stops re-pings; does NOT stop overdue escalation).
+  reworkDueAt: v.optional(v.number()),
+  reworkAckAt: v.optional(v.number()),
+  reworkAckBy: v.optional(v.id("users")),
 
   // Flags
   partyRiskFlag: v.boolean(),
@@ -1400,6 +1409,9 @@ const appSettings = defineTable({
   // each object against ITS OWN photos.provider, so switching this only affects
   // future uploads — existing B2 objects keep resolving against B2.
   storageProvider: v.optional(v.union(v.literal("b2"), v.literal("minio"))),
+  // Org-wide default minutes a cleaner has to fix rejected work before it
+  // escalates. Absent ⇒ 30. Overridable per-property (properties.reworkDeadlineMinutes).
+  reworkDeadlineMinutes: v.optional(v.number()),
   updatedBy: v.optional(v.id("users")),
   updatedAt: v.number(),
 })
