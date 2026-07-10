@@ -1248,7 +1248,10 @@ export function ScheduleClient() {
                 >
                   {isToday ? (
                     <span className="mx-auto flex w-fit items-center gap-1 rounded-full bg-violet-500 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm sm:text-[10px]">
-                      <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
+                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
+                      </span>
                       Today
                     </span>
                   ) : (
