@@ -1246,13 +1246,16 @@ export function ScheduleClient() {
                       : "border-l"
                   }`}
                 >
-                  <p
-                    className={`text-[9px] font-bold uppercase tracking-wider sm:text-[10px] ${
-                      isToday ? "text-violet-500" : "text-[var(--muted-foreground)]"
-                    }`}
-                  >
-                    {isToday ? "Today" : day.toLocaleDateString([], { weekday: "short" })}
-                  </p>
+                  {isToday ? (
+                    <span className="mx-auto flex w-fit items-center gap-1 rounded-full bg-violet-500 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm sm:text-[10px]">
+                      <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                      Today
+                    </span>
+                  ) : (
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-[var(--muted-foreground)] sm:text-[10px]">
+                      {day.toLocaleDateString([], { weekday: "short" })}
+                    </p>
+                  )}
                   <p
                     className={`text-sm font-extrabold leading-none sm:text-lg ${
                       isToday ? "text-violet-500" : ""
