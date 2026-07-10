@@ -32,6 +32,83 @@ export function normalizeStorageProvider(value: unknown): StorageProvider {
   return value === "minio" ? "minio" : DEFAULT_STORAGE_PROVIDER;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Cloudflare-CDN-in-front-of-B2 (optional, inert until configured)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// When BOTH B2_CDN_BASE_URL and B2_CDN_SIGNING_SECRET are set, B2-backed READ
+// URLs are served through the Cloudflare Worker (edge-cached, kept private via a
+// short-lived HMAC token) instead of a direct B2 presigned URL. This collapses
+// repeat photo views into edge-cache hits so they stop counting against B2's
+// download/transaction caps (Cloudflare↔B2 egress is free via the Bandwidth
+// Alliance). Unset ⇒ direct B2 presigning (historical behavior). MinIO is
+// unaffected. See infra/b2-cdn-worker/README.md.
+
+export interface CdnConfig {
+  /** e.g. https://img.chezsoistays.com — no trailing slash. */
+  baseUrl: string;
+  /** HMAC-SHA256 signing secret, shared verbatim with the Worker. */
+  secret: string;
+  readExpirySeconds: number;
+}
+
+export function getCdnConfigOrNull(): CdnConfig | null {
+  const baseUrl = process.env.B2_CDN_BASE_URL;
+  const secret = process.env.B2_CDN_SIGNING_SECRET;
+  if (!baseUrl || !secret) {
+    return null;
+  }
+  return {
+    baseUrl: baseUrl.replace(/\/+$/, ""),
+    secret,
+    readExpirySeconds: Number(
+      process.env.B2_CDN_URL_TTL_SECONDS ??
+        process.env.B2_READ_URL_TTL_SECONDS ??
+        3600,
+    ),
+  };
+}
+
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/** HMAC-SHA256(secret, message) → base64url (no padding). Must byte-match the Worker. */
+async function hmacBase64Url(secret: string, message: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const mac = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(message),
+  );
+  return toBase64Url(new Uint8Array(mac));
+}
+
+/**
+ * Build a signed, edge-cacheable CDN URL for a B2 object. Path = the object key
+ * (slashes preserved, each segment percent-encoded); `exp` is a unix expiry and
+ * `sig` an HMAC over `${objectKey}\n${exp}` the Worker re-verifies before serving.
+ */
+export async function signCdnReadUrl(
+  cdn: CdnConfig,
+  objectKey: string,
+  expiresInSeconds?: number,
+): Promise<string> {
+  const exp =
+    Math.floor(Date.now() / 1000) + (expiresInSeconds ?? cdn.readExpirySeconds);
+  const sig = await hmacBase64Url(cdn.secret, `${objectKey}\n${exp}`);
+  const path = objectKey.split("/").map(encodeURIComponent).join("/");
+  return `${cdn.baseUrl}/${path}?exp=${exp}&sig=${sig}`;
+}
+
 const cachedClients: Record<string, S3Client> = {};
 
 export function getExternalStorageConfigOrNull(): ExternalStorageConfig | null {
@@ -151,9 +228,19 @@ export async function createExternalReadUrl(params: {
    */
   provider?: StorageProvider;
 }): Promise<string> {
-  const config = requireConfigForProvider(
-    params.provider ?? DEFAULT_STORAGE_PROVIDER,
-  );
+  const provider = params.provider ?? DEFAULT_STORAGE_PROVIDER;
+
+  // CDN fast-path: serve B2-backed objects through the Cloudflare Worker when
+  // configured. The Worker holds the B2 key and edge-caches, so no B2 config is
+  // needed here. MinIO is always served directly.
+  if (provider === "b2") {
+    const cdn = getCdnConfigOrNull();
+    if (cdn) {
+      return signCdnReadUrl(cdn, params.objectKey, params.expiresInSeconds);
+    }
+  }
+
+  const config = requireConfigForProvider(provider);
   return createSignedReadUrl(config, {
     bucket: params.bucket ?? config.bucket,
     objectKey: params.objectKey,
