@@ -19,6 +19,7 @@ import type * as admin_userSync from "../admin/userSync.js";
 import type * as admin_wipeGoLiveData from "../admin/wipeGoLiveData.js";
 import type * as ai_providers from "../ai/providers.js";
 import type * as ai_settings from "../ai/settings.js";
+import type * as appSettings from "../appSettings.js";
 import type * as cleaningJobs_acknowledgements from "../cleaningJobs/acknowledgements.js";
 import type * as cleaningJobs_approve from "../cleaningJobs/approve.js";
 import type * as cleaningJobs_backfillMeta from "../cleaningJobs/backfillMeta.js";
@@ -164,6 +165,7 @@ declare const fullApi: ApiFromModules<{
   "admin/wipeGoLiveData": typeof admin_wipeGoLiveData;
   "ai/providers": typeof ai_providers;
   "ai/settings": typeof ai_settings;
+  appSettings: typeof appSettings;
   "cleaningJobs/acknowledgements": typeof cleaningJobs_acknowledgements;
   "cleaningJobs/approve": typeof cleaningJobs_approve;
   "cleaningJobs/backfillMeta": typeof cleaningJobs_backfillMeta;
