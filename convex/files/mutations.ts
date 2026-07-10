@@ -6,8 +6,10 @@ import {
   createExternalReadUrl,
   createExternalUploadUrl,
   deleteExternalObject,
-  requireExternalStorageConfig,
+  normalizeStorageProvider,
+  requireConfigForProvider,
 } from "../lib/externalStorage";
+import { resolveStorageProvider } from "../appSettings";
 import { normalizeRoomName } from "../lib/rooms";
 import { logServiceUsage } from "../lib/serviceUsage";
 import {
@@ -176,7 +178,12 @@ export const getExternalUploadUrl = mutation({
       }
     }
 
-    const config = requireExternalStorageConfig();
+    // Honor the admin-selected storage backend for new uploads. `config`
+    // (bucket/endpoint/creds) and the `provider` we thread into each signed
+    // URL both come from the same backend, so the URL is signed against the
+    // store the object will actually live in.
+    const provider = await resolveStorageProvider(ctx);
+    const config = requireConfigForProvider(provider);
     const mediaKind = args.mediaKind ?? "image";
 
     if (mediaKind === "video") {
@@ -209,6 +216,7 @@ export const getExternalUploadUrl = mutation({
         bucket: config.bucket,
         objectKey,
         contentType: args.contentType,
+        provider,
       });
 
       await trackPendingUpload(ctx, {
@@ -259,11 +267,13 @@ export const getExternalUploadUrl = mutation({
         bucket: config.bucket,
         objectKey: videoObjectKey,
         contentType: args.contentType,
+        provider,
       }),
       createExternalUploadUrl({
         bucket: config.bucket,
         objectKey: posterObjectKey,
         contentType: args.posterContentType!,
+        provider,
       }),
     ]);
 
@@ -429,6 +439,7 @@ export const completeExternalUpload = mutation({
       accessUrl = await createExternalReadUrl({
         bucket: args.bucket,
         objectKey: args.objectKey,
+        provider: normalizeStorageProvider(args.provider),
       });
       await logB2Op(ctx, {
         feature: "b2_read_url",

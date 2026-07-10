@@ -3,7 +3,11 @@ import { query } from "../_generated/server";
 import type { QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { getCurrentUser, requireRole } from "../lib/auth";
-import { createExternalReadUrl, getExternalStorageConfigOrNull } from "../lib/externalStorage";
+import {
+  createExternalReadUrl,
+  getConfigForProviderOrNull,
+  normalizeStorageProvider,
+} from "../lib/externalStorage";
 import { resolvePhotoAccessUrl } from "../lib/photoUrls";
 import { assertReviewerRole } from "./reviewAccess";
 import {
@@ -130,14 +134,15 @@ async function resolveSnapshotPhotoUrl(
   }
 
   if (snapshotPhoto.provider && snapshotPhoto.bucket && snapshotPhoto.objectKey) {
-    const config = getExternalStorageConfigOrNull();
-    if (!config) {
+    const provider = normalizeStorageProvider(snapshotPhoto.provider);
+    if (getConfigForProviderOrNull(provider) === null) {
       return null;
     }
     try {
       return await createExternalReadUrl({
         bucket: snapshotPhoto.bucket,
         objectKey: snapshotPhoto.objectKey,
+        provider,
       });
     } catch {
       return null;

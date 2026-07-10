@@ -4,6 +4,17 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
+### TASK-STORAGE-SWITCH-001
+- Branch: task/storage-provider-switch
+- Worktree: ~/sites/opscentral-admin-storage-switch
+- PR: <pending>
+- Schema impact: backward-compatible (`appSettings.storageProvider` optional, no index/backfill) — combined-PR exception
+- Convex impact: deploy-required (new `appSettings.{listStorageProviders,getStorageProvider,setStorageProvider}` + schema field → lovable-oriole-182, mirror to cleaners). **Deploy BEFORE `npm run build`** — frontend references the new api fns / field, so a build on stale `_generated` fails.
+- Risk: medium (touches shared photo read/write path serving both apps; b2 rows unaffected — reads default to b2. Main risk is operational: do NOT switch active provider to MinIO until MinIO is publicly reachable for field phones.)
+- What: admin-selectable object-storage backend (B2 ↔ MinIO) on the appSettings singleton + provider-aware read path (each object signed against its own `photos.provider` instead of hardcoded B2). Settings → Integrations → "Photo & video storage" picker.
+- CI: tsc — no real errors (only pre-existing `whatsapp/lib.test.ts` vitest-types gap + implicit-any in the new card that resolves once codegen types the new query). Full build not runnable pre-deploy (stale `_generated`).
+- Handoff: .harness/handoffs/TASK-STORAGE-SWITCH-001/worktree-handoff.md
+
 ### TASK-COMPANIES-HUB-UI-001
 - Branch: task/companies-hub-refined-ui
 - Worktree: ~/sites/opscentral-admin-companies-hub-ui

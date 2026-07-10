@@ -17,6 +17,21 @@ export interface ExternalStorageConfig {
   readExpirySeconds: number;
 }
 
+/** Object-storage backends the app can read from / write to. */
+export type StorageProvider = "b2" | "minio";
+
+/** Default backend for legacy rows and when no admin setting exists yet. */
+export const DEFAULT_STORAGE_PROVIDER: StorageProvider = "b2";
+
+/**
+ * Coerce an arbitrary stored `photos.provider` string into a known
+ * `StorageProvider`. Unknown/absent values fall back to B2 — the historical
+ * default — so pre-switch rows keep resolving correctly.
+ */
+export function normalizeStorageProvider(value: unknown): StorageProvider {
+  return value === "minio" ? "minio" : DEFAULT_STORAGE_PROVIDER;
+}
+
 const cachedClients: Record<string, S3Client> = {};
 
 export function getExternalStorageConfigOrNull(): ExternalStorageConfig | null {
@@ -60,6 +75,20 @@ export function requireB2Config(): ExternalStorageConfig {
   return config;
 }
 
+/** Config for a specific backend, or null if its env vars aren't set. */
+export function getConfigForProviderOrNull(
+  provider: StorageProvider,
+): ExternalStorageConfig | null {
+  return provider === "minio" ? getMinioConfigOrNull() : getB2ConfigOrNull();
+}
+
+/** Config for a specific backend; throws with a clear message if unconfigured. */
+export function requireConfigForProvider(
+  provider: StorageProvider,
+): ExternalStorageConfig {
+  return provider === "minio" ? requireMinioConfig() : requireB2Config();
+}
+
 export function getMinioConfigOrNull(): ExternalStorageConfig | null {
   const bucket = process.env.MINIO_BUCKET;
   const endpoint = process.env.MINIO_ENDPOINT;
@@ -98,8 +127,12 @@ export async function createExternalUploadUrl(params: {
   objectKey: string;
   contentType: string;
   expiresInSeconds?: number;
+  /** Backend to sign against. Defaults to B2 for backward compatibility. */
+  provider?: StorageProvider;
 }): Promise<{ url: string; expiresAt: number }> {
-  const config = requireB2Config();
+  const config = requireConfigForProvider(
+    params.provider ?? DEFAULT_STORAGE_PROVIDER,
+  );
   return createSignedUploadUrl(config, {
     bucket: params.bucket ?? config.bucket,
     objectKey: params.objectKey,
@@ -112,8 +145,15 @@ export async function createExternalReadUrl(params: {
   bucket?: string;
   objectKey: string;
   expiresInSeconds?: number;
+  /**
+   * Backend the object actually lives in — pass the row's `photos.provider`.
+   * Defaults to B2 for legacy rows written before the provider switch existed.
+   */
+  provider?: StorageProvider;
 }): Promise<string> {
-  const config = requireB2Config();
+  const config = requireConfigForProvider(
+    params.provider ?? DEFAULT_STORAGE_PROVIDER,
+  );
   return createSignedReadUrl(config, {
     bucket: params.bucket ?? config.bucket,
     objectKey: params.objectKey,
