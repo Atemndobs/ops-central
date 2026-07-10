@@ -4,17 +4,6 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
-### TASK-STORAGE-SWITCH-001
-- Branch: task/storage-provider-switch
-- Worktree: ~/sites/opscentral-admin-storage-switch
-- PR: https://github.com/Atemndobs/ops-central/pull/207
-- Schema impact: backward-compatible (`appSettings.storageProvider` optional, no index/backfill) — combined-PR exception
-- Convex impact: deploy-required (new `appSettings.{listStorageProviders,getStorageProvider,setStorageProvider}` + schema field → lovable-oriole-182, mirror to cleaners). **Deploy BEFORE `npm run build`** — frontend references the new api fns / field, so a build on stale `_generated` fails.
-- Risk: medium (touches shared photo read/write path serving both apps; b2 rows unaffected — reads default to b2. Main risk is operational: do NOT switch active provider to MinIO until MinIO is publicly reachable for field phones.)
-- What: admin-selectable object-storage backend (B2 ↔ MinIO) on the appSettings singleton + provider-aware read path (each object signed against its own `photos.provider` instead of hardcoded B2). Settings → Integrations → "Photo & video storage" picker.
-- CI: tsc — no real errors (only pre-existing `whatsapp/lib.test.ts` vitest-types gap + implicit-any in the new card that resolves once codegen types the new query). Full build not runnable pre-deploy (stale `_generated`).
-- Handoff: .harness/handoffs/TASK-STORAGE-SWITCH-001/worktree-handoff.md
-
 ### TASK-COMPANIES-HUB-UI-001
 - Branch: task/companies-hub-refined-ui
 - Worktree: ~/sites/opscentral-admin-companies-hub-ui
@@ -32,6 +21,18 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 _None._
 
 ## Done
+
+### TASK-STORAGE-SWITCH-001
+- Branch: task/storage-provider-switch
+- Worktree: ~/sites/opscentral-admin-storage-switch
+- PR: https://github.com/Atemndobs/ops-central/pull/207 (merged → 3bbc88e)
+- Schema impact: backward-compatible (`appSettings.storageProvider` optional, no index/backfill) — combined-PR exception
+- Convex impact: deploy-required (deployed to lovable-oriole-182 — `appSettings.{listStorageProviders,getStorageProvider,setStorageProvider}` + schema field; provider-aware read path in `photoUrls`/`cleaningJobs.queries`/`files.mutations`)
+- Risk: medium (shared photo read/write path; b2 rows unaffected — reads default to b2)
+- What: admin-selectable object-storage backend (B2 ↔ MinIO) on the appSettings singleton + provider-aware reads (each object signed against its own `photos.provider`). Settings → Integrations → "Photo & video storage" picker.
+- Merged: 2026-07-10
+- Handoff: .harness/handoffs/TASK-STORAGE-SWITCH-001/worktree-handoff.md · integration-result.md
+- Post-merge: deploy order = convex deploy (codegen) → build → push bindings (d8ab304). Build ✓, schema validation ✓, cleaners mirrored ✓. Ships INERT (defaults to b2; MinIO refused until `MINIO_*` set in Convex prod). Tailscale Funnel `https://minio.goose-neon.ts.net` verified: presigned GET returns 200 off-tailnet, so MinIO serving is viable once env is set + a scoped key/`job-photos` bucket created. Existing broken B2 thumbnails need the B2 cap raised (not fixed by this — they live in B2).
 
 ### TASK-OWNER-DRAFT-ERROR-001
 - Branch: task/owner-draft-engine-error
