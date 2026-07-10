@@ -5,13 +5,14 @@ import { useMemo, useState } from "react";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useTranslations } from "next-intl";
-import { Bell, Building2, CheckCheck, ExternalLink, Flag, Gauge, Globe, HardDrive, Settings, Sparkles, Trash2, Users, Zap } from "lucide-react";
+import { AlarmClock, Bell, Building2, CheckCheck, ExternalLink, Flag, Gauge, Globe, HardDrive, Settings, Sparkles, Trash2, Users, Zap } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { navigation } from "@/components/layout/navigation";
 import { LanguageSwitcher } from "@/components/cleaner/language-switcher";
 import { useToast } from "@/components/ui/toast-provider";
 import { AIProviderCard } from "@/components/settings/ai-provider-card";
 import { StorageProviderCard } from "@/components/settings/storage-provider-card";
+import { ReworkDeadlineCard } from "@/components/settings/rework-deadline-card";
 import { FeatureFlagsCard } from "@/components/settings/feature-flags-card";
 import { UsageDashboardCard } from "@/components/settings/usage/usage-dashboard-card";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
@@ -815,6 +816,15 @@ export function SettingsPageClient({ initialTab }: { initialTab: SettingsTab }) 
             subtitle="Choose the object-storage backend new uploads are written to and served from."
           >
             <StorageProviderCard />
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            persistKey="integrations-rework-deadline"
+            icon={<AlarmClock className="h-4 w-4" />}
+            title="Rework fix deadline"
+            subtitle="How long a cleaner has to fix rejected work before it escalates (per-property overridable)."
+          >
+            <ReworkDeadlineCard />
           </CollapsibleSection>
 
           <CollapsibleSection

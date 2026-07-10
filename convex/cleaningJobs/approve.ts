@@ -12,6 +12,8 @@ import {
 } from "../lib/notificationLifecycle";
 import { syncConversationStatusForJob } from "../conversations/lib";
 import { CLEANER_REWORK_DISMISSAL_TYPES } from "../lib/reworkNotifications";
+import { computeReworkDueAt } from "../lib/reworkDeadline";
+import { readReworkDeadlineMinutes } from "../appSettings";
 import { isReviewerRole } from "./reviewAccess";
 
 const roomReviewSnapshotValidator = v.array(
@@ -204,6 +206,11 @@ export const rejectCompletion = mutation({
       });
     }
 
+    const reworkDueAt = computeReworkDueAt(
+      now,
+      property?.reworkDeadlineMinutes,
+      await readReworkDeadlineMinutes(ctx),
+    );
     await ctx.db.patch(args.jobId, {
       status: "rework_required",
       currentRevision: nextRevision,
@@ -213,6 +220,10 @@ export const rejectCompletion = mutation({
       rejectedAt: now,
       rejectedBy: user._id,
       rejectionReason: args.rejectionReason?.trim(),
+      // Rework urgency (Piece 2): fresh deadline; clear any prior acknowledgement.
+      reworkDueAt,
+      reworkAckAt: undefined,
+      reworkAckBy: undefined,
       updatedAt: now,
     });
     await syncConversationStatusForJob(ctx, {

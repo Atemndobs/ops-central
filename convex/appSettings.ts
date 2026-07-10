@@ -18,6 +18,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAdmin } from "./lib/auth";
+import { DEFAULT_REWORK_DEADLINE_MINUTES } from "./lib/reworkDeadline";
 import {
   DEFAULT_STORAGE_PROVIDER,
   getConfigForProviderOrNull,
@@ -270,5 +271,98 @@ export const setStorageProvider = mutation({
     }
 
     return { provider: args.provider, updatedAt: now };
+  },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Rework deadline (org default; per-property override lives on properties)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Org-wide default rework-fix minutes (raw, may be undefined). Used by the
+ * reject/reopen mutations to compute `reworkDueAt`. Callers combine it with a
+ * per-property override via `resolveReworkDeadlineMinutes`.
+ */
+export async function readReworkDeadlineMinutes(
+  ctx: QueryCtx | MutationCtx,
+): Promise<number | undefined> {
+  const row = await ctx.db
+    .query("appSettings")
+    .withIndex("by_key", (q) => q.eq("key", "global"))
+    .unique();
+  return row?.reworkDeadlineMinutes;
+}
+
+export const getReworkDeadlineMinutes = query({
+  args: {},
+  returns: v.object({
+    minutes: v.number(),
+    isDefault: v.boolean(),
+    updatedAt: v.optional(v.number()),
+  }),
+  handler: async (ctx) => {
+    const row = await ctx.db
+      .query("appSettings")
+      .withIndex("by_key", (q) => q.eq("key", "global"))
+      .unique();
+
+    if (!row || typeof row.reworkDeadlineMinutes !== "number") {
+      return {
+        minutes: DEFAULT_REWORK_DEADLINE_MINUTES,
+        isDefault: true,
+        updatedAt: row?.updatedAt,
+      };
+    }
+    return {
+      minutes: row.reworkDeadlineMinutes,
+      isDefault: false,
+      updatedAt: row.updatedAt,
+    };
+  },
+});
+
+export const setReworkDeadlineMinutes = mutation({
+  args: { minutes: v.number() },
+  returns: v.object({ minutes: v.number(), updatedAt: v.number() }),
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+
+    if (
+      !Number.isFinite(args.minutes) ||
+      !Number.isInteger(args.minutes) ||
+      args.minutes < 1 ||
+      args.minutes > 24 * 60
+    ) {
+      throw new Error(
+        "Rework deadline must be a whole number of minutes between 1 and 1440.",
+      );
+    }
+
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("appSettings")
+      .withIndex("by_key", (q) => q.eq("key", "global"))
+      .unique();
+
+    if (existing) {
+      if (existing.reworkDeadlineMinutes === args.minutes) {
+        return { minutes: args.minutes, updatedAt: existing.updatedAt };
+      }
+      await ctx.db.patch(existing._id, {
+        reworkDeadlineMinutes: args.minutes,
+        updatedBy: admin._id,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("appSettings", {
+        key: "global",
+        timezone: DEFAULT_TIMEZONE,
+        reworkDeadlineMinutes: args.minutes,
+        updatedBy: admin._id,
+        updatedAt: now,
+      });
+    }
+
+    return { minutes: args.minutes, updatedAt: now };
   },
 });
