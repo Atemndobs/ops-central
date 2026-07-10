@@ -1,6 +1,6 @@
 {
-  "name": "ChezSoiStays — Owner Portal",
-  "short_name": "ChezSoi Owner",
+  "name": "ChezSoi Ops — Owner",
+  "short_name": "ChezSoi Ops",
   "description": "Radical financial transparency for property owners. Every line on your statement is a clickable receipt.",
   "id": "/owner",
   "start_url": "/owner",

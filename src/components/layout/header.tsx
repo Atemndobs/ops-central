@@ -245,7 +245,7 @@ export function Header() {
   }, [currentLocale, isLoaded, isSignedIn, setLocalePreference]);
 
   const titleKey = getPageTitleKey(pathname);
-  const title = titleKey ? t(titleKey) : "ChezSoi";
+  const title = titleKey ? t(titleKey) : "ChezSoi Ops";
 
   return (
     <>

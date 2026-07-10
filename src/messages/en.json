@@ -50,7 +50,7 @@
     "darkMode": "Dark Mode",
     "collapse": "Collapse",
     "expandSidebar": "Expand Sidebar",
-    "helpTitle": "OpsCentral Help",
+    "helpTitle": "ChezSoi Ops Help",
     "helpDescription": "Use these shortcuts to navigate key operational pages quickly.",
     "helpSettingsHint": "Need account or alert preferences? Open Settings from the top-right header."
   },
@@ -486,7 +486,7 @@
       "profileUpdated": "Profile updated."
     },
     "install": {
-      "title": "Install ChezSoi App",
+      "title": "Install ChezSoi Ops App",
       "iosHint": "Add to your home screen for one-tap launch, full screen, and offline access.",
       "iosInstructions": "Tap <strong>Share</strong> → <strong>Add to Home Screen</strong>",
       "androidHint": "Install for faster launch, full screen, and offline access.",

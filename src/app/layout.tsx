@@ -9,7 +9,7 @@ import { ToastProvider } from "@/components/ui/toast-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ChezSoi",
+  title: "ChezSoi Ops",
   description: "Property operations management for J&A Business Solutions",
   icons: {
     icon: [
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "ChezSoi",
+    title: "ChezSoi Ops",
   },
   formatDetection: {
     telephone: false,

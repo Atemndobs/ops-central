@@ -21,13 +21,13 @@ const cleanerMono = Atkinson_Hyperlegible({
 });
 
 export const metadata: Metadata = {
-  title: "ChezSoiCleaning",
-  description: "ChezSoiCleaning workspace for assigned jobs, evidence capture, and incident reporting.",
+  title: "ChezSoi Ops — Cleaner",
+  description: "ChezSoi Ops workspace for assigned jobs, evidence capture, and incident reporting.",
   manifest: "/cleaner-manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "ChezSoiCleaning",
+    title: "ChezSoi Ops — Cleaner",
   },
   formatDetection: {
     telephone: false,

@@ -202,13 +202,13 @@ export function Sidebar() {
         <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3")}>
           <Image
             src="/icons/chezsoi-icon-192.png"
-            alt="ChezSoi logo"
+            alt="ChezSoi Ops logo"
             width={44}
             height={44}
             className="h-11 w-11 rounded-md object-contain"
             priority
           />
-          {!isCollapsed ? <p className="text-3xl font-black tracking-tighter">ChezSoi</p> : null}
+          {!isCollapsed ? <p className="text-3xl font-black tracking-tighter">ChezSoi Ops</p> : null}
         </div>
         {!isCollapsed ? (
           <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">

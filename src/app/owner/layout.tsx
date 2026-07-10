@@ -24,14 +24,14 @@ const ownerMono = Atkinson_Hyperlegible({
 });
 
 export const metadata: Metadata = {
-  title: "ChezSoiStays — Owner",
+  title: "ChezSoi Ops — Owner",
   description:
     "Radical financial transparency for property owners. Every line on your statement is a clickable receipt.",
   manifest: "/owner-manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "ChezSoi Owner",
+    title: "ChezSoi Ops — Owner",
   },
   formatDetection: {
     telephone: false,
