@@ -1,0 +1,26 @@
+name = "b2-cdn-worker"
+main = "src/worker.ts"
+compatibility_date = "2024-11-01"
+
+# --- Route the Worker at your CDN hostname ------------------------------------
+# Add an (orange-cloud / proxied) DNS record for this hostname in Cloudflare
+# FIRST, then uncomment and set the zone. The hostname here must match
+# B2_CDN_BASE_URL set on the Convex backend (e.g. https://img.chezsoistays.com).
+#
+# routes = [
+#   { pattern = "img.chezsoistays.com/*", zone_name = "chezsoistays.com" }
+# ]
+
+# --- Non-secret config --------------------------------------------------------
+# Match these to the B2 bucket the app writes to. Region/endpoint come from the
+# same values used by the Convex backend's B2_* env.
+[vars]
+B2_S3_ENDPOINT = "https://s3.us-east-005.backblazeb2.com"
+B2_BUCKET = "job-photos"
+B2_REGION = "us-east-005"
+
+# --- Secrets (DO NOT put in this file) ----------------------------------------
+# Set with wrangler after `wrangler login`:
+#   wrangler secret put CDN_SIGNING_SECRET    # same value as Convex B2_CDN_SIGNING_SECRET
+#   wrangler secret put B2_KEY_ID             # a B2 app key scoped read-only to the bucket
+#   wrangler secret put B2_APPLICATION_KEY
