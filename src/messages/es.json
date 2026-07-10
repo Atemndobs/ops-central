@@ -1,5 +1,6 @@
 {
   "common": {
+    "assistant": "Asistente",
     "dashboard": "Panel de Control",
     "schedule": "Calendario",
     "jobs": "Trabajos",
