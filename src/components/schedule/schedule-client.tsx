@@ -122,10 +122,19 @@ export function ScheduleClient() {
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
 
   // --- Range & navigation ---
+  // Rolling calendar (Hospitable-style): the week is anchored on TODAY rather
+  // than snapping to Monday, so the current day is always the left-most column
+  // and the board rolls forward day by day.
   const [rangeMode, setRangeMode] = useState<"week" | "month" | "custom">("week");
-  const [rangeStart, setRangeStart] = useState(() => startOfWeek(new Date()));
-  const [rangeEnd, setRangeEnd] = useState(() => addDays(startOfWeek(new Date()), 6));
+  const [rangeStart, setRangeStart] = useState(() => startOfDay(new Date()));
+  const [rangeEnd, setRangeEnd] = useState(() => addDays(startOfDay(new Date()), 6));
   const [sliderValue, setSliderValue] = useState(0);
+
+  // `todayStart` drives the "today" column highlight and moves at midnight so
+  // the marker (and, when still anchored, the whole rolling window) advances
+  // with the day without a manual refresh.
+  const [todayStart, setTodayStart] = useState(() => startOfDay(new Date()));
+  const todayKey = dateKeyFn(todayStart);
 
   // --- Day count (3 or 7) ---
   const [dayCount, setDayCount] = useState<3 | 7>(7);
@@ -188,6 +197,54 @@ export function ScheduleClient() {
     }
     // Intentional: empty dep array → mount-only. Don't react to resize.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // --- Midnight roll-over (2026-07-10) ---
+  // "Move with the day" like Hospitable: at local midnight, advance the today
+  // marker and — if the board is still a rolling week anchored on the previous
+  // day — roll the visible window forward one day. If the user has navigated
+  // away (browsing a future week or a month), we only move the marker, never
+  // yank their view. Refs keep the timer callback free of stale closures.
+  const rangeModeRef = useRef(rangeMode);
+  const rangeStartRef = useRef(rangeStart);
+  const todayStartRef = useRef(todayStart);
+  useEffect(() => {
+    rangeModeRef.current = rangeMode;
+  }, [rangeMode]);
+  useEffect(() => {
+    rangeStartRef.current = rangeStart;
+  }, [rangeStart]);
+  useEffect(() => {
+    todayStartRef.current = todayStart;
+  }, [todayStart]);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const scheduleMidnight = () => {
+      const now = new Date();
+      const nextMidnight = new Date(now);
+      nextMidnight.setHours(24, 0, 0, 0);
+      // +500ms cushion so we're safely past midnight when the timer fires.
+      const ms = nextMidnight.getTime() - now.getTime() + 500;
+      timer = setTimeout(() => {
+        const prevToday = todayStartRef.current;
+        const newToday = startOfDay(new Date());
+        setTodayStart(newToday);
+        // Only re-anchor if we're a rolling week that was still sitting on the
+        // old "today" — i.e. the user hasn't navigated away.
+        if (
+          rangeModeRef.current === "week" &&
+          dateKeyFn(rangeStartRef.current) === dateKeyFn(prevToday)
+        ) {
+          setRangeStart(newToday);
+          setRangeEnd(addDays(newToday, 6));
+          setSliderValue(0);
+        }
+        scheduleMidnight();
+      }, ms);
+    };
+    scheduleMidnight();
+    return () => clearTimeout(timer);
+    // Mount-only: the callback reads live values via refs.
   }, []);
 
   // --- Quick assign ---
@@ -405,7 +462,9 @@ export function ScheduleClient() {
 
   // --- Navigation helpers ---
   const applyWeekRange = (baseDate: Date) => {
-    const nextStart = startOfWeek(baseDate);
+    // Rolling week: anchor on the given day (today, when called from "Today")
+    // instead of snapping back to Monday.
+    const nextStart = startOfDay(baseDate);
     setRangeStart(nextStart);
     setRangeEnd(addDays(nextStart, 6));
     setSliderValue(0);
@@ -523,10 +582,16 @@ export function ScheduleClient() {
 
   const renderJobCell = (cellJobs: JobWithRelations[], propertyId: string, day: Date) => {
     const key = `${propertyId}-${dateKeyFn(day)}`;
+    // Continue the "today" column down every row: a violet left-edge line + a
+    // faint tint so the current day reads as one highlighted column.
+    const isToday = dateKeyFn(day) === todayKey;
+    const cellEdgeClass = isToday
+      ? "border-l-2 border-l-violet-500 bg-violet-500/[0.06]"
+      : "border-l";
 
     if (cellJobs.length === 0) {
       return (
-        <div key={key} className="relative h-10 border-l sm:h-16">
+        <div key={key} className={`relative h-10 sm:h-16 ${cellEdgeClass}`}>
           <ScheduleCellTaskOverlay mineOnly={mineOnly} myUserId={myUserId} summary={summaryFor(propertyId, day)}
             propertyId={propertyId as Id<"properties">}
             day={day}
@@ -539,7 +604,7 @@ export function ScheduleClient() {
     // 7-day compact mode: dots on mobile only, desktop always shows full cards
     if (dayCount === 7) {
       return (
-        <div key={key} className="relative border-l">
+        <div key={key} className={`relative ${cellEdgeClass}`}>
           <div className="md:hidden">
             <ScheduleCellTaskOverlay mineOnly={mineOnly} myUserId={myUserId} summary={summaryFor(propertyId, day)}
               propertyId={propertyId as Id<"properties">}
@@ -675,7 +740,7 @@ export function ScheduleClient() {
 
     // 3-day mode: full job cards
     return (
-      <div key={key} className="space-y-1 border-l p-1 sm:p-2">
+      <div key={key} className={`space-y-1 p-1 sm:p-2 ${cellEdgeClass}`}>
         {cellJobs.slice(0, 3).map((job) => {
           const availableAssignment = assignableByPropertyMap.get(job.propertyId);
           const companyCleaners = availableAssignment?.cleaners ?? [];
@@ -1170,17 +1235,35 @@ export function ScheduleClient() {
                 {propertyLabelMode === "initials" ? "" : "Property"}
               </div>
             ) : null}
-            {visibleDays.map((day) => (
-              <div key={dateKeyFn(day)} className="border-l p-1.5 text-center sm:p-3">
-                <p className="text-[9px] font-bold uppercase tracking-wider text-[var(--muted-foreground)] sm:text-[10px]">
-                  {day.toLocaleDateString([], { weekday: "short" })}
-                </p>
-                <p className="text-sm font-extrabold leading-none sm:text-lg">
-                  {day.toLocaleDateString([], { day: "2-digit" })}
-                </p>
-                <ScheduleDateHeaderTaskOverlay day={day} mineOnly={mineOnly} myUserId={myUserId} summary={summaryFor("global", day)} />
-              </div>
-            ))}
+            {visibleDays.map((day) => {
+              const isToday = dateKeyFn(day) === todayKey;
+              return (
+                <div
+                  key={dateKeyFn(day)}
+                  className={`p-1.5 text-center sm:p-3 ${
+                    isToday
+                      ? "border-l-2 border-l-violet-500 bg-violet-500/[0.06]"
+                      : "border-l"
+                  }`}
+                >
+                  <p
+                    className={`text-[9px] font-bold uppercase tracking-wider sm:text-[10px] ${
+                      isToday ? "text-violet-500" : "text-[var(--muted-foreground)]"
+                    }`}
+                  >
+                    {isToday ? "Today" : day.toLocaleDateString([], { weekday: "short" })}
+                  </p>
+                  <p
+                    className={`text-sm font-extrabold leading-none sm:text-lg ${
+                      isToday ? "text-violet-500" : ""
+                    }`}
+                  >
+                    {day.toLocaleDateString([], { day: "2-digit" })}
+                  </p>
+                  <ScheduleDateHeaderTaskOverlay day={day} mineOnly={mineOnly} myUserId={myUserId} summary={summaryFor("global", day)} />
+                </div>
+              );
+            })}
           </div>
 
           {/* Grid body */}
@@ -1352,15 +1435,6 @@ export function ScheduleClient() {
 }
 
 // --- Date utilities ---
-
-function startOfWeek(date: Date) {
-  const copy = new Date(date);
-  const day = copy.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  copy.setDate(copy.getDate() + diff);
-  copy.setHours(0, 0, 0, 0);
-  return copy;
-}
 
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
