@@ -4,17 +4,6 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
-### TASK-B2-CDN-001
-- Branch: task/b2-cloudflare-cdn
-- Worktree: ~/sites/opscentral-admin-b2-cdn
-- PR: https://github.com/Atemndobs/ops-central/pull/208
-- Schema impact: none
-- Convex impact: deploy-required but behavior-neutral until `B2_CDN_*` env set (dormant code path; no new functions ⇒ `_generated` unchanged)
-- Risk: low (fully inert until enabled; B2 read path unchanged with no env)
-- What: private edge-cached Cloudflare Worker CDN in front of B2 (`infra/b2-cdn-worker`) + `createExternalReadUrl` emits signed CDN URLs for B2 when `B2_CDN_BASE_URL`+`B2_CDN_SIGNING_SECRET` set, else direct presigning. Durable fix for B2 cap exhaustion.
-- CI: root tsc clean (only pre-existing `whatsapp/lib.test.ts` vitest gap); worker tsc exit 0; `node --test` sign.test.js 3/3.
-- Handoff: .harness/handoffs/TASK-B2-CDN-001/worktree-handoff.md
-
 ### TASK-COMPANIES-HUB-UI-001
 - Branch: task/companies-hub-refined-ui
 - Worktree: ~/sites/opscentral-admin-companies-hub-ui
@@ -32,6 +21,18 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 _None._
 
 ## Done
+
+### TASK-B2-CDN-001
+- Branch: task/b2-cloudflare-cdn
+- Worktree: ~/sites/opscentral-admin-b2-cdn
+- PR: https://github.com/Atemndobs/ops-central/pull/208 (merged → 0bdc992)
+- Schema impact: none
+- Convex impact: deploy-required, deployed to lovable-oriole-182 (behavior-neutral — CDN path dormant until `B2_CDN_*` env set)
+- Risk: low (fully inert until enabled)
+- What: private edge-cached Cloudflare Worker CDN in front of B2 (`infra/b2-cdn-worker`) + `createExternalReadUrl` emits signed CDN URLs for B2 when `B2_CDN_BASE_URL`+`B2_CDN_SIGNING_SECRET` set. Durable fix for B2 cap exhaustion.
+- Merged: 2026-07-10
+- Handoff: .harness/handoffs/TASK-B2-CDN-001/worktree-handoff.md · integration-result.md
+- Post-merge: `npx convex deploy` ✓ (no _generated drift, no new functions), no regression (B2 photo presigned GET 200 with B2_CDN_* unset), sign.test.js 3/3, cleaners mirrored ✓. Enablement pending operator's Cloudflare setup (Worker deploy + DNS + secrets), then Convex env flip.
 
 ### TASK-STORAGE-SWITCH-001
 - Branch: task/storage-provider-switch
