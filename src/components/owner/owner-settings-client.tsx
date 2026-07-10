@@ -72,7 +72,7 @@ const EVENT_LABELS: Array<{ field: EventField; label: string; help: string }> = 
   {
     field: "approvalRequest",
     label: "Approval request",
-    help: "When ChezSoiStays asks you to approve a maintenance cost over your threshold.",
+    help: "When ChezSoi Ops asks you to approve a maintenance cost over your threshold.",
   },
   {
     field: "incidentReport",

@@ -187,8 +187,8 @@ export function AiChatPanel() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <img src="/chezsoi-logo.svg" alt="ChezSoi" style={{ width: 24, height: 24, borderRadius: 6 }} />
-          <span style={{ fontWeight: 600 }}>ChezSoi</span>
+          <img src="/chezsoi-logo.svg" alt="ChezSoi Ops" style={{ width: 24, height: 24, borderRadius: 6 }} />
+          <span style={{ fontWeight: 600 }}>ChezSoi Ops</span>
           <span
             style={{
               fontSize: 11,

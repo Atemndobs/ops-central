@@ -1,7 +1,7 @@
 {
-  "name": "ChezSoisCleaning",
-  "short_name": "ChezSoi",
-  "description": "ChezSoisCleaning workspace for assigned jobs, photos, and incident reports.",
+  "name": "ChezSoi Ops — Cleaner",
+  "short_name": "ChezSoi Ops",
+  "description": "ChezSoi Ops workspace for assigned jobs, photos, and incident reports.",
   "id": "/cleaner",
   "start_url": "/cleaner",
   "scope": "/cleaner",

@@ -1,6 +1,6 @@
 {
-  "name": "ChezSoi",
-  "short_name": "ChezSoi",
+  "name": "ChezSoi Ops",
+  "short_name": "ChezSoi Ops",
   "description": "Property operations management",
   "start_url": "/",
   "display": "standalone",

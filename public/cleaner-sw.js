@@ -224,7 +224,7 @@ self.addEventListener("push", (event) => {
   const title =
     typeof payload.title === "string" && payload.title.length > 0
       ? payload.title
-      : "ChezSoiCleaning";
+      : "ChezSoi Ops";
 
   const body =
     typeof payload.body === "string" && payload.body.length > 0

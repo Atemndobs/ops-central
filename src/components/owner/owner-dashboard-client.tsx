@@ -102,7 +102,7 @@ export function OwnerDashboardClient() {
         </p>
         <p className="mt-2 text-sm" style={{ color: "var(--cleaner-muted)" }}>
           You&apos;ll see your properties here once they&apos;re added.
-          Contact ChezSoiStays Operations.
+          Contact ChezSoi Ops.
         </p>
       </div>
     );
