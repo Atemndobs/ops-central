@@ -1,7 +1,7 @@
 /**
- * Shared formatting helpers for the usage dashboard. Kept dependency-free so
- * server and client components can both import them.
+ * Shared formatting helpers for the usage dashboard.
  */
+import { formatDate } from "@/lib/tz";
 
 export function formatUsd(amount: number, opts?: { precise?: boolean }): string {
   const precision = opts?.precise ? 4 : amount >= 1 ? 2 : 3;
@@ -48,7 +48,7 @@ export function formatRelativeTime(ts: number): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.round(hours / 24);
   if (days < 30) return `${days}d ago`;
-  return new Date(ts).toLocaleDateString();
+  return formatDate(ts, { month: "numeric", day: "numeric", year: "numeric" });
 }
 
 export function formatDayLabel(ts: number): string {

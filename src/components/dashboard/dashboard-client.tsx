@@ -34,6 +34,8 @@ import {
   type UserRole,
 } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
+import { TimezoneClock } from "@/components/layout/timezone-clock";
+import { formatDateTime, formatTime } from "@/lib/tz";
 import { isPropertyStatus, type PropertyStatus } from "@/types/property";
 
 const dayMs = 24 * 60 * 60 * 1000;
@@ -414,6 +416,7 @@ export function DashboardClient() {
           <p className="mt-1 hidden text-sm text-[var(--muted-foreground)] sm:block">
             {t("dashboard.subtitle")}
           </p>
+          <TimezoneClock className="mt-2" />
         </div>
         <div className="flex items-center gap-2">
           {canViewReports ? (
@@ -687,7 +690,7 @@ export function DashboardClient() {
                       <p className="text-xs text-rose-700">{alert.reason}</p>
                       <p className="mt-0.5 text-[11px] text-[var(--muted-foreground)]">
                         {alert.startAt
-                          ? new Date(alert.startAt).toLocaleString()
+                          ? formatDateTime(alert.startAt)
                           : t("dashboard.noScheduleSet")}
                         {" · "}
                         {STATUS_LABELS[alert.status]}
@@ -816,7 +819,7 @@ export function DashboardClient() {
                       {job.property?.name ?? t("dashboard.unknownProperty")}
                     </p>
                     <p className="text-xs text-[var(--muted-foreground)]">
-                      {new Date(job.scheduledStartAt ?? 0).toLocaleTimeString([], {
+                      {formatTime(job.scheduledStartAt ?? 0, {
                         hour: "2-digit",
                         minute: "2-digit",
                       })}

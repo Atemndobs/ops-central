@@ -1,5 +1,7 @@
 // Tiny shared formatters for owner-portal screens.
 
+import { formatDate } from "@/lib/tz";
+
 export function fmtMoney(amount: number, currency = "USD"): string {
   try {
     return new Intl.NumberFormat("en-US", {
@@ -13,7 +15,7 @@ export function fmtMoney(amount: number, currency = "USD"): string {
 }
 
 export function fmtDate(ms: number): string {
-  return new Date(ms).toLocaleDateString("en-US", {
+  return formatDate(ms, {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -35,7 +37,7 @@ export function fmtMonth(monthKey: string): string {
  * mortgage coverage subtitle so the line fits the mobile frame.
  */
 export function fmtMonthDayPadded(ms: number): string {
-  return new Date(ms).toLocaleDateString("en-US", {
+  return formatDate(ms, {
     month: "short",
     day: "2-digit",
   });
@@ -59,7 +61,7 @@ export function fmtShortMonth(monthKey: string): string {
  * Example: 1747958400000 → "05/22/26"
  */
 export function fmtDateShort(ms: number): string {
-  return new Date(ms).toLocaleDateString("en-US", {
+  return formatDate(ms, {
     month: "2-digit",
     day: "2-digit",
     year: "2-digit",

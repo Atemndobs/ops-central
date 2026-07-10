@@ -1,4 +1,5 @@
 import type { Id } from "@convex/_generated/dataModel";
+import { formatDate } from "@/lib/tz";
 
 export type ConversationItem = {
   _id: Id<"conversations">;
@@ -50,12 +51,11 @@ export function formatListTime(timestamp?: number): string {
   if (diff < 60_000) return "now";
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`;
-  const date = new Date(timestamp);
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
   const yesterday = startOfToday.getTime() - 86_400_000;
   if (timestamp >= yesterday) return "Yesterday";
-  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+  return formatDate(timestamp, { month: "short", day: "numeric" });
 }
 
 export function isCurrentOrUpcoming(

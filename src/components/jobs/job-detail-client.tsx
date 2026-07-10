@@ -22,12 +22,24 @@ import { useToast } from "@/components/ui/toast-provider";
 import { JobConversationLanesPanel } from "@/components/conversations/job-conversation-lanes-panel";
 import { getRoleFromMetadata, getRoleFromSessionClaimsOrNull } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
+import { formatDateTimeInZone, resolveDisplayTimezone } from "@/lib/tz";
 
-function formatDateTime(value?: number | null) {
+// Reproduces the bare `Date.toLocaleString()` output (en-US numeric date +
+// time with seconds), rendered in the given property display zone.
+const DATE_TIME_OPTS: Intl.DateTimeFormatOptions = {
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  second: "2-digit",
+};
+
+function formatDateTime(value?: number | null, zone?: string) {
   if (!value) {
     return "—";
   }
-  return new Date(value).toLocaleString();
+  return formatDateTimeInZone(value, zone ?? resolveDisplayTimezone(null), DATE_TIME_OPTS);
 }
 
 function formatDuration(ms?: number | null) {
@@ -158,6 +170,9 @@ export function JobDetailClient({ id }: { id: string }) {
   );
 
   const canonicalJob = detail?.job;
+  // All timestamps on this page belong to this job's property — display them
+  // in the property's zone (falling back to the app default).
+  const displayZone = resolveDisplayTimezone(detail?.property?.timezone);
   const nextStatus = useMemo(
     () => (canonicalJob ? getNextStatus(canonicalJob.status) : null),
     [canonicalJob],
@@ -377,7 +392,7 @@ export function JobDetailClient({ id }: { id: string }) {
               </p>
               <p>
                 <span className="text-[var(--muted-foreground)]">Scheduled:</span>{" "}
-                {formatDateTime(canonicalJob.scheduledStartAt)}
+                {formatDateTime(canonicalJob.scheduledStartAt, displayZone)}
               </p>
               <p>
                 <span className="text-[var(--muted-foreground)]">Revision:</span>{" "}
@@ -557,7 +572,7 @@ export function JobDetailClient({ id }: { id: string }) {
                   Started (Server)
                 </p>
                 <p className="mt-2 text-sm font-semibold">
-                  {formatDateTime(detail.timing.startedAtServer)}
+                  {formatDateTime(detail.timing.startedAtServer, displayZone)}
                 </p>
               </div>
               <div className="rounded-md border border-[var(--border)] p-3">
@@ -565,7 +580,7 @@ export function JobDetailClient({ id }: { id: string }) {
                   Ended (Server)
                 </p>
                 <p className="mt-2 text-sm font-semibold">
-                  {formatDateTime(detail.timing.endedAtServer)}
+                  {formatDateTime(detail.timing.endedAtServer, displayZone)}
                 </p>
               </div>
               <div className="rounded-md border border-[var(--border)] p-3">
@@ -622,7 +637,7 @@ export function JobDetailClient({ id }: { id: string }) {
                             {session.status.replace("_", " ")}
                           </span>{" "}
                           <span className="text-[var(--muted-foreground)]">
-                            since {formatDateTime(session.startedAtServer)}
+                            since {formatDateTime(session.startedAtServer, displayZone)}
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -724,7 +739,7 @@ export function JobDetailClient({ id }: { id: string }) {
                                   </span>
                                   {entry.check?.checkedAt ? (
                                     <span className="text-[var(--muted-foreground)]">
-                                      {formatDateTime(entry.check.checkedAt)}
+                                      {formatDateTime(entry.check.checkedAt, displayZone)}
                                     </span>
                                   ) : null}
                                 </div>
@@ -763,7 +778,7 @@ export function JobDetailClient({ id }: { id: string }) {
                               </span>
                               {entry.check?.checkedAt ? (
                                 <span className="text-[var(--muted-foreground)]">
-                                  {formatDateTime(entry.check.checkedAt)}
+                                  {formatDateTime(entry.check.checkedAt, displayZone)}
                                 </span>
                               ) : null}
                             </div>
@@ -934,7 +949,7 @@ export function JobDetailClient({ id }: { id: string }) {
                       <span className="text-[var(--muted-foreground)]">{submission.status}</span>
                     </div>
                     <p className="mt-1 text-[var(--muted-foreground)]">
-                      Submitted {formatDateTime(submission.submittedAtServer)}
+                      Submitted {formatDateTime(submission.submittedAtServer, displayZone)}
                     </p>
                     <p className="mt-1 text-[var(--muted-foreground)]">
                       Before {submission.beforeCount} · After {submission.afterCount} · Incident{" "}

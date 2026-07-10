@@ -15,6 +15,16 @@ import {
   YAxis,
 } from "recharts";
 import { useToast } from "@/components/ui/toast-provider";
+import { formatDateTime } from "@/lib/tz";
+
+const DATETIME_OPTS: Intl.DateTimeFormatOptions = {
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  second: "2-digit",
+};
 
 type ReportPreset = "7d" | "30d" | "90d" | "custom";
 type ExportFormat = "csv" | "xlsx" | "pdf";
@@ -403,7 +413,7 @@ export function ReportsPageClient() {
                 {readinessRows.map((row, idx) => (
                   <tr key={`${row.propertyId}-${row.checkInAt}-${idx}`} className="border-b">
                     <td className="py-2">{row.propertyName}</td>
-                    <td className="py-2">{new Date(row.checkInAt).toLocaleString()}</td>
+                    <td className="py-2">{formatDateTime(row.checkInAt, DATETIME_OPTS)}</td>
                     <td className="py-2">
                       <span
                         className={`inline-flex border px-2 py-0.5 text-xs font-bold uppercase ${
@@ -435,8 +445,8 @@ export function ReportsPageClient() {
                     {entry.fileName ?? `Pending ${entry.format.toUpperCase()} export`}
                   </p>
                   <p className="text-xs text-[var(--muted-foreground)]">
-                    {new Date(entry.createdAt).toLocaleString()} · {entry.status}
-                    {entry.expiresAt ? ` · Expires ${new Date(entry.expiresAt).toLocaleString()}` : ""}
+                    {formatDateTime(entry.createdAt, DATETIME_OPTS)} · {entry.status}
+                    {entry.expiresAt ? ` · Expires ${formatDateTime(entry.expiresAt, DATETIME_OPTS)}` : ""}
                   </p>
                   {entry.error ? (
                     <p className="text-xs text-rose-600">{entry.error}</p>
@@ -486,7 +496,7 @@ export function ReportsPageClient() {
                   <td className="py-2">{row.incidentType}</td>
                   <td className="py-2">{row.severity ?? "n/a"}</td>
                   <td className="py-2">{row.status}</td>
-                  <td className="py-2">{new Date(row.createdAt).toLocaleString()}</td>
+                  <td className="py-2">{formatDateTime(row.createdAt, DATETIME_OPTS)}</td>
                 </tr>
               ))}
             </tbody>

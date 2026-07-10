@@ -5,10 +5,12 @@ import { useMemo, useState } from "react";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useTranslations } from "next-intl";
-import { Bell, Building2, CheckCheck, ExternalLink, Flag, Gauge, Globe, Settings, Sparkles, Trash2, Users, Zap } from "lucide-react";
+import { Bell, Building2, CheckCheck, Clock, ExternalLink, Flag, Gauge, Globe, Settings, Sparkles, Trash2, Users, Zap } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { navigation } from "@/components/layout/navigation";
 import { LanguageSwitcher } from "@/components/cleaner/language-switcher";
+import { useTimezone } from "@/components/providers/timezone-provider";
+import { CURATED_TIMEZONES, formatDate, formatDateTime, formatTimeInZone, timezoneAbbrev } from "@/lib/tz";
 import { useToast } from "@/components/ui/toast-provider";
 import { AIProviderCard } from "@/components/settings/ai-provider-card";
 import { FeatureFlagsCard } from "@/components/settings/feature-flags-card";
@@ -123,12 +125,13 @@ function getNotificationHref(type: string, data: unknown): string {
 }
 
 function formatNotificationTime(timestamp: number): string {
-  return new Intl.DateTimeFormat(undefined, {
+  return formatDateTime(timestamp, {
+    year: undefined,
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
-  }).format(timestamp);
+  });
 }
 
 function StatCard({
@@ -445,7 +448,11 @@ function TeamSettingsPanel() {
                 label="Last User Added"
                 value={
                   userManagementMetrics?.lastUserCreatedAt
-                    ? new Date(userManagementMetrics.lastUserCreatedAt).toLocaleDateString()
+                    ? formatDate(userManagementMetrics.lastUserCreatedAt, {
+                        year: "numeric",
+                        month: "numeric",
+                        day: "numeric",
+                      })
                     : "—"
                 }
                 caption="Most recent user creation"
@@ -491,7 +498,47 @@ function GeneralSettingsPanel() {
           <LanguageSwitcher />
         </div>
       </section>
+
+      <TimezoneSettingCard />
     </div>
+  );
+}
+
+function TimezoneSettingCard() {
+  const { timezone, setTimezone } = useTimezone();
+  return (
+    <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="flex items-center gap-2 text-lg font-semibold">
+            <Clock className="h-5 w-5" />
+            Timezone
+          </h3>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+            Dates and times across the app display in this zone (default Dallas ·
+            Central). Properties with their own timezone still show their local
+            time. Saved on this device.
+          </p>
+        </div>
+      </div>
+      <div className="mt-4 flex items-center gap-3">
+        <select
+          value={timezone}
+          onChange={(e) => setTimezone(e.target.value)}
+          className="rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+          aria-label="Display timezone"
+        >
+          {CURATED_TIMEZONES.map((tz) => (
+            <option key={tz.id} value={tz.id}>
+              {tz.label}
+            </option>
+          ))}
+        </select>
+        <span className="text-xs text-[var(--muted-foreground)]">
+          {timezoneAbbrev(timezone)} · now {formatTimeInZone(new Date(), timezone)}
+        </span>
+      </div>
+    </section>
   );
 }
 
