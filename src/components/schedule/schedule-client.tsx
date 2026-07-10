@@ -502,6 +502,45 @@ export function ScheduleClient() {
     setScrollLeft(event.currentTarget.scrollLeft);
   };
 
+  // --- Drag-to-pan on the date header (mouse only) ---
+  // Click-and-hold anywhere on the date-title row and drag left/right to slide
+  // through the month — same effect as the slider. Touch is left to native
+  // scrolling (pointer drag would double-move it), and this lives on the header
+  // row only, so job cells in the property rows stay clickable.
+  const headerDrag = useRef<{ startX: number; startScroll: number; active: boolean }>({
+    startX: 0,
+    startScroll: 0,
+    active: false,
+  });
+  const handleHeaderPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    const el = gridScrollRef.current;
+    if (!el || maxScroll <= 1 || event.pointerType !== "mouse") return;
+    headerDrag.current = { startX: event.clientX, startScroll: el.scrollLeft, active: true };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  };
+  const handleHeaderPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = headerDrag.current;
+    const el = gridScrollRef.current;
+    if (!drag.active || !el) return;
+    el.scrollLeft = drag.startScroll - (event.clientX - drag.startX);
+  };
+  const handleHeaderPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!headerDrag.current.active) return;
+    headerDrag.current.active = false;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  };
+
+  // Nudge scroll by ~a week when the edge arrows are clicked.
+  const scrollByPage = (direction: -1 | 1) => {
+    const el = gridScrollRef.current;
+    if (!el) return;
+    const page = Math.max(dayColPx, el.clientWidth - propColPxNum) * 0.9;
+    el.scrollBy({ left: direction * page, behavior: "smooth" });
+  };
+  const canScrollLeft = scrollLeft > 2;
+  const canScrollRight = scrollLeft < maxScroll - 2;
+
   // Center today's column in the day viewport (used on month entry so the
   // "today" week is visible instead of the 1st of the month).
   const centerTodayInView = useCallback(() => {
@@ -1260,6 +1299,7 @@ export function ScheduleClient() {
         ) : null}
 
         {/* Schedule grid — visible on desktop always, mobile only in schedule tab */}
+        <div className="relative">
         <section
           ref={gridScrollRef}
           onScroll={handleGridScroll}
@@ -1270,10 +1310,17 @@ export function ScheduleClient() {
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          {/* Grid header row */}
+          {/* Grid header row — drag anywhere here (mouse) to pan the month */}
           <div
-            className="grid w-max border-b"
+            className={cn(
+              "grid w-max select-none border-b",
+              maxScroll > 1 && "md:cursor-grab md:active:cursor-grabbing",
+            )}
             style={{ gridTemplateColumns: scheduleGridTemplateColumns }}
+            onPointerDown={handleHeaderPointerDown}
+            onPointerMove={handleHeaderPointerMove}
+            onPointerUp={handleHeaderPointerUp}
+            onPointerCancel={handleHeaderPointerUp}
           >
             {propertyLabelMode !== "hidden" ? (
               <div className="sticky left-0 z-20 border-r bg-[var(--card)] p-2 text-[10px] font-bold uppercase tracking-wider text-[var(--muted-foreground)] sm:p-3 sm:text-xs">
@@ -1442,6 +1489,34 @@ export function ScheduleClient() {
             </div>
           ) : null}
         </section>
+
+          {/* Edge arrows at the date-header level (desktop) — nudge ~a week */}
+          {maxScroll > 1 ? (
+            <>
+              {canScrollLeft ? (
+                <button
+                  type="button"
+                  onClick={() => scrollByPage(-1)}
+                  className="absolute top-2 z-30 hidden h-8 w-8 items-center justify-center rounded-full border bg-[var(--card)] shadow-md hover:bg-[var(--accent)] md:flex"
+                  style={{ left: propColPxNum + 6 }}
+                  aria-label="Scroll back a week"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+              ) : null}
+              {canScrollRight ? (
+                <button
+                  type="button"
+                  onClick={() => scrollByPage(1)}
+                  className="absolute right-2 top-2 z-30 hidden h-8 w-8 items-center justify-center rounded-full border bg-[var(--card)] shadow-md hover:bg-[var(--accent)] md:flex"
+                  aria-label="Scroll forward a week"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              ) : null}
+            </>
+          ) : null}
+        </div>
       </div>
 
       {/* Smooth scroll slider — bound to the grid's horizontal scroll position
