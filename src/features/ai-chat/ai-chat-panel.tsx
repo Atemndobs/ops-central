@@ -50,6 +50,14 @@ export function AiChatPanel() {
     setMode(readMode());
   }, []);
 
+  // The mobile bottom nav opens the assistant via this event (its inline nav
+  // button replaces the floating FAB, which is hidden on mobile).
+  useEffect(() => {
+    const open = () => setIsOpen(true);
+    window.addEventListener("opscentral:open-ai-chat", open);
+    return () => window.removeEventListener("opscentral:open-ai-chat", open);
+  }, []);
+
   function persistMode(next: Mode) {
     setMode(next);
     if (typeof window !== "undefined") {
@@ -100,6 +108,9 @@ export function AiChatPanel() {
     return (
       <button
         onClick={() => setIsOpen(true)}
+        // Hidden on mobile — the bottom nav has an inline assistant button
+        // there (the FAB used to overlap it). Floating FAB stays on desktop.
+        className="hidden md:flex"
         style={{
           // Bottom-right floating action button (FAB). Drawer mode opens
           // the panel docked to the right edge instead.
@@ -114,7 +125,6 @@ export function AiChatPanel() {
           color: "white",
           border: "none",
           cursor: "pointer",
-          display: "flex",
           alignItems: "center",
           justifyContent: "center",
           boxShadow: "0 8px 30px rgba(0,0,0,0.2)",

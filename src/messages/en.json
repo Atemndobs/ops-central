@@ -1,5 +1,6 @@
 {
   "common": {
+    "assistant": "Assistant",
     "dashboard": "Dashboard",
     "schedule": "Schedule",
     "jobs": "Jobs",
