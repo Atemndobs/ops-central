@@ -12,6 +12,7 @@ import {
   createOpsNotifications,
 } from "../lib/opsNotifications";
 import { listOpsUserIds } from "../lib/notificationLifecycle";
+import { CLEANER_REWORK_DISMISSAL_TYPES } from "../lib/reworkNotifications";
 import {
   getJobConversationByJobId,
   seedJobConversationParticipants,
@@ -1119,12 +1120,34 @@ export const reopenForRework = mutation({
         dismissals: [
           { userIds: opsUserIds, types: ["awaiting_approval"] },
           {
+            // Clear stale assignment/completion alerts, but NOT
+            // rework_required — that's the alert we create just below, and the
+            // deferred batch would otherwise delete it ~600ms later.
             userIds: job.assignedCleanerIds,
-            types: ["job_assigned", "job_completed", "rework_required"],
+            types: CLEANER_REWORK_DISMISSAL_TYPES,
           },
         ],
       },
     );
+
+    // Reopening to rework must alert the cleaner, exactly like rejectCompletion.
+    // Previously this path created no notification at all.
+    const property = await ctx.db.get(job.propertyId);
+    const reworkReason = args.reason?.trim();
+    await createNotificationsForUsers(ctx, {
+      userIds: job.assignedCleanerIds,
+      type: "rework_required",
+      title: "Rework Required",
+      message: reworkReason
+        ? `${property?.name ?? "Property"} needs another pass: ${reworkReason.slice(0, 140)}`
+        : `${property?.name ?? "Property"} needs another pass.`,
+      messageKey: "notifications.messages.rework_needed",
+      messageParams: { propertyName: property?.name ?? "Property" },
+      data: {
+        jobId: job._id,
+        propertyId: job.propertyId,
+      },
+    });
 
     return {
       ok: true,
