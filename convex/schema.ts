@@ -1395,6 +1395,11 @@ const appSettings = defineTable({
   // IANA timezone identifier, e.g. "America/Chicago". All admin-app date/time
   // rendering is anchored to this zone regardless of the viewer's browser tz.
   timezone: v.string(),
+  // Active object-storage backend that NEW photo/video uploads are written to
+  // and served from. Absent ⇒ "b2" (the historical default). Reads always sign
+  // each object against ITS OWN photos.provider, so switching this only affects
+  // future uploads — existing B2 objects keep resolving against B2.
+  storageProvider: v.optional(v.union(v.literal("b2"), v.literal("minio"))),
   updatedBy: v.optional(v.id("users")),
   updatedAt: v.number(),
 })
