@@ -1380,6 +1380,27 @@ const aiProviderSettings = defineTable({
   .index("by_feature", ["feature"]);
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// APP SETTINGS (admin-configurable, org-wide singleton)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// One row per settings key (currently just "global"). Holds workspace-wide
+// preferences that aren't tied to a property or user — e.g. the display
+// timezone the whole admin app renders dates/times in ("app operated in
+// Dallas" → default America/Chicago). Contract for the client:
+//   - If no row exists → fall back to the default (America/Chicago).
+//   - If a row exists → use its values.
+
+const appSettings = defineTable({
+  key: v.literal("global"),
+  // IANA timezone identifier, e.g. "America/Chicago". All admin-app date/time
+  // rendering is anchored to this zone regardless of the viewer's browser tz.
+  timezone: v.string(),
+  updatedBy: v.optional(v.id("users")),
+  updatedAt: v.number(),
+})
+  .index("by_key", ["key"]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // FEATURE FLAGS (admin-configurable UI gates)
 // ═══════════════════════════════════════════════════════════════════════════════
 //
@@ -2171,6 +2192,7 @@ export default defineSchema({
 
   // AI Providers (admin-configurable)
   aiProviderSettings,
+  appSettings,
 
   // Feature Flags (admin-controlled UI gates)
   featureFlags,
