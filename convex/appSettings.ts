@@ -366,3 +366,90 @@ export const setReworkDeadlineMinutes = mutation({
     return { minutes: args.minutes, updatedAt: now };
   },
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Installed PWA icon color (global; the manifest is shared, so not per-role)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const iconColorValidator = v.union(
+  v.literal("indigo"),
+  v.literal("teal"),
+  v.literal("amber"),
+  v.literal("blue"),
+  v.literal("purple"),
+);
+
+// Matches DEFAULT_ICON_COLOR in src/lib/brand.ts — the shipped "Ops" teal.
+const DEFAULT_ICON_COLOR = "teal" as const;
+
+/**
+ * Color of the installed PWA icon (home-screen / favicon) for the admin app.
+ * Public — the dynamic manifest route reads it unauthenticated at install time,
+ * and it's just a color name. Absent row/field ⇒ teal.
+ */
+export const getInstalledIconColor = query({
+  args: {},
+  returns: v.object({
+    color: iconColorValidator,
+    isDefault: v.boolean(),
+    updatedAt: v.optional(v.number()),
+  }),
+  handler: async (ctx) => {
+    const row = await ctx.db
+      .query("appSettings")
+      .withIndex("by_key", (q) => q.eq("key", "global"))
+      .unique();
+
+    if (!row || !row.installedIconColor) {
+      return {
+        color: DEFAULT_ICON_COLOR,
+        isDefault: true,
+        updatedAt: row?.updatedAt,
+      };
+    }
+    return {
+      color: row.installedIconColor,
+      isDefault: false,
+      updatedAt: row.updatedAt,
+    };
+  },
+});
+
+/**
+ * Pick the installed-icon color. Admin-only. Takes effect for NEW PWA installs
+ * (existing home-screen icons keep their color until reinstalled) — the manifest
+ * is cached aggressively by browsers/OS.
+ */
+export const setInstalledIconColor = mutation({
+  args: { color: iconColorValidator },
+  returns: v.object({ color: iconColorValidator, updatedAt: v.number() }),
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("appSettings")
+      .withIndex("by_key", (q) => q.eq("key", "global"))
+      .unique();
+
+    if (existing) {
+      if (existing.installedIconColor === args.color) {
+        return { color: args.color, updatedAt: existing.updatedAt };
+      }
+      await ctx.db.patch(existing._id, {
+        installedIconColor: args.color,
+        updatedBy: admin._id,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("appSettings", {
+        key: "global",
+        timezone: DEFAULT_TIMEZONE,
+        installedIconColor: args.color,
+        updatedBy: admin._id,
+        updatedAt: now,
+      });
+    }
+
+    return { color: args.color, updatedAt: now };
+  },
+});

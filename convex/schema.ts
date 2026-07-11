@@ -1412,6 +1412,19 @@ const appSettings = defineTable({
   // Org-wide default minutes a cleaner has to fix rejected work before it
   // escalates. Absent ⇒ 30. Overridable per-property (properties.reworkDeadlineMinutes).
   reworkDeadlineMinutes: v.optional(v.number()),
+  // Color of the INSTALLED PWA icon (home-screen / favicon) for the admin app.
+  // Global choice — the manifest is one shared resource fetched before login, so
+  // it can't vary per role. Absent ⇒ "teal". The dynamic manifest route
+  // (src/app/manifest.webmanifest/route.ts) maps this to the matching icon set.
+  installedIconColor: v.optional(
+    v.union(
+      v.literal("indigo"),
+      v.literal("teal"),
+      v.literal("amber"),
+      v.literal("blue"),
+      v.literal("purple"),
+    ),
+  ),
   updatedBy: v.optional(v.id("users")),
   updatedAt: v.number(),
 })
