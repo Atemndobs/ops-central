@@ -14,6 +14,10 @@ import {
   cleanerCanViewConversation,
 } from "./lib";
 import { isWhatsAppServiceWindowOpen } from "../whatsapp/lib";
+import {
+  canCallerAccessPropertyById,
+  getCallerJobScopeForListing,
+} from "../lib/companyScope";
 
 async function getUsersByIds(ctx: QueryCtx, userIds: Id<"users">[]) {
   const docs = await Promise.all(userIds.map((userId) => ctx.db.get(userId)));
@@ -233,6 +237,13 @@ export const listMyConversations = query({
       participants.map((participant) => participant.conversationId),
     );
 
+    // Cleaning-company managers are scoped to their company's properties; a
+    // `null` scope means unrestricted (admin / property_ops). Computed once and
+    // applied to the privileged branch below.
+    const propertyScope = privileged
+      ? await getCallerJobScopeForListing(ctx, user)
+      : null;
+
     let activeConversations: Doc<"conversations">[];
     if (privileged) {
       const allOpenConversations = await ctx.db
@@ -257,6 +268,16 @@ export const listMyConversations = query({
             ),
         ),
       ];
+
+      // Managers only see conversations for properties their company services.
+      // `propertyScope === null` (admin/ops) skips the filter.
+      if (propertyScope !== null) {
+        activeConversations = activeConversations.filter(
+          (conversation) =>
+            conversation.propertyId != null &&
+            propertyScope.has(conversation.propertyId),
+        );
+      }
     } else {
       const conversations = await Promise.all(
         [...participantConversationIds].map((conversationId) =>
@@ -570,12 +591,24 @@ export const getUnreadConversationCount = query({
 
     let count = 0;
     if (privileged) {
+      // Managers only count conversations for their company's properties;
+      // `null` scope (admin/ops) counts everything.
+      const propertyScope = await getCallerJobScopeForListing(ctx, user);
       const allOpenConversations = await ctx.db
         .query("conversations")
         .withIndex("by_status_last_message", (q) => q.eq("status", "open"))
         .collect();
 
       for (const conversation of allOpenConversations) {
+        if (
+          propertyScope !== null &&
+          !(
+            conversation.propertyId != null &&
+            propertyScope.has(conversation.propertyId)
+          )
+        ) {
+          continue;
+        }
         if (
           typeof conversation.lastMessageAt === "number" &&
           (readAtByConversationId.get(conversation._id) ?? 0) <
@@ -664,13 +697,17 @@ export const getConversationLanesForJob = query({
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
-    if (!isPrivilegedRole(user.role)) {
-      throw new ConvexError("Only privileged users can view WhatsApp job lanes.");
-    }
 
     const job = await ctx.db.get(args.jobId);
     if (!job) {
       throw new ConvexError("Job not found.");
+    }
+
+    // Admin/ops see any job's lanes; a manager only for a property their
+    // company services; cleaners never (canCallerAccessPropertyById → false).
+    const allowed = await canCallerAccessPropertyById(ctx, user, job.propertyId);
+    if (!allowed) {
+      throw new ConvexError("Only privileged users can view WhatsApp job lanes.");
     }
 
     const property = await ctx.db.get(job.propertyId);
