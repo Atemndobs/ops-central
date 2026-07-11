@@ -13,17 +13,17 @@ export const metadata: Metadata = {
   description: "Property operations management for J&A Business Solutions",
   icons: {
     icon: [
-      { url: "/icons/chezsoi-icon.svg", type: "image/svg+xml" },
-      { url: "/icons/chezsoi-icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icons/chezsoi-icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/icons/ops-icon.svg", type: "image/svg+xml" },
+      { url: "/icons/ops-icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/ops-icon-512.png", sizes: "512x512", type: "image/png" },
     ],
-    apple: [{ url: "/icons/chezsoi-apple-touch-icon.png", sizes: "180x180" }],
+    apple: [{ url: "/icons/ops-apple-touch-icon.png", sizes: "180x180" }],
   },
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "ChezSoi Ops",
+    title: "Ops",
   },
   formatDetection: {
     telephone: false,
@@ -36,7 +36,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#7c3aed",
+  themeColor: "#0d9488",
 };
 
 export default async function RootLayout({
