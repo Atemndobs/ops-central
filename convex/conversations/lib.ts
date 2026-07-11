@@ -1,6 +1,7 @@
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { canCallerAccessPropertyById } from "../lib/companyScope";
 
 type DbCtx = QueryCtx | MutationCtx;
 
@@ -271,22 +272,29 @@ export async function canAccessJobConversation(
     ? getConversationLaneKind(args.conversation)
     : "internal_shared";
 
-  if (args.user.role === "admin") {
+  // Full-visibility roles see every job's conversation.
+  if (args.user.role === "admin" || args.user.role === "property_ops") {
     return true;
   }
 
-  if (laneKind === "whatsapp_cleaner") {
-    return isPrivilegedRole(args.user.role);
+  // A cleaning-company manager is scoped to the properties their company
+  // currently services — NOT the whole portfolio. This applies to both the
+  // internal and WhatsApp lanes.
+  if (args.user.role === "manager") {
+    return canCallerAccessPropertyById(ctx, args.user, args.job.propertyId);
   }
 
+  // WhatsApp cleaner lanes were privileged-only; cleaners never had access.
+  if (laneKind === "whatsapp_cleaner") {
+    return false;
+  }
+
+  // A cleaner may only access the conversation for a job they are CURRENTLY
+  // assigned to.
   if (
     args.user.role === "cleaner" &&
     args.job.assignedCleanerIds.includes(args.user._id)
   ) {
-    return true;
-  }
-
-  if (args.user.role === "property_ops" || args.user.role === "manager") {
     return true;
   }
 
