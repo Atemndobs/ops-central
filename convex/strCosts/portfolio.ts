@@ -1,6 +1,7 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
+import { requireRole } from "../lib/auth";
 import {
   buildPortfolioReport,
   type PropertyMonthInput,
@@ -41,6 +42,7 @@ export const portfolioReport = query({
     propertyIds: v.optional(v.array(v.id("properties"))),
   },
   handler: async (ctx, args): Promise<PortfolioReport> => {
+    await requireRole(ctx, ["admin", "property_ops"]);
     const scope = args.scope ?? "active";
     const allPropsRaw = await ctx.db.query("properties").collect();
 
