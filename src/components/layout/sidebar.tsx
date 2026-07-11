@@ -15,6 +15,7 @@ import {
   type UserRole,
 } from "@/lib/auth";
 import { navigation } from "@/components/layout/navigation";
+import { brandColorForRole, iconAssetBase, iconColorHex } from "@/lib/brand";
 import {
   HelpCircle,
   LogOut,
@@ -191,6 +192,27 @@ export function Sidebar() {
     }
   }, [isConvexAuthenticated, resolvedTheme]);
 
+  // Role-based branding: expose `--brand` for accents and point the browser-tab
+  // favicon at the logged-in role's color. (The INSTALLED home-screen icon is a
+  // separate, global admin choice served by the dynamic manifest route.)
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const color = brandColorForRole(role);
+    document.documentElement.style.setProperty("--brand", iconColorHex(color));
+    const href = `${iconAssetBase(color)}.svg`;
+    let link = document.querySelector<HTMLLinkElement>(
+      'link[rel="icon"][data-role-brand]',
+    );
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      link.type = "image/svg+xml";
+      link.setAttribute("data-role-brand", "");
+      document.head.appendChild(link);
+    }
+    link.href = href;
+  }, [role]);
+
   return (
     <aside
       className={cn(
@@ -201,7 +223,7 @@ export function Sidebar() {
       <div className={cn("pb-4 pt-6", isCollapsed ? "px-2" : "px-6")}>
         <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3")}>
           <Image
-            src="/icons/chezsoi-icon-192.png"
+            src={`${iconAssetBase(brandColorForRole(role))}-192.png`}
             alt="ChezSoi Ops logo"
             width={44}
             height={44}
