@@ -128,6 +128,13 @@ export function Sidebar() {
   );
   const roleFromMetadata = getRoleFromMetadata(user?.publicMetadata);
   const role: UserRole = roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "manager";
+
+  // Admin-configured per-role brand colors (falls back to the static default
+  // while loading / for unknown roles).
+  const roleColors = useQuery(api.appSettings.getRoleIconColors, {});
+  const brandColor =
+    (roleColors ? roleColors[role as keyof typeof roleColors] : undefined) ??
+    brandColorForRole(role);
   const resolvedTheme: ThemePreference =
     isConvexAuthenticated && themePreference?.theme
       ? themePreference.theme
@@ -197,7 +204,7 @@ export function Sidebar() {
   // separate, global admin choice served by the dynamic manifest route.)
   useEffect(() => {
     if (typeof document === "undefined") return;
-    const color = brandColorForRole(role);
+    const color = brandColor;
     document.documentElement.style.setProperty("--brand", iconColorHex(color));
     const href = `${iconAssetBase(color)}.svg`;
     let link = document.querySelector<HTMLLinkElement>(
@@ -211,7 +218,7 @@ export function Sidebar() {
       document.head.appendChild(link);
     }
     link.href = href;
-  }, [role]);
+  }, [brandColor]);
 
   return (
     <aside
@@ -223,7 +230,7 @@ export function Sidebar() {
       <div className={cn("pb-4 pt-6", isCollapsed ? "px-2" : "px-6")}>
         <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3")}>
           <Image
-            src={`${iconAssetBase(brandColorForRole(role))}-192.png`}
+            src={`${iconAssetBase(brandColor)}-192.png`}
             alt="ChezSoi Ops logo"
             width={44}
             height={44}

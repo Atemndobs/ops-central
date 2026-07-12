@@ -385,32 +385,80 @@ const iconAppValidator = v.union(
   v.literal("owner"),
 );
 
+// All roles vs. the ones an admin can change (cleaner is locked to purple).
+const brandRoleValidator = v.union(
+  v.literal("admin"),
+  v.literal("property_ops"),
+  v.literal("manager"),
+  v.literal("owner"),
+  v.literal("cleaner"),
+);
+const adjustableRoleValidator = v.union(
+  v.literal("admin"),
+  v.literal("property_ops"),
+  v.literal("manager"),
+  v.literal("owner"),
+);
+
 type IconColor = "indigo" | "teal" | "amber" | "blue" | "purple";
 type IconApp = "ops" | "cleaner" | "owner";
+type BrandRole = "admin" | "property_ops" | "manager" | "owner" | "cleaner";
+type AdjustableRole = "admin" | "property_ops" | "manager" | "owner";
 
-// Per-app default installed-icon color (must match APP_ICON_DEFAULT in
-// src/lib/brand.ts). Ops ⇒ teal, Cleaner ⇒ purple (brand), Owner ⇒ blue.
-const APP_ICON_DEFAULT: Record<IconApp, IconColor> = {
-  ops: "teal",
-  cleaner: "purple",
+// Role color defaults (must match ROLE_ICON_COLOR in src/lib/brand.ts).
+const ROLE_COLOR_DEFAULT: Record<BrandRole, IconColor> = {
+  admin: "indigo",
+  property_ops: "teal",
+  manager: "amber",
   owner: "blue",
+  cleaner: "purple",
 };
 
-function readAppColor(
-  row: { installedIconColor?: IconColor; installedIconColorCleaner?: IconColor; installedIconColorOwner?: IconColor } | null,
-  app: IconApp,
-): IconColor | undefined {
-  if (!row) return undefined;
-  if (app === "ops") return row.installedIconColor;
-  if (app === "cleaner") return row.installedIconColorCleaner;
-  return row.installedIconColorOwner;
+// Which role's color each installable app's icon uses.
+const APP_ROLE: Record<IconApp, BrandRole> = {
+  ops: "property_ops",
+  cleaner: "cleaner",
+  owner: "owner",
+};
+
+type SettingsRow = {
+  roleColorAdmin?: IconColor;
+  roleColorPropertyOps?: IconColor;
+  roleColorManager?: IconColor;
+  roleColorOwner?: IconColor;
+  // Back-compat fallbacks from the earlier per-app model.
+  installedIconColor?: IconColor;
+  installedIconColorOwner?: IconColor;
+};
+
+/**
+ * Resolve a role's color. Cleaner is always purple. For ops/owner we fall back
+ * to the earlier per-app fields so a prior pick isn't lost, then to the default.
+ * `isDefault` is true only when nothing is explicitly stored.
+ */
+function readRoleColor(
+  row: SettingsRow | null,
+  role: BrandRole,
+): { color: IconColor; isDefault: boolean } {
+  if (role === "cleaner") return { color: "purple", isDefault: true };
+  if (!row) return { color: ROLE_COLOR_DEFAULT[role], isDefault: true };
+
+  let stored: IconColor | undefined;
+  if (role === "admin") stored = row.roleColorAdmin;
+  else if (role === "manager") stored = row.roleColorManager;
+  else if (role === "property_ops")
+    stored = row.roleColorPropertyOps ?? row.installedIconColor;
+  else stored = row.roleColorOwner ?? row.installedIconColorOwner;
+
+  return stored
+    ? { color: stored, isDefault: false }
+    : { color: ROLE_COLOR_DEFAULT[role], isDefault: true };
 }
 
 /**
- * Installed PWA icon color for a given app (ops | cleaner | owner). Public — the
- * dynamic manifest / icon routes read it unauthenticated at install time, and
- * it's just a color name. `app` defaults to "ops" (back-compat with the earlier
- * single-app callers). Absent row/field ⇒ that app's default.
+ * Installed-icon color for an app (ops | cleaner | owner) — derived from the
+ * app's role color. Public: the dynamic manifest / icon routes read it
+ * unauthenticated at install time. `app` defaults to "ops" (back-compat).
  */
 export const getInstalledIconColor = query({
   args: { app: v.optional(iconAppValidator) },
@@ -426,23 +474,45 @@ export const getInstalledIconColor = query({
       .query("appSettings")
       .withIndex("by_key", (q) => q.eq("key", "global"))
       .unique();
-
-    const stored = readAppColor(row, app);
-    if (!stored) {
-      return { app, color: APP_ICON_DEFAULT[app], isDefault: true, updatedAt: row?.updatedAt };
-    }
-    return { app, color: stored, isDefault: false, updatedAt: row?.updatedAt };
+    const { color, isDefault } = readRoleColor(row, APP_ROLE[app]);
+    return { app, color, isDefault, updatedAt: row?.updatedAt };
   },
 });
 
-/** All three apps' installed-icon colors — for the per-app Settings panel. */
-export const listAppIconColors = query({
+/** Every role's resolved color — for the in-app per-role logo/favicon/accent. */
+export const getRoleIconColors = query({
+  args: {},
+  returns: v.object({
+    admin: iconColorValidator,
+    property_ops: iconColorValidator,
+    manager: iconColorValidator,
+    owner: iconColorValidator,
+    cleaner: iconColorValidator,
+  }),
+  handler: async (ctx) => {
+    const row = await ctx.db
+      .query("appSettings")
+      .withIndex("by_key", (q) => q.eq("key", "global"))
+      .unique();
+    return {
+      admin: readRoleColor(row, "admin").color,
+      property_ops: readRoleColor(row, "property_ops").color,
+      manager: readRoleColor(row, "manager").color,
+      owner: readRoleColor(row, "owner").color,
+      cleaner: readRoleColor(row, "cleaner").color,
+    };
+  },
+});
+
+/** All roles + colors for the Settings panel (cleaner marked locked). */
+export const listRoleIconColors = query({
   args: {},
   returns: v.array(
     v.object({
-      app: iconAppValidator,
+      role: brandRoleValidator,
       color: iconColorValidator,
       isDefault: v.boolean(),
+      locked: v.boolean(),
     }),
   ),
   handler: async (ctx) => {
@@ -450,28 +520,23 @@ export const listAppIconColors = query({
       .query("appSettings")
       .withIndex("by_key", (q) => q.eq("key", "global"))
       .unique();
-
-    const apps: IconApp[] = ["ops", "cleaner", "owner"];
-    return apps.map((app) => {
-      const stored = readAppColor(row, app);
-      return {
-        app,
-        color: stored ?? APP_ICON_DEFAULT[app],
-        isDefault: !stored,
-      };
+    const roles: BrandRole[] = ["admin", "property_ops", "manager", "owner", "cleaner"];
+    return roles.map((role) => {
+      const { color, isDefault } = readRoleColor(row, role);
+      return { role, color, isDefault, locked: role === "cleaner" };
     });
   },
 });
 
 /**
- * Pick the installed-icon color for one app. Admin-only. Takes effect for NEW
- * installs (existing home-screen icons keep their color until reinstalled) — the
- * manifest is cached aggressively by browsers/OS.
+ * Set a role's brand color. Admin-only. Cleaner is not adjustable. Drives the
+ * in-app logo/favicon per role and (for ops/owner) the app's installed icon —
+ * which takes effect for NEW installs (existing ones update on reinstall).
  */
-export const setInstalledIconColor = mutation({
-  args: { app: iconAppValidator, color: iconColorValidator },
+export const setRoleIconColor = mutation({
+  args: { role: adjustableRoleValidator, color: iconColorValidator },
   returns: v.object({
-    app: iconAppValidator,
+    role: adjustableRoleValidator,
     color: iconColorValidator,
     updatedAt: v.number(),
   }),
@@ -479,16 +544,20 @@ export const setInstalledIconColor = mutation({
     const admin = await requireAdmin(ctx);
     const now = Date.now();
 
+    const role: AdjustableRole = args.role;
     const colorPatch: {
-      installedIconColor?: IconColor;
-      installedIconColorCleaner?: IconColor;
-      installedIconColorOwner?: IconColor;
+      roleColorAdmin?: IconColor;
+      roleColorPropertyOps?: IconColor;
+      roleColorManager?: IconColor;
+      roleColorOwner?: IconColor;
     } =
-      args.app === "ops"
-        ? { installedIconColor: args.color }
-        : args.app === "cleaner"
-          ? { installedIconColorCleaner: args.color }
-          : { installedIconColorOwner: args.color };
+      role === "admin"
+        ? { roleColorAdmin: args.color }
+        : role === "property_ops"
+          ? { roleColorPropertyOps: args.color }
+          : role === "manager"
+            ? { roleColorManager: args.color }
+            : { roleColorOwner: args.color };
 
     const existing = await ctx.db
       .query("appSettings")
@@ -496,8 +565,8 @@ export const setInstalledIconColor = mutation({
       .unique();
 
     if (existing) {
-      if (readAppColor(existing, args.app) === args.color) {
-        return { app: args.app, color: args.color, updatedAt: existing.updatedAt };
+      if (readRoleColor(existing, role).color === args.color) {
+        return { role, color: args.color, updatedAt: existing.updatedAt };
       }
       await ctx.db.patch(existing._id, {
         ...colorPatch,
@@ -514,6 +583,6 @@ export const setInstalledIconColor = mutation({
       });
     }
 
-    return { app: args.app, color: args.color, updatedAt: now };
+    return { role, color: args.color, updatedAt: now };
   },
 });

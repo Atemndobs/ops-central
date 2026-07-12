@@ -106,3 +106,67 @@ export function isIconApp(value: unknown): value is IconApp {
     typeof value === "string" && (ICON_APPS as readonly string[]).includes(value)
   );
 }
+
+/** Which role's color each installable app's icon uses. */
+export const APP_ROLE: Record<IconApp, BrandRole> = {
+  ops: "property_ops",
+  cleaner: "cleaner",
+  owner: "owner",
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Role color panel — an admin assigns a color to each role. Drives the in-app
+// logo/favicon/accent (per logged-in role) and, via APP_ROLE, the 3 installable
+// apps' icons. Cleaner is locked to purple.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const ALL_BRAND_ROLES = [
+  "admin",
+  "property_ops",
+  "manager",
+  "owner",
+  "cleaner",
+] as const;
+
+/** Roles whose color an admin can change (cleaner is locked to purple). */
+export const ADJUSTABLE_ROLES = [
+  "admin",
+  "property_ops",
+  "manager",
+  "owner",
+] as const;
+export type AdjustableRole = (typeof ADJUSTABLE_ROLES)[number];
+
+export const ROLE_META: Record<
+  BrandRole,
+  { label: string; description: string; locked?: boolean }
+> = {
+  admin: { label: "Admin", description: "Full access to everything." },
+  property_ops: {
+    label: "Ops",
+    description: "Property operations lead — scheduling, jobs, reports.",
+  },
+  manager: {
+    label: "Manager",
+    description: "Cleaner manager — their company's jobs & team.",
+  },
+  owner: {
+    label: "Owner",
+    description: "Property owner — statements & transparency portal.",
+  },
+  cleaner: {
+    label: "Cleaner",
+    description: "Field cleaner — always purple.",
+    locked: true,
+  },
+};
+
+/** Cleaner is always this color, regardless of settings. */
+export const CLEANER_LOCKED_COLOR: IconColorKey = "purple";
+
+export function isAdjustableRole(value: unknown): value is AdjustableRole {
+  return (
+    typeof value === "string" &&
+    (ADJUSTABLE_ROLES as readonly string[]).includes(value)
+  );
+}
