@@ -797,13 +797,34 @@ function NotificationsSettingsPanel() {
 }
 
 export function SettingsPageClient({ initialTab }: { initialTab: SettingsTab }) {
-  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
+  const { isLoaded, isSignedIn, userId, sessionClaims } = useAuth();
+  const { user } = useUser();
+  const { isAuthenticated } = useConvexAuth();
+  const convexUser = useQuery(
+    api.users.queries.getByClerkId,
+    isAuthenticated && isLoaded && isSignedIn && userId ? { clerkId: userId } : "skip",
+  );
+  const roleFromClaims = getRoleFromSessionClaimsOrNull(
+    sessionClaims as Record<string, unknown> | null,
+  );
+  const roleFromMetadata = getRoleFromMetadata(user?.publicMetadata);
+  const currentRole: UserRole =
+    roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "admin";
+  const isAdmin = currentRole === "admin";
+
+  // Ops gets a simplified settings surface: no Team tab (user management is
+  // not an ops responsibility) and no Service usage & cost dashboard
+  // (financial reporting) within Integrations.
+  const visibleTabs = isAdmin ? tabs : tabs.filter((tab) => tab.id !== "team");
+  const [activeTab, setActiveTab] = useState<SettingsTab>(
+    !isAdmin && initialTab === "team" ? "general" : initialTab,
+  );
 
   return (
     <div className="space-y-4">
       <div className="border-b border-[var(--border)]">
         <div className="flex gap-1 overflow-x-auto">
-          {tabs.map(({ id, label, icon: Icon }) => (
+          {visibleTabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               type="button"
@@ -825,7 +846,7 @@ export function SettingsPageClient({ initialTab }: { initialTab: SettingsTab }) 
 
       {activeTab === "general" ? <GeneralSettingsPanel /> : null}
       {activeTab === "scheduling" ? <SchedulingSettingsPanel /> : null}
-      {activeTab === "team" ? <TeamSettingsPanel /> : null}
+      {activeTab === "team" && isAdmin ? <TeamSettingsPanel /> : null}
       {activeTab === "notifications" ? <NotificationsSettingsPanel /> : null}
       {activeTab === "integrations" ? (
         <div className="space-y-3">
@@ -839,14 +860,16 @@ export function SettingsPageClient({ initialTab }: { initialTab: SettingsTab }) 
             <FeatureFlagsCard />
           </CollapsibleSection>
 
-          <CollapsibleSection
-            persistKey="integrations-usage-dashboard"
-            icon={<Gauge className="h-4 w-4" />}
-            title="Service usage & cost"
-            subtitle="Month-to-date spend, quota consumption, and error health across tracked services. Requires the usage_dashboard flag."
-          >
-            <UsageDashboardCard />
-          </CollapsibleSection>
+          {isAdmin ? (
+            <CollapsibleSection
+              persistKey="integrations-usage-dashboard"
+              icon={<Gauge className="h-4 w-4" />}
+              title="Service usage & cost"
+              subtitle="Month-to-date spend, quota consumption, and error health across tracked services. Requires the usage_dashboard flag."
+            >
+              <UsageDashboardCard />
+            </CollapsibleSection>
+          ) : null}
 
           <CollapsibleSection
             persistKey="integrations-ai-provider"

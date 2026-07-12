@@ -4,6 +4,17 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
+### TASK-OPS-SCOPE-001
+- Branch: task/ops-scope-and-settings-fix
+- Worktree: ~/sites/opscentral-admin-ops-scope
+- PR: (to be opened)
+- Schema impact: none
+- Convex impact: none (pure frontend role/nav/label changes)
+- Risk: low — no schema/backend touched; one judgment call on `/team` removal scope, documented in the handoff
+- What: fixes a bug (ops had no ROUTE_ACCESS entry for `/settings` at all) and rescopes `property_ops` nav/route access — removes Reports (+ Monthly Close, Property Costs), Team (user management), and Owner Overview (property-owner user management) from ops; keeps Companies; simplifies the Settings page for ops (hides Team tab + Service usage & cost card); renames "Incidents" nav label to "Incidents & Refills"
+- CI: eslint clean on all touched files; `tsc --noEmit` byte-identical to main's own (pre-existing, unrelated) output; `npm run build` webpack-compiles successfully, fails at the same pre-existing type-check point main itself already fails at (see handoff — unrelated `appSettings` codegen staleness)
+- Handoff: .harness/handoffs/TASK-OPS-SCOPE-001/worktree-handoff.md
+
 ### TASK-COMPANIES-HUB-UI-001
 - Branch: task/companies-hub-refined-ui
 - Worktree: ~/sites/opscentral-admin-companies-hub-ui

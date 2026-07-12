@@ -83,16 +83,19 @@ export const navigation: NavigationItem[] = [
     roles: ["admin", "property_ops"],
   },
   {
+    // User management — ops does not handle this. Kept for manager (existing
+    // behavior) and admin.
     nameKey: "common.team",
     href: "/team",
     icon: Users,
-    roles: ["admin", "property_ops", "manager"],
+    roles: ["admin", "manager"],
   },
   {
+    // Property-owner user management — ops does not handle this.
     nameKey: "nav.ownerOverview",
     href: "/admin/owner-overview",
     icon: UserCog,
-    roles: ["admin", "property_ops"],
+    roles: ["admin"],
   },
   {
     nameKey: "common.inventory",
@@ -107,27 +110,33 @@ export const navigation: NavigationItem[] = [
     roles: ["admin", "property_ops", "manager"],
   },
   {
+    // Financial/reporting — not an ops responsibility. This also covers
+    // /reports/monthly-close and /reports/costs below via the shared
+    // /reports route-access prefix.
     nameKey: "common.reports",
     href: "/reports",
     icon: BarChart3,
-    roles: ["admin", "property_ops"],
+    roles: ["admin"],
   },
   {
     nameKey: "nav.monthlyClose",
     href: "/reports/monthly-close",
     icon: Calculator,
-    roles: ["admin", "property_ops"],
+    roles: ["admin"],
   },
   {
     nameKey: "nav.propertyCosts",
     href: "/reports/costs",
     icon: Receipt,
-    roles: ["admin", "property_ops"],
+    roles: ["admin"],
   },
   {
+    // Bug fix: ops previously had no way to reach Settings at all — the
+    // page itself is now role-gated to a simplified tab set for ops (no
+    // Team tab, no cost dashboard) in settings-page-client.tsx.
     nameKey: "common.settings",
     href: "/settings",
     icon: Settings,
-    roles: ["admin"],
+    roles: ["admin", "property_ops"],
   },
 ];
