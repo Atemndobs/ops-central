@@ -19,12 +19,17 @@ import {
   Settings,
 } from "lucide-react";
 import type { UserRole } from "@/lib/auth";
+import type { FeatureFlagKey } from "@convex/admin/featureFlags";
 
 export type NavigationItem = {
   nameKey: string;
   href: string;
   icon: LucideIcon;
   roles: UserRole[];
+  // When set, this item only renders once the named feature flag is ON —
+  // a role can be allowed to see a feature without it being built/launched
+  // yet. Checked in addition to `roles`, not instead of it.
+  featureFlag?: FeatureFlagKey;
 };
 
 export const navigation: NavigationItem[] = [
@@ -59,10 +64,14 @@ export const navigation: NavigationItem[] = [
     roles: ["admin", "property_ops", "manager"],
   },
   {
+    // Feature-flagged (reviewsAiReply, default OFF) — its own offBehaviour
+    // doc says "Reviews nav item... are hidden" when off, but that was
+    // never wired up until now.
     nameKey: "nav.reviews",
     href: "/reviews",
     icon: Star,
     roles: ["admin", "property_ops"],
+    featureFlag: "reviewsAiReply",
   },
   {
     nameKey: "nav.review",

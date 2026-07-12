@@ -139,6 +139,12 @@ export function Header() {
     api.admin.featureFlags.isFeatureEnabled,
     { key: "theme_switcher" },
   );
+  // Deactivated features shouldn't show a nav icon — same principle as the
+  // theme switcher above, applied to `navigation` entries with a `featureFlag`.
+  const reviewsAiReplyEnabled = useQuery(
+    api.admin.featureFlags.isFeatureEnabled,
+    { key: "reviewsAiReply" },
+  );
   const roleFromClaims = getRoleFromSessionClaimsOrNull(
     sessionClaims as Record<string, unknown> | null,
   );
@@ -146,7 +152,11 @@ export function Header() {
   const role: UserRole = roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "manager";
   const canViewSettings = isLoaded && canAccessPath(role, "/settings");
   const canViewReports = isLoaded && canAccessPath(role, "/reports");
-  const mobileNavigation = navigation.filter((item) => item.roles.includes(role));
+  const mobileNavigation = navigation.filter(
+    (item) =>
+      item.roles.includes(role) &&
+      (item.featureFlag !== "reviewsAiReply" || reviewsAiReplyEnabled === true),
+  );
   const unreadMessageCount = useQuery(
     api.conversations.queries.getUnreadConversationCount,
     convexUser?._id ? {} : "skip",
