@@ -12,12 +12,15 @@ export const metadata: Metadata = {
   title: "ChezSoi Ops",
   description: "Property operations management for J&A Business Solutions",
   icons: {
+    // Color-aware: these routes redirect to the admin-selected color's asset
+    // (see src/app/brand-icon/[asset]/route.ts). iOS "Add to Home Screen" and
+    // Chrome's install dialog use these, so they must follow the setting too.
     icon: [
-      { url: "/icons/ops-icon.svg", type: "image/svg+xml" },
-      { url: "/icons/ops-icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icons/ops-icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/brand-icon/favicon.svg", type: "image/svg+xml" },
+      { url: "/brand-icon/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/brand-icon/icon-512.png", sizes: "512x512", type: "image/png" },
     ],
-    apple: [{ url: "/icons/ops-apple-touch-icon.png", sizes: "180x180" }],
+    apple: [{ url: "/brand-icon/apple-touch.png", sizes: "180x180" }],
   },
   manifest: "/manifest.webmanifest",
   appleWebApp: {
