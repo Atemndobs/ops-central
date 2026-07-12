@@ -418,7 +418,7 @@ type AdjustableRole = "admin" | "property_ops" | "manager" | "owner";
 // src/lib/brand.ts). Cleaner stays purple.
 const ROLE_COLOR_DEFAULT: Record<BrandRole, IconColor> = {
   admin: "darkgreen",
-  property_ops: "sage",
+  property_ops: "terracotta",
   manager: "taupe",
   owner: "navy",
   cleaner: "purple",
