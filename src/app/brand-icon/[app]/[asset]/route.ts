@@ -2,30 +2,28 @@ import { NextResponse, type NextRequest } from "next/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@convex/_generated/api";
 import {
-  DEFAULT_ICON_COLOR,
+  APP_ICON_DEFAULT,
   iconAssetBase,
+  isIconApp,
   isIconColorKey,
+  type IconApp,
   type IconColorKey,
 } from "@/lib/brand";
 
 // Recompute against the current admin setting on each request; the redirect
-// response itself is cached briefly (below) and the target PNG/SVG is served
-// statically from /icons with normal CDN caching.
+// response is cached briefly (below) and the target asset is served statically
+// from /icons with normal CDN caching.
 export const dynamic = "force-dynamic";
 
 /**
- * Color-aware favicon + apple-touch-icon for the admin (Ops) app.
+ * Color-aware favicon + apple-touch-icon for a given installable app
+ * (ops | cleaner | owner). Each app's installed-icon color is an admin setting
+ * (`appSettings` per-app fields). iOS "Add to Home Screen" and Chrome's install
+ * dialog use the `<link>` icons — so those must follow the setting too. This
+ * route reads the app's color and redirects to the matching static asset.
+ * Each app's layout points its head links here.
  *
- * The installed-icon color is an org-wide admin setting
- * (`appSettings.installedIconColor`). The manifest route already honors it, but
- * the `<link rel="icon">` favicon and `<link rel="apple-touch-icon">` are what
- * iOS "Add to Home Screen" and Chrome's desktop install dialog actually use —
- * so those must be color-aware too. This route reads the setting and redirects
- * to the matching static asset. `layout.tsx` points the head links here.
- *
- * Same caveat as the manifest: only affects NEW installs / uncached fetches;
- * existing home-screen icons keep their color until reinstalled (iOS caches
- * apple-touch-icons especially hard).
+ * Same caveat as the manifest: only affects new installs / uncached fetches.
  */
 
 // Requested asset name → suffix on `/icons/app-icon-<color>`.
@@ -38,25 +36,28 @@ const ASSET_SUFFIX: Record<string, string> = {
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ asset: string }> },
+  { params }: { params: Promise<{ app: string; asset: string }> },
 ) {
-  const { asset } = await params;
+  const { app, asset } = await params;
   const suffix = ASSET_SUFFIX[asset];
-  if (!suffix) {
+  if (!suffix || !isIconApp(app)) {
     return new NextResponse("Not found", { status: 404 });
   }
 
-  let color: IconColorKey = DEFAULT_ICON_COLOR;
+  const appKey: IconApp = app;
+  let color: IconColorKey = APP_ICON_DEFAULT[appKey];
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
   if (convexUrl) {
     try {
       const client = new ConvexHttpClient(convexUrl);
-      const res = await client.query(api.appSettings.getInstalledIconColor, {});
+      const res = await client.query(api.appSettings.getInstalledIconColor, {
+        app: appKey,
+      });
       if (res && isIconColorKey(res.color)) {
         color = res.color;
       }
     } catch {
-      // Fall back to the default color if the backend is unreachable.
+      // Fall back to the app's default color if the backend is unreachable.
     }
   }
 

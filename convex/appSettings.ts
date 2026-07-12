@@ -379,64 +379,128 @@ const iconColorValidator = v.union(
   v.literal("purple"),
 );
 
-// Matches DEFAULT_ICON_COLOR in src/lib/brand.ts — the shipped "Ops" teal.
-const DEFAULT_ICON_COLOR = "teal" as const;
+const iconAppValidator = v.union(
+  v.literal("ops"),
+  v.literal("cleaner"),
+  v.literal("owner"),
+);
+
+type IconColor = "indigo" | "teal" | "amber" | "blue" | "purple";
+type IconApp = "ops" | "cleaner" | "owner";
+
+// Per-app default installed-icon color (must match APP_ICON_DEFAULT in
+// src/lib/brand.ts). Ops ⇒ teal, Cleaner ⇒ purple (brand), Owner ⇒ blue.
+const APP_ICON_DEFAULT: Record<IconApp, IconColor> = {
+  ops: "teal",
+  cleaner: "purple",
+  owner: "blue",
+};
+
+function readAppColor(
+  row: { installedIconColor?: IconColor; installedIconColorCleaner?: IconColor; installedIconColorOwner?: IconColor } | null,
+  app: IconApp,
+): IconColor | undefined {
+  if (!row) return undefined;
+  if (app === "ops") return row.installedIconColor;
+  if (app === "cleaner") return row.installedIconColorCleaner;
+  return row.installedIconColorOwner;
+}
 
 /**
- * Color of the installed PWA icon (home-screen / favicon) for the admin app.
- * Public — the dynamic manifest route reads it unauthenticated at install time,
- * and it's just a color name. Absent row/field ⇒ teal.
+ * Installed PWA icon color for a given app (ops | cleaner | owner). Public — the
+ * dynamic manifest / icon routes read it unauthenticated at install time, and
+ * it's just a color name. `app` defaults to "ops" (back-compat with the earlier
+ * single-app callers). Absent row/field ⇒ that app's default.
  */
 export const getInstalledIconColor = query({
-  args: {},
+  args: { app: v.optional(iconAppValidator) },
   returns: v.object({
+    app: iconAppValidator,
     color: iconColorValidator,
     isDefault: v.boolean(),
     updatedAt: v.optional(v.number()),
   }),
+  handler: async (ctx, args) => {
+    const app = args.app ?? "ops";
+    const row = await ctx.db
+      .query("appSettings")
+      .withIndex("by_key", (q) => q.eq("key", "global"))
+      .unique();
+
+    const stored = readAppColor(row, app);
+    if (!stored) {
+      return { app, color: APP_ICON_DEFAULT[app], isDefault: true, updatedAt: row?.updatedAt };
+    }
+    return { app, color: stored, isDefault: false, updatedAt: row?.updatedAt };
+  },
+});
+
+/** All three apps' installed-icon colors — for the per-app Settings panel. */
+export const listAppIconColors = query({
+  args: {},
+  returns: v.array(
+    v.object({
+      app: iconAppValidator,
+      color: iconColorValidator,
+      isDefault: v.boolean(),
+    }),
+  ),
   handler: async (ctx) => {
     const row = await ctx.db
       .query("appSettings")
       .withIndex("by_key", (q) => q.eq("key", "global"))
       .unique();
 
-    if (!row || !row.installedIconColor) {
+    const apps: IconApp[] = ["ops", "cleaner", "owner"];
+    return apps.map((app) => {
+      const stored = readAppColor(row, app);
       return {
-        color: DEFAULT_ICON_COLOR,
-        isDefault: true,
-        updatedAt: row?.updatedAt,
+        app,
+        color: stored ?? APP_ICON_DEFAULT[app],
+        isDefault: !stored,
       };
-    }
-    return {
-      color: row.installedIconColor,
-      isDefault: false,
-      updatedAt: row.updatedAt,
-    };
+    });
   },
 });
 
 /**
- * Pick the installed-icon color. Admin-only. Takes effect for NEW PWA installs
- * (existing home-screen icons keep their color until reinstalled) — the manifest
- * is cached aggressively by browsers/OS.
+ * Pick the installed-icon color for one app. Admin-only. Takes effect for NEW
+ * installs (existing home-screen icons keep their color until reinstalled) — the
+ * manifest is cached aggressively by browsers/OS.
  */
 export const setInstalledIconColor = mutation({
-  args: { color: iconColorValidator },
-  returns: v.object({ color: iconColorValidator, updatedAt: v.number() }),
+  args: { app: iconAppValidator, color: iconColorValidator },
+  returns: v.object({
+    app: iconAppValidator,
+    color: iconColorValidator,
+    updatedAt: v.number(),
+  }),
   handler: async (ctx, args) => {
     const admin = await requireAdmin(ctx);
     const now = Date.now();
+
+    const colorPatch: {
+      installedIconColor?: IconColor;
+      installedIconColorCleaner?: IconColor;
+      installedIconColorOwner?: IconColor;
+    } =
+      args.app === "ops"
+        ? { installedIconColor: args.color }
+        : args.app === "cleaner"
+          ? { installedIconColorCleaner: args.color }
+          : { installedIconColorOwner: args.color };
+
     const existing = await ctx.db
       .query("appSettings")
       .withIndex("by_key", (q) => q.eq("key", "global"))
       .unique();
 
     if (existing) {
-      if (existing.installedIconColor === args.color) {
-        return { color: args.color, updatedAt: existing.updatedAt };
+      if (readAppColor(existing, args.app) === args.color) {
+        return { app: args.app, color: args.color, updatedAt: existing.updatedAt };
       }
       await ctx.db.patch(existing._id, {
-        installedIconColor: args.color,
+        ...colorPatch,
         updatedBy: admin._id,
         updatedAt: now,
       });
@@ -444,12 +508,12 @@ export const setInstalledIconColor = mutation({
       await ctx.db.insert("appSettings", {
         key: "global",
         timezone: DEFAULT_TIMEZONE,
-        installedIconColor: args.color,
+        ...colorPatch,
         updatedBy: admin._id,
         updatedAt: now,
       });
     }
 
-    return { color: args.color, updatedAt: now };
+    return { app: args.app, color: args.color, updatedAt: now };
   },
 });

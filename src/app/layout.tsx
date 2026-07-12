@@ -16,11 +16,11 @@ export const metadata: Metadata = {
     // (see src/app/brand-icon/[asset]/route.ts). iOS "Add to Home Screen" and
     // Chrome's install dialog use these, so they must follow the setting too.
     icon: [
-      { url: "/brand-icon/favicon.svg", type: "image/svg+xml" },
-      { url: "/brand-icon/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/brand-icon/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/brand-icon/ops/favicon.svg", type: "image/svg+xml" },
+      { url: "/brand-icon/ops/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/brand-icon/ops/icon-512.png", sizes: "512x512", type: "image/png" },
     ],
-    apple: [{ url: "/brand-icon/apple-touch.png", sizes: "180x180" }],
+    apple: [{ url: "/brand-icon/ops/apple-touch.png", sizes: "180x180" }],
   },
   manifest: "/manifest.webmanifest",
   appleWebApp: {
