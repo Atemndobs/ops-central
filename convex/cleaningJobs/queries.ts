@@ -3,7 +3,11 @@ import { query } from "../_generated/server";
 import type { QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { getCurrentUser, requireRole } from "../lib/auth";
-import { createExternalReadUrl, getExternalStorageConfigOrNull } from "../lib/externalStorage";
+import {
+  createExternalReadUrl,
+  getConfigForProviderOrNull,
+  normalizeStorageProvider,
+} from "../lib/externalStorage";
 import { resolvePhotoAccessUrl } from "../lib/photoUrls";
 import { assertReviewerRole } from "./reviewAccess";
 import {
@@ -130,14 +134,15 @@ async function resolveSnapshotPhotoUrl(
   }
 
   if (snapshotPhoto.provider && snapshotPhoto.bucket && snapshotPhoto.objectKey) {
-    const config = getExternalStorageConfigOrNull();
-    if (!config) {
+    const provider = normalizeStorageProvider(snapshotPhoto.provider);
+    if (getConfigForProviderOrNull(provider) === null) {
       return null;
     }
     try {
       return await createExternalReadUrl({
         bucket: snapshotPhoto.bucket,
         objectKey: snapshotPhoto.objectKey,
+        provider,
       });
     } catch {
       return null;
@@ -385,7 +390,11 @@ export const getMyJobDetail = query({
     const isAssignedCleaner = detail.job.assignedCleanerIds.includes(user._id);
 
     if (!isPrivileged && !isAssignedCleaner) {
-      throw new Error("You are not authorized to access this job.");
+      // Return null (treated as "not found") rather than throwing. A cleaner
+      // who is unassigned from a job while viewing it would otherwise get a
+      // reactive query rejection that crashes the mobile job-detail screen.
+      // Null also avoids leaking that the job exists to unauthorized callers.
+      return null;
     }
 
     return detail;
@@ -489,7 +498,18 @@ export const getForCleaner = query({
     if (user.role === "cleaner" && user._id !== args.cleanerId) {
       return [];
     }
-    const allowedPropertyIds = await getCallerJobScopeForListing(ctx, user);
+
+    // A user viewing their OWN assignments is always in scope for those jobs:
+    // the read below is keyed on `args.cleanerId`, so a self-query can only
+    // ever surface the caller's own jobs. Company-property scoping exists for
+    // manager/ops callers viewing *someone else* — applying it to a self-query
+    // makes getCallerJobScopeForListing return an empty set for cleaners, so
+    // the list comes back empty (the native app's "No jobs assigned" bug while
+    // the PWA — which uses getMyAssigned — showed them fine).
+    const isSelf = user._id === args.cleanerId;
+    const allowedPropertyIds = isSelf
+      ? null
+      : await getCallerJobScopeForListing(ctx, user);
     if (allowedPropertyIds && allowedPropertyIds.size === 0) {
       return [];
     }
@@ -522,6 +542,13 @@ export const getForCleaner = query({
 export const countByProperty = query({
   args: { propertyId: v.id("properties") },
   handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    // Scope to caller: admin/ops see any property; a manager only their
+    // company's properties; cleaners never reach this counter.
+    const allowed = await canCallerAccessPropertyById(ctx, user, args.propertyId);
+    if (!allowed) {
+      return { total: 0 };
+    }
     const rows = await ctx.db
       .query("cleaningJobs")
       .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId))
@@ -1084,7 +1111,32 @@ export const getJobDetail = query({
     jobId: v.id("cleaningJobs"),
   },
   handler: async (ctx, args) => {
-    return await getJobDetailInternal(ctx, args.jobId);
+    const user = await getCurrentUser(ctx);
+    const detail = await getJobDetailInternal(ctx, args.jobId);
+    if (!detail) {
+      return null;
+    }
+
+    // Same direct-ID guard as `getById`:
+    // - admin / property_ops: unrestricted
+    // - manager: only if the job's property is in the manager's company scope
+    // - cleaner: only if assigned to this job
+    if (user.role === "manager") {
+      const allowed = await canCallerAccessPropertyById(
+        ctx,
+        user,
+        detail.job.propertyId,
+      );
+      if (!allowed) {
+        return null;
+      }
+    } else if (user.role === "cleaner") {
+      if (!detail.job.assignedCleanerIds.includes(user._id)) {
+        return null;
+      }
+    }
+
+    return detail;
   },
 });
 
@@ -1094,9 +1146,22 @@ export const getJobLivePresence = query({
     staleAfterMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
     const job = await ctx.db.get(args.jobId);
     if (!job) {
       return null;
+    }
+
+    // Same direct-ID guard as `getById` / `getJobDetail`.
+    if (user.role === "manager") {
+      const allowed = await canCallerAccessPropertyById(ctx, user, job.propertyId);
+      if (!allowed) {
+        return null;
+      }
+    } else if (user.role === "cleaner") {
+      if (!job.assignedCleanerIds.includes(user._id)) {
+        return null;
+      }
     }
 
     const revision = getCurrentRevision(job);

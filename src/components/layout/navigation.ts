@@ -6,6 +6,7 @@ import {
   ClipboardCheck,
   ListChecks,
   MessageSquare,
+  Star,
   Building2,
   Building,
   Users,
@@ -13,6 +14,8 @@ import {
   Package,
   AlertTriangle,
   BarChart3,
+  Calculator,
+  Receipt,
   Settings,
 } from "lucide-react";
 import type { UserRole } from "@/lib/auth";
@@ -54,6 +57,12 @@ export const navigation: NavigationItem[] = [
     href: "/messages",
     icon: MessageSquare,
     roles: ["admin", "property_ops", "manager"],
+  },
+  {
+    nameKey: "nav.reviews",
+    href: "/reviews",
+    icon: Star,
+    roles: ["admin", "property_ops"],
   },
   {
     nameKey: "nav.review",
@@ -101,6 +110,18 @@ export const navigation: NavigationItem[] = [
     nameKey: "common.reports",
     href: "/reports",
     icon: BarChart3,
+    roles: ["admin", "property_ops"],
+  },
+  {
+    nameKey: "nav.monthlyClose",
+    href: "/reports/monthly-close",
+    icon: Calculator,
+    roles: ["admin", "property_ops"],
+  },
+  {
+    nameKey: "nav.propertyCosts",
+    href: "/reports/costs",
+    icon: Receipt,
     roles: ["admin", "property_ops"],
   },
   {

@@ -231,12 +231,13 @@ export function OwnerPropertyClient({
           full Earnings-summary (past-12-month strip, lease/payout breakdown,
           confidence line) lives. Owner intent: "snapshot here, drill in
           there". */}
-      {draft && (
+      {draft && "totals" in draft.draft && (
         <OverviewSummaryCard
           propertyId={propertyId}
           currency={currency}
           month={month}
           grossRevenue={draft.draft.totals.grossRevenue}
+          showGross={prop.flags.showGrossRevenue}
           stakePct={prop.ownership.stakePct}
           mortgageAmount={
             leaseRawMonthly > 0
@@ -246,7 +247,21 @@ export function OwnerPropertyClient({
           }
         />
       )}
+      {draft && "error" in draft.draft && (
+        <Card>
+          <div className="px-4 py-3 text-sm text-[var(--cleaner-muted,#6b7280)]">
+            No statement data for {fmtMonth(draft.month)} yet — this
+            property&apos;s fee configuration doesn&apos;t cover that period.
+            If you expected numbers here, contact ChezSoi Ops.
+          </div>
+        </Card>
+      )}
 
+      {/* Entire Statements surface is admin-gated via `owner_show_statements`.
+          When the flag is off we hide the heading, status chip, and the
+          historical list (deep links to statement detail render a neutral
+          placeholder — see owner-statement-detail-client.tsx). */}
+      {prop.flags.showStatements && (
       <section id="overview" className="scroll-mt-20">
         {/* Header row: title + inline status chip for the month the user
             is currently viewing. The chip is the affordance to OPEN the
@@ -325,6 +340,7 @@ export function OwnerPropertyClient({
           </div>
         )}
       </section>
+      )}
 
       <CostsSection propertyId={propertyId} currency={currency} />
       <BookingsSection
@@ -1207,6 +1223,7 @@ function OverviewSummaryCard({
   currency,
   month,
   grossRevenue,
+  showGross,
   stakePct,
   mortgageAmount,
 }: {
@@ -1214,6 +1231,8 @@ function OverviewSummaryCard({
   currency: string;
   month: string;
   grossRevenue: number;
+  /** Admin-gated via `owner_show_gross_revenue` feature flag. */
+  showGross: boolean;
   stakePct: number;
   mortgageAmount: number;
 }) {
@@ -1239,28 +1258,32 @@ function OverviewSummaryCard({
     >
       <Card padding="p-5">
         <div className="space-y-4">
-          {/* Gross — the headline number the owner cares about. */}
-          <div>
-            <div
-              className="text-[10px] uppercase tracking-wider"
-              style={{
-                color: "var(--cleaner-muted)",
-                fontFamily: "var(--font-cleaner-mono)",
-              }}
-            >
-              Gross
+          {/* Gross — the headline number the owner cares about. Admin-gated
+              via `owner_show_gross_revenue`; when hidden the card still
+              renders the mortgage coverage bar + drill-in affordance. */}
+          {showGross && (
+            <div>
+              <div
+                className="text-[10px] uppercase tracking-wider"
+                style={{
+                  color: "var(--cleaner-muted)",
+                  fontFamily: "var(--font-cleaner-mono)",
+                }}
+              >
+                Gross
+              </div>
+              <div
+                className="mt-1 text-3xl tabular-nums"
+                style={{
+                  fontFamily: "var(--font-cleaner-display)",
+                  fontWeight: 700,
+                  letterSpacing: "-0.02em",
+                }}
+              >
+                {fmtMoney(myGross, currency)}
+              </div>
             </div>
-            <div
-              className="mt-1 text-3xl tabular-nums"
-              style={{
-                fontFamily: "var(--font-cleaner-display)",
-                fontWeight: 700,
-                letterSpacing: "-0.02em",
-              }}
-            >
-              {fmtMoney(myGross, currency)}
-            </div>
-          </div>
+          )}
 
           {/* Mortgage progress + covered-on caption. */}
           {myMortgage > 0 && (

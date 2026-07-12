@@ -8,6 +8,7 @@ import type { Id } from "@convex/_generated/dataModel";
 import Image from "next/image";
 import { useToast } from "@/components/ui/toast-provider";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { TeamDetailDrawer, type DrawerMember } from "@/components/team/team-detail-drawer";
 import { uploadImageFile } from "@/lib/upload-image";
 import {
   getRoleFromMetadata,
@@ -26,7 +27,8 @@ import {
   Users,
 } from "lucide-react";
 
-type UserRole = "cleaner" | "manager" | "property_ops" | "admin" | "owner";
+import { getRoleDefinition, type RoleKey } from "@/lib/roles";
+type UserRole = RoleKey;
 type CompanyMemberRole = "cleaner" | "manager" | "owner";
 type AvailabilityFilter = "all" | "active" | "working" | "available" | "off";
 type TeamViewMode = "card" | "list";
@@ -56,8 +58,9 @@ const ROLE_FILTER_ITEMS: { id: UserRole; label: string }[] = [
 const TEAM_VIEW_MODE_STORAGE_KEY = "opscentral.team.defaultViewMode";
 const TEAM_DENSITY_STORAGE_KEY = "opscentral.team.density";
 const TEAM_GROUP_BY_STORAGE_KEY = "opscentral.team.groupBy";
+const TEAM_FILTER_CHIP_KEY = "opscentral.team.filterChip";
+type FilterChip = "none" | "unassignedRole" | "unassignedCompany" | "inactive30d";
 const TEAM_RAIL_OPEN_STORAGE_KEY = "opscentral.team.railOpen";
-const TEAM_UNASSIGNED_ONLY_STORAGE_KEY = "opscentral.team.unassignedOnly";
 
 type TeamDensity = "comfortable" | "compact";
 type TeamGroupBy = "none" | "company";
@@ -70,6 +73,7 @@ type MemberActionTarget = {
   avatarUrl?: string;
   role: UserRole;
   companyId: Id<"cleaningCompanies"> | null;
+  companyName?: string | null;
   companyMemberRole: CompanyMemberRole | null;
 };
 
@@ -83,12 +87,15 @@ export default function TeamPage() {
   const [density, setDensity] = useState<TeamDensity>("compact");
   const [groupBy, setGroupBy] = useState<TeamGroupBy>("none");
   const [railOpen, setRailOpen] = useState<boolean>(false);
-  const [onlyUnassigned, setOnlyUnassigned] = useState<boolean>(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [filterChip, setFilterChip] = useState<FilterChip>("none");
+  // Mounted flag — chip counts depend on Date.now() (inactive cutoff), which
+  // mismatches between SSR and CSR. Render counts only after mount.
+  const [hasMounted, setHasMounted] = useState(false);
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
   const [mobileFilterPanel, setMobileFilterPanel] = useState<MobileFilterPanel>(null);
-  const [openMenuForUserId, setOpenMenuForUserId] = useState<Id<"users"> | null>(
-    null,
-  );
 
   const [roleEditor, setRoleEditor] = useState<MemberActionTarget | null>(null);
   const [roleDraft, setRoleDraft] = useState<UserRole>("cleaner");
@@ -121,6 +128,8 @@ export default function TeamPage() {
   const [propertyEditor, setPropertyEditor] = useState<MemberActionTarget | null>(null);
   const [propertyDraft, setPropertyDraft] = useState<Id<"properties"> | "">("");
   const [isAssigningProperty, setIsAssigningProperty] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<MemberActionTarget | null>(null);
+  const [isDeletingMember, setIsDeletingMember] = useState(false);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -132,6 +141,7 @@ export default function TeamPage() {
     email: "",
     role: "cleaner" as UserRole,
     phone: "",
+    companyId: "" as string,
   });
 
   const { isLoaded: isClerkLoaded, isSignedIn, sessionClaims, userId } = useAuth();
@@ -181,21 +191,6 @@ export default function TeamPage() {
   const assignPropertyToCompany = useMutation(api.admin.mutations.assignPropertyToCompany);
 
   useEffect(() => {
-    if (!openMenuForUserId) {
-      return;
-    }
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target?.closest("[data-team-member-menu]")) {
-        return;
-      }
-      setOpenMenuForUserId(null);
-    };
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, [openMenuForUserId]);
-
-  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
@@ -220,21 +215,21 @@ export default function TeamPage() {
     if (g === "company" || g === "none") setGroupBy(g);
     const r = window.localStorage.getItem(TEAM_RAIL_OPEN_STORAGE_KEY);
     if (r === "true") setRailOpen(true);
-    const u = window.localStorage.getItem(TEAM_UNASSIGNED_ONLY_STORAGE_KEY);
-    if (u === "true") setOnlyUnassigned(true);
+    const f = window.localStorage.getItem(TEAM_FILTER_CHIP_KEY) as FilterChip | null;
+    if (
+      f === "unassignedRole" ||
+      f === "unassignedCompany" ||
+      f === "inactive30d" ||
+      f === "none"
+    )
+      setFilterChip(f);
   }, []);
 
-  function toggleOnlyUnassigned() {
-    setOnlyUnassigned((prev) => {
-      const next = !prev;
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(
-          TEAM_UNASSIGNED_ONLY_STORAGE_KEY,
-          String(next),
-        );
-      }
-      return next;
-    });
+  function setFilterChipPreference(next: FilterChip) {
+    setFilterChip(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(TEAM_FILTER_CHIP_KEY, next);
+    }
   }
 
   function setViewPreference(nextMode: TeamViewMode) {
@@ -282,6 +277,7 @@ export default function TeamPage() {
     const combined = [...(teamMetrics?.members ?? [])];
     const q = search.trim().toLowerCase();
 
+    const inactiveCutoff = Date.now() - 30 * 86_400_000;
     const filtered = combined.filter((member) => {
       const roleMatches = roleFilter === "all" || member.role === roleFilter;
       const availabilityMatches =
@@ -292,17 +288,37 @@ export default function TeamPage() {
         !q ||
         member.name?.toLowerCase().includes(q) ||
         member.email?.toLowerCase().includes(q);
-      const unassignedMatches = !onlyUnassigned || !member.companyId;
-      return roleMatches && availabilityMatches && textMatches && unassignedMatches;
+      const chipMatches = (() => {
+        if (filterChip === "none") return true;
+        if (filterChip === "unassignedRole")
+          return !member.role || (member.role as string) === "unassigned";
+        if (filterChip === "unassignedCompany") return !member.companyId;
+        if (filterChip === "inactive30d") {
+          const last = (member as { lastActiveAt?: number }).lastActiveAt;
+          return !last || last < inactiveCutoff;
+        }
+        return true;
+      })();
+      return roleMatches && availabilityMatches && textMatches && chipMatches;
     });
 
     return filtered;
-  }, [availabilityFilter, onlyUnassigned, roleFilter, search, teamMetrics]);
+  }, [availabilityFilter, roleFilter, search, teamMetrics, filterChip]);
 
-  const unassignedCount = useMemo(
-    () => (teamMetrics?.members ?? []).filter((m) => !m.companyId).length,
-    [teamMetrics],
-  );
+  const chipCounts = useMemo(() => {
+    const all = teamMetrics?.members ?? [];
+    const inactiveCutoff = Date.now() - 30 * 86_400_000;
+    return {
+      unassignedRole: all.filter(
+        (m) => !m.role || (m.role as string) === "unassigned",
+      ).length,
+      unassignedCompany: all.filter((m) => !m.companyId).length,
+      inactive30d: all.filter((m) => {
+        const last = (m as { lastActiveAt?: number }).lastActiveAt;
+        return !last || last < inactiveCutoff;
+      }).length,
+    };
+  }, [teamMetrics]);
 
   const groupedMembers = useMemo(() => {
     if (groupBy !== "company") return null;
@@ -351,6 +367,7 @@ export default function TeamPage() {
       avatarUrl: member.avatarUrl,
       role: member.role,
       companyId: member.companyId,
+      companyName: member.companyName,
       companyMemberRole: member.companyMemberRole,
     };
   }
@@ -442,7 +459,6 @@ export default function TeamPage() {
     setRoleEditor(member);
     setRoleDraft(member.role);
     setMemberActionSheet(null);
-    setOpenMenuForUserId(null);
   }
 
   function openProfileEditor(member: MemberActionTarget) {
@@ -453,7 +469,6 @@ export default function TeamPage() {
       avatarUrl: member.avatarUrl ?? "",
     });
     setMemberActionSheet(null);
-    setOpenMenuForUserId(null);
   }
 
   function openCompanyEditor(member: MemberActionTarget) {
@@ -464,21 +479,57 @@ export default function TeamPage() {
         (member.role === "manager" ? "manager" : "cleaner"),
     );
     setMemberActionSheet(null);
-    setOpenMenuForUserId(null);
   }
 
   function openJobEditor(member: MemberActionTarget) {
     setJobEditor(member);
     setJobDraft("");
     setMemberActionSheet(null);
-    setOpenMenuForUserId(null);
   }
 
   function openPropertyEditor(member: MemberActionTarget) {
     setPropertyEditor(member);
     setPropertyDraft("");
     setMemberActionSheet(null);
-    setOpenMenuForUserId(null);
+  }
+
+  function openDeleteConfirm(member: MemberActionTarget) {
+    setDeleteTarget(member);
+    setMemberActionSheet(null);
+  }
+
+  async function handleDeleteMember() {
+    if (!deleteTarget) {
+      return;
+    }
+    setIsDeletingMember(true);
+    try {
+      const response = await fetch("/api/team-members", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: deleteTarget.userId }),
+      });
+      const data = (await response.json()) as {
+        success?: boolean;
+        error?: string;
+        clerkWarning?: string;
+      };
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Failed to remove team member.");
+      }
+      showToast(
+        data.clerkWarning ||
+          `Removed ${deleteTarget.name || deleteTarget.email || "team member"}.`,
+        data.clerkWarning ? "error" : "success",
+      );
+      setDeleteTarget(null);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to remove team member.";
+      showToast(message, "error");
+    } finally {
+      setIsDeletingMember(false);
+    }
   }
 
   async function handleRoleUpdate(event: FormEvent<HTMLFormElement>) {
@@ -939,30 +990,6 @@ export default function TeamPage() {
                 <option value="available">Available</option>
                 <option value="off">Off</option>
               </select>
-              {canManageTeam ? (
-                <button
-                  type="button"
-                  onClick={toggleOnlyUnassigned}
-                  className={`inline-flex items-center gap-1.5 rounded-none border px-3 py-1.5 text-xs font-medium ${
-                    onlyUnassigned
-                      ? "border-amber-500 bg-amber-500/10 text-amber-700"
-                      : "bg-[var(--card)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
-                  }`}
-                  aria-pressed={onlyUnassigned}
-                  title="Show only members not attached to a company"
-                >
-                  Unassigned
-                  <span
-                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                      unassignedCount > 0
-                        ? "bg-amber-500 text-white"
-                        : "bg-[var(--muted)]/40 text-[var(--muted-foreground)]"
-                    }`}
-                  >
-                    {unassignedCount}
-                  </span>
-                </button>
-              ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <div className="inline-flex w-full overflow-hidden rounded-none border bg-[var(--card)] sm:w-auto">
@@ -1039,6 +1066,45 @@ export default function TeamPage() {
             </div>
           </div>
 
+          <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+            {(
+              [
+                { id: "unassignedRole" as const, label: "Unassigned role", count: chipCounts.unassignedRole },
+                { id: "unassignedCompany" as const, label: "No company", count: chipCounts.unassignedCompany },
+                { id: "inactive30d" as const, label: "Inactive 30d", count: chipCounts.inactive30d },
+              ]
+            ).map((chip) => {
+              const active = filterChip === chip.id;
+              return (
+                <button
+                  key={chip.id}
+                  type="button"
+                  onClick={() => setFilterChipPreference(active ? "none" : chip.id)}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition ${
+                    active
+                      ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]"
+                      : "bg-[var(--card)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+                  }`}
+                  aria-pressed={active}
+                >
+                  {chip.label}
+                  <span className="rounded-full bg-[var(--accent)] px-1.5 text-[10px] font-semibold" suppressHydrationWarning>
+                    {hasMounted ? chip.count : "—"}
+                  </span>
+                </button>
+              );
+            })}
+            {filterChip !== "none" ? (
+              <button
+                type="button"
+                onClick={() => setFilterChipPreference("none")}
+                className="text-xs text-[var(--muted-foreground)] underline underline-offset-2 hover:text-[var(--foreground)]"
+              >
+                Clear filter
+              </button>
+            ) : null}
+          </div>
+
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-y border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm">
             <StatChip
               label="Cleaners"
@@ -1075,7 +1141,7 @@ export default function TeamPage() {
             />
           </div>
 
-          {/* Company Membership section removed in PR 2 — assignment now happens inline via the Company column in the table below. Unassigned filter pill in the toolbar surfaces the gap. */}
+          {/* Company Membership management moved to /companies → click a company → Members section. */}
 
           <div id="team-members-section">
             {loading ? (
@@ -1115,6 +1181,11 @@ export default function TeamPage() {
                         </p>
                         <p className="mt-1 text-[11px] uppercase tracking-wider text-[var(--muted-foreground)]">
                           {formatRoleLabel(member.role)}
+                          {member.role === "owner" && member.ownedPropertyCount === 0 ? (
+                            <span className="ml-2 font-semibold text-amber-600">
+                              No properties linked
+                            </span>
+                          ) : null}
                         </p>
                         <p className="mt-1 truncate text-xs text-[var(--muted-foreground)]">
                           {member.companyName
@@ -1128,67 +1199,13 @@ export default function TeamPage() {
                       </div>
                     </div>
                     {canManageTeam || canDispatchMember(member) ? (
-                      <div className="relative" data-team-member-menu>
-                        <button
-                          className="text-2xl leading-none"
-                          onClick={() =>
-                            setOpenMenuForUserId((current) =>
-                              current === member._id ? null : member._id,
-                            )
-                          }
-                          aria-haspopup="menu"
-                          aria-expanded={openMenuForUserId === member._id}
-                        >
-                          ⋮
-                        </button>
-                        {openMenuForUserId === member._id ? (
-                          <div className="absolute right-0 top-8 z-20 w-44 rounded-none border bg-[var(--card)] py-1 shadow-lg">
-                            {canManageTeam ? (
-                              <>
-                                <button
-                                  type="button"
-                                  className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                                  onClick={() => openProfileEditor(toMemberActionTarget(member))}
-                                >
-                                  Edit Profile
-                                </button>
-                                <button
-                                  type="button"
-                                  className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                                  onClick={() => openRoleEditor(toMemberActionTarget(member))}
-                                >
-                                  Assign Role
-                                </button>
-                                <button
-                                  type="button"
-                                  className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                                  onClick={() => openCompanyEditor(toMemberActionTarget(member))}
-                                >
-                                  Assign Company
-                                </button>
-                              </>
-                            ) : null}
-                            {canDispatchMember(member) ? (
-                              <button
-                                type="button"
-                                className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                                onClick={() => openJobEditor(toMemberActionTarget(member))}
-                              >
-                                Dispatch to Job
-                              </button>
-                            ) : null}
-                            {canManageTeam ? (
-                              <button
-                                type="button"
-                                className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                                onClick={() => openPropertyEditor(toMemberActionTarget(member))}
-                              >
-                                Assign Property
-                              </button>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setMemberActionSheet(toMemberActionTarget(member))}
+                        className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-[var(--accent)]"
+                      >
+                        Manage
+                      </button>
                     ) : null}
                   </div>
 
@@ -1260,89 +1277,22 @@ export default function TeamPage() {
                         </p>
                         <p className="mt-0.5 text-[11px] uppercase tracking-wide text-[var(--muted-foreground)]">
                           {formatRoleLabel(member.role)} · {member.availability}
+                          {member.role === "owner" && member.ownedPropertyCount === 0 ? (
+                            <span className="ml-2 font-semibold text-amber-600">
+                              No properties linked
+                            </span>
+                          ) : null}
                         </p>
                       </div>
-                      <div className="relative" data-team-member-menu>
+                      {canManageTeam || canDispatchMember(member) ? (
                         <button
                           type="button"
-                          className="rounded-md border px-2 py-1 text-sm leading-none"
-                          onClick={() =>
-                            setOpenMenuForUserId((current) =>
-                              current === member._id ? null : member._id,
-                            )
-                          }
-                          aria-haspopup="menu"
-                          aria-expanded={openMenuForUserId === member._id}
+                          onClick={() => setMemberActionSheet(toMemberActionTarget(member))}
+                          className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-[var(--accent)]"
                         >
-                          ⋮
+                          Manage
                         </button>
-                        {openMenuForUserId === member._id ? (
-                          <div className="absolute right-0 top-9 z-20 w-64 rounded-none border bg-[var(--card)] p-2 shadow-lg">
-                            <div className="space-y-1 border-b pb-2 text-xs text-[var(--muted-foreground)]">
-                              <p className="truncate">{member.email || "—"}</p>
-                              <p className="truncate">
-                                {member.companyName
-                                  ? `${member.companyName}${
-                                      member.companyMemberRole
-                                        ? ` · ${formatCompanyRoleLabel(member.companyMemberRole)}`
-                                        : ""
-                                    }`
-                                  : "No company assigned"}
-                              </p>
-                              <p>Quality: {formatQualityScore(member.qualityScore)}</p>
-                              <p>On-Time: {formatPercent(member.onTimePct)}</p>
-                              <p>Assignments: {member.activeAssignmentsCount}</p>
-                            </div>
-                            {canManageTeam || canDispatchMember(member) ? (
-                              <div className="mt-2 grid gap-1">
-                                {canManageTeam ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                      onClick={() => openProfileEditor(toMemberActionTarget(member))}
-                                    >
-                                      Edit Profile
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                      onClick={() => openRoleEditor(toMemberActionTarget(member))}
-                                    >
-                                      Assign Role
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                      onClick={() => openCompanyEditor(toMemberActionTarget(member))}
-                                    >
-                                      Assign Company
-                                    </button>
-                                  </>
-                                ) : null}
-                                {canDispatchMember(member) ? (
-                                  <button
-                                    type="button"
-                                    className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                    onClick={() => openJobEditor(toMemberActionTarget(member))}
-                                  >
-                                    Dispatch to Job
-                                  </button>
-                                ) : null}
-                                {canManageTeam ? (
-                                  <button
-                                    type="button"
-                                    className="w-full rounded-md border px-2 py-1.5 text-left text-xs hover:bg-[var(--accent)]"
-                                    onClick={() => openPropertyEditor(toMemberActionTarget(member))}
-                                  >
-                                    Assign Property
-                                  </button>
-                                ) : null}
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </div>
+                      ) : null}
                     </div>
                   </article>
                 ))}
@@ -1413,6 +1363,11 @@ export default function TeamPage() {
                       ) : null}
                       <td className={`${cellPad} text-[var(--muted-foreground)]`}>
                         {formatRoleLabel(member.role)}
+                        {member.role === "owner" && member.ownedPropertyCount === 0 ? (
+                          <span className="ml-2 text-[11px] font-semibold uppercase tracking-wider text-amber-600">
+                            No properties linked
+                          </span>
+                        ) : null}
                       </td>
                       {groupBy !== "company" ? (
                         <td className={`${cellPad} truncate text-xs`}>
@@ -1666,6 +1621,7 @@ export default function TeamPage() {
                     email: "",
                     role: "cleaner",
                     phone: "",
+                    companyId: "",
                   });
                   setIsCreateOpen(false);
                 } catch (error) {
@@ -1733,6 +1689,27 @@ export default function TeamPage() {
                 />
               </label>
 
+              {newMember.role === "cleaner" || newMember.role === "manager" ? (
+                <label className="block text-sm">
+                  <span className="mb-1 block text-[var(--muted-foreground)]">
+                    Attach to company (optional)
+                  </span>
+                  <SearchableSelect
+                    value={newMember.companyId || null}
+                    onChange={(id) =>
+                      setNewMember((prev) => ({ ...prev, companyId: id ?? "" }))
+                    }
+                    items={[
+                      { id: "", label: "— Skip (assign later) —" },
+                      ...(companies ?? []).map((c) => ({ id: c._id, label: c.name })),
+                    ]}
+                    placeholder="Skip (assign later)"
+                    searchPlaceholder="Search companies…"
+                    aria-label="Company"
+                  />
+                </label>
+              ) : null}
+
               {createError ? (
                 <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
                   {createError}
@@ -1751,67 +1728,72 @@ export default function TeamPage() {
         </div>
       ) : null}
 
-      {memberActionSheet ? (
+      <TeamDetailDrawer
+        member={
+          memberActionSheet
+            ? ({
+                userId: memberActionSheet.userId,
+                name: memberActionSheet.name,
+                email: memberActionSheet.email,
+                avatarUrl: memberActionSheet.avatarUrl,
+                role: memberActionSheet.role,
+                companyId: memberActionSheet.companyId,
+                companyName: memberActionSheet.companyName ?? null,
+                companyMemberRole: memberActionSheet.companyMemberRole,
+              } satisfies DrawerMember)
+            : null
+        }
+        open={!!memberActionSheet}
+        onClose={() => setMemberActionSheet(null)}
+        canManageTeam={canManageTeam}
+        canDispatch={memberActionSheet ? canDispatchMember(memberActionSheet) : false}
+        onEditProfile={() => memberActionSheet && openProfileEditor(memberActionSheet)}
+        onEditRole={() => memberActionSheet && openRoleEditor(memberActionSheet)}
+        onEditCompany={() => memberActionSheet && openCompanyEditor(memberActionSheet)}
+        onDispatchJob={() => memberActionSheet && openJobEditor(memberActionSheet)}
+        onAssignProperty={() => memberActionSheet && openPropertyEditor(memberActionSheet)}
+        onDeleteMember={() => memberActionSheet && openDeleteConfirm(memberActionSheet)}
+        formatRoleLabel={(r) => formatRoleLabel((r as UserRole) ?? "cleaner")}
+        formatCompanyRoleLabel={(r) =>
+          r ? formatCompanyRoleLabel(r as CompanyMemberRole) : "Not visible to any manager"
+        }
+      />
+
+      {deleteTarget ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-xl border bg-[var(--card)] p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-bold">Manage Member</h2>
-              <button
-                className="rounded-md px-2 py-1 text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
-                onClick={() => setMemberActionSheet(null)}
-              >
-                Close
-              </button>
+            <div className="mb-3">
+              <h2 className="text-lg font-bold">Remove team member</h2>
+              <p className="text-sm text-[var(--muted-foreground)]">
+                {deleteTarget.name || deleteTarget.email || "Selected user"}
+              </p>
             </div>
-
             <p className="mb-4 text-sm text-[var(--muted-foreground)]">
-              {memberActionSheet.name || memberActionSheet.email || "Selected user"}
+              This permanently deletes{" "}
+              <span className="font-medium text-[var(--foreground)]">
+                {deleteTarget.name || deleteTarget.email || "this user"}
+              </span>{" "}
+              from the app and their Clerk login. This cannot be undone. If they
+              have cleaning-job history the deletion is blocked — deactivate the
+              account instead.
             </p>
-
-            <div className="grid gap-2">
-              {canManageTeam ? (
-                <>
-                  <button
-                    type="button"
-                    className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                    onClick={() => openProfileEditor(memberActionSheet)}
-                  >
-                    Edit Profile
-                  </button>
-                  <button
-                    type="button"
-                    className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                    onClick={() => openRoleEditor(memberActionSheet)}
-                  >
-                    Edit Role
-                  </button>
-                  <button
-                    type="button"
-                    className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                    onClick={() => openCompanyEditor(memberActionSheet)}
-                  >
-                    Assign Company
-                  </button>
-                </>
-              ) : null}
-              {canDispatchMember(memberActionSheet) ? (
-                <button
-                  type="button"
-                  className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                  onClick={() => openJobEditor(memberActionSheet)}
-                >
-                  Dispatch to Job
-                </button>
-              ) : null}
-              {canManageTeam ? (
-                <button
-                  type="button"
-                  className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-[var(--accent)]"
-                  onClick={() => openPropertyEditor(memberActionSheet)}
-                >
-                  Assign Property
-                </button>
-              ) : null}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={isDeletingMember}
+                className="rounded-md border px-3 py-2 text-sm transition-colors hover:bg-[var(--accent)] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteMember}
+                disabled={isDeletingMember}
+                className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-500/20 disabled:opacity-50 dark:text-red-400"
+              >
+                {isDeletingMember ? "Removing…" : "Remove permanently"}
+              </button>
             </div>
           </div>
         </div>
@@ -1945,6 +1927,38 @@ export default function TeamPage() {
                   aria-label="Role"
                 />
               </label>
+
+              {(() => {
+                const fromDef = getRoleDefinition(roleEditor.role);
+                const toDef = getRoleDefinition(roleDraft);
+                if (!fromDef || !toDef || fromDef.key === toDef.key) return null;
+
+                const tags: string[] = [];
+                if (!fromDef.requiresCompany && toDef.requiresCompany && !roleEditor.companyId)
+                  tags.push("No company assigned");
+                if (!fromDef.requiresProperty && toDef.requiresProperty)
+                  tags.push("No property assigned");
+                if (fromDef.scope === "tenant" && toDef.scope !== "tenant")
+                  tags.push("Loses portfolio access");
+                if (fromDef.requiresCompany && !toDef.requiresCompany && roleEditor.companyId)
+                  tags.push("Company membership ignored");
+                if (toDef.scope === "ownership")
+                  tags.push("Needs ownership rows on a property");
+
+                if (tags.length === 0) return null;
+                return (
+                  <div className="flex flex-wrap gap-1.5">
+                    {tags.map((t) => (
+                      <span
+                        key={t}
+                        className="inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300"
+                      >
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
 
               <button
                 type="submit"

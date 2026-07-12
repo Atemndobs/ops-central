@@ -1,19 +1,29 @@
 import { NextResponse } from "next/server";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { ConvexHttpClient } from "convex/browser";
+import { ConvexError } from "convex/values";
 import { api } from "@convex/_generated/api";
+import type { Id } from "@convex/_generated/dataModel";
 import { z } from "zod";
+import { ROLE_KEYS } from "@/lib/roles";
+
+// This endpoint is upsert — used for both invites AND in-place role updates
+// (the role-editor modal on /team posts here too). Accept every role.
+const ALLOWED_ROLES = ROLE_KEYS;
 
 const createPayloadSchema = z.object({
   email: z.string().email(),
   fullName: z.string().min(2),
-  role: z.union([
-    z.literal("cleaner"),
-    z.literal("manager"),
-    z.literal("property_ops"),
-    z.literal("admin"),
-  ]),
-  phone: z.string().optional(),
+  role: z.enum(ALLOWED_ROLES as [string, ...string[]]),
+  // Treat empty strings as "not provided" — the form sends "" when skipped.
+  phone: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : undefined)),
+  companyId: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : undefined)),
 });
 
 function splitFullName(fullName: string) {
@@ -71,9 +81,14 @@ export async function POST(request: Request) {
     try {
       const json = await request.json();
       payload = createPayloadSchema.parse(json);
-    } catch {
+    } catch (err) {
+      const issues =
+        err instanceof z.ZodError
+          ? err.issues.map((i) => `${i.path.join(".")}: ${i.message}`)
+          : undefined;
+      console.error("team-members POST validation failed", issues ?? err);
       return NextResponse.json(
-        { error: "Invalid request payload." },
+        { error: "Invalid request payload.", issues },
         { status: 400 },
       );
     }
@@ -94,7 +109,7 @@ export async function POST(request: Request) {
         lastName: lastName || undefined,
         publicMetadata: {
           ...(clerkUser.publicMetadata ?? {}),
-          role: payload.role,
+          role: payload.role as (typeof ALLOWED_ROLES)[number],
         },
       });
     } else {
@@ -132,7 +147,7 @@ export async function POST(request: Request) {
           name: payload.fullName,
           email: payload.email,
           phone: payload.phone,
-          role: payload.role,
+          role: payload.role as (typeof ALLOWED_ROLES)[number],
         },
       );
     } else {
@@ -143,9 +158,28 @@ export async function POST(request: Request) {
           email: payload.email,
           name: payload.fullName,
           phone: payload.phone,
-          role: payload.role,
+          role: payload.role as (typeof ALLOWED_ROLES)[number],
         },
       );
+    }
+
+    // Optional company attach
+    let attachedCompanyId: string | null = null;
+    if (payload.companyId && (payload.role === "cleaner" || payload.role === "manager")) {
+      const convexUserAfter = await convex.query(api.users.queries.getByClerkId, {
+        clerkId: clerkUser.id,
+      });
+      if (convexUserAfter?._id) {
+        try {
+          await convex.mutation(api.admin.mutations.assignUserCompanyMembership, {
+            userId: convexUserAfter._id as never,
+            companyId: payload.companyId as never,
+          });
+          attachedCompanyId = payload.companyId;
+        } catch (e) {
+          console.error("Failed to attach new user to company", e);
+        }
+      }
     }
 
     return NextResponse.json({
@@ -153,10 +187,115 @@ export async function POST(request: Request) {
       clerkUserId: clerkUser.id,
       email: payload.email,
       role: payload.role,
+      companyId: attachedCompanyId,
     });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to create team member.";
     return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+const deletePayloadSchema = z.object({
+  userId: z.string().min(1),
+});
+
+/**
+ * Permanently remove a team member.
+ *
+ * Order matters: Convex deletes FIRST (its reference check refuses to
+ * orphan operational history and is transactional), and only if that
+ * succeeds do we delete the identity from Clerk. If the Clerk delete
+ * fails we still return success for the Convex removal but surface a
+ * warning so the admin can finish the job in the Clerk dashboard.
+ */
+export async function DELETE(request: Request) {
+  const { userId, getToken } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+  if (!convexUrl) {
+    return NextResponse.json(
+      { error: "Missing NEXT_PUBLIC_CONVEX_URL." },
+      { status: 500 },
+    );
+  }
+
+  const convex = new ConvexHttpClient(convexUrl);
+  const convexToken =
+    (await getToken({ template: "convex" }).catch(() => null)) ??
+    (await getToken());
+  if (!convexToken) {
+    return NextResponse.json(
+      { error: "Unable to authenticate with Convex." },
+      { status: 401 },
+    );
+  }
+  convex.setAuth(convexToken);
+
+  let payload: z.infer<typeof deletePayloadSchema>;
+  try {
+    payload = deletePayloadSchema.parse(await request.json());
+  } catch {
+    return NextResponse.json(
+      { error: "A userId is required to delete a team member." },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const requesterProfile = await convex.query(
+      api.users.queries.getMyProfile,
+      {},
+    );
+    if (
+      process.env.NODE_ENV !== "development" &&
+      requesterProfile.role !== "admin"
+    ) {
+      return NextResponse.json(
+        { error: "Only admins can delete team members." },
+        { status: 403 },
+      );
+    }
+
+    // 1) Convex removal — reference-safe, transactional. Throws if blocked.
+    const result = await convex.mutation(api.admin.mutations.deleteUser, {
+      userId: payload.userId as Id<"users">,
+    });
+
+    // 2) Best-effort Clerk identity removal.
+    let clerkDeleted = false;
+    let clerkWarning: string | undefined;
+    if (result.clerkId) {
+      try {
+        const client = await clerkClient();
+        await client.users.deleteUser(result.clerkId);
+        clerkDeleted = true;
+      } catch (clerkError) {
+        clerkWarning =
+          "Removed from the app, but the Clerk login could not be deleted. " +
+          "Remove them manually in the Clerk dashboard.";
+        console.error("Clerk user delete failed", clerkError);
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      clerkDeleted,
+      clerkWarning,
+      name: result.name,
+      email: result.email,
+    });
+  } catch (error) {
+    // ConvexError carries the human-readable reason in `.data`.
+    const message =
+      error instanceof ConvexError
+        ? String(error.data)
+        : error instanceof Error
+          ? error.message
+          : "Failed to delete team member.";
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }

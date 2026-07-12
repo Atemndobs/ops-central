@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import { mutation } from "../_generated/server";
+import { mutation, internalMutation, type MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { type Doc, type Id } from "../_generated/dataModel";
 import { requireRole } from "../lib/auth";
@@ -176,6 +176,8 @@ export const updateUser = mutation({
     phone: v.optional(v.string()),
     avatarUrl: v.optional(v.string()),
     role: v.optional(appRoleValidator),
+    // Owner's company for the Chez Soi Stays statement (empty string clears it).
+    company: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireRole(ctx, ["admin"]);
@@ -214,6 +216,10 @@ export const updateUser = mutation({
     }
     if (fields.role !== undefined) {
       updates.role = fields.role;
+    }
+    if (fields.company !== undefined) {
+      const normalizedCompany = fields.company.trim();
+      updates.company = normalizedCompany.length > 0 ? normalizedCompany : undefined;
     }
 
     if (nextMetadata !== user.metadata) {
@@ -696,5 +702,293 @@ export const upsertUserFromClerkWebhook = mutation({
       userId,
       created: true,
     };
+  },
+});
+
+/**
+ * Ops one-off: set (or clear) an owner's statement company by email. Internal —
+ * not client-callable; run via `npx convex run admin/mutations:setOwnerCompanyByEmail`.
+ * Used to backfill owner companies (e.g. Randalls → "J&A Business Solutions LLC").
+ */
+export const setOwnerCompanyByEmail = internalMutation({
+  args: { email: v.string(), company: v.string() },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", args.email))
+      .first();
+    if (!user) throw new ConvexError(`No user with email ${args.email}`);
+    const company = args.company.trim();
+    await ctx.db.patch(user._id, {
+      company: company.length > 0 ? company : undefined,
+      updatedAt: Date.now(),
+    });
+    return { userId: user._id, name: user.name ?? null, company: company || null };
+  },
+});
+
+type RemoveUserResult =
+  | {
+      deleted: true;
+      clerkId: string;
+      name: string | null;
+      email: string | null;
+      cascaded: {
+        userRoles: number;
+        companyMemberships: number;
+        notifications: number;
+        propertyOpsAssignments: number;
+      };
+    }
+  | { deleted: false; blockers: string[] };
+
+/**
+ * Reference-safe removal of a user document, shared by the admin delete
+ * mutation and the Clerk `user.deleted` webhook.
+ *
+ * Refuses to delete a user who still carries operational HISTORY (cleaning
+ * jobs, incidents, uploaded photos, stock/inventory checks, an owned
+ * cleaning company, a property-ownership stake, or actions taken ON other
+ * users such as granting roles / assigning properties) — deleting those
+ * would orphan records that point at the user. When there is no such
+ * history, the user's own trivia rows (personal role rows, company
+ * memberships, notifications, property-ops assignments where they are the
+ * subject) are cascaded away and the user document is deleted.
+ *
+ * Returns `{ deleted: false, blockers }` instead of throwing so each caller
+ * can decide how to surface the refusal (the mutation throws; the webhook
+ * no-ops). Never touches Clerk — external calls aren't allowed in a
+ * mutation, so Clerk deletion is orchestrated by the API route.
+ */
+async function removeUserRecord(
+  ctx: MutationCtx,
+  userId: Id<"users">,
+): Promise<RemoveUserResult> {
+  const target = await ctx.db.get(userId);
+  if (!target) {
+    return { deleted: false, blockers: ["user no longer exists"] };
+  }
+
+  const blockers: string[] = [];
+
+  // --- Blocking references: real operational history ---
+  const ownedCompanies = await ctx.db
+    .query("cleaningCompanies")
+    .withIndex("by_owner", (q) => q.eq("ownerId", userId))
+    .collect();
+  if (ownedCompanies.length > 0) {
+    blockers.push(`${ownedCompanies.length} owned company(ies)`);
+  }
+
+  const allJobs = await ctx.db.query("cleaningJobs").collect();
+  const jobRefs = allJobs.filter(
+    (job) =>
+      job.assignedCleanerIds.includes(userId) ||
+      job.assignedManagerId === userId ||
+      job.approvedBy === userId ||
+      job.rejectedBy === userId,
+  ).length;
+  if (jobRefs > 0) {
+    blockers.push(`${jobRefs} cleaning job link(s)`);
+  }
+
+  const allIncidents = await ctx.db.query("incidents").collect();
+  const incidentRefs = allIncidents.filter(
+    (row) => row.reportedBy === userId || row.resolvedBy === userId,
+  ).length;
+  if (incidentRefs > 0) {
+    blockers.push(`${incidentRefs} incident link(s)`);
+  }
+
+  const allPhotos = await ctx.db.query("photos").collect();
+  const photoRefs = allPhotos.filter((row) => row.uploadedBy === userId).length;
+  if (photoRefs > 0) {
+    blockers.push(`${photoRefs} uploaded photo(s)`);
+  }
+
+  const allStockChecks = await ctx.db.query("stockChecks").collect();
+  const stockRefs = allStockChecks.filter(
+    (row) => row.checkedBy === userId,
+  ).length;
+  if (stockRefs > 0) {
+    blockers.push(`${stockRefs} stock check(s)`);
+  }
+
+  const allInventoryItems = await ctx.db.query("inventoryItems").collect();
+  const inventoryRefs = allInventoryItems.filter(
+    (row) => row.lastCheckedBy === userId,
+  ).length;
+  if (inventoryRefs > 0) {
+    blockers.push(`${inventoryRefs} inventory check(s)`);
+  }
+
+  const propertyOwnerRows = await ctx.db
+    .query("propertyOwners")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  if (propertyOwnerRows.length > 0) {
+    blockers.push(`${propertyOwnerRows.length} property-ownership stake(s)`);
+  }
+
+  // Actions taken ON other users (would orphan someone else's record).
+  const allUserRoles = await ctx.db.query("userRoles").collect();
+  const grantedByRefs = allUserRoles.filter(
+    (row) => row.grantedBy === userId,
+  ).length;
+  if (grantedByRefs > 0) {
+    blockers.push(`${grantedByRefs} role(s) they granted to others`);
+  }
+
+  const allCompanyProperties = await ctx.db
+    .query("companyProperties")
+    .collect();
+  const companyPropAssignedBy = allCompanyProperties.filter(
+    (row) => row.assignedBy === userId,
+  ).length;
+  if (companyPropAssignedBy > 0) {
+    blockers.push(`${companyPropAssignedBy} property-to-company assignment(s)`);
+  }
+
+  const allPropertyOps = await ctx.db
+    .query("propertyOpsAssignments")
+    .collect();
+  const opsAssignedBy = allPropertyOps.filter(
+    (row) => row.assignedBy === userId,
+  ).length;
+  if (opsAssignedBy > 0) {
+    blockers.push(`${opsAssignedBy} property-ops assignment(s) they made`);
+  }
+
+  if (blockers.length > 0) {
+    return { deleted: false, blockers };
+  }
+
+  // --- Safe cascade: the user's own trivia rows ---
+  const ownRoleRows = allUserRoles.filter((row) => row.userId === userId);
+  for (const row of ownRoleRows) {
+    await ctx.db.delete(row._id);
+  }
+
+  const ownMemberships = await ctx.db
+    .query("companyMembers")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  for (const row of ownMemberships) {
+    await ctx.db.delete(row._id);
+  }
+
+  const ownNotifications = await ctx.db
+    .query("notifications")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  for (const row of ownNotifications) {
+    await ctx.db.delete(row._id);
+  }
+
+  const ownOpsAssignments = allPropertyOps.filter(
+    (row) => row.userId === userId,
+  );
+  for (const row of ownOpsAssignments) {
+    await ctx.db.delete(row._id);
+  }
+
+  const clerkId = target.clerkId;
+  await ctx.db.delete(userId);
+
+  return {
+    deleted: true,
+    clerkId,
+    name: target.name ?? null,
+    email: target.email ?? null,
+    cascaded: {
+      userRoles: ownRoleRows.length,
+      companyMemberships: ownMemberships.length,
+      notifications: ownNotifications.length,
+      propertyOpsAssignments: ownOpsAssignments.length,
+    },
+  };
+}
+
+/**
+ * Permanently delete a team member from Convex. Admin-only.
+ *
+ * Throws a ConvexError (surfaced to the admin) when the user still has
+ * operational history. Returns the Clerk ID on success so the calling API
+ * route can also delete the identity from Clerk
+ * (see src/app/api/team-members/route.ts DELETE).
+ */
+export const deleteUser = mutation({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const actor = await requireRole(ctx, ["admin"]);
+
+    const target = await ctx.db.get(args.userId);
+    if (!target) {
+      throw new ConvexError("User not found.");
+    }
+    if (target._id === actor._id) {
+      throw new ConvexError(
+        "You cannot delete your own account from the admin UI.",
+      );
+    }
+
+    const displayName = target.name ?? target.email ?? "this user";
+    const result = await removeUserRecord(ctx, args.userId);
+
+    if (!result.deleted) {
+      throw new ConvexError(
+        `Can't delete ${displayName} — they still have ${result.blockers.join(", ")}. ` +
+          `Deleting would orphan that history. Deactivate the account or change ` +
+          `their role instead, or reassign the work first.`,
+      );
+    }
+
+    return {
+      success: true,
+      clerkId: result.clerkId,
+      name: result.name,
+      email: result.email,
+      cascaded: result.cascaded,
+    };
+  },
+});
+
+/**
+ * Convex-side handler for Clerk's `user.deleted` webhook. Authenticated by
+ * the shared webhook token (the browser client is never involved). Finds
+ * the Convex user by Clerk ID and removes it if reference-safe; if the user
+ * still has operational history the row is KEPT (returned as `ignored`) so
+ * nothing is orphaned — an admin can reconcile it manually.
+ */
+export const deleteUserFromClerkWebhook = mutation({
+  args: { clerkId: v.string(), webhookToken: v.string() },
+  handler: async (ctx, args) => {
+    const expectedWebhookToken = process.env.CLERK_WEBHOOK_SYNC_TOKEN;
+    if (!expectedWebhookToken) {
+      throw new ConvexError(
+        "CLERK_WEBHOOK_SYNC_TOKEN is not configured in Convex.",
+      );
+    }
+    if (args.webhookToken !== expectedWebhookToken) {
+      throw new ConvexError("Invalid webhook token.");
+    }
+
+    const target = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+    if (!target) {
+      return { deleted: false, reason: "not_found" as const };
+    }
+
+    const result = await removeUserRecord(ctx, target._id);
+    if (!result.deleted) {
+      return {
+        deleted: false,
+        reason: "has_history" as const,
+        blockers: result.blockers,
+      };
+    }
+    return { deleted: true, name: result.name, email: result.email };
   },
 });

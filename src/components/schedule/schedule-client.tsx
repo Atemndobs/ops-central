@@ -15,8 +15,6 @@ import {
   EyeOff,
   Filter,
   Loader2,
-  Maximize2,
-  Minimize2,
   Search,
   Star,
   UserPlus,
@@ -122,14 +120,28 @@ export function ScheduleClient() {
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
 
   // --- Range & navigation ---
+  // Rolling calendar (Hospitable-style): the week is anchored on TODAY rather
+  // than snapping to Monday, so the current day is always the left-most column
+  // and the board rolls forward day by day.
   const [rangeMode, setRangeMode] = useState<"week" | "month" | "custom">("week");
-  const [rangeStart, setRangeStart] = useState(() => startOfWeek(new Date()));
-  const [rangeEnd, setRangeEnd] = useState(() => addDays(startOfWeek(new Date()), 6));
-  const [sliderValue, setSliderValue] = useState(0);
+  const [rangeStart, setRangeStart] = useState(() => startOfDay(new Date()));
+  const [rangeEnd, setRangeEnd] = useState(() => addDays(startOfDay(new Date()), 6));
 
-  // --- Day count (3 or 7) ---
-  const [dayCount, setDayCount] = useState<3 | 7>(7);
-  const visibleDaysCount = dayCount;
+  // `todayStart` drives the "today" column highlight and moves at midnight so
+  // the marker (and, when still anchored, the whole rolling window) advances
+  // with the day without a manual refresh.
+  const [todayStart, setTodayStart] = useState(() => startOfDay(new Date()));
+  const todayKey = dateKeyFn(todayStart);
+
+  // --- Grid scroll (smooth slider) ---
+  // The grid renders the WHOLE range as fixed-width columns inside a
+  // horizontally-scrollable section; ~a week is visible at once and the rest
+  // scrolls smoothly (native scroll — no per-day snapping). `gridWidth` drives
+  // responsive column widths; `scrollLeft`/`maxScroll` back the slider control.
+  const gridScrollRef = useRef<HTMLDivElement | null>(null);
+  const [gridWidth, setGridWidth] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
+  const [maxScroll, setMaxScroll] = useState(0);
 
   // --- Filters ---
   const [search, setSearch] = useState("");
@@ -161,7 +173,6 @@ export function ScheduleClient() {
 
   // --- Desktop toggles ---
   const [isCleanerPanelVisible, setIsCleanerPanelVisible] = useState(false);
-  const [isGridFitMode, setIsGridFitMode] = useState(false);
 
   // --- Mobile-specific ---
   const [mobileTab, setMobileTab] = useState<"schedule" | "team">("schedule");
@@ -179,15 +190,60 @@ export function ScheduleClient() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (window.innerWidth < 768) {
-      setDayCount(3);
+      // Narrow viewport: use initials labels to free width. The number of
+      // visible day columns is now derived from the measured grid width
+      // (see `visibleSpan`), so no day-count/fit toggles are needed here.
       setPropertyLabelMode("initials");
-      // Without grid-fit mode, day columns have `minmax(120px, 1fr)` which
-      // overflows a 360px viewport (40px col + 3*120px = 400px). Fit mode
-      // drops the floor so the 3 columns share the available width.
-      setIsGridFitMode(true);
     }
     // Intentional: empty dep array → mount-only. Don't react to resize.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // --- Midnight roll-over (2026-07-10) ---
+  // "Move with the day" like Hospitable: at local midnight, advance the today
+  // marker and — if the board is still a rolling week anchored on the previous
+  // day — roll the visible window forward one day. If the user has navigated
+  // away (browsing a future week or a month), we only move the marker, never
+  // yank their view. Refs keep the timer callback free of stale closures.
+  const rangeModeRef = useRef(rangeMode);
+  const rangeStartRef = useRef(rangeStart);
+  const todayStartRef = useRef(todayStart);
+  useEffect(() => {
+    rangeModeRef.current = rangeMode;
+  }, [rangeMode]);
+  useEffect(() => {
+    rangeStartRef.current = rangeStart;
+  }, [rangeStart]);
+  useEffect(() => {
+    todayStartRef.current = todayStart;
+  }, [todayStart]);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const scheduleMidnight = () => {
+      const now = new Date();
+      const nextMidnight = new Date(now);
+      nextMidnight.setHours(24, 0, 0, 0);
+      // +500ms cushion so we're safely past midnight when the timer fires.
+      const ms = nextMidnight.getTime() - now.getTime() + 500;
+      timer = setTimeout(() => {
+        const prevToday = todayStartRef.current;
+        const newToday = startOfDay(new Date());
+        setTodayStart(newToday);
+        // Only re-anchor if we're a rolling week that was still sitting on the
+        // old "today" — i.e. the user hasn't navigated away.
+        if (
+          rangeModeRef.current === "week" &&
+          dateKeyFn(rangeStartRef.current) === dateKeyFn(prevToday)
+        ) {
+          setRangeStart(newToday);
+          setRangeEnd(addDays(newToday, 6));
+        }
+        scheduleMidnight();
+      }, ms);
+    };
+    scheduleMidnight();
+    return () => clearTimeout(timer);
+    // Mount-only: the callback reads live values via refs.
   }, []);
 
   // --- Quick assign ---
@@ -269,18 +325,34 @@ export function ScheduleClient() {
   }, [taskAvatarRange]);
   const taskCellAnchor = (day: Date) =>
     Date.UTC(day.getFullYear(), day.getMonth(), day.getDate());
-  const summaryFor = (cellKey: string, day: Date) =>
-    taskCellSummaries.get(`${cellKey}@${taskCellAnchor(day)}`);
+  // Shared empty summary for in-range days that have no tasks. Handing this to
+  // the overlay (instead of `undefined`) makes it skip its per-cell eager
+  // query — critical for month view, which renders ~30 columns × N properties.
+  const emptyCellSummary = useMemo(
+    () => ({
+      assignees: [] as Array<{
+        _id: Id<"users">;
+        name?: string;
+        email?: string;
+        avatarUrl?: string | null;
+      }>,
+      unassignedCount: 0,
+      openCount: 0,
+    }),
+    [],
+  );
+  const summaryFor = (cellKey: string, day: Date) => {
+    const hit = taskCellSummaries.get(`${cellKey}@${taskCellAnchor(day)}`);
+    if (hit) return hit;
+    // Batched range query has loaded → a missing cell is authoritatively empty.
+    if (taskAvatarRange?.cells) return emptyCellSummary;
+    return undefined;
+  };
 
   // --- Computed: days ---
+  // Render the WHOLE range as columns; horizontal scroll (not a windowed
+  // slice) reveals the rest, so sliding is smooth instead of day-by-day.
   const rangeDays = useMemo(() => listDaysBetween(rangeStart, rangeEnd), [rangeEnd, rangeStart]);
-  const maxDayOffset = Math.max(0, rangeDays.length - visibleDaysCount);
-  const clampedSliderValue = Math.max(0, Math.min(maxDayOffset, sliderValue));
-  const effectiveDayOffset = Math.round(clampedSliderValue);
-  const visibleDays = useMemo(
-    () => rangeDays.slice(effectiveDayOffset, effectiveDayOffset + visibleDaysCount),
-    [effectiveDayOffset, rangeDays, visibleDaysCount],
-  );
 
   // --- Computed: city options (from properties) ---
   const cityOptions = useMemo(() => {
@@ -352,7 +424,7 @@ export function ScheduleClient() {
     const active: typeof filteredProperties = [];
     const idle: typeof filteredProperties = [];
     for (const p of filteredProperties) {
-      const hasJobs = visibleDays.some((day) => {
+      const hasJobs = rangeDays.some((day) => {
         const key = `${p._id}-${dateKeyFn(day)}`;
         return (jobsByCell.get(key)?.length ?? 0) > 0;
       });
@@ -363,7 +435,7 @@ export function ScheduleClient() {
       }
     }
     return { activeProperties: active, idleProperties: idle };
-  }, [filteredProperties, visibleDays, jobsByCell]);
+  }, [filteredProperties, rangeDays, jobsByCell]);
 
   // --- Computed: cleaner loads ---
   const cleanerLoads = useMemo(() => {
@@ -385,36 +457,124 @@ export function ScheduleClient() {
   }, [cleaners, jobs, rangeEndExclusiveTime, rangeStartTime]);
 
   const loading = isAuthLoading || !properties || !jobs || !cleaners;
-  const showCleanerPanel = isCleanerPanelVisible && !isGridFitMode;
+  const showCleanerPanel = isCleanerPanelVisible;
 
   // --- Grid column sizing ---
-  const propertyColWidth =
-    propertyLabelMode === "hidden"
-      ? "0px"
-      : propertyLabelMode === "initials"
-        ? "40px"
-        : dayCount <= 3
-          ? "180px"
-          : "160px";
+  // Fixed-width day columns sized so that ~a week (`visibleSpan`) fills the
+  // measured grid width. Week view has exactly `visibleSpan` columns → fills,
+  // no scroll. Month view has ~30 columns → overflows → smooth native scroll.
+  const propColPxNum =
+    propertyLabelMode === "hidden" ? 0 : propertyLabelMode === "initials" ? 40 : 160;
+  const isNarrow = gridWidth > 0 && gridWidth < 700;
+  const visibleSpan = isNarrow ? 3 : 7;
+  const dayColPx =
+    gridWidth > 0
+      ? Math.max(isNarrow ? 68 : 116, Math.floor((gridWidth - propColPxNum) / visibleSpan))
+      : 140;
+  // Narrow columns can't fit full job cards → fall back to the compact dot view.
+  const compactCells = dayColPx < 104;
+  const scheduleGridTemplateColumns = `${
+    propertyLabelMode === "hidden" ? "" : `${propColPxNum}px `
+  }repeat(${Math.max(1, rangeDays.length)}, ${dayColPx}px)`;
 
-  // On desktop, always use comfortable column widths for full job cards
-  // On mobile with 7-day, use compact 40px columns for dot view
-  const scheduleGridTemplateColumns = isGridFitMode
-    ? `${propertyLabelMode === "hidden" ? "" : `${propertyColWidth} `}repeat(${Math.max(1, visibleDays.length)}, minmax(0, 1fr))`
-    : `${propertyColWidth} repeat(${Math.max(1, visibleDays.length)}, minmax(120px, 1fr))`;
+  // Measure the grid width (drives column sizing) and keep scroll bounds fresh.
+  useEffect(() => {
+    const el = gridScrollRef.current;
+    if (!el) return;
+    const measure = () => {
+      setGridWidth(el.clientWidth);
+      setMaxScroll(Math.max(0, el.scrollWidth - el.clientWidth));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Recompute scroll bounds whenever the rendered columns change.
+  useEffect(() => {
+    const el = gridScrollRef.current;
+    if (!el) return;
+    setMaxScroll(Math.max(0, el.scrollWidth - el.clientWidth));
+  }, [rangeDays.length, dayColPx, propColPxNum]);
+
+  const handleGridScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    setScrollLeft(event.currentTarget.scrollLeft);
+  };
+
+  // --- Drag-to-pan on the date header (mouse only) ---
+  // Click-and-hold anywhere on the date-title row and drag left/right to slide
+  // through the month — same effect as the slider. Touch is left to native
+  // scrolling (pointer drag would double-move it), and this lives on the header
+  // row only, so job cells in the property rows stay clickable.
+  const headerDrag = useRef<{ startX: number; startScroll: number; active: boolean }>({
+    startX: 0,
+    startScroll: 0,
+    active: false,
+  });
+  const handleHeaderPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    const el = gridScrollRef.current;
+    if (!el || maxScroll <= 1 || event.pointerType !== "mouse") return;
+    headerDrag.current = { startX: event.clientX, startScroll: el.scrollLeft, active: true };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  };
+  const handleHeaderPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = headerDrag.current;
+    const el = gridScrollRef.current;
+    if (!drag.active || !el) return;
+    el.scrollLeft = drag.startScroll - (event.clientX - drag.startX);
+  };
+  const handleHeaderPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!headerDrag.current.active) return;
+    headerDrag.current.active = false;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  };
+
+  // Nudge scroll by ~a week when the edge arrows are clicked.
+  const scrollByPage = (direction: -1 | 1) => {
+    const el = gridScrollRef.current;
+    if (!el) return;
+    const page = Math.max(dayColPx, el.clientWidth - propColPxNum) * 0.9;
+    el.scrollBy({ left: direction * page, behavior: "smooth" });
+  };
+  const canScrollLeft = scrollLeft > 2;
+  const canScrollRight = scrollLeft < maxScroll - 2;
+
+  // Center today's column in the day viewport (used on month entry so the
+  // "today" week is visible instead of the 1st of the month).
+  const centerTodayInView = useCallback(() => {
+    const el = gridScrollRef.current;
+    if (!el || dayColPx <= 0) return;
+    const idx = daysBetween(rangeStart, todayStart);
+    if (idx < 0 || idx >= rangeDays.length) return; // today not in this range
+    const propW = propertyLabelMode === "hidden" ? 0 : propColPxNum;
+    const dayViewport = el.clientWidth - propW;
+    const target = idx * dayColPx - Math.max(0, (dayViewport - dayColPx) / 2);
+    const clamped = Math.max(0, Math.min(el.scrollWidth - el.clientWidth, target));
+    el.scrollTo({ left: clamped, behavior: "auto" });
+    setScrollLeft(clamped);
+  }, [dayColPx, propColPxNum, propertyLabelMode, rangeDays.length, rangeStart, todayStart]);
+
+  // On entering month view (or when its layout settles), snap to today's week.
+  useEffect(() => {
+    if (rangeMode !== "month") return;
+    const id = requestAnimationFrame(() => centerTodayInView());
+    return () => cancelAnimationFrame(id);
+  }, [rangeMode, rangeStart, dayColPx, gridWidth, centerTodayInView]);
 
   // --- Navigation helpers ---
   const applyWeekRange = (baseDate: Date) => {
-    const nextStart = startOfWeek(baseDate);
+    // Rolling week: anchor on the given day (today, when called from "Today")
+    // instead of snapping back to Monday.
+    const nextStart = startOfDay(baseDate);
     setRangeStart(nextStart);
     setRangeEnd(addDays(nextStart, 6));
-    setSliderValue(0);
   };
 
   const applyMonthRange = (baseDate: Date) => {
     setRangeStart(startOfMonth(baseDate));
     setRangeEnd(endOfMonth(baseDate));
-    setSliderValue(0);
   };
 
   const shiftRange = (direction: -1 | 1) => {
@@ -426,7 +586,27 @@ export function ScheduleClient() {
     const deltaDays = direction * (rangeMode === "week" ? 7 : spanDays);
     setRangeStart((current) => addDays(current, deltaDays));
     setRangeEnd((current) => addDays(current, deltaDays));
-    setSliderValue(0);
+  };
+
+  // Explicit view switch (Week | Month segmented control). Both land on the
+  // period containing today; month view then centers on today via effect.
+  const selectView = (mode: "week" | "month") => {
+    setRangeMode(mode);
+    if (mode === "month") {
+      applyMonthRange(new Date());
+    } else {
+      applyWeekRange(new Date());
+    }
+  };
+
+  const goToToday = () => {
+    if (rangeMode === "month") {
+      applyMonthRange(new Date());
+      requestAnimationFrame(() => centerTodayInView());
+    } else {
+      setRangeMode("week");
+      applyWeekRange(new Date());
+    }
   };
 
   const handleQuickAssign = async (
@@ -469,19 +649,14 @@ export function ScheduleClient() {
     touchStartY.current = e.touches[0].clientY;
   }, []);
 
-  const handleTouchEnd = useCallback(
-    (e: React.TouchEvent) => {
-      const deltaX = e.changedTouches[0].clientX - touchStartX.current;
-      const deltaY = e.changedTouches[0].clientY - touchStartY.current;
-      if (Math.abs(deltaX) < 50 || Math.abs(deltaY) > Math.abs(deltaX)) return;
-      if (deltaX < 0) {
-        setSliderValue((v) => Math.min(maxDayOffset, v + 1));
-      } else {
-        setSliderValue((v) => Math.max(0, v - 1));
-      }
-    },
-    [maxDayOffset],
-  );
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const deltaX = e.changedTouches[0].clientX - touchStartX.current;
+    const deltaY = e.changedTouches[0].clientY - touchStartY.current;
+    if (Math.abs(deltaX) < 50 || Math.abs(deltaY) > Math.abs(deltaX)) return;
+    // Month view scrolls horizontally on its own; only week view pages here.
+    if (rangeMode !== "week") return;
+    shiftRange(deltaX < 0 ? 1 : -1);
+  };
 
   // --- Render helpers ---
   const renderPropertyCell = (property: { _id: string; name: string; address: string; status?: unknown }) => {
@@ -523,10 +698,16 @@ export function ScheduleClient() {
 
   const renderJobCell = (cellJobs: JobWithRelations[], propertyId: string, day: Date) => {
     const key = `${propertyId}-${dateKeyFn(day)}`;
+    // Continue the "today" column down every row: a violet left-edge line + a
+    // faint tint so the current day reads as one highlighted column.
+    const isToday = dateKeyFn(day) === todayKey;
+    const cellEdgeClass = isToday
+      ? "border-l-2 border-l-violet-500 bg-violet-500/[0.06]"
+      : "border-l";
 
     if (cellJobs.length === 0) {
       return (
-        <div key={key} className="relative h-10 border-l sm:h-16">
+        <div key={key} className={`relative h-10 sm:h-16 ${cellEdgeClass}`}>
           <ScheduleCellTaskOverlay mineOnly={mineOnly} myUserId={myUserId} summary={summaryFor(propertyId, day)}
             propertyId={propertyId as Id<"properties">}
             day={day}
@@ -537,9 +718,9 @@ export function ScheduleClient() {
     }
 
     // 7-day compact mode: dots on mobile only, desktop always shows full cards
-    if (dayCount === 7) {
+    if (compactCells) {
       return (
-        <div key={key} className="relative border-l">
+        <div key={key} className={`relative ${cellEdgeClass}`}>
           <div className="md:hidden">
             <ScheduleCellTaskOverlay mineOnly={mineOnly} myUserId={myUserId} summary={summaryFor(propertyId, day)}
               propertyId={propertyId as Id<"properties">}
@@ -675,7 +856,7 @@ export function ScheduleClient() {
 
     // 3-day mode: full job cards
     return (
-      <div key={key} className="space-y-1 border-l p-1 sm:p-2">
+      <div key={key} className={`space-y-1 p-1 sm:p-2 ${cellEdgeClass}`}>
         {cellJobs.slice(0, 3).map((job) => {
           const availableAssignment = assignableByPropertyMap.get(job.propertyId);
           const companyCleaners = availableAssignment?.cleaners ?? [];
@@ -790,28 +971,34 @@ export function ScheduleClient() {
       <header className="rounded-2xl border bg-[var(--card)] px-3 py-2 sm:px-4 sm:py-2.5">
         {/* Single row: everything on one line */}
         <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* Cycling mode button: Today → Week → Month → Today … */}
+          {/* Today */}
           <button
             className="shrink-0 rounded-md border px-2 py-1 text-xs font-semibold hover:bg-[var(--accent)] sm:px-3 sm:py-1.5 sm:text-sm"
-            onClick={() => {
-              if (rangeMode === "week") {
-                // Week → jump to today first, then switch to month
-                applyMonthRange(new Date());
-                setRangeMode("month");
-              } else if (rangeMode === "month") {
-                // Month → Today (week, current week)
-                setRangeMode("week");
-                applyWeekRange(new Date());
-              } else {
-                // custom / anything else → Today
-                setRangeMode("week");
-                applyWeekRange(new Date());
-              }
-            }}
-            title="Cycle: Today → Month → Today"
+            onClick={goToToday}
+            title="Jump to today"
           >
-            {rangeMode === "month" ? "Month" : "Today"}
+            Today
           </button>
+
+          {/* Week | Month view switcher */}
+          <div className="flex shrink-0 overflow-hidden rounded-md border text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => selectView("week")}
+              className={cn("px-2 py-1 sm:px-3 sm:py-1.5", rangeMode === "week" ? "bg-[var(--accent)]" : "hover:bg-[var(--accent)]")}
+              aria-pressed={rangeMode === "week"}
+            >
+              Week
+            </button>
+            <button
+              type="button"
+              onClick={() => selectView("month")}
+              className={cn("border-l px-2 py-1 sm:px-3 sm:py-1.5", rangeMode === "month" ? "bg-[var(--accent)]" : "hover:bg-[var(--accent)]")}
+              aria-pressed={rangeMode === "month"}
+            >
+              Month
+            </button>
+          </div>
 
           <button className="rounded-md p-1 hover:bg-[var(--accent)] sm:p-1.5" onClick={() => shiftRange(-1)} aria-label="Previous">
             <ChevronLeft className="h-4 w-4" />
@@ -819,7 +1006,7 @@ export function ScheduleClient() {
           <button className="rounded-md p-1 hover:bg-[var(--accent)] sm:p-1.5" onClick={() => shiftRange(1)} aria-label="Next">
             <ChevronRight className="h-4 w-4" />
           </button>
-          <span className="truncate px-1 text-xs font-semibold text-[var(--muted-foreground)] sm:px-2 sm:text-sm">
+          <span className="min-w-0 truncate px-1 text-xs font-semibold text-[var(--muted-foreground)] sm:px-2 sm:text-sm">
             {formatRange(rangeStart, rangeEnd)}
           </span>
 
@@ -837,7 +1024,6 @@ export function ScheduleClient() {
                 setRangeEnd((current) =>
                   startOfDay(current).getTime() < normalizedStart.getTime() ? normalizedStart : current,
                 );
-                setSliderValue(0);
               }}
               className="bg-transparent text-xs outline-none"
               aria-label="Range start date"
@@ -855,7 +1041,6 @@ export function ScheduleClient() {
                 setRangeStart((current) =>
                   startOfDay(current).getTime() > normalizedEnd.getTime() ? normalizedEnd : current,
                 );
-                setSliderValue(0);
               }}
               className="bg-transparent text-xs outline-none"
               aria-label="Range end date"
@@ -899,9 +1084,9 @@ export function ScheduleClient() {
               />
             </div>
 
-            {/* Tasks: mine-only toggle */}
+            {/* Tasks: mine-only toggle (desktop; moved into the filter sheet on mobile) */}
             <label
-              className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-semibold transition ${
+              className={`hidden shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-semibold transition md:inline-flex ${
                 mineOnly
                   ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]"
                   : "bg-[var(--card)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
@@ -931,40 +1116,11 @@ export function ScheduleClient() {
               <Users className="h-3.5 w-3.5" />
             </button>
 
-            {/* Day count toggle */}
-            <div className="flex overflow-hidden rounded-md border text-[10px] font-semibold sm:text-xs">
-              <button
-                type="button"
-                onClick={() => setDayCount(3)}
-                className={cn("px-2 py-1", dayCount === 3 ? "bg-[var(--accent)]" : "hover:bg-[var(--accent)]")}
-              >
-                3d
-              </button>
-              <button
-                type="button"
-                onClick={() => setDayCount(7)}
-                className={cn("border-l px-2 py-1", dayCount === 7 ? "bg-[var(--accent)]" : "hover:bg-[var(--accent)]")}
-              >
-                7d
-              </button>
-            </div>
-
-            {/* Fit screen (desktop) */}
-            <button
-              type="button"
-              onClick={() => setIsGridFitMode((prev) => !prev)}
-              className="hidden items-center gap-1 rounded-md border px-2 py-1 text-xs hover:bg-[var(--accent)] md:inline-flex"
-              aria-pressed={isGridFitMode}
-            >
-              {isGridFitMode ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-              {isGridFitMode ? "Normal" : "Fit"}
-            </button>
-
-            {/* Label mode cycle */}
+            {/* Label mode cycle (desktop; moved into the filter sheet on mobile) */}
             <button
               type="button"
               onClick={cycleLabelMode}
-              className="rounded-md border px-2 py-1 text-[10px] hover:bg-[var(--accent)] sm:text-xs"
+              className="hidden rounded-md border px-2 py-1 text-[10px] hover:bg-[var(--accent)] sm:text-xs md:inline-block"
               title={`Property labels: ${propertyLabelMode}`}
             >
               {propertyLabelMode === "full" ? "Aa" : propertyLabelMode === "initials" ? "AB" : "··"}
@@ -987,15 +1143,7 @@ export function ScheduleClient() {
           <div className="mt-2 flex flex-wrap items-center gap-1.5 md:hidden">
             <button
               type="button"
-              onClick={() => {
-                if (rangeMode === "month") {
-                  setRangeMode("week");
-                  applyWeekRange(rangeStart);
-                } else {
-                  setRangeMode("month");
-                  applyMonthRange(rangeStart);
-                }
-              }}
+              onClick={() => selectView(rangeMode === "month" ? "week" : "month")}
               className="rounded-md border px-2 py-1 text-[10px] font-semibold hover:bg-[var(--accent)]"
             >
               {rangeMode === "month" ? "→ Week" : "→ Month"}
@@ -1048,6 +1196,35 @@ export function ScheduleClient() {
                 items={(properties ?? []).map((p) => ({ id: p._id, label: p.name }))}
               />
             </div>
+
+            {/* Mine-only toggle (relocated here from the top row on mobile) */}
+            <label
+              className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-semibold transition ${
+                mineOnly
+                  ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]"
+                  : "bg-[var(--card)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+              }`}
+              title="Show only tasks assigned to me"
+            >
+              <input
+                type="checkbox"
+                className="h-3 w-3"
+                checked={mineOnly}
+                onChange={(e) => setMineOnly(e.target.checked)}
+                aria-label="Mine only"
+              />
+              My tasks
+            </label>
+
+            {/* Property label density (relocated here from the top row on mobile) */}
+            <button
+              type="button"
+              onClick={cycleLabelMode}
+              className="rounded-md border px-2 py-1 text-[10px] font-semibold hover:bg-[var(--accent)]"
+              title={`Property labels: ${propertyLabelMode}`}
+            >
+              Labels: {propertyLabelMode === "full" ? "Aa" : propertyLabelMode === "initials" ? "AB" : "Off"}
+            </button>
           </div>
         ) : null}
       </header>
@@ -1151,36 +1328,69 @@ export function ScheduleClient() {
         ) : null}
 
         {/* Schedule grid — visible on desktop always, mobile only in schedule tab */}
+        <div className="relative">
         <section
+          ref={gridScrollRef}
+          onScroll={handleGridScroll}
           className={cn(
-            "relative rounded-2xl border bg-[var(--card)]",
-            isGridFitMode ? "overflow-x-hidden" : "overflow-x-auto",
+            "relative rounded-2xl border bg-[var(--card)] overflow-x-auto",
             mobileTab !== "schedule" && "hidden md:block",
           )}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          {/* Grid header row */}
+          {/* Grid header row — drag anywhere here (mouse) to pan the month */}
           <div
-            className="grid border-b"
+            className={cn(
+              "grid w-max select-none border-b",
+              maxScroll > 1 && "md:cursor-grab md:active:cursor-grabbing",
+            )}
             style={{ gridTemplateColumns: scheduleGridTemplateColumns }}
+            onPointerDown={handleHeaderPointerDown}
+            onPointerMove={handleHeaderPointerMove}
+            onPointerUp={handleHeaderPointerUp}
+            onPointerCancel={handleHeaderPointerUp}
           >
             {propertyLabelMode !== "hidden" ? (
               <div className="sticky left-0 z-20 border-r bg-[var(--card)] p-2 text-[10px] font-bold uppercase tracking-wider text-[var(--muted-foreground)] sm:p-3 sm:text-xs">
                 {propertyLabelMode === "initials" ? "" : "Property"}
               </div>
             ) : null}
-            {visibleDays.map((day) => (
-              <div key={dateKeyFn(day)} className="border-l p-1.5 text-center sm:p-3">
-                <p className="text-[9px] font-bold uppercase tracking-wider text-[var(--muted-foreground)] sm:text-[10px]">
-                  {day.toLocaleDateString([], { weekday: "short" })}
-                </p>
-                <p className="text-sm font-extrabold leading-none sm:text-lg">
-                  {day.toLocaleDateString([], { day: "2-digit" })}
-                </p>
-                <ScheduleDateHeaderTaskOverlay day={day} mineOnly={mineOnly} myUserId={myUserId} summary={summaryFor("global", day)} />
-              </div>
-            ))}
+            {rangeDays.map((day) => {
+              const isToday = dateKeyFn(day) === todayKey;
+              return (
+                <div
+                  key={dateKeyFn(day)}
+                  className={`p-1.5 text-center sm:p-3 ${
+                    isToday
+                      ? "border-l-2 border-l-violet-500 bg-violet-500/[0.06]"
+                      : "border-l"
+                  }`}
+                >
+                  {isToday ? (
+                    <span className="mx-auto flex w-fit items-center gap-1 rounded-full bg-violet-500 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm sm:text-[10px]">
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
+                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
+                      </span>
+                      Today
+                    </span>
+                  ) : (
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-[var(--muted-foreground)] sm:text-[10px]">
+                      {day.toLocaleDateString([], { weekday: "short" })}
+                    </p>
+                  )}
+                  <p
+                    className={`text-sm font-extrabold leading-none sm:text-lg ${
+                      isToday ? "text-violet-500" : ""
+                    }`}
+                  >
+                    {day.toLocaleDateString([], { day: "2-digit" })}
+                  </p>
+                  <ScheduleDateHeaderTaskOverlay day={day} mineOnly={mineOnly} myUserId={myUserId} summary={summaryFor("global", day)} />
+                </div>
+              );
+            })}
           </div>
 
           {/* Grid body */}
@@ -1198,11 +1408,11 @@ export function ScheduleClient() {
               {[...activeProperties, ...idleProperties].map((property) => (
                 <div
                   key={property._id}
-                  className="grid border-b last:border-b-0"
+                  className="grid w-max border-b last:border-b-0"
                   style={{ gridTemplateColumns: scheduleGridTemplateColumns }}
                 >
                   {renderPropertyCell(property as { _id: string; name: string; address: string; status?: unknown })}
-                  {visibleDays.map((day) => {
+                  {rangeDays.map((day) => {
                     const key = `${property._id}-${dateKeyFn(day)}`;
                     const cellJobs = jobsByCell.get(key) ?? [];
                     return renderJobCell(cellJobs, property._id, day);
@@ -1308,18 +1518,52 @@ export function ScheduleClient() {
             </div>
           ) : null}
         </section>
+
+          {/* Edge arrows at the date-header level (desktop) — nudge ~a week */}
+          {maxScroll > 1 ? (
+            <>
+              {canScrollLeft ? (
+                <button
+                  type="button"
+                  onClick={() => scrollByPage(-1)}
+                  className="absolute top-2 z-30 hidden h-8 w-8 items-center justify-center rounded-full border bg-[var(--card)] shadow-md hover:bg-[var(--accent)] md:flex"
+                  style={{ left: propColPxNum + 6 }}
+                  aria-label="Scroll back a week"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+              ) : null}
+              {canScrollRight ? (
+                <button
+                  type="button"
+                  onClick={() => scrollByPage(1)}
+                  className="absolute right-2 top-2 z-30 hidden h-8 w-8 items-center justify-center rounded-full border bg-[var(--card)] shadow-md hover:bg-[var(--accent)] md:flex"
+                  aria-label="Scroll forward a week"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              ) : null}
+            </>
+          ) : null}
+        </div>
       </div>
 
-      {/* Day range slider */}
-      {maxDayOffset > 0 ? (
+      {/* Smooth scroll slider — bound to the grid's horizontal scroll position
+          (pixels), so dragging glides through the days instead of snapping. */}
+      {maxScroll > 1 ? (
         <div className="rounded-xl border bg-[var(--card)] p-3">
           <input
             type="range"
             min={0}
-            max={maxDayOffset}
-            step={0.05}
-            value={clampedSliderValue}
-            onChange={(event) => setSliderValue(Number(event.target.value))}
+            max={maxScroll}
+            step={1}
+            value={Math.min(scrollLeft, maxScroll)}
+            onChange={(event) => {
+              const next = Number(event.target.value);
+              const el = gridScrollRef.current;
+              if (el) el.scrollLeft = next;
+              setScrollLeft(next);
+            }}
             className={cn(
               "w-full cursor-grab appearance-none rounded-full bg-[var(--accent)] active:cursor-grabbing",
               "h-2",
@@ -1352,15 +1596,6 @@ export function ScheduleClient() {
 }
 
 // --- Date utilities ---
-
-function startOfWeek(date: Date) {
-  const copy = new Date(date);
-  const day = copy.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  copy.setDate(copy.getDate() + diff);
-  copy.setHours(0, 0, 0, 0);
-  return copy;
-}
 
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);

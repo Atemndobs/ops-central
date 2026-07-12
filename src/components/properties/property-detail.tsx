@@ -17,6 +17,7 @@ import { PropertyOwnersCard } from "@/components/properties/property-owners-card
 import { PropertyInstructionsPanel } from "@/components/properties/property-instructions-panel";
 import { PropertyRoomsPanel } from "@/components/properties/property-rooms-panel";
 import { InventoryImportModal } from "@/components/inventory/inventory-import-modal";
+import { ReviewCard } from "@/components/reviews/review-card";
 import type { Id } from "@convex/_generated/dataModel";
 
 function formatDateTime(timestamp?: number) {
@@ -62,6 +63,14 @@ export function PropertyDetail({ id }: { id: string }) {
   const propertyCompanyAssignment = useQuery(
     api.admin.queries.getPropertyCompanyAssignment,
     isAuthenticated ? { propertyId: id as never } : "skip",
+  );
+  const reviewsEnabled = useQuery(
+    api.admin.featureFlags.isFeatureEnabled,
+    isAuthenticated ? { key: "reviewsAiReply" } : "skip",
+  );
+  const propertyReviews = useQuery(
+    api.guestReviews.queries.listByProperty,
+    isAuthenticated && reviewsEnabled ? { propertyId: id as never } : "skip",
   );
 
   const updateProperty = useMutation(
@@ -284,6 +293,25 @@ export function PropertyDetail({ id }: { id: string }) {
           </table>
         </div>
       </section>
+
+      {reviewsEnabled && (
+        <section className="rounded-2xl border bg-[var(--card)] p-5 space-y-3">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--muted-foreground)]">
+            Reviews
+          </h2>
+          {propertyReviews === undefined ? (
+            <p className="text-sm text-[var(--muted-foreground)]">Loading…</p>
+          ) : propertyReviews.length === 0 ? (
+            <p className="text-sm text-[var(--muted-foreground)]">No reviews yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {propertyReviews.map((review) => (
+                <ReviewCard key={review._id} review={review} showProperty={false} />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       <PropertyFormModal
         open={isEditOpen}

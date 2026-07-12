@@ -52,6 +52,11 @@ export function JobConversationLanesPanel({
 }: JobConversationLanesPanelProps) {
   const detail = useQuery(api.conversations.queries.getConversationLanesForJob, { jobId });
   const createInvite = useAction(api.whatsapp.actions.createLaneInvite);
+  // Admin-gated: WhatsApp lanes + invite links only render when the
+  // `whatsapp_messaging` feature flag is ON. `undefined` (loading) is
+  // treated as OFF so the WhatsApp surface stays hidden by default.
+  const whatsappEnabled =
+    useQuery(api.admin.featureFlags.isFeatureEnabled, { key: "whatsapp_messaging" }) ?? false;
   const { showToast } = useToast();
   const [pendingCleanerId, setPendingCleanerId] = useState<string | null>(null);
   const [inviteUrls, setInviteUrls] = useState<Record<string, string>>({});
@@ -75,7 +80,9 @@ export function JobConversationLanesPanel({
         <div>
           <h3 className="text-sm font-semibold text-[var(--foreground)]">Communications</h3>
           <p className="text-xs text-[var(--muted-foreground)]">
-            Internal thread plus one WhatsApp lane per assigned cleaner
+            {whatsappEnabled
+              ? "Internal thread plus one WhatsApp lane per assigned cleaner"
+              : "Internal team thread for this job"}
           </p>
         </div>
       </div>
@@ -119,6 +126,7 @@ export function JobConversationLanesPanel({
         </div>
       </div>
 
+      {whatsappEnabled && (
       <div className="space-y-2">
         {lanes.map((lane) => {
           const cleanerKey = String(lane.cleaner._id);
@@ -226,6 +234,7 @@ export function JobConversationLanesPanel({
           );
         })}
       </div>
+      )}
     </section>
   );
 }

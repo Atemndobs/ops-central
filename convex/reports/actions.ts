@@ -267,7 +267,7 @@ function renderPdf(payload: DashboardPayload): Promise<Buffer> {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    doc.fontSize(20).text("OpsCentral Reports Export", { align: "left" });
+    doc.fontSize(20).text("ChezSoi Ops Reports Export", { align: "left" });
     doc.moveDown(0.5);
     doc
       .fontSize(10)

@@ -12,6 +12,9 @@ import {
   createOpsNotifications,
 } from "../lib/opsNotifications";
 import { listOpsUserIds } from "../lib/notificationLifecycle";
+import { CLEANER_REWORK_DISMISSAL_TYPES } from "../lib/reworkNotifications";
+import { computeReworkDueAt } from "../lib/reworkDeadline";
+import { readReworkDeadlineMinutes } from "../appSettings";
 import {
   getJobConversationByJobId,
   seedJobConversationParticipants,
@@ -162,6 +165,18 @@ function buildValidationResult(args: {
   const beforeCount = args.photos.filter((photo) => photo.type === "before").length;
   const afterCount = args.photos.filter((photo) => photo.type === "after").length;
   const incidentCount = args.photos.filter((photo) => photo.type === "incident").length;
+
+  // Baseline evidence floor: every submission needs at least one before AND
+  // one after photo, in any mode. Without this, standard mode derives its
+  // required rooms from the photos that already exist (`requiredRooms ??
+  // observedRooms`), so a zero-photo submission requires nothing and passes
+  // silently. (App Review: a job could reach review with no photos.)
+  if (beforeCount < 1) {
+    errors.push("At least one before photo is required before submitting.");
+  }
+  if (afterCount < 1) {
+    errors.push("At least one after photo is required before submitting.");
+  }
 
   const skippedRooms = dedupeRoomNames(
     (args.skippedRooms ?? []).map((room) => room.roomName),
@@ -510,11 +525,20 @@ export const start = mutation({
 
     const revision = getCurrentRevision(job);
 
-    if (
-      user.role === "cleaner" &&
-      !job.assignedCleanerIds.includes(user._id)
-    ) {
-      throw new ConvexError("Cleaner is not assigned to this job.");
+    // Only the assigned cleaner — or an admin/property_ops override — may
+    // start a job (transition it to in_progress). Managers, owners, and
+    // unassigned cleaners cannot. (App Review: a non-cleaner could set a job
+    // in progress.)
+    const isAssignedCleaner =
+      user.role === "cleaner" && job.assignedCleanerIds.includes(user._id);
+    const canOverrideStart =
+      user.role === "admin" || user.role === "property_ops";
+    if (!isAssignedCleaner && !canOverrideStart) {
+      throw new ConvexError(
+        user.role === "cleaner"
+          ? "Cleaner is not assigned to this job."
+          : "Only the assigned cleaner or an admin/property ops user can start this job.",
+      );
     }
 
     if (
@@ -601,11 +625,18 @@ export const start = mutation({
       },
     );
 
+    // Warn-but-allow: flag when the job was scheduled on an earlier calendar
+    // day (stale). The client surfaces this as a warning; we don't block the
+    // start. (App Review concern: cleaners starting jobs scheduled in the past.)
+    const startOfTodayUtc = now - (now % 86_400_000);
+    const scheduledInPast = job.scheduledStartAt < startOfTodayUtc;
+
     return {
       jobId: args.jobId,
       revision,
       startedAtServer: job.actualStartAt ?? now,
       alreadyStarted: Boolean(session),
+      scheduledInPast,
     };
   },
 });
@@ -808,7 +839,11 @@ async function submitForApprovalInternal(
   }
   validationResult.pass = validationResult.errors.length === 0;
 
-  if (!validationResult.pass && !force) {
+  // Cleaners cannot force past the evidence gate — only admin/ops/manager
+  // (privileged) may override, mirroring the session-gate rule above. Stops a
+  // cleaner from submitting with missing/zero photos via force:true.
+  const canBypassEvidence = force && user.role !== "cleaner";
+  if (!validationResult.pass && !canBypassEvidence) {
     throw new ConvexError(
       `Evidence validation failed: ${validationResult.errors.join(" ")}`,
     );
@@ -1063,6 +1098,12 @@ export const reopenForRework = mutation({
       }
     }
 
+    const property = await ctx.db.get(job.propertyId);
+    const reworkDueAt = computeReworkDueAt(
+      now,
+      property?.reworkDeadlineMinutes,
+      await readReworkDeadlineMinutes(ctx),
+    );
     await ctx.db.patch(args.jobId, {
       status: "rework_required",
       currentRevision: nextRevision,
@@ -1072,6 +1113,10 @@ export const reopenForRework = mutation({
       rejectedAt: now,
       rejectedBy: user._id,
       rejectionReason: args.reason?.trim(),
+      // Rework urgency (Piece 2): fresh deadline; clear any prior acknowledgement.
+      reworkDueAt,
+      reworkAckAt: undefined,
+      reworkAckBy: undefined,
       updatedAt: now,
     });
     // Wave 4: defer convo sync + both dismissal batches. Ops user IDs
@@ -1087,12 +1132,33 @@ export const reopenForRework = mutation({
         dismissals: [
           { userIds: opsUserIds, types: ["awaiting_approval"] },
           {
+            // Clear stale assignment/completion alerts, but NOT
+            // rework_required — that's the alert we create just below, and the
+            // deferred batch would otherwise delete it ~600ms later.
             userIds: job.assignedCleanerIds,
-            types: ["job_assigned", "job_completed", "rework_required"],
+            types: CLEANER_REWORK_DISMISSAL_TYPES,
           },
         ],
       },
     );
+
+    // Reopening to rework must alert the cleaner, exactly like rejectCompletion.
+    // Previously this path created no notification at all.
+    const reworkReason = args.reason?.trim();
+    await createNotificationsForUsers(ctx, {
+      userIds: job.assignedCleanerIds,
+      type: "rework_required",
+      title: "Rework Required",
+      message: reworkReason
+        ? `${property?.name ?? "Property"} needs another pass: ${reworkReason.slice(0, 140)}`
+        : `${property?.name ?? "Property"} needs another pass.`,
+      messageKey: "notifications.messages.rework_needed",
+      messageParams: { propertyName: property?.name ?? "Property" },
+      data: {
+        jobId: job._id,
+        propertyId: job.propertyId,
+      },
+    });
 
     return {
       ok: true,

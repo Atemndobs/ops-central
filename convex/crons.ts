@@ -22,6 +22,17 @@ crons.interval(
   {}
 );
 
+// Daily backstop for guest reviews. Primary path is the review.created
+// webhook (convex/hospitable/webhooks.ts); reviews are far lower-volume
+// and lower-urgency than reservations, so daily (not hourly) is enough.
+// See Docs/superpowers/specs/2026-07-03-review-response-ai-design.md.
+crons.interval(
+  "sync-hospitable-reviews-daily",
+  { hours: 24 },
+  internal.hospitable.actions.syncGuestReviews,
+  {}
+);
+
 crons.interval(
   "expire-report-exports-hourly",
   { hours: 1 },

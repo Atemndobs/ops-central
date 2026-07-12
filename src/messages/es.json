@@ -1,5 +1,6 @@
 {
   "common": {
+    "assistant": "Asistente",
     "dashboard": "Panel de Control",
     "schedule": "Calendario",
     "jobs": "Trabajos",
@@ -39,14 +40,17 @@
   "nav": {
     "operationsManagement": "Gestión de Operaciones",
     "review": "Revisión",
+    "reviews": "Reseñas",
     "companies": "Empresas",
     "ownerOverview": "Resumen de Propietarios",
+    "monthlyClose": "Cierre Mensual",
+    "propertyCosts": "Costos por Propiedad",
     "help": "Ayuda",
     "lightMode": "Modo Claro",
     "darkMode": "Modo Oscuro",
     "collapse": "Colapsar",
     "expandSidebar": "Expandir Barra Lateral",
-    "helpTitle": "Ayuda de OpsCentral",
+    "helpTitle": "Ayuda de ChezSoi Ops",
     "helpDescription": "Usa estos accesos directos para navegar rápidamente a las páginas operativas clave.",
     "helpSettingsHint": "¿Necesita preferencias de cuenta o alertas? Abra Configuración desde el encabezado superior derecho."
   },
@@ -55,9 +59,9 @@
     "subtitle": "Estado en tiempo real de preparación de propiedades y trabajos.",
     "generateReport": "Generar Reporte",
     "newJob": "Nuevo Trabajo",
-    "opsFunnel": "Embudo de Operaciones",
+    "opsFunnel": "Resumen de Operaciones",
     "opsFunnelSubtitle": "Conteo por etapa + delta de atrasos vs. hace 24h",
-    "loadingFunnel": "Cargando embudo...",
+    "loadingFunnel": "Cargando resumen...",
     "blockers": "Bloqueadores",
     "openJobs": "Ver trabajos",
     "loadingBlockers": "Cargando bloqueadores...",
@@ -482,7 +486,7 @@
       "profileUpdated": "Perfil actualizado."
     },
     "install": {
-      "title": "Instalar ChezSoi App",
+      "title": "Instalar ChezSoi Ops App",
       "iosHint": "Agrega a tu pantalla de inicio para acceso rápido, pantalla completa y modo sin conexión.",
       "iosInstructions": "Toca <strong>Compartir</strong> → <strong>Agregar a pantalla de inicio</strong>",
       "androidHint": "Instala para acceso rápido, pantalla completa y modo sin conexión.",

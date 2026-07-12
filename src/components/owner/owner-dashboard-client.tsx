@@ -102,7 +102,7 @@ export function OwnerDashboardClient() {
         </p>
         <p className="mt-2 text-sm" style={{ color: "var(--cleaner-muted)" }}>
           You&apos;ll see your properties here once they&apos;re added.
-          Contact ChezSoiStays Operations.
+          Contact ChezSoi Ops.
         </p>
       </div>
     );
@@ -183,6 +183,7 @@ export function OwnerDashboardClient() {
 export type DashboardFlags = {
   showMgmtFee: boolean;
   showPayout: boolean;
+  showGrossRevenue: boolean;
 };
 
 function FilteredPortfolio({
@@ -700,10 +701,11 @@ function PropertyCard({
   const hasError = totals === null;
   const isPaid = p.issuedStatementId !== null;
   // Stat grid column count tracks how many tiles the flags expose:
-  //   gross (always) + mgmtFee? + payout?  →  1..3
-  const visibleStats = 1 + (flags.showMgmtFee ? 1 : 0) + (flags.showPayout ? 1 : 0);
+  //   gross? + mgmtFee? + payout?  →  0..3
+  const visibleStats =
+    (flags.showGrossRevenue ? 1 : 0) + (flags.showMgmtFee ? 1 : 0) + (flags.showPayout ? 1 : 0);
   const statGridCols =
-    visibleStats === 3 ? "grid-cols-3" : visibleStats === 2 ? "grid-cols-2" : "grid-cols-1";
+    visibleStats >= 3 ? "grid-cols-3" : visibleStats === 2 ? "grid-cols-2" : "grid-cols-1";
 
   return (
     <Link
@@ -776,7 +778,9 @@ function PropertyCard({
       ) : (
         <>
           <div className={`grid ${statGridCols} gap-4 border-t border-black/[0.04] pt-4`}>
-            <Stat label="Gross" value={fmtMoney(totals!.grossRevenue, p.currency)} muted />
+            {flags.showGrossRevenue && (
+              <Stat label="Gross" value={fmtMoney(totals!.grossRevenue, p.currency)} muted />
+            )}
             {flags.showMgmtFee && (
               <Stat label="Mgmt fee" value={fmtMoney(-totals!.mgmtFee, p.currency)} muted />
             )}
@@ -897,7 +901,7 @@ function ListView({
           style={{ color: "var(--cleaner-muted)", fontFamily: "var(--font-cleaner-mono)" }}
         >
           {sorted.length} {sorted.length === 1 ? "property" : "properties"}
-          {totalRevenue > 0 && (
+          {flags.showGrossRevenue && totalRevenue > 0 && (
             <>
               <span className="mx-1.5 opacity-40">·</span>
               <span style={{ color: "var(--cleaner-ink)" }}>
@@ -933,7 +937,7 @@ function ListView({
         <thead>
           <tr style={{ background: "var(--cleaner-bg)" }}>
             <Th>{showNames ? "Property" : ""}</Th>
-            <Th align="right">Revenue</Th>
+            {flags.showGrossRevenue && <Th align="right">Revenue</Th>}
             {flags.showMgmtFee && <Th align="right">Mgmt fee</Th>}
             {flags.showPayout && <Th align="right">Your payout</Th>}
           </tr>
@@ -1003,9 +1007,11 @@ function ListView({
                     </span>
                   )}
                 </Td>
-                <Td align="right" mono muted={totals === null} nowrap>
-                  {totals ? fmtMoney(totals.grossRevenue, p.currency) : "—"}
-                </Td>
+                {flags.showGrossRevenue && (
+                  <Td align="right" mono muted={totals === null} nowrap>
+                    {totals ? fmtMoney(totals.grossRevenue, p.currency) : "—"}
+                  </Td>
+                )}
                 {flags.showMgmtFee && (
                   <Td align="right" mono muted={totals === null} nowrap>
                     {totals ? fmtMoney(-totals.mgmtFee, p.currency) : "—"}

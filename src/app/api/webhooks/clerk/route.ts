@@ -9,6 +9,7 @@ type AppRole = "cleaner" | "manager" | "property_ops" | "admin";
 const SUPPORTED_EVENTS = new Set<WebhookEventType>([
   "user.created",
   "user.updated",
+  "user.deleted",
 ]);
 
 function parseRole(value: unknown): AppRole | undefined {
@@ -121,6 +122,34 @@ export async function POST(request: NextRequest) {
 
   if (!SUPPORTED_EVENTS.has(event.type)) {
     return NextResponse.json({ received: true, ignored: true });
+  }
+
+  // Deletion has no email payload — just the id. Remove the matching Convex
+  // user if reference-safe; users with history are kept (nothing orphaned).
+  if (event.type === "user.deleted") {
+    const deletedId =
+      "id" in event.data && typeof event.data.id === "string"
+        ? event.data.id
+        : null;
+    if (!deletedId) {
+      return NextResponse.json(
+        { error: "Deleted webhook payload missing user id." },
+        { status: 400 },
+      );
+    }
+
+    const convex = new ConvexHttpClient(convexUrl);
+    const result = await convex.mutation(
+      api.admin.mutations.deleteUserFromClerkWebhook,
+      { clerkId: deletedId, webhookToken: webhookSyncToken },
+    );
+
+    return NextResponse.json({
+      received: true,
+      eventType: event.type,
+      clerkId: deletedId,
+      result,
+    });
   }
 
   const email = resolvePrimaryEmail(event.data);
