@@ -13,35 +13,42 @@
  * full-bleed square so the platform applies its own mask).
  */
 
+// J&A brand palette (from the official Brand Guide). Only the color changes —
+// the logo mark stays our house-wave. Purple is kept for the Cleaner role, which
+// matches the mobile cleaners app and is intentionally left as-is.
 export const ICON_COLOR_KEYS = [
-  "indigo",
-  "teal",
-  "amber",
-  "blue",
+  "darkgreen",
+  "sage",
+  "taupe",
+  "navy",
+  "terracotta",
+  "rust",
   "purple",
 ] as const;
 
 export type IconColorKey = (typeof ICON_COLOR_KEYS)[number];
 
 export const ICON_COLORS: Record<IconColorKey, { hex: string; label: string }> = {
-  indigo: { hex: "#4f46e5", label: "Indigo" },
-  teal: { hex: "#0d9488", label: "Teal" },
-  amber: { hex: "#f59e0b", label: "Amber" },
-  blue: { hex: "#2563eb", label: "Blue" },
+  darkgreen: { hex: "#254c50", label: "Dark green" },
+  sage: { hex: "#7da29c", label: "Sage" },
+  taupe: { hex: "#9d8a79", label: "Taupe" },
+  navy: { hex: "#0d1a32", label: "Navy" },
+  terracotta: { hex: "#cb5a2b", label: "Terracotta" },
+  rust: { hex: "#a53100", label: "Rust" },
   purple: { hex: "#9b51e0", label: "Purple" },
 };
 
-/** Fallback when no admin setting exists yet (matches the shipped "Ops" teal). */
-export const DEFAULT_ICON_COLOR: IconColorKey = "teal";
+/** Fallback when no admin setting exists yet (the Ops role's brand color). */
+export const DEFAULT_ICON_COLOR: IconColorKey = "sage";
 
 export type BrandRole = "admin" | "property_ops" | "manager" | "owner" | "cleaner";
 
 /** Which color each role wears in-app. */
 export const ROLE_ICON_COLOR: Record<BrandRole, IconColorKey> = {
-  admin: "indigo",
-  property_ops: "teal",
-  manager: "amber",
-  owner: "blue",
+  admin: "darkgreen",
+  property_ops: "sage",
+  manager: "taupe",
+  owner: "navy",
   cleaner: "purple",
 };
 
@@ -56,7 +63,7 @@ export function iconColorHex(key: IconColorKey): string {
   return ICON_COLORS[key].hex;
 }
 
-/** Asset path prefix, e.g. "/icons/app-icon-teal" → append "-192.png" etc. */
+/** Asset path prefix, e.g. "/icons/app-icon-sage" → append "-192.png" etc. */
 export function iconAssetBase(key: IconColorKey): string {
   return `/icons/app-icon-${key}`;
 }
@@ -96,9 +103,9 @@ export const APP_META: Record<
 
 /** Default installed-icon color per app (used when unset). */
 export const APP_ICON_DEFAULT: Record<IconApp, IconColorKey> = {
-  ops: "teal",
+  ops: "sage",
   cleaner: "purple",
-  owner: "blue",
+  owner: "navy",
 };
 
 export function isIconApp(value: unknown): value is IconApp {
