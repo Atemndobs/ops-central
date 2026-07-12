@@ -170,3 +170,34 @@ export function isAdjustableRole(value: unknown): value is AdjustableRole {
     (ADJUSTABLE_ROLES as readonly string[]).includes(value)
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Install links — Admin, Ops, and Manager share the same installable app (the
+// Ops dashboard), so a shared URL can't give them distinct home-screen icons.
+// These per-role install URLs (/install/<slug>) each carry that role's icon, so
+// installing from the right link puts that role's icon on the phone.
+// (Owner and Cleaner already install distinctly via /owner and /cleaner.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const INSTALL_SLUGS = ["ops", "admin", "manager"] as const;
+export type InstallSlug = (typeof INSTALL_SLUGS)[number];
+
+export const INSTALL_SLUG_ROLE: Record<InstallSlug, BrandRole> = {
+  ops: "property_ops",
+  admin: "admin",
+  manager: "manager",
+};
+
+/** Reverse map — the /install/<slug> for roles that share the Ops app. */
+export const ROLE_INSTALL_SLUG: Partial<Record<BrandRole, InstallSlug>> = {
+  property_ops: "ops",
+  admin: "admin",
+  manager: "manager",
+};
+
+export function isInstallSlug(value: unknown): value is InstallSlug {
+  return (
+    typeof value === "string" &&
+    (INSTALL_SLUGS as readonly string[]).includes(value)
+  );
+}

@@ -23,6 +23,7 @@ import { useToast } from "@/components/ui/toast-provider";
 import {
   ICON_COLOR_KEYS,
   ICON_COLORS,
+  ROLE_INSTALL_SLUG,
   ROLE_META,
   iconAssetBase,
   isAdjustableRole,
@@ -30,11 +31,29 @@ import {
   type IconColorKey,
 } from "@/lib/brand";
 
+/** The URL an admin sends someone so they install with that role's icon. */
+function installPathForRole(role: BrandRole): string | null {
+  const slug = ROLE_INSTALL_SLUG[role];
+  if (slug) return `/install/${slug}`;
+  if (role === "owner") return "/owner";
+  if (role === "cleaner") return "/cleaner";
+  return null;
+}
+
 export function AppIconColorCard() {
   const { showToast } = useToast();
   const roles = useQuery(api.appSettings.listRoleIconColors, {});
   const setColor = useMutation(api.appSettings.setRoleIconColor);
   const [saving, setSaving] = useState<string | null>(null);
+
+  async function copyLink(path: string) {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}${path}`);
+      showToast("Install link copied", "success");
+    } catch {
+      showToast("Couldn't copy the link", "error");
+    }
+  }
 
   async function choose(role: BrandRole, key: IconColorKey, current: IconColorKey) {
     if (key === current || saving || !isAdjustableRole(role)) return;
@@ -56,10 +75,11 @@ export function AppIconColorCard() {
     <div className="space-y-5">
       <p className="text-sm text-[var(--muted-foreground)]">
         Assign a color to each role. It colors the logo, favicon and accents{" "}
-        <strong>inside the app</strong> for whoever is logged in, and the home-screen
-        icons of the installable apps. Cleaner is locked to purple. Admin, Ops and
-        Manager share the Ops app, so they look distinct inside the app; installed-icon
-        changes apply to new installs.
+        <strong>inside the app</strong> for whoever is logged in. To put a role&apos;s
+        icon on a phone home screen, send that person its <strong>install link</strong>{" "}
+        below — installing from it gives that role&apos;s icon. Cleaner is locked to
+        purple. Installed-icon changes apply to new installs (existing ones update on
+        reinstall).
       </p>
 
       {roles === undefined ? (
@@ -91,6 +111,23 @@ export function AppIconColorCard() {
                 </p>
               </div>
             </div>
+            {(() => {
+              const installPath = installPathForRole(role);
+              if (!installPath) return null;
+              return (
+                <div className="mb-3 flex items-center gap-2 rounded-md bg-[var(--accent)]/40 px-2 py-1.5 text-xs">
+                  <span className="shrink-0 text-[var(--muted-foreground)]">Install link:</span>
+                  <code className="truncate font-mono">{installPath}</code>
+                  <button
+                    type="button"
+                    onClick={() => copyLink(installPath)}
+                    className="ml-auto shrink-0 rounded border px-2 py-0.5 font-medium hover:bg-[var(--accent)]"
+                  >
+                    Copy
+                  </button>
+                </div>
+              );
+            })()}
             <div className="grid grid-cols-5 gap-2">
               {ICON_COLOR_KEYS.map((key) => {
                 const isActive = key === color;
