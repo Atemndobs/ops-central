@@ -22,6 +22,15 @@ _None._
 
 ## Done
 
+### TASK-APPSETTINGS-SCHEMA-FIX-001
+- Branch: main (direct commit, no worktree — root-cause fix for a build-breaking bug, not feature work)
+- Commit: 221651c
+- Schema impact: backward-compatible (registers an already-fully-defined, already-indexed table that was silently dropped from the `defineSchema({...})` export — likely a prior silent auto-merge casualty, same class of bug found and fixed in PR #193 earlier this session)
+- Convex impact: deploy-required (deployed to lovable-oriole-182 with the full typecheck gate enabled — previously needed `--typecheck disable` to push past the resulting error cascade; mirrored to jna-cleaners-app)
+- Risk: very low — one line, additive only, no data migration
+- What: root-caused what PR #227 flagged as "pre-existing appSettings codegen staleness." It wasn't codegen staleness at all — `appSettings` was fully `defineTable`'d with its `by_key` index but never added to the schema's export object, so TypeScript's generated data model didn't know the table existed. Fixed the cascade (~100 lines / dozens of errors, including red-herring errors on unrelated tables from TypeScript printing arbitrary union members) down to the one pre-existing, unrelated `vitest`-module test error.
+- Verified: `npx tsc --noEmit` clean except the known pre-existing issue; `npm run build` succeeds fully; `npx convex deploy` succeeds with default (enabled) typecheck.
+
 ### TASK-B2-CDN-001
 - Branch: task/b2-cloudflare-cdn
 - Worktree: ~/sites/opscentral-admin-b2-cdn
