@@ -2294,4 +2294,6 @@ export default defineSchema({
   maintenanceApprovalRequests,
   ownerDateBlocks,
   ownerNotificationPrefs,
+
+  appSettings,
 });
