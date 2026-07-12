@@ -372,10 +372,12 @@ export const setReworkDeadlineMinutes = mutation({
 // ─────────────────────────────────────────────────────────────────────────────
 
 const iconColorValidator = v.union(
-  v.literal("indigo"),
-  v.literal("teal"),
-  v.literal("amber"),
-  v.literal("blue"),
+  v.literal("darkgreen"),
+  v.literal("sage"),
+  v.literal("taupe"),
+  v.literal("navy"),
+  v.literal("terracotta"),
+  v.literal("rust"),
   v.literal("purple"),
 );
 
@@ -400,17 +402,25 @@ const adjustableRoleValidator = v.union(
   v.literal("owner"),
 );
 
-type IconColor = "indigo" | "teal" | "amber" | "blue" | "purple";
+type IconColor =
+  | "darkgreen"
+  | "sage"
+  | "taupe"
+  | "navy"
+  | "terracotta"
+  | "rust"
+  | "purple";
 type IconApp = "ops" | "cleaner" | "owner";
 type BrandRole = "admin" | "property_ops" | "manager" | "owner" | "cleaner";
 type AdjustableRole = "admin" | "property_ops" | "manager" | "owner";
 
-// Role color defaults (must match ROLE_ICON_COLOR in src/lib/brand.ts).
+// Role color defaults (J&A brand palette — must match ROLE_ICON_COLOR in
+// src/lib/brand.ts). Cleaner stays purple.
 const ROLE_COLOR_DEFAULT: Record<BrandRole, IconColor> = {
-  admin: "indigo",
-  property_ops: "teal",
-  manager: "amber",
-  owner: "blue",
+  admin: "darkgreen",
+  property_ops: "sage",
+  manager: "taupe",
+  owner: "navy",
   cleaner: "purple",
 };
 
@@ -426,15 +436,11 @@ type SettingsRow = {
   roleColorPropertyOps?: IconColor;
   roleColorManager?: IconColor;
   roleColorOwner?: IconColor;
-  // Back-compat fallbacks from the earlier per-app model.
-  installedIconColor?: IconColor;
-  installedIconColorOwner?: IconColor;
 };
 
 /**
- * Resolve a role's color. Cleaner is always purple. For ops/owner we fall back
- * to the earlier per-app fields so a prior pick isn't lost, then to the default.
- * `isDefault` is true only when nothing is explicitly stored.
+ * Resolve a role's color. Cleaner is always purple. `isDefault` is true only
+ * when nothing is explicitly stored for that role.
  */
 function readRoleColor(
   row: SettingsRow | null,
@@ -446,9 +452,8 @@ function readRoleColor(
   let stored: IconColor | undefined;
   if (role === "admin") stored = row.roleColorAdmin;
   else if (role === "manager") stored = row.roleColorManager;
-  else if (role === "property_ops")
-    stored = row.roleColorPropertyOps ?? row.installedIconColor;
-  else stored = row.roleColorOwner ?? row.installedIconColorOwner;
+  else if (role === "property_ops") stored = row.roleColorPropertyOps;
+  else stored = row.roleColorOwner;
 
   return stored
     ? { color: stored, isDefault: false }
