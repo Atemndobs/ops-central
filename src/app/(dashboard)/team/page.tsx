@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 
 import { getRoleDefinition, type RoleKey } from "@/lib/roles";
+import { formatDateTime } from "@/lib/tz";
 type UserRole = RoleKey;
 type CompanyMemberRole = "cleaner" | "manager" | "owner";
 type AvailabilityFilter = "all" | "active" | "working" | "available" | "off";
@@ -409,21 +410,6 @@ export default function TeamPage() {
       avgQuality,
     };
   }, [members, teamMetrics]);
-
-  const companyMembershipRows = useMemo(() => {
-    return [...(teamMetrics?.members ?? [])]
-      .filter((member) => member.role === "cleaner" || member.role === "manager")
-      .sort((a, b) => {
-        const companyRank =
-          Number(Boolean(a.companyId)) - Number(Boolean(b.companyId));
-        if (companyRank !== 0) {
-          return companyRank;
-        }
-        const nameA = (a.name?.trim() || a.email || "").toLowerCase();
-        const nameB = (b.name?.trim() || b.email || "").toLowerCase();
-        return nameA.localeCompare(nameB);
-      });
-  }, [teamMetrics]);
 
   const leaderboard = useMemo(() => {
     return [...members]
@@ -1385,8 +1371,28 @@ export default function TeamPage() {
                         ) : null}
                       </td>
                       {groupBy !== "company" ? (
-                        <td className={`${cellPad} truncate text-xs text-[var(--muted-foreground)]`}>
-                          {member.companyName ?? "—"}
+                        <td className={`${cellPad} truncate text-xs`}>
+                          {canManageTeam ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openCompanyEditor(toMemberActionTarget(member));
+                              }}
+                              className={`rounded-md px-1.5 py-0.5 text-left hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40 ${
+                                member.companyId
+                                  ? "text-[var(--muted-foreground)]"
+                                  : "font-semibold text-amber-600"
+                              }`}
+                              title={member.companyId ? "Change company" : "Attach to a company"}
+                            >
+                              {member.companyName ?? "— Attach"}
+                            </button>
+                          ) : (
+                            <span className="text-[var(--muted-foreground)]">
+                              {member.companyName ?? "—"}
+                            </span>
+                          )}
                         </td>
                       ) : null}
                       <td className={cellPad}>
@@ -2221,7 +2227,7 @@ function formatRoleDate(value?: number | null): string {
   if (!value) {
     return "Unscheduled";
   }
-  return new Date(value).toLocaleString([], {
+  return formatDateTime(value, {
     month: "short",
     day: "numeric",
     hour: "2-digit",

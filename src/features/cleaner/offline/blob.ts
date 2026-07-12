@@ -1,3 +1,5 @@
+import { formatDateTime } from "@/lib/tz";
+
 /**
  * Burns a timestamp label directly into the image pixels using the Canvas API.
  * The result is a new JPEG data URL with the timestamp permanently overlaid
@@ -21,15 +23,7 @@ export function stampImageWithTimestamp(dataUrl: string, timestamp: Date): Promi
 
       ctx.drawImage(img, 0, 0);
 
-      const label = timestamp.toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: true,
-      });
+      const label = formatDateTime(timestamp, { second: "2-digit" });
 
       // Scale font and padding relative to image width so it looks right on any resolution
       const fontSize = Math.max(28, Math.round(canvas.width * 0.035));

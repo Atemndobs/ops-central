@@ -21,6 +21,7 @@ import { useTranslations } from "next-intl";
 import { Loader2 } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { getErrorMessage } from "@/lib/errors";
+import { formatDateTime } from "@/lib/tz";
 import { useToast } from "@/components/ui/toast-provider";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 
@@ -154,10 +155,7 @@ export function FeatureFlagsCard() {
               {flag.updatedAt ? (
                 <p className="pt-1 text-xs text-[var(--muted-foreground)]/70">
                   Last changed{" "}
-                  {new Date(flag.updatedAt).toLocaleString(undefined, {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  })}
+                  {formatDateTime(flag.updatedAt)}
                 </p>
               ) : null}
               <p className="pt-1 font-mono text-[10px] uppercase tracking-wider text-[var(--muted-foreground)]/60">

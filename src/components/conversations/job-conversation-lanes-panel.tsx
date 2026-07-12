@@ -8,6 +8,7 @@ import { api } from "@convex/_generated/api";
 import { MessageSquare, MessageCircleMore, Copy, ExternalLink } from "lucide-react";
 import { useToast } from "@/components/ui/toast-provider";
 import { getErrorMessage } from "@/lib/errors";
+import { formatDate, formatDateTime } from "@/lib/tz";
 
 type JobConversationLanesPanelProps = {
   jobId: Id<"cleaningJobs">;
@@ -38,12 +39,12 @@ function formatRelativeTime(value?: number | null) {
   if (diff < 60_000) return "now";
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return new Date(value).toLocaleDateString([], { month: "short", day: "numeric" });
+  return formatDate(value, { month: "short", day: "numeric" });
 }
 
 function formatWindow(value?: number | null) {
   if (!value) return "Await cleaner reply";
-  return `Open until ${new Date(value).toLocaleString()}`;
+  return `Open until ${formatDateTime(value)}`;
 }
 
 export function JobConversationLanesPanel({

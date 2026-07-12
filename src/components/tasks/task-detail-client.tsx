@@ -9,6 +9,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useToast } from "@/components/ui/toast-provider";
 import { getErrorMessage } from "@/lib/errors";
+import { formatDateTime } from "@/lib/tz";
 
 const STATUS_TONE: Record<string, string> = {
   open: "bg-blue-100 text-blue-700 border-blue-200",
@@ -192,7 +193,7 @@ export function TaskDetailClient({ taskId }: { taskId: Id<"opsTasks"> }) {
               >
                 <div className="text-[11px] font-semibold text-[var(--muted-foreground)]">
                   {c.author?.name ?? "—"} ·{" "}
-                  {new Date(c.createdAt).toLocaleString()}
+                  {formatDateTime(c.createdAt)}
                 </div>
                 <div className="mt-1 whitespace-pre-wrap text-sm">{c.body}</div>
               </li>

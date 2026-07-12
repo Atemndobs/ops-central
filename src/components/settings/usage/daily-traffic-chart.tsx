@@ -11,6 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { formatDayLabel } from "./format";
+import { formatDate } from "@/lib/tz";
 
 export type DailyTrafficPoint = {
   dayStart: number;
@@ -65,7 +66,7 @@ export function DailyTrafficChart({
                 | { dayStart?: number }
                 | undefined;
               if (!row?.dayStart) return "";
-              return new Date(row.dayStart).toLocaleDateString(undefined, {
+              return formatDate(row.dayStart, {
                 year: "numeric",
                 month: "short",
                 day: "numeric",

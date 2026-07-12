@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import type { PropertyStatus } from "@/types/property";
 import { ScheduleCellTaskOverlay } from "@/components/schedule/schedule-cell-task-overlay";
 import { ScheduleDateHeaderTaskOverlay } from "@/components/schedule/schedule-date-header-task-overlay";
+import { formatTimeInZone, resolveDisplayTimezone } from "@/lib/tz";
 
 type JobWithRelations = {
   _id: Id<"cleaningJobs">;
@@ -39,7 +40,7 @@ type JobWithRelations = {
   status: JobStatus;
   scheduledStartAt?: number;
   propertyId: Id<"properties">;
-  property?: { _id: Id<"properties">; name?: string | null };
+  property?: { _id: Id<"properties">; name?: string | null; timezone?: string | null };
   cleaners?: Array<{ _id?: Id<"users">; name?: string | null; avatarUrl?: string | null }>;
 };
 
@@ -740,7 +741,7 @@ export function ScheduleClient() {
                 ? firstCleaner.name.split(" ").filter(Boolean).map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()
                 : null;
               const time = job.scheduledStartAt
-                ? new Date(job.scheduledStartAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                ? formatTimeInZone(job.scheduledStartAt, resolveDisplayTimezone(job.property?.timezone), { hour: "2-digit", minute: "2-digit" })
                 : "--:--";
               return (
                 <div
@@ -773,7 +774,7 @@ export function ScheduleClient() {
                   >
                     <p className="truncate font-semibold">{job.property?.name ?? "Job"}</p>
                     <p className="truncate text-[10px] opacity-80">
-                      {new Date(job.scheduledStartAt ?? 0).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {formatTimeInZone(job.scheduledStartAt ?? 0, resolveDisplayTimezone(job.property?.timezone), { hour: "2-digit", minute: "2-digit" })}
                     </p>
                   </Link>
                   <button
@@ -872,7 +873,7 @@ export function ScheduleClient() {
               >
                 <p className="truncate font-semibold">{job.property?.name ?? "Job"}</p>
                 <p className="truncate text-[9px] opacity-80 sm:text-[10px]">
-                  {new Date(job.scheduledStartAt ?? 0).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  {formatTimeInZone(job.scheduledStartAt ?? 0, resolveDisplayTimezone(job.property?.timezone), { hour: "2-digit", minute: "2-digit" })}
                 </p>
               </Link>
               <button
@@ -1449,7 +1450,7 @@ export function ScheduleClient() {
                       <div key={job._id} className={`rounded-lg border text-xs ${STATUS_CLASSNAMES[job.status]}`}>
                         <Link href={`/jobs/${job._id}`} className="block px-3 py-2">
                           <p className="font-semibold">
-                            {new Date(job.scheduledStartAt ?? 0).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            {formatTimeInZone(job.scheduledStartAt ?? 0, resolveDisplayTimezone(job.property?.timezone), { hour: "2-digit", minute: "2-digit" })}
                             {" · "}
                             {STATUS_LABELS[job.status]}
                           </p>

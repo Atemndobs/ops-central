@@ -29,6 +29,18 @@ import {
 import { JobCountdown } from "@/components/jobs/job-countdown";
 import { CreateJobModal } from "@/components/jobs/create-job-modal";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { formatDateTimeInZone, resolveDisplayTimezone } from "@/lib/tz";
+
+// Reproduces the bare `Date.toLocaleString()` output (en-US numeric date +
+// time with seconds), rendered in each job's property display zone.
+const DATE_TIME_OPTS: Intl.DateTimeFormatOptions = {
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  second: "2-digit",
+};
 
 const workflowStatuses: JobStatus[] = [
   "scheduled",
@@ -555,7 +567,7 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
                       {job.property?.name ?? "Unknown property"}
                     </p>
                     <div className="mt-1 flex items-center gap-2 text-[11px] text-[var(--muted-foreground)]">
-                      <span>{STATUS_LABELS[job.status]} · {new Date(job.scheduledStartAt ?? 0).toLocaleString()}</span>
+                      <span>{STATUS_LABELS[job.status]} · {formatDateTimeInZone(job.scheduledStartAt ?? 0, resolveDisplayTimezone(job.property?.timezone), DATE_TIME_OPTS)}</span>
                       <JobCountdown
                         scheduledStartAt={job.scheduledStartAt}
                         actualStartAt={job.actualStartAt}
@@ -598,7 +610,7 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
                           <p className="truncate">ID: {job._id}</p>
                           <p className="truncate">Cleaner: {job.cleaners?.[0]?.name ?? "Unassigned"}</p>
                           <p className="truncate">
-                            Scheduled: {new Date(job.scheduledStartAt ?? 0).toLocaleString()}
+                            Scheduled: {formatDateTimeInZone(job.scheduledStartAt ?? 0, resolveDisplayTimezone(job.property?.timezone), DATE_TIME_OPTS)}
                           </p>
                         </div>
                         <div className="mt-2">
@@ -647,7 +659,7 @@ export function JobsPageClient({ initialStatus = "all" }: JobsPageClientProps) {
                 </td>
                 <td className="px-4 py-3">{job.property?.name ?? "Unknown property"}</td>
                 <td className="px-4 py-3">{job.cleaners?.[0]?.name ?? "Unassigned"}</td>
-                <td className="px-4 py-3">{new Date(job.scheduledStartAt ?? 0).toLocaleString()}</td>
+                <td className="px-4 py-3">{formatDateTimeInZone(job.scheduledStartAt ?? 0, resolveDisplayTimezone(job.property?.timezone), DATE_TIME_OPTS)}</td>
                 <td className="px-4 py-3">
                   <JobCountdown
                     scheduledStartAt={job.scheduledStartAt}

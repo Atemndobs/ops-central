@@ -8,10 +8,12 @@ import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { Loader2, ChevronRight, UserCog } from "lucide-react";
+import { formatDate } from "@/lib/tz";
 
 function formatPeriod(periodStart: number): string {
-  const d = new Date(periodStart);
-  return d.toLocaleString(undefined, { month: "short", year: "numeric" });
+  // Monthly statement period — pin to UTC so the month label doesn't slip to
+  // the prior month when rendered in a negative-offset display zone.
+  return formatDate(periodStart, { month: "short", year: "numeric", timeZone: "UTC" });
 }
 
 export default function AdminOwnerOverviewIndexPage() {

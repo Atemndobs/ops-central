@@ -2260,7 +2260,6 @@ export default defineSchema({
 
   // AI Providers (admin-configurable)
   aiProviderSettings,
-  appSettings,
 
   // Feature Flags (admin-controlled UI gates)
   featureFlags,

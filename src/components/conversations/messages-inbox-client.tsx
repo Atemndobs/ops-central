@@ -6,6 +6,7 @@ import { useConvexAuth, useQuery } from "convex/react";
 import type { Id } from "@convex/_generated/dataModel";
 import { api } from "@convex/_generated/api";
 import { Archive, ArrowLeft, ChevronDown, ChevronRight, Home } from "lucide-react";
+import { formatDate, formatTime } from "@/lib/tz";
 import { ConversationThread } from "./conversation-thread";
 
 type MessagesInboxClientProps = {
@@ -21,20 +22,19 @@ function formatListTime(timestamp?: number) {
   if (diff < 60_000) return "now";
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`;
-  return new Date(timestamp).toLocaleDateString([], {
+  return formatDate(timestamp, {
     month: "short",
     day: "numeric",
   });
 }
 
 function formatSchedule(timestamp: number) {
-  const date = new Date(timestamp);
-  const datePart = date.toLocaleDateString(undefined, {
+  const datePart = formatDate(timestamp, {
     weekday: "short",
     month: "short",
     day: "numeric",
   });
-  const timePart = date.toLocaleTimeString(undefined, {
+  const timePart = formatTime(timestamp, {
     hour: "numeric",
     minute: "2-digit",
   });
