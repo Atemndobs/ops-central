@@ -443,12 +443,16 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
     [evidencePhotos],
   );
 
-  const totalRooms = roomRows.length;
+  // Incident-only rows (no before/after photos) are excluded from the room count
+  // so that an isolated incident doesn't inflate the room total (e.g. 8 vs 7).
+  const totalRooms = roomRows.filter(
+    (row) => row.before.length > 0 || row.after.length > 0,
+  ).length;
   const reviewedCount = roomRows.filter((row) => reviewByRoom[row.key]?.verdict !== null).length;
   const passCount = roomRows.filter((row) => reviewByRoom[row.key]?.verdict === "pass").length;
   const reworkCount = roomRows.filter((row) => reviewByRoom[row.key]?.verdict === "rework").length;
-  const reviewPercent = totalRooms === 0 ? 0 : Math.round((reviewedCount / totalRooms) * 100);
-  const allReviewed = totalRooms > 0 && reviewedCount === totalRooms;
+  const reviewPercent = roomRows.length === 0 ? 0 : Math.round((reviewedCount / roomRows.length) * 100);
+  const allReviewed = roomRows.length > 0 && reviewedCount === roomRows.length;
   const canDecision = detail?.job.status === "awaiting_approval";
   const isReadOnlyReview = !canDecision;
 
@@ -1000,6 +1004,14 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
       return;
     }
     if (event.key.toLowerCase() === "o") {
+      const tag = (event.target as HTMLElement)?.tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        (event.target as HTMLElement)?.isContentEditable
+      ) {
+        return;
+      }
       event.preventDefault();
       setCompareRoomKey(row.key);
     }
