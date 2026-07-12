@@ -1445,6 +1445,24 @@ const appSettings = defineTable({
       v.literal("purple"),
     ),
   ),
+  // Per-ROLE brand colors (admin-configurable). Drive the in-app logo/favicon
+  // per logged-in role, and the 3 installable apps' icons (ops→property_ops,
+  // owner→owner, cleaner→locked purple). Absent ⇒ role default
+  // (admin indigo / ops teal / manager amber / owner blue). The two
+  // `installedIconColor*` fields above remain as back-compat fallbacks for
+  // ops/owner so earlier picks aren't lost. Cleaner is always purple (not stored).
+  roleColorAdmin: v.optional(
+    v.union(v.literal("indigo"), v.literal("teal"), v.literal("amber"), v.literal("blue"), v.literal("purple")),
+  ),
+  roleColorPropertyOps: v.optional(
+    v.union(v.literal("indigo"), v.literal("teal"), v.literal("amber"), v.literal("blue"), v.literal("purple")),
+  ),
+  roleColorManager: v.optional(
+    v.union(v.literal("indigo"), v.literal("teal"), v.literal("amber"), v.literal("blue"), v.literal("purple")),
+  ),
+  roleColorOwner: v.optional(
+    v.union(v.literal("indigo"), v.literal("teal"), v.literal("amber"), v.literal("blue"), v.literal("purple")),
+  ),
   updatedBy: v.optional(v.id("users")),
   updatedAt: v.number(),
 })

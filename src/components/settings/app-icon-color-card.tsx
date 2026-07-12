@@ -1,48 +1,52 @@
 "use client";
 
 /**
- * AppIconColorCard — per-app installed-icon picker.
+ * AppIconColorCard — per-role brand color picker.
  *
- * Each installable PWA (Ops, Cleaner, Owner) has its own home-screen icon color,
- * chosen here by an admin. The dynamic manifest + icon routes for each app read
- * these settings. Takes effect for NEW installs — existing home-screen icons
- * update only after removing and re-adding the app (iOS caches especially hard).
+ * An admin assigns a color to each role (Admin, Ops, Manager, Owner). Cleaner is
+ * locked to purple. These colors drive:
+ *   - the in-app logo / favicon / accent, by the logged-in role (all roles);
+ *   - the 3 installable apps' home-screen icons (Ops app → Ops color,
+ *     Owner app → Owner color, Cleaner app → purple).
  *
- * The in-app logo/accent is separate: it colors itself by the logged-in role.
+ * Admin, Ops, and Manager share the same installable app (the Ops dashboard), so
+ * their home-screen icon is the same — they differ *inside* the app. Installed
+ * icons take effect for new installs (existing update after reinstalling).
  */
 
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { Check, Loader2 } from "lucide-react";
+import { Check, Loader2, Lock } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/components/ui/toast-provider";
 import {
-  APP_META,
   ICON_COLOR_KEYS,
   ICON_COLORS,
+  ROLE_META,
   iconAssetBase,
-  type IconApp,
+  isAdjustableRole,
+  type BrandRole,
   type IconColorKey,
 } from "@/lib/brand";
 
 export function AppIconColorCard() {
   const { showToast } = useToast();
-  const apps = useQuery(api.appSettings.listAppIconColors, {});
-  const setColor = useMutation(api.appSettings.setInstalledIconColor);
+  const roles = useQuery(api.appSettings.listRoleIconColors, {});
+  const setColor = useMutation(api.appSettings.setRoleIconColor);
   const [saving, setSaving] = useState<string | null>(null);
 
-  async function choose(app: IconApp, key: IconColorKey, current: IconColorKey) {
-    if (key === current || saving) return;
-    setSaving(`${app}:${key}`);
+  async function choose(role: BrandRole, key: IconColorKey, current: IconColorKey) {
+    if (key === current || saving || !isAdjustableRole(role)) return;
+    setSaving(`${role}:${key}`);
     try {
-      await setColor({ app, color: key });
+      await setColor({ role, color: key });
       showToast(
-        `${APP_META[app].label} icon set to ${ICON_COLORS[key].label}. New installs use it; existing ones update after reinstalling.`,
+        `${ROLE_META[role].label} set to ${ICON_COLORS[key].label}. In-app updates now; installed icons update on next install/reinstall.`,
         "success",
       );
     } catch (error) {
-      showToast(getErrorMessage(error, "Could not update the app icon color"), "error");
+      showToast(getErrorMessage(error, "Could not update the role color"), "error");
     } finally {
       setSaving(null);
     }
@@ -51,50 +55,60 @@ export function AppIconColorCard() {
   return (
     <div className="space-y-5">
       <p className="text-sm text-[var(--muted-foreground)]">
-        Each installable app has its own home-screen icon color, so you can tell them
-        apart on a phone. Applies to <strong>new installs</strong>; anyone who already
-        added an app updates their icon after removing and re-adding it.
+        Assign a color to each role. It colors the logo, favicon and accents{" "}
+        <strong>inside the app</strong> for whoever is logged in, and the home-screen
+        icons of the installable apps. Cleaner is locked to purple. Admin, Ops and
+        Manager share the Ops app, so they look distinct inside the app; installed-icon
+        changes apply to new installs.
       </p>
 
-      {apps === undefined ? (
+      {roles === undefined ? (
         <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading…
         </div>
       ) : (
-        apps.map(({ app, color }) => (
-          <div key={app} className="rounded-lg border p-3">
+        roles.map(({ role, color, locked }) => (
+          <div
+            key={role}
+            className={`rounded-lg border p-3 ${locked ? "opacity-60" : ""}`}
+          >
             <div className="mb-3 flex items-center gap-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={`${iconAssetBase(color)}-192.png`}
-                alt={`${APP_META[app].label} icon`}
+                alt={`${ROLE_META[role].label} icon`}
                 width={40}
                 height={40}
                 className="h-10 w-10 shrink-0"
               />
               <div className="min-w-0">
-                <p className="text-sm font-semibold">{APP_META[app].label}</p>
+                <p className="flex items-center gap-1.5 text-sm font-semibold">
+                  {ROLE_META[role].label}
+                  {locked ? <Lock className="h-3 w-3 text-[var(--muted-foreground)]" /> : null}
+                </p>
                 <p className="truncate text-xs text-[var(--muted-foreground)]">
-                  {APP_META[app].description}
+                  {ROLE_META[role].description}
                 </p>
               </div>
             </div>
             <div className="grid grid-cols-5 gap-2">
               {ICON_COLOR_KEYS.map((key) => {
                 const isActive = key === color;
-                const isSaving = saving === `${app}:${key}`;
+                const isSaving = saving === `${role}:${key}`;
                 return (
                   <button
                     key={key}
                     type="button"
-                    onClick={() => choose(app, key, color)}
-                    disabled={saving !== null}
+                    onClick={() => choose(role, key, color)}
+                    disabled={locked || saving !== null}
                     aria-pressed={isActive}
-                    title={ICON_COLORS[key].label}
-                    className={`relative flex flex-col items-center gap-1 rounded-md border p-2 transition disabled:opacity-70 ${
+                    title={locked ? "Locked" : ICON_COLORS[key].label}
+                    className={`relative flex flex-col items-center gap-1 rounded-md border p-2 transition disabled:cursor-not-allowed ${
                       isActive
                         ? "border-[var(--primary)] ring-2 ring-[var(--primary)]/40"
-                        : "hover:bg-[var(--accent)]"
+                        : locked
+                          ? ""
+                          : "hover:bg-[var(--accent)]"
                     }`}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}

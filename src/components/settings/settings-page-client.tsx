@@ -822,8 +822,8 @@ export function SettingsPageClient({ initialTab }: { initialTab: SettingsTab }) 
           <CollapsibleSection
             persistKey="integrations-app-icon-color"
             icon={<Palette className="h-4 w-4" />}
-            title="App icon colors"
-            subtitle="Per-app home-screen icon color for each installable app (Ops, Cleaner, Owner)."
+            title="Role colors"
+            subtitle="Brand color per role (Admin, Ops, Manager, Owner) — drives in-app logo/accent + app icons. Cleaner locked to purple."
           >
             <AppIconColorCard />
           </CollapsibleSection>
