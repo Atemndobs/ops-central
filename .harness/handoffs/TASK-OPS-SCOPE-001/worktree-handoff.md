@@ -127,3 +127,35 @@ none — pure frontend role/nav/label changes.
 
 ## Rollback plan
 `git revert <merge sha>` — no data involved, pure UI/route-access config.
+
+---
+
+## Addendum: 2nd commit (5253b6e) — hide nav icons for deactivated functionality
+
+Follow-up report: nav icons for functionality that isn't actually activated
+yet were still showing. Concrete case found — `nav.reviews` (Reviews inbox,
+built in PR #184) is gated behind the `reviewsAiReply` feature flag, default
+OFF. The flag's own `offBehaviour` doc already claimed "Reviews nav item...
+are hidden" when off, but that was never wired up — only role filtering
+existed.
+
+**Fix:** added an optional `featureFlag?: FeatureFlagKey` field to
+`NavigationItem` (`src/components/layout/navigation.ts`), set on the Reviews
+item. Both nav consumers (`sidebar.tsx` — main nav + quick-links help panel;
+`header.tsx` — mobile nav) now check it via the same single-flag `useQuery`
+pattern already used for `theme_switcher` in both files, and hide the item
+until the flag flips on.
+
+**Scope note:** this is role-agnostic, not ops-only — matches the existing
+theme-switcher precedent (hidden for every role when its flag is off). The
+report used ops as the concrete example, but the underlying issue (a flag's
+documented "hide the nav icon" behavior never being implemented) applies to
+whoever the item's `roles` include.
+
+Checked all 15 declared flags against the nav array — `reviewsAiReply` is
+currently the only one with a dedicated top-level nav item. Everything else
+is either a sub-feature within an always-visible page (Messages, Settings)
+or scoped to cleaner/owner surfaces with no admin/ops nav item.
+
+Additional verification: same eslint/tsc/build checks as the first commit,
+all clean/unchanged from that baseline.
