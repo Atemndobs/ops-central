@@ -2340,8 +2340,13 @@ function ReviewPhotoTile({
 }) {
   if (!url) {
     return (
-      <div className="flex h-24 items-center justify-center rounded-md border border-dashed border-[var(--border)] text-[10px] text-[var(--muted-foreground)]">
-        Missing file URL
+      <div className="relative flex h-24 cursor-not-allowed flex-col overflow-hidden rounded-md border border-dashed border-[var(--border)] opacity-50">
+        <div className="flex flex-1 items-center justify-center bg-[var(--muted)]">
+          <span className="text-[10px] font-medium text-[var(--muted-foreground)]">Unavailable</span>
+        </div>
+        <p className="truncate border-t border-[var(--border)] px-2 py-1 text-[10px] text-[var(--muted-foreground)]">
+          {cleanRoomName(label)}
+        </p>
       </div>
     );
   }
