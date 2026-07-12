@@ -68,3 +68,41 @@ export function brandColorForRole(role: string | null | undefined): IconColorKey
   }
   return DEFAULT_ICON_COLOR;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Installable apps — each has its own configurable installed-icon color.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const ICON_APPS = ["ops", "cleaner", "owner"] as const;
+export type IconApp = (typeof ICON_APPS)[number];
+
+export const APP_META: Record<
+  IconApp,
+  { label: string; description: string }
+> = {
+  ops: {
+    label: "Ops",
+    description: "Admin dashboard — scheduling, jobs, reports (app.chezsoistays.com).",
+  },
+  cleaner: {
+    label: "Cleaner",
+    description: "Field workspace for cleaners — /cleaner.",
+  },
+  owner: {
+    label: "Owner",
+    description: "Owner statements & transparency portal — /owner.",
+  },
+};
+
+/** Default installed-icon color per app (used when unset). */
+export const APP_ICON_DEFAULT: Record<IconApp, IconColorKey> = {
+  ops: "teal",
+  cleaner: "purple",
+  owner: "blue",
+};
+
+export function isIconApp(value: unknown): value is IconApp {
+  return (
+    typeof value === "string" && (ICON_APPS as readonly string[]).includes(value)
+  );
+}

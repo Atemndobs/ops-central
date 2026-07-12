@@ -1425,6 +1425,26 @@ const appSettings = defineTable({
       v.literal("purple"),
     ),
   ),
+  // Per-app installed-icon colors for the OTHER installable PWAs. `installedIconColor`
+  // above is the Ops app. Absent ⇒ per-app default (cleaner ⇒ purple, owner ⇒ blue).
+  installedIconColorCleaner: v.optional(
+    v.union(
+      v.literal("indigo"),
+      v.literal("teal"),
+      v.literal("amber"),
+      v.literal("blue"),
+      v.literal("purple"),
+    ),
+  ),
+  installedIconColorOwner: v.optional(
+    v.union(
+      v.literal("indigo"),
+      v.literal("teal"),
+      v.literal("amber"),
+      v.literal("blue"),
+      v.literal("purple"),
+    ),
+  ),
   updatedBy: v.optional(v.id("users")),
   updatedAt: v.number(),
 })
