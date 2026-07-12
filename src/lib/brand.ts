@@ -39,14 +39,14 @@ export const ICON_COLORS: Record<IconColorKey, { hex: string; label: string }> =
 };
 
 /** Fallback when no admin setting exists yet (the Ops role's brand color). */
-export const DEFAULT_ICON_COLOR: IconColorKey = "sage";
+export const DEFAULT_ICON_COLOR: IconColorKey = "terracotta";
 
 export type BrandRole = "admin" | "property_ops" | "manager" | "owner" | "cleaner";
 
 /** Which color each role wears in-app. */
 export const ROLE_ICON_COLOR: Record<BrandRole, IconColorKey> = {
   admin: "darkgreen",
-  property_ops: "sage",
+  property_ops: "terracotta",
   manager: "taupe",
   owner: "navy",
   cleaner: "purple",
@@ -103,7 +103,7 @@ export const APP_META: Record<
 
 /** Default installed-icon color per app (used when unset). */
 export const APP_ICON_DEFAULT: Record<IconApp, IconColorKey> = {
-  ops: "sage",
+  ops: "terracotta",
   cleaner: "purple",
   owner: "navy",
 };
