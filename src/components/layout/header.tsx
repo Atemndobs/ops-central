@@ -18,6 +18,7 @@ import { localeNames, type Locale } from "@/lib/locales";
 import { useConsumeNotificationIdFromSearchParam } from "@/lib/notifications-client";
 import { cn } from "@/lib/utils";
 import { navigation } from "@/components/layout/navigation";
+import { formatDateTime } from "@/lib/tz";
 
 const pageTitleKeys: Record<string, string> = {
   "/": "common.dashboard",
@@ -526,7 +527,8 @@ function getNotificationHref(type: string, data: unknown): string {
 }
 
 function formatNotificationTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleString([], {
+  // No property context here — use the app default display zone.
+  return formatDateTime(timestamp, {
     month: "short",
     day: "numeric",
     hour: "2-digit",

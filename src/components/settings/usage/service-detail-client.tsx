@@ -27,6 +27,7 @@ import {
   formatRelativeTime,
   formatUsd,
 } from "./format";
+import { formatDate, formatTime } from "@/lib/tz";
 
 type EventStatus = Doc<"serviceUsageEvents">["status"];
 
@@ -400,13 +401,17 @@ export function ServiceDetailClient({
                     className="border-b border-[var(--border)]/50 last:border-b-0"
                   >
                     <td className="px-2 py-1.5 font-mono">
-                      {new Date(ev.createdAt).toLocaleTimeString(undefined, {
+                      {formatTime(ev.createdAt, {
                         hour: "2-digit",
                         minute: "2-digit",
                         second: "2-digit",
                       })}{" "}
                       <span className="text-[var(--muted-foreground)]">
-                        · {new Date(ev.createdAt).toLocaleDateString()}
+                        · {formatDate(ev.createdAt, {
+                          month: "numeric",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
                       </span>
                     </td>
                     <td className="px-2 py-1.5 font-mono">{ev.feature}</td>

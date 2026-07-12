@@ -10,6 +10,7 @@ import {
   YAxis,
 } from "recharts";
 import { formatDayLabel, formatUsd } from "./format";
+import { formatDate } from "@/lib/tz";
 
 export type DailyCostPoint = {
   dayStart: number;
@@ -63,7 +64,7 @@ export function DailyCostChart({
                 | { dayStart?: number }
                 | undefined;
               if (!row?.dayStart) return "";
-              return new Date(row.dayStart).toLocaleDateString(undefined, {
+              return formatDate(row.dayStart, {
                 year: "numeric",
                 month: "short",
                 day: "numeric",

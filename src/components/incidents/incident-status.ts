@@ -1,3 +1,5 @@
+import { formatDate } from "@/lib/tz";
+
 export const INCIDENT_STATUSES = [
   "open",
   "in_progress",
@@ -85,5 +87,6 @@ export function formatRelativeTime(ms: number, now: number = Date.now()): string
   if (hr < 24) return `${hr}h ago`;
   const day = Math.round(hr / 24);
   if (day < 30) return `${day}d ago`;
-  return new Date(ms).toLocaleDateString();
+  // No property context here — use the app default display zone.
+  return formatDate(ms, { month: "numeric", day: "numeric", year: "numeric" });
 }

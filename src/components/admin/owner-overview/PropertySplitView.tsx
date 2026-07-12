@@ -18,6 +18,7 @@ import {
   shiftMonth,
 } from "@/components/owner/month-switcher";
 import { StatementEditor } from "./StatementEditor";
+import { formatDate } from "@/lib/tz";
 
 type PreviewResult = NonNullable<
   ReturnType<typeof useQuery<typeof api.admin.ownerOverview.getPropertyPreview>>
@@ -25,9 +26,10 @@ type PreviewResult = NonNullable<
 
 function formatPeriodLabel(period: string): string {
   const [y, m] = period.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, 1)).toLocaleString(undefined, {
+  return formatDate(new Date(Date.UTC(y, m - 1, 1)), {
     month: "long",
     year: "numeric",
+    timeZone: "UTC",
   });
 }
 

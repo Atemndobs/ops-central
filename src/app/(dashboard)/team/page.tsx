@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 
 import { getRoleDefinition, type RoleKey } from "@/lib/roles";
+import { formatDateTime } from "@/lib/tz";
 type UserRole = RoleKey;
 type CompanyMemberRole = "cleaner" | "manager" | "owner";
 type AvailabilityFilter = "all" | "active" | "working" | "available" | "off";
@@ -2226,7 +2227,7 @@ function formatRoleDate(value?: number | null): string {
   if (!value) {
     return "Unscheduled";
   }
-  return new Date(value).toLocaleString([], {
+  return formatDateTime(value, {
     month: "short",
     day: "numeric",
     hour: "2-digit",

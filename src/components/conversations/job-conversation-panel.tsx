@@ -9,6 +9,7 @@ import type { Id } from "@convex/_generated/dataModel";
 import { api } from "@convex/_generated/api";
 import { useToast } from "@/components/ui/toast-provider";
 import { getErrorMessage } from "@/lib/errors";
+import { formatDate } from "@/lib/tz";
 import { ArrowRight, MessageSquare } from "lucide-react";
 
 function formatPreviewTime(timestamp?: number | null) {
@@ -17,7 +18,7 @@ function formatPreviewTime(timestamp?: number | null) {
   if (diff < 60_000) return "now";
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`;
-  return new Date(timestamp).toLocaleDateString([], {
+  return formatDate(timestamp, {
     month: "short",
     day: "numeric",
   });
