@@ -411,21 +411,6 @@ export default function TeamPage() {
     };
   }, [members, teamMetrics]);
 
-  const companyMembershipRows = useMemo(() => {
-    return [...(teamMetrics?.members ?? [])]
-      .filter((member) => member.role === "cleaner" || member.role === "manager")
-      .sort((a, b) => {
-        const companyRank =
-          Number(Boolean(a.companyId)) - Number(Boolean(b.companyId));
-        if (companyRank !== 0) {
-          return companyRank;
-        }
-        const nameA = (a.name?.trim() || a.email || "").toLowerCase();
-        const nameB = (b.name?.trim() || b.email || "").toLowerCase();
-        return nameA.localeCompare(nameB);
-      });
-  }, [teamMetrics]);
-
   const leaderboard = useMemo(() => {
     return [...members]
       .filter((member) => typeof member.qualityScore === "number")
@@ -1386,8 +1371,28 @@ export default function TeamPage() {
                         ) : null}
                       </td>
                       {groupBy !== "company" ? (
-                        <td className={`${cellPad} truncate text-xs text-[var(--muted-foreground)]`}>
-                          {member.companyName ?? "—"}
+                        <td className={`${cellPad} truncate text-xs`}>
+                          {canManageTeam ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openCompanyEditor(toMemberActionTarget(member));
+                              }}
+                              className={`rounded-md px-1.5 py-0.5 text-left hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40 ${
+                                member.companyId
+                                  ? "text-[var(--muted-foreground)]"
+                                  : "font-semibold text-amber-600"
+                              }`}
+                              title={member.companyId ? "Change company" : "Attach to a company"}
+                            >
+                              {member.companyName ?? "— Attach"}
+                            </button>
+                          ) : (
+                            <span className="text-[var(--muted-foreground)]">
+                              {member.companyName ?? "—"}
+                            </span>
+                          )}
                         </td>
                       ) : null}
                       <td className={cellPad}>

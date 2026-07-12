@@ -35,7 +35,7 @@ function buildSystemPrompt(): string {
   });
 
   return [
-    "You are OpsBot, the AI assistant for OpsCentral property care operations.",
+    "You are OpsBot, the AI assistant for ChezSoi Ops property care operations.",
     `Today is ${today}.`,
     "",
     "IMPORTANT RULES:",

@@ -15,6 +15,7 @@ import {
   type UserRole,
 } from "@/lib/auth";
 import { navigation } from "@/components/layout/navigation";
+import { brandColorForRole, iconAssetBase, iconColorHex } from "@/lib/brand";
 import {
   HelpCircle,
   LogOut,
@@ -127,6 +128,13 @@ export function Sidebar() {
   );
   const roleFromMetadata = getRoleFromMetadata(user?.publicMetadata);
   const role: UserRole = roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "manager";
+
+  // Admin-configured per-role brand colors (falls back to the static default
+  // while loading / for unknown roles).
+  const roleColors = useQuery(api.appSettings.getRoleIconColors, {});
+  const brandColor =
+    (roleColors ? roleColors[role as keyof typeof roleColors] : undefined) ??
+    brandColorForRole(role);
   const resolvedTheme: ThemePreference =
     isConvexAuthenticated && themePreference?.theme
       ? themePreference.theme
@@ -191,6 +199,27 @@ export function Sidebar() {
     }
   }, [isConvexAuthenticated, resolvedTheme]);
 
+  // Role-based branding: expose `--brand` for accents and point the browser-tab
+  // favicon at the logged-in role's color. (The INSTALLED home-screen icon is a
+  // separate, global admin choice served by the dynamic manifest route.)
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const color = brandColor;
+    document.documentElement.style.setProperty("--brand", iconColorHex(color));
+    const href = `${iconAssetBase(color)}.svg`;
+    let link = document.querySelector<HTMLLinkElement>(
+      'link[rel="icon"][data-role-brand]',
+    );
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      link.type = "image/svg+xml";
+      link.setAttribute("data-role-brand", "");
+      document.head.appendChild(link);
+    }
+    link.href = href;
+  }, [brandColor]);
+
   return (
     <aside
       className={cn(
@@ -201,14 +230,14 @@ export function Sidebar() {
       <div className={cn("pb-4 pt-6", isCollapsed ? "px-2" : "px-6")}>
         <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3")}>
           <Image
-            src="/icons/chezsoi-icon-192.png"
-            alt="ChezSoi logo"
+            src={`${iconAssetBase(brandColor)}-192.png`}
+            alt="ChezSoi Ops logo"
             width={44}
             height={44}
             className="h-11 w-11 rounded-md object-contain"
             priority
           />
-          {!isCollapsed ? <p className="text-3xl font-black tracking-tighter">ChezSoi</p> : null}
+          {!isCollapsed ? <p className="text-3xl font-black tracking-tighter">ChezSoi Ops</p> : null}
         </div>
         {!isCollapsed ? (
           <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">

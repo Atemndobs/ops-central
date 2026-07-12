@@ -196,6 +196,9 @@ const properties = defineTable({
     v.union(v.literal("active"), v.literal("dropped"), v.literal("managed")),
   ),
   currency: v.optional(v.string()),
+  // Per-property override for the rework fix deadline (minutes). Absent ⇒ fall
+  // back to appSettings.reworkDeadlineMinutes ⇒ 30.
+  reworkDeadlineMinutes: v.optional(v.number()),
 
   // Amenities
   amenities: v.optional(v.array(v.string())),
@@ -324,6 +327,12 @@ const cleaningJobs = defineTable({
   rejectedAt: v.optional(v.number()),
   rejectedBy: v.optional(v.id("users")),
   rejectionReason: v.optional(v.string()),
+  // Rework urgency (Piece 2). `reworkDueAt` = rejectedAt + resolved deadline;
+  // drives the cleaner countdown + escalation. `reworkAckAt/By` = the cleaner's
+  // "On my way" acknowledgement (stops re-pings; does NOT stop overdue escalation).
+  reworkDueAt: v.optional(v.number()),
+  reworkAckAt: v.optional(v.number()),
+  reworkAckBy: v.optional(v.id("users")),
 
   // Flags
   partyRiskFlag: v.boolean(),
@@ -1378,6 +1387,86 @@ const aiProviderSettings = defineTable({
   createdAt: v.number(),
 })
   .index("by_feature", ["feature"]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// APP SETTINGS (admin-configurable, org-wide singleton)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// One row per settings key (currently just "global"). Holds workspace-wide
+// preferences that aren't tied to a property or user — e.g. the display
+// timezone the whole admin app renders dates/times in ("app operated in
+// Dallas" → default America/Chicago). Contract for the client:
+//   - If no row exists → fall back to the default (America/Chicago).
+//   - If a row exists → use its values.
+
+const appSettings = defineTable({
+  key: v.literal("global"),
+  // IANA timezone identifier, e.g. "America/Chicago". All admin-app date/time
+  // rendering is anchored to this zone regardless of the viewer's browser tz.
+  timezone: v.string(),
+  // Active object-storage backend that NEW photo/video uploads are written to
+  // and served from. Absent ⇒ "b2" (the historical default). Reads always sign
+  // each object against ITS OWN photos.provider, so switching this only affects
+  // future uploads — existing B2 objects keep resolving against B2.
+  storageProvider: v.optional(v.union(v.literal("b2"), v.literal("minio"))),
+  // Org-wide default minutes a cleaner has to fix rejected work before it
+  // escalates. Absent ⇒ 30. Overridable per-property (properties.reworkDeadlineMinutes).
+  reworkDeadlineMinutes: v.optional(v.number()),
+  // Color of the INSTALLED PWA icon (home-screen / favicon) for the admin app.
+  // Global choice — the manifest is one shared resource fetched before login, so
+  // it can't vary per role. Absent ⇒ "teal". The dynamic manifest route
+  // (src/app/manifest.webmanifest/route.ts) maps this to the matching icon set.
+  installedIconColor: v.optional(
+    v.union(
+      v.literal("indigo"),
+      v.literal("teal"),
+      v.literal("amber"),
+      v.literal("blue"),
+      v.literal("purple"),
+    ),
+  ),
+  // Per-app installed-icon colors for the OTHER installable PWAs. `installedIconColor`
+  // above is the Ops app. Absent ⇒ per-app default (cleaner ⇒ purple, owner ⇒ blue).
+  installedIconColorCleaner: v.optional(
+    v.union(
+      v.literal("indigo"),
+      v.literal("teal"),
+      v.literal("amber"),
+      v.literal("blue"),
+      v.literal("purple"),
+    ),
+  ),
+  installedIconColorOwner: v.optional(
+    v.union(
+      v.literal("indigo"),
+      v.literal("teal"),
+      v.literal("amber"),
+      v.literal("blue"),
+      v.literal("purple"),
+    ),
+  ),
+  // Per-ROLE brand colors (admin-configurable). Drive the in-app logo/favicon
+  // per logged-in role, and the 3 installable apps' icons (ops→property_ops,
+  // owner→owner, cleaner→locked purple). Absent ⇒ role default
+  // (admin indigo / ops teal / manager amber / owner blue). The two
+  // `installedIconColor*` fields above remain as back-compat fallbacks for
+  // ops/owner so earlier picks aren't lost. Cleaner is always purple (not stored).
+  roleColorAdmin: v.optional(
+    v.union(v.literal("indigo"), v.literal("teal"), v.literal("amber"), v.literal("blue"), v.literal("purple")),
+  ),
+  roleColorPropertyOps: v.optional(
+    v.union(v.literal("indigo"), v.literal("teal"), v.literal("amber"), v.literal("blue"), v.literal("purple")),
+  ),
+  roleColorManager: v.optional(
+    v.union(v.literal("indigo"), v.literal("teal"), v.literal("amber"), v.literal("blue"), v.literal("purple")),
+  ),
+  roleColorOwner: v.optional(
+    v.union(v.literal("indigo"), v.literal("teal"), v.literal("amber"), v.literal("blue"), v.literal("purple")),
+  ),
+  updatedBy: v.optional(v.id("users")),
+  updatedAt: v.number(),
+})
+  .index("by_key", ["key"]);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FEATURE FLAGS (admin-configurable UI gates)

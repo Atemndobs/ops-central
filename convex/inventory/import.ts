@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { internalMutation, mutation, query } from "../_generated/server";
 import { getCurrentUser } from "../lib/auth";
+import { getCallerJobScopeForListing } from "../lib/companyScope";
 import type { Doc, Id } from "../_generated/dataModel";
 
 const DEFAULT_LOW_PCT = 40;
@@ -266,10 +267,15 @@ export const countItemsPerProperty = query({
     if (!isPrivilegedRole(user)) {
       throw new ConvexError("Not authorized.");
     }
+    // Managers only count their company's properties; admin/ops (null) see all.
+    const propertyScope = await getCallerJobScopeForListing(ctx, user);
 
     const items = await ctx.db.query("inventoryItems").collect();
     const counts = new Map<string, number>();
     for (const item of items) {
+      if (propertyScope !== null && !propertyScope.has(item.propertyId)) {
+        continue;
+      }
       counts.set(item.propertyId, (counts.get(item.propertyId) ?? 0) + 1);
     }
 

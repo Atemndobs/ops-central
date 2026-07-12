@@ -1007,7 +1007,7 @@ export function ScheduleClient() {
           <button className="rounded-md p-1 hover:bg-[var(--accent)] sm:p-1.5" onClick={() => shiftRange(1)} aria-label="Next">
             <ChevronRight className="h-4 w-4" />
           </button>
-          <span className="truncate px-1 text-xs font-semibold text-[var(--muted-foreground)] sm:px-2 sm:text-sm">
+          <span className="min-w-0 truncate px-1 text-xs font-semibold text-[var(--muted-foreground)] sm:px-2 sm:text-sm">
             {formatRange(rangeStart, rangeEnd)}
           </span>
 
@@ -1085,9 +1085,9 @@ export function ScheduleClient() {
               />
             </div>
 
-            {/* Tasks: mine-only toggle */}
+            {/* Tasks: mine-only toggle (desktop; moved into the filter sheet on mobile) */}
             <label
-              className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-semibold transition ${
+              className={`hidden shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-semibold transition md:inline-flex ${
                 mineOnly
                   ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]"
                   : "bg-[var(--card)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
@@ -1117,11 +1117,11 @@ export function ScheduleClient() {
               <Users className="h-3.5 w-3.5" />
             </button>
 
-            {/* Label mode cycle */}
+            {/* Label mode cycle (desktop; moved into the filter sheet on mobile) */}
             <button
               type="button"
               onClick={cycleLabelMode}
-              className="rounded-md border px-2 py-1 text-[10px] hover:bg-[var(--accent)] sm:text-xs"
+              className="hidden rounded-md border px-2 py-1 text-[10px] hover:bg-[var(--accent)] sm:text-xs md:inline-block"
               title={`Property labels: ${propertyLabelMode}`}
             >
               {propertyLabelMode === "full" ? "Aa" : propertyLabelMode === "initials" ? "AB" : "··"}
@@ -1197,6 +1197,35 @@ export function ScheduleClient() {
                 items={(properties ?? []).map((p) => ({ id: p._id, label: p.name }))}
               />
             </div>
+
+            {/* Mine-only toggle (relocated here from the top row on mobile) */}
+            <label
+              className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-semibold transition ${
+                mineOnly
+                  ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]"
+                  : "bg-[var(--card)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+              }`}
+              title="Show only tasks assigned to me"
+            >
+              <input
+                type="checkbox"
+                className="h-3 w-3"
+                checked={mineOnly}
+                onChange={(e) => setMineOnly(e.target.checked)}
+                aria-label="Mine only"
+              />
+              My tasks
+            </label>
+
+            {/* Property label density (relocated here from the top row on mobile) */}
+            <button
+              type="button"
+              onClick={cycleLabelMode}
+              className="rounded-md border px-2 py-1 text-[10px] font-semibold hover:bg-[var(--accent)]"
+              title={`Property labels: ${propertyLabelMode}`}
+            >
+              Labels: {propertyLabelMode === "full" ? "Aa" : propertyLabelMode === "initials" ? "AB" : "Off"}
+            </button>
           </div>
         ) : null}
       </header>

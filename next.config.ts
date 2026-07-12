@@ -17,6 +17,11 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "*.muscache.com" },
       { protocol: "https", hostname: "chezsoistays.com" },
       { protocol: "https", hostname: "*.backblazeb2.com" },
+      // Backblaze-B2 CDN Worker (infra/b2-cdn-worker). Photo/video read URLs
+      // resolve to this host when B2_CDN_BASE_URL is set on Convex; next/image
+      // rejects any remote host not listed here, so this must stay in sync with
+      // that env value.
+      { protocol: "https", hostname: "b2-cdn-worker.atem.workers.dev" },
     ],
   },
 };

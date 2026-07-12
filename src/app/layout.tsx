@@ -9,21 +9,24 @@ import { ToastProvider } from "@/components/ui/toast-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ChezSoi",
+  title: "ChezSoi Ops",
   description: "Property operations management for J&A Business Solutions",
   icons: {
+    // Color-aware: these routes redirect to the admin-selected color's asset
+    // (see src/app/brand-icon/[asset]/route.ts). iOS "Add to Home Screen" and
+    // Chrome's install dialog use these, so they must follow the setting too.
     icon: [
-      { url: "/icons/chezsoi-icon.svg", type: "image/svg+xml" },
-      { url: "/icons/chezsoi-icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icons/chezsoi-icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/brand-icon/ops/favicon.svg", type: "image/svg+xml" },
+      { url: "/brand-icon/ops/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/brand-icon/ops/icon-512.png", sizes: "512x512", type: "image/png" },
     ],
-    apple: [{ url: "/icons/chezsoi-apple-touch-icon.png", sizes: "180x180" }],
+    apple: [{ url: "/brand-icon/ops/apple-touch.png", sizes: "180x180" }],
   },
-  manifest: "/manifest.json",
+  manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "ChezSoi",
+    title: "Ops",
   },
   formatDetection: {
     telephone: false,
@@ -36,7 +39,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#7c3aed",
+  themeColor: "#0d9488",
 };
 
 export default async function RootLayout({

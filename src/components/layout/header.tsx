@@ -246,7 +246,7 @@ export function Header() {
   }, [currentLocale, isLoaded, isSignedIn, setLocalePreference]);
 
   const titleKey = getPageTitleKey(pathname);
-  const title = titleKey ? t(titleKey) : "ChezSoi";
+  const title = titleKey ? t(titleKey) : "ChezSoi Ops";
 
   return (
     <>
@@ -293,7 +293,7 @@ export function Header() {
             </button>
 
             {isNotificationsOpen ? (
-              <div className="absolute right-0 top-11 z-50 w-[320px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border bg-[var(--card)] shadow-xl max-sm:-right-2 max-sm:w-[calc(100vw-1rem)]">
+              <div className="absolute right-0 top-11 z-50 w-[320px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border bg-[var(--card)] shadow-xl max-sm:fixed max-sm:inset-x-2 max-sm:top-16 max-sm:w-auto max-sm:max-w-none">
                 <div className="flex items-center justify-between border-b px-3 py-2">
                   <p className="text-sm font-semibold">Notifications</p>
                   <span className="text-xs text-[var(--muted-foreground)]">

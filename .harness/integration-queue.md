@@ -22,6 +22,30 @@ _None._
 
 ## Done
 
+### TASK-B2-CDN-001
+- Branch: task/b2-cloudflare-cdn
+- Worktree: ~/sites/opscentral-admin-b2-cdn
+- PR: https://github.com/Atemndobs/ops-central/pull/208 (merged → 0bdc992)
+- Schema impact: none
+- Convex impact: deploy-required, deployed to lovable-oriole-182 (behavior-neutral — CDN path dormant until `B2_CDN_*` env set)
+- Risk: low (fully inert until enabled)
+- What: private edge-cached Cloudflare Worker CDN in front of B2 (`infra/b2-cdn-worker`) + `createExternalReadUrl` emits signed CDN URLs for B2 when `B2_CDN_BASE_URL`+`B2_CDN_SIGNING_SECRET` set. Durable fix for B2 cap exhaustion.
+- Merged: 2026-07-10
+- Handoff: .harness/handoffs/TASK-B2-CDN-001/worktree-handoff.md · integration-result.md
+- Post-merge: `npx convex deploy` ✓ (no _generated drift, no new functions), no regression (B2 photo presigned GET 200 with B2_CDN_* unset), sign.test.js 3/3, cleaners mirrored ✓. Enablement pending operator's Cloudflare setup (Worker deploy + DNS + secrets), then Convex env flip.
+
+### TASK-STORAGE-SWITCH-001
+- Branch: task/storage-provider-switch
+- Worktree: ~/sites/opscentral-admin-storage-switch
+- PR: https://github.com/Atemndobs/ops-central/pull/207 (merged → 3bbc88e)
+- Schema impact: backward-compatible (`appSettings.storageProvider` optional, no index/backfill) — combined-PR exception
+- Convex impact: deploy-required (deployed to lovable-oriole-182 — `appSettings.{listStorageProviders,getStorageProvider,setStorageProvider}` + schema field; provider-aware read path in `photoUrls`/`cleaningJobs.queries`/`files.mutations`)
+- Risk: medium (shared photo read/write path; b2 rows unaffected — reads default to b2)
+- What: admin-selectable object-storage backend (B2 ↔ MinIO) on the appSettings singleton + provider-aware reads (each object signed against its own `photos.provider`). Settings → Integrations → "Photo & video storage" picker.
+- Merged: 2026-07-10
+- Handoff: .harness/handoffs/TASK-STORAGE-SWITCH-001/worktree-handoff.md · integration-result.md
+- Post-merge: deploy order = convex deploy (codegen) → build → push bindings (d8ab304). Build ✓, schema validation ✓, cleaners mirrored ✓. Ships INERT (defaults to b2; MinIO refused until `MINIO_*` set in Convex prod). Tailscale Funnel `https://minio.goose-neon.ts.net` verified: presigned GET returns 200 off-tailnet, so MinIO serving is viable once env is set + a scoped key/`job-photos` bucket created. Existing broken B2 thumbnails need the B2 cap raised (not fixed by this — they live in B2).
+
 ### TASK-OWNER-DRAFT-ERROR-001
 - Branch: task/owner-draft-engine-error
 - Worktree: ~/sites/opscentral-admin-owner-draft-fix

@@ -252,7 +252,7 @@ export function OwnerPropertyClient({
           <div className="px-4 py-3 text-sm text-[var(--cleaner-muted,#6b7280)]">
             No statement data for {fmtMonth(draft.month)} yet — this
             property&apos;s fee configuration doesn&apos;t cover that period.
-            If you expected numbers here, contact Chez Soi Stays.
+            If you expected numbers here, contact ChezSoi Ops.
           </div>
         </Card>
       )}

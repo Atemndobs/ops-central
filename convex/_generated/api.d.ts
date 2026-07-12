@@ -19,6 +19,7 @@ import type * as admin_userSync from "../admin/userSync.js";
 import type * as admin_wipeGoLiveData from "../admin/wipeGoLiveData.js";
 import type * as ai_providers from "../ai/providers.js";
 import type * as ai_settings from "../ai/settings.js";
+import type * as appSettings from "../appSettings.js";
 import type * as cleaningJobs_acknowledgements from "../cleaningJobs/acknowledgements.js";
 import type * as cleaningJobs_approve from "../cleaningJobs/approve.js";
 import type * as cleaningJobs_backfillMeta from "../cleaningJobs/backfillMeta.js";
@@ -79,6 +80,8 @@ import type * as lib_photoStorageAggregate from "../lib/photoStorageAggregate.js
 import type * as lib_photoUrls from "../lib/photoUrls.js";
 import type * as lib_profileMetadata from "../lib/profileMetadata.js";
 import type * as lib_reviewResponseDraft from "../lib/reviewResponseDraft.js";
+import type * as lib_reworkDeadline from "../lib/reworkDeadline.js";
+import type * as lib_reworkNotifications from "../lib/reworkNotifications.js";
 import type * as lib_roles from "../lib/roles.js";
 import type * as lib_rooms from "../lib/rooms.js";
 import type * as lib_serviceRegistry from "../lib/serviceRegistry.js";
@@ -164,6 +167,7 @@ declare const fullApi: ApiFromModules<{
   "admin/wipeGoLiveData": typeof admin_wipeGoLiveData;
   "ai/providers": typeof ai_providers;
   "ai/settings": typeof ai_settings;
+  appSettings: typeof appSettings;
   "cleaningJobs/acknowledgements": typeof cleaningJobs_acknowledgements;
   "cleaningJobs/approve": typeof cleaningJobs_approve;
   "cleaningJobs/backfillMeta": typeof cleaningJobs_backfillMeta;
@@ -224,6 +228,8 @@ declare const fullApi: ApiFromModules<{
   "lib/photoUrls": typeof lib_photoUrls;
   "lib/profileMetadata": typeof lib_profileMetadata;
   "lib/reviewResponseDraft": typeof lib_reviewResponseDraft;
+  "lib/reworkDeadline": typeof lib_reworkDeadline;
+  "lib/reworkNotifications": typeof lib_reworkNotifications;
   "lib/roles": typeof lib_roles;
   "lib/rooms": typeof lib_rooms;
   "lib/serviceRegistry": typeof lib_serviceRegistry;
