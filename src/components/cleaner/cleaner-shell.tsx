@@ -487,7 +487,7 @@ export function CleanerShell({ children }: { children: React.ReactNode }) {
           >
             <Image
               src="/icons/chezsoi-icon-192.png"
-              alt="ChezSoiCleaning logo"
+              alt="ChezSoi Ops logo"
               width={32}
               height={32}
               className="h-8 w-8 shrink-0 rounded-md object-contain"

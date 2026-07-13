@@ -24,12 +24,20 @@ import {
 } from "@/components/jobs/job-status";
 import { JobConversationLanesPanel } from "@/components/conversations/job-conversation-lanes-panel";
 import { getErrorMessage } from "@/lib/errors";
+import { formatDateTime as tzFormatDateTime } from "@/lib/tz";
 
 function formatDateTime(value?: number | null): string {
   if (!value) {
     return "—";
   }
-  return new Date(value).toLocaleString();
+  return tzFormatDateTime(value, {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 type ReviewDetail = {

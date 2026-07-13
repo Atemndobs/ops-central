@@ -22,6 +22,18 @@ import { VideoPlayer } from "@/components/media/VideoPlayer";
 import { getErrorMessage } from "@/lib/errors";
 import { useIsVideoEnabled } from "@/hooks/use-is-video-enabled";
 import { STATUS_CLASSNAMES, STATUS_LABELS } from "@/components/jobs/job-status";
+import { formatDateTimeInZone, resolveDisplayTimezone } from "@/lib/tz";
+
+// Reproduces the bare `Date.toLocaleString()` output (en-US numeric date +
+// time with seconds), rendered in the given property display zone.
+const DATE_TIME_OPTS: Intl.DateTimeFormatOptions = {
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  second: "2-digit",
+};
 
 type ReviewVerdict = "pass" | "rework" | null;
 type ReviewFilter = "all" | "needs_review" | "missing" | "reviewed";
@@ -162,16 +174,15 @@ const reviewAnnotationsMutation = makeFunctionReference<
   }
 >("reviewAnnotations/mutations:saveForPhoto");
 
-function formatDateTime(value?: number | null) {
+function formatDateTime(value?: number | null, zone?: string) {
   if (!value) {
     return "—";
   }
-  return new Date(value).toLocaleString();
+  return formatDateTimeInZone(value, zone ?? resolveDisplayTimezone(null), DATE_TIME_OPTS);
 }
 
-function formatPhotoTimestamp(value: number): string {
-  const d = new Date(value);
-  return d.toLocaleString(undefined, {
+function formatPhotoTimestamp(value: number, zone?: string): string {
+  return formatDateTimeInZone(value, zone ?? resolveDisplayTimezone(null), {
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -308,6 +319,8 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const { showToast } = useToast();
 
   const detail = useQuery(api.cleaningJobs.queries.getJobDetail, isAuthenticated ? { jobId } : "skip");
+  // Every timestamp here belongs to this job's property — display in its zone.
+  const displayZone = resolveDisplayTimezone(detail?.property?.timezone);
   const approveCompletion = useMutation(api.cleaningJobs.approve.approveCompletion);
   const rejectCompletion = useMutation(api.cleaningJobs.approve.rejectCompletion);
   const savePhotoReviewAnnotations = useMutation(reviewAnnotationsMutation);
@@ -443,12 +456,16 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
     [evidencePhotos],
   );
 
-  const totalRooms = roomRows.length;
+  // Incident-only rows (no before/after photos) are excluded from the room count
+  // so that an isolated incident doesn't inflate the room total (e.g. 8 vs 7).
+  const totalRooms = roomRows.filter(
+    (row) => row.before.length > 0 || row.after.length > 0,
+  ).length;
   const reviewedCount = roomRows.filter((row) => reviewByRoom[row.key]?.verdict !== null).length;
   const passCount = roomRows.filter((row) => reviewByRoom[row.key]?.verdict === "pass").length;
   const reworkCount = roomRows.filter((row) => reviewByRoom[row.key]?.verdict === "rework").length;
-  const reviewPercent = totalRooms === 0 ? 0 : Math.round((reviewedCount / totalRooms) * 100);
-  const allReviewed = totalRooms > 0 && reviewedCount === totalRooms;
+  const reviewPercent = roomRows.length === 0 ? 0 : Math.round((reviewedCount / roomRows.length) * 100);
+  const allReviewed = roomRows.length > 0 && reviewedCount === roomRows.length;
   const canDecision = detail?.job.status === "awaiting_approval";
   const isReadOnlyReview = !canDecision;
 
@@ -1000,6 +1017,14 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
       return;
     }
     if (event.key.toLowerCase() === "o") {
+      const tag = (event.target as HTMLElement)?.tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        (event.target as HTMLElement)?.isContentEditable
+      ) {
+        return;
+      }
       event.preventDefault();
       setCompareRoomKey(row.key);
     }
@@ -1050,7 +1075,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
             </p>
             <p className="mt-1 text-lg font-semibold">{detail.evidence.latestSubmission?.revision ?? "—"}</p>
             <p className="text-xs text-[var(--muted-foreground)]">
-              {formatDateTime(detail.evidence.latestSubmission?.submittedAtServer)}
+              {formatDateTime(detail.evidence.latestSubmission?.submittedAtServer, displayZone)}
             </p>
           </div>
           <div className="rounded-md border border-[var(--border)] p-3">
@@ -1305,6 +1330,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                     <PhotoColumn
                       photos={row.before}
                       label="Before"
+                      zone={displayZone}
                       onOpenPhoto={(photo) => openViewerForPhotos(roomSlides, photo.photoId)}
                     />
                   </div>
@@ -1312,6 +1338,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                     <PhotoColumn
                       photos={row.after}
                       label="After"
+                      zone={displayZone}
                       onOpenPhoto={(photo) => openViewerForPhotos(roomSlides, photo.photoId)}
                     />
                   </div>
@@ -1394,6 +1421,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                     <PhotoColumn
                       photos={row.before}
                       label="Before"
+                      zone={displayZone}
                       onOpenPhoto={(photo) => openViewerForPhotos(roomSlides, photo.photoId)}
                     />
                   </div>
@@ -1404,6 +1432,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                     <PhotoColumn
                       photos={row.after}
                       label="After"
+                      zone={displayZone}
                       onOpenPhoto={(photo) => openViewerForPhotos(roomSlides, photo.photoId)}
                     />
                   </div>
@@ -1456,6 +1485,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                 key={`${photo.photoId}-${index}`}
                 url={photo.url}
                 label={photo.roomName}
+                zone={displayZone}
                 onOpen={() => openViewerForPhotos(incidentPhotos, photo.photoId)}
               />
             ))}
@@ -1652,7 +1682,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
               {/* Timestamp */}
               <p className="min-h-[1.5rem] px-3 py-1 font-mono text-[10px] text-[var(--muted-foreground)]">
                 {compareBeforePhoto?.uploadedAt
-                  ? formatPhotoTimestamp(compareBeforePhoto.uploadedAt)
+                  ? formatPhotoTimestamp(compareBeforePhoto.uploadedAt, displayZone)
                   : null}
               </p>
 
@@ -1738,7 +1768,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
               {/* Timestamp */}
               <p className="min-h-[1.5rem] px-3 py-1 font-mono text-[10px] text-[var(--muted-foreground)]">
                 {compareAfterPhoto?.uploadedAt
-                  ? formatPhotoTimestamp(compareAfterPhoto.uploadedAt)
+                  ? formatPhotoTimestamp(compareAfterPhoto.uploadedAt, displayZone)
                   : null}
               </p>
 
@@ -1808,7 +1838,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                 </h3>
                 <p className="text-xs text-[var(--muted-foreground)]">
                   {currentSlide.uploadedAt ? (
-                    <span className="mr-2 font-mono">{formatPhotoTimestamp(currentSlide.uploadedAt)}</span>
+                    <span className="mr-2 font-mono">{formatPhotoTimestamp(currentSlide.uploadedAt, displayZone)}</span>
                   ) : null}
                   Mark corrections with freehand, arrows, lines, or cloud callouts directly on the photo.
                 </p>
@@ -2254,10 +2284,12 @@ function Pill({
 function PhotoColumn({
   photos,
   label,
+  zone,
   onOpenPhoto,
 }: {
   photos: EvidencePhoto[];
   label: string;
+  zone?: string;
   onOpenPhoto?: (photo: EvidencePhoto) => void;
 }) {
   if (!photos.length) {
@@ -2279,6 +2311,7 @@ function PhotoColumn({
           durationMs={photo.durationMs}
           label={photo.roomName}
           uploadedAt={photo.uploadedAt}
+          zone={zone}
           onOpen={() => onOpenPhoto?.(photo)}
         />
       ))}
@@ -2293,6 +2326,7 @@ function ReviewPhotoTile({
   durationMs,
   label,
   uploadedAt,
+  zone,
   onOpen,
 }: {
   url: string | null;
@@ -2301,12 +2335,18 @@ function ReviewPhotoTile({
   durationMs?: number;
   label: string;
   uploadedAt?: number | null;
+  zone?: string;
   onOpen?: () => void;
 }) {
   if (!url) {
     return (
-      <div className="flex h-24 items-center justify-center rounded-md border border-dashed border-[var(--border)] text-[10px] text-[var(--muted-foreground)]">
-        Missing file URL
+      <div className="relative flex h-24 cursor-not-allowed flex-col overflow-hidden rounded-md border border-dashed border-[var(--border)] opacity-50">
+        <div className="flex flex-1 items-center justify-center bg-[var(--muted)]">
+          <span className="text-[10px] font-medium text-[var(--muted-foreground)]">Unavailable</span>
+        </div>
+        <p className="truncate border-t border-[var(--border)] px-2 py-1 text-[10px] text-[var(--muted-foreground)]">
+          {cleanRoomName(label)}
+        </p>
       </div>
     );
   }
@@ -2328,7 +2368,7 @@ function ReviewPhotoTile({
       />
       {uploadedAt ? (
         <span className="block bg-black/60 px-1.5 py-0.5 font-mono text-[9px] text-white/90">
-          {formatPhotoTimestamp(uploadedAt)}
+          {formatPhotoTimestamp(uploadedAt, zone)}
         </span>
       ) : null}
       <p className="truncate border-t border-[var(--border)] px-2 py-1 text-[10px] text-[var(--muted-foreground)]">

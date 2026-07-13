@@ -18,6 +18,7 @@ const isPublicRoute = createRouteMatcher([
   "/support",
   "/delete-account",
   "/terms",
+  "/install(.*)",
   "/api/webhooks/hospitable(.*)",
   "/api/webhooks/clerk(.*)",
   "/api/webhooks/trello(.*)",

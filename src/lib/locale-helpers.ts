@@ -1,4 +1,5 @@
 import { type Locale } from "@/i18n";
+import { getDefaultTimezone } from "@/lib/tz";
 
 /**
  * Format a date in the user's locale
@@ -7,6 +8,7 @@ export function formatDate(date: Date | string, locale: Locale): string {
   const d = typeof date === "string" ? new Date(date) : date;
 
   return new Intl.DateTimeFormat(locale === "es" ? "es-ES" : "en-US", {
+    timeZone: getDefaultTimezone(),
     year: "numeric",
     month: "long",
     day: "numeric",
@@ -20,6 +22,7 @@ export function formatTime(date: Date | string, locale: Locale): string {
   const d = typeof date === "string" ? new Date(date) : date;
 
   return new Intl.DateTimeFormat(locale === "es" ? "es-ES" : "en-US", {
+    timeZone: getDefaultTimezone(),
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
@@ -33,6 +36,7 @@ export function formatDateTime(date: Date | string, locale: Locale): string {
   const d = typeof date === "string" ? new Date(date) : date;
 
   return new Intl.DateTimeFormat(locale === "es" ? "es-ES" : "en-US", {
+    timeZone: getDefaultTimezone(),
     year: "numeric",
     month: "long",
     day: "numeric",

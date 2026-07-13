@@ -1,23 +1,34 @@
 import { ConvexError, v } from "convex/values";
 import { query } from "../_generated/server";
+import type { QueryCtx } from "../_generated/server";
 import { getCurrentUser } from "../lib/auth";
+import { canCallerAccessPropertyById } from "../lib/companyScope";
 import type { Doc } from "../_generated/dataModel";
 
 function getCurrentRevision(job: Doc<"cleaningJobs">): number {
   return job.currentRevision ?? 1;
 }
 
-function isPrivilegedRole(user: Doc<"users">): boolean {
-  return (
-    user.role === "admin" ||
-    user.role === "property_ops" ||
-    user.role === "manager"
-  );
-}
-
-function assertJobAccess(user: Doc<"users">, job: Doc<"cleaningJobs">) {
-  if (isPrivilegedRole(user)) {
+/**
+ * - admin / property_ops: any job.
+ * - manager: only jobs whose property their company currently services.
+ * - cleaner: only jobs they are assigned to.
+ */
+async function assertJobAccess(
+  ctx: QueryCtx,
+  user: Doc<"users">,
+  job: Doc<"cleaningJobs">,
+) {
+  if (user.role === "admin" || user.role === "property_ops") {
     return;
+  }
+  if (user.role === "manager") {
+    if (await canCallerAccessPropertyById(ctx, user, job.propertyId)) {
+      return;
+    }
+    throw new ConvexError(
+      "You are not authorized to access job checks for this job.",
+    );
   }
   if (user.role === "cleaner" && job.assignedCleanerIds.includes(user._id)) {
     return;
@@ -35,7 +46,7 @@ export const getForJob = query({
     if (!job) {
       return null;
     }
-    assertJobAccess(user, job);
+    await assertJobAccess(ctx, user, job);
 
     const revision = getCurrentRevision(job);
     const [checkpoints, checkpointChecks, refillChecks, inventoryItems] = await Promise.all([

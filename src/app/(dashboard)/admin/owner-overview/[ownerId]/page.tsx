@@ -10,10 +10,11 @@ import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Loader2, ChevronLeft, Building2, FileText } from "lucide-react";
+import { formatDate } from "@/lib/tz";
 
 function formatPeriod(periodStart: number): string {
-  const d = new Date(periodStart);
-  return d.toLocaleString(undefined, { month: "long", year: "numeric" });
+  // Monthly statement period — pin to UTC so the month label doesn't slip.
+  return formatDate(periodStart, { month: "long", year: "numeric", timeZone: "UTC" });
 }
 
 function formatPeriodKey(periodStart: number): string {

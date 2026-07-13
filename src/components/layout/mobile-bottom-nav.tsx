@@ -10,7 +10,7 @@ import {
   Calendar,
   ClipboardList,
   MessageSquare,
-  MoreHorizontal,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 import { api } from "@convex/_generated/api";
@@ -95,6 +95,11 @@ export function MobileBottomNav() {
   const role: UserRole = roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "manager";
 
   const visible = TABS.filter((tab) => tab.roles.includes(role));
+  // The AI assistant is gated to admins/ops (same as AiChatPanel). When shown,
+  // it takes the last nav slot — replacing the old "More" button, which just
+  // duplicated the top-left hamburger drawer.
+  const showChat = role === "admin" || role === "property_ops";
+  const columns = visible.length + (showChat ? 1 : 0);
 
   // Longest-prefix-wins so /jobs/abc stays on Jobs, not Dashboard.
   let activeHref: string | null = null;
@@ -113,7 +118,10 @@ export function MobileBottomNav() {
       style={{ paddingBottom: "max(env(safe-area-inset-bottom), 6px)" }}
       aria-label="Primary navigation"
     >
-      <ul className="pointer-events-auto mx-auto grid max-w-[480px] grid-cols-5 items-center justify-items-center gap-x-2 px-6 pb-2">
+      <ul
+        className="pointer-events-auto mx-auto grid max-w-[480px] items-center justify-items-center gap-x-2 px-6 pb-2"
+        style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+      >
         {visible.map((tab) => {
           const label = t(tab.labelKey);
           const isActive = activeHref === tab.href;
@@ -136,23 +144,25 @@ export function MobileBottomNav() {
             </li>
           );
         })}
-        <li className="list-none">
-          <button
-            type="button"
-            aria-label="More"
-            title="More"
-            className="block"
-            onClick={() => window.dispatchEvent(new Event("opscentral:open-mobile-menu"))}
-          >
-            <CleanerIconButton
-              icon={MoreHorizontal}
-              label="More"
-              active={false}
-              size="nav"
-              className="shadow-[0px_2px_8.2px_rgba(0,0,0,0.18)]"
-            />
-          </button>
-        </li>
+        {showChat ? (
+          <li className="list-none">
+            <button
+              type="button"
+              aria-label={t("common.assistant")}
+              title={t("common.assistant")}
+              className="block"
+              onClick={() => window.dispatchEvent(new Event("opscentral:open-ai-chat"))}
+            >
+              <CleanerIconButton
+                icon={Sparkles}
+                label={t("common.assistant")}
+                active={false}
+                size="nav"
+                className="shadow-[0px_2px_8.2px_rgba(0,0,0,0.18)]"
+              />
+            </button>
+          </li>
+        ) : null}
       </ul>
     </nav>
   );

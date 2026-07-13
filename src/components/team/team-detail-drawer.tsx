@@ -55,6 +55,7 @@ type Props = {
   onEditCompany: () => void;
   onDispatchJob: () => void;
   onAssignProperty: () => void;
+  onDeleteMember: () => void;
   formatRoleLabel: (role?: string) => string;
   formatCompanyRoleLabel: (role?: string | null) => string;
 };
@@ -100,6 +101,7 @@ export function TeamDetailDrawer({
   onEditCompany,
   onDispatchJob,
   onAssignProperty,
+  onDeleteMember,
   formatRoleLabel,
   formatCompanyRoleLabel,
 }: Props) {
@@ -257,6 +259,23 @@ export function TeamDetailDrawer({
             <SectionHeader>Activity</SectionHeader>
             <p className="text-sm text-[var(--muted-foreground)]">No recent activity.</p>
           </section>
+
+          {canManageTeam ? (
+            <section className="space-y-2 border-t border-red-500/20 pt-4">
+              <SectionHeader>Danger zone</SectionHeader>
+              <p className="text-xs text-[var(--muted-foreground)]">
+                Permanently deletes this person from the app and their Clerk
+                login. Blocked if they have job history — deactivate instead.
+              </p>
+              <button
+                type="button"
+                onClick={onDeleteMember}
+                className="w-full rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-500/20 dark:text-red-400"
+              >
+                Remove team member
+              </button>
+            </section>
+          ) : null}
         </div>
       </aside>
     </div>

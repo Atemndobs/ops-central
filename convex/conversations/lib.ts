@@ -1,6 +1,7 @@
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { canCallerAccessPropertyById } from "../lib/companyScope";
 
 type DbCtx = QueryCtx | MutationCtx;
 
@@ -271,14 +272,25 @@ export async function canAccessJobConversation(
     ? getConversationLaneKind(args.conversation)
     : "internal_shared";
 
-  if (args.user.role === "admin") {
+  // Full-visibility roles see every job's conversation.
+  if (args.user.role === "admin" || args.user.role === "property_ops") {
     return true;
   }
 
-  if (laneKind === "whatsapp_cleaner") {
-    return isPrivilegedRole(args.user.role);
+  // A cleaning-company manager is scoped to the properties their company
+  // currently services — NOT the whole portfolio. This applies to both the
+  // internal and WhatsApp lanes.
+  if (args.user.role === "manager") {
+    return canCallerAccessPropertyById(ctx, args.user, args.job.propertyId);
   }
 
+  // WhatsApp cleaner lanes were privileged-only; cleaners never had access.
+  if (laneKind === "whatsapp_cleaner") {
+    return false;
+  }
+
+  // A cleaner may only access the conversation for a job they are CURRENTLY
+  // assigned to.
   if (
     args.user.role === "cleaner" &&
     args.job.assignedCleanerIds.includes(args.user._id)
@@ -286,11 +298,44 @@ export async function canAccessJobConversation(
     return true;
   }
 
-  if (args.user.role === "property_ops" || args.user.role === "manager") {
-    return true;
+  return false;
+}
+
+/**
+ * Read-time visibility gate for a non-privileged user (cleaner) seeing a
+ * conversation in their inbox / unread count.
+ *
+ * The list and unread-count queries previously returned every conversation a
+ * user was *ever* a participant of — leaking messages after the cleaner was
+ * unassigned or the property was deactivated. This mirrors the detail-view
+ * gate (`canAccessJobConversation`, current job assignment) and additionally
+ * hides conversations for deactivated properties. Privileged roles never call
+ * this — admins/ops/managers keep the full history on purpose.
+ */
+export async function cleanerCanViewConversation(
+  ctx: DbCtx,
+  args: { user: Doc<"users">; conversation: Doc<"conversations"> },
+): Promise<boolean> {
+  const { user, conversation } = args;
+
+  // Deactivated property → hidden from cleaners (admins keep the record).
+  if (conversation.propertyId) {
+    const property = await ctx.db.get(conversation.propertyId);
+    if (property && property.isActive === false) {
+      return false;
+    }
   }
 
-  return false;
+  // Current entitlement: cleaners may only see a conversation for a job they
+  // are CURRENTLY assigned to. No linked job → no cleaner access (consistent
+  // with canAccessJobConversation, which would deny it on open anyway).
+  const job = conversation.linkedJobId
+    ? await ctx.db.get(conversation.linkedJobId)
+    : null;
+  if (!job) {
+    return false;
+  }
+  return canAccessJobConversation(ctx, { user, job, conversation });
 }
 
 export async function assertConversationAccess(

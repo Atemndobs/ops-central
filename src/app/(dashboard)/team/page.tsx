@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 
 import { getRoleDefinition, type RoleKey } from "@/lib/roles";
+import { formatDateTime } from "@/lib/tz";
 type UserRole = RoleKey;
 type CompanyMemberRole = "cleaner" | "manager" | "owner";
 type AvailabilityFilter = "all" | "active" | "working" | "available" | "off";
@@ -128,6 +129,8 @@ export default function TeamPage() {
   const [propertyEditor, setPropertyEditor] = useState<MemberActionTarget | null>(null);
   const [propertyDraft, setPropertyDraft] = useState<Id<"properties"> | "">("");
   const [isAssigningProperty, setIsAssigningProperty] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<MemberActionTarget | null>(null);
+  const [isDeletingMember, setIsDeletingMember] = useState(false);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -408,21 +411,6 @@ export default function TeamPage() {
     };
   }, [members, teamMetrics]);
 
-  const companyMembershipRows = useMemo(() => {
-    return [...(teamMetrics?.members ?? [])]
-      .filter((member) => member.role === "cleaner" || member.role === "manager")
-      .sort((a, b) => {
-        const companyRank =
-          Number(Boolean(a.companyId)) - Number(Boolean(b.companyId));
-        if (companyRank !== 0) {
-          return companyRank;
-        }
-        const nameA = (a.name?.trim() || a.email || "").toLowerCase();
-        const nameB = (b.name?.trim() || b.email || "").toLowerCase();
-        return nameA.localeCompare(nameB);
-      });
-  }, [teamMetrics]);
-
   const leaderboard = useMemo(() => {
     return [...members]
       .filter((member) => typeof member.qualityScore === "number")
@@ -504,6 +492,45 @@ export default function TeamPage() {
     setPropertyEditor(member);
     setPropertyDraft("");
     setMemberActionSheet(null);
+  }
+
+  function openDeleteConfirm(member: MemberActionTarget) {
+    setDeleteTarget(member);
+    setMemberActionSheet(null);
+  }
+
+  async function handleDeleteMember() {
+    if (!deleteTarget) {
+      return;
+    }
+    setIsDeletingMember(true);
+    try {
+      const response = await fetch("/api/team-members", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: deleteTarget.userId }),
+      });
+      const data = (await response.json()) as {
+        success?: boolean;
+        error?: string;
+        clerkWarning?: string;
+      };
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Failed to remove team member.");
+      }
+      showToast(
+        data.clerkWarning ||
+          `Removed ${deleteTarget.name || deleteTarget.email || "team member"}.`,
+        data.clerkWarning ? "error" : "success",
+      );
+      setDeleteTarget(null);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to remove team member.";
+      showToast(message, "error");
+    } finally {
+      setIsDeletingMember(false);
+    }
   }
 
   async function handleRoleUpdate(event: FormEvent<HTMLFormElement>) {
@@ -1344,8 +1371,28 @@ export default function TeamPage() {
                         ) : null}
                       </td>
                       {groupBy !== "company" ? (
-                        <td className={`${cellPad} truncate text-xs text-[var(--muted-foreground)]`}>
-                          {member.companyName ?? "—"}
+                        <td className={`${cellPad} truncate text-xs`}>
+                          {canManageTeam ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openCompanyEditor(toMemberActionTarget(member));
+                              }}
+                              className={`rounded-md px-1.5 py-0.5 text-left hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40 ${
+                                member.companyId
+                                  ? "text-[var(--muted-foreground)]"
+                                  : "font-semibold text-amber-600"
+                              }`}
+                              title={member.companyId ? "Change company" : "Attach to a company"}
+                            >
+                              {member.companyName ?? "— Attach"}
+                            </button>
+                          ) : (
+                            <span className="text-[var(--muted-foreground)]">
+                              {member.companyName ?? "—"}
+                            </span>
+                          )}
                         </td>
                       ) : null}
                       <td className={cellPad}>
@@ -1706,11 +1753,52 @@ export default function TeamPage() {
         onEditCompany={() => memberActionSheet && openCompanyEditor(memberActionSheet)}
         onDispatchJob={() => memberActionSheet && openJobEditor(memberActionSheet)}
         onAssignProperty={() => memberActionSheet && openPropertyEditor(memberActionSheet)}
+        onDeleteMember={() => memberActionSheet && openDeleteConfirm(memberActionSheet)}
         formatRoleLabel={(r) => formatRoleLabel((r as UserRole) ?? "cleaner")}
         formatCompanyRoleLabel={(r) =>
           r ? formatCompanyRoleLabel(r as CompanyMemberRole) : "Not visible to any manager"
         }
       />
+
+      {deleteTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl border bg-[var(--card)] p-4">
+            <div className="mb-3">
+              <h2 className="text-lg font-bold">Remove team member</h2>
+              <p className="text-sm text-[var(--muted-foreground)]">
+                {deleteTarget.name || deleteTarget.email || "Selected user"}
+              </p>
+            </div>
+            <p className="mb-4 text-sm text-[var(--muted-foreground)]">
+              This permanently deletes{" "}
+              <span className="font-medium text-[var(--foreground)]">
+                {deleteTarget.name || deleteTarget.email || "this user"}
+              </span>{" "}
+              from the app and their Clerk login. This cannot be undone. If they
+              have cleaning-job history the deletion is blocked — deactivate the
+              account instead.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={isDeletingMember}
+                className="rounded-md border px-3 py-2 text-sm transition-colors hover:bg-[var(--accent)] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteMember}
+                disabled={isDeletingMember}
+                className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-500/20 disabled:opacity-50 dark:text-red-400"
+              >
+                {isDeletingMember ? "Removing…" : "Remove permanently"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {profileEditor ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -2139,7 +2227,7 @@ function formatRoleDate(value?: number | null): string {
   if (!value) {
     return "Unscheduled";
   }
-  return new Date(value).toLocaleString([], {
+  return formatDateTime(value, {
     month: "short",
     day: "numeric",
     hour: "2-digit",

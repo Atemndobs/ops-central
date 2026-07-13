@@ -21,6 +21,7 @@ import { PropertyFormModal } from "@/components/properties/property-form-modal";
 import { useToast } from "@/components/ui/toast-provider";
 import { getErrorMessage } from "@/lib/errors";
 import { PropertyFormValues, PropertyRecord, PropertyStatus } from "@/types/property";
+import { formatDate as formatDateTz } from "@/lib/tz";
 
 type PropertyListItem = PropertyRecord & {
   imageUrl?: string;
@@ -50,7 +51,7 @@ function formatDate(value?: number) {
     return "—";
   }
 
-  return new Date(value).toLocaleDateString();
+  return formatDateTz(value, { month: "numeric", day: "numeric", year: "numeric" });
 }
 
 function formatBedsAndBaths(property: Pick<PropertyRecord, "bedrooms" | "bathrooms">) {

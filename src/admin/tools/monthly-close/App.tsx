@@ -22,6 +22,7 @@ import { ViewManager } from "./ViewManager";
 import { portfolioReportToCsv } from "./lib/portfolioReportCsv";
 import { buildStatementHtml } from "./statement/buildStatementHtml";
 import { previousMonthOf } from "./lib/format";
+import { formatDate } from "@/lib/tz";
 
 const ALL_VIEWS_SENTINEL = "__all__";
 
@@ -43,7 +44,9 @@ function last12Months(): Array<{ value: string; label: string }> {
     const m = d.getMonth();
     months.push({
       value: `${y}-${String(m + 1).padStart(2, "0")}`,
-      label: d.toLocaleString("en-US", { month: "long", year: "numeric" }),
+      // Month label from calendar components — pin to UTC so the month never
+      // shifts by the viewer's/app zone offset.
+      label: formatDate(Date.UTC(y, m, 1), { month: "long", year: "numeric", timeZone: "UTC" }),
     });
     d.setMonth(d.getMonth() - 1);
   }
@@ -54,9 +57,10 @@ function last12Months(): Array<{ value: string; label: string }> {
 function formatPeriod(monthStr: string): string {
   const [y, m] = monthStr.split("-");
   if (!y || !m) return monthStr;
-  return new Date(Number(y), Number(m) - 1, 1).toLocaleString("en-US", {
+  return formatDate(Date.UTC(Number(y), Number(m) - 1, 1), {
     month: "long",
     year: "numeric",
+    timeZone: "UTC",
   });
 }
 
@@ -150,10 +154,13 @@ export default function MonthlyCloseApp() {
         {
           clientName: stmtClientName,
           period,
-          statementDate: new Date(stmtDate).toLocaleDateString("en-US", {
+          // stmtDate is a YYYY-MM-DD date-input value (parsed as UTC midnight);
+          // format in UTC so it shows the picked calendar day, not the prior one.
+          statementDate: formatDate(new Date(stmtDate), {
             year: "numeric",
             month: "long",
             day: "numeric",
+            timeZone: "UTC",
           }),
         },
       );

@@ -5,12 +5,17 @@ import { useMemo, useState } from "react";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useTranslations } from "next-intl";
-import { Bell, Building2, CheckCheck, ExternalLink, Flag, Gauge, Globe, Settings, Sparkles, Trash2, Users, Zap } from "lucide-react";
+import { AlarmClock, Bell, Building2, CheckCheck, Clock, ExternalLink, Flag, Gauge, Globe, HardDrive, Palette, Settings, Sparkles, Trash2, Users, Zap } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { navigation } from "@/components/layout/navigation";
 import { LanguageSwitcher } from "@/components/cleaner/language-switcher";
+import { useTimezone } from "@/components/providers/timezone-provider";
+import { CURATED_TIMEZONES, formatDate, formatDateTime, formatTimeInZone, timezoneAbbrev } from "@/lib/tz";
 import { useToast } from "@/components/ui/toast-provider";
 import { AIProviderCard } from "@/components/settings/ai-provider-card";
+import { StorageProviderCard } from "@/components/settings/storage-provider-card";
+import { AppIconColorCard } from "@/components/settings/app-icon-color-card";
+import { ReworkDeadlineCard } from "@/components/settings/rework-deadline-card";
 import { FeatureFlagsCard } from "@/components/settings/feature-flags-card";
 import { UsageDashboardCard } from "@/components/settings/usage/usage-dashboard-card";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
@@ -123,12 +128,13 @@ function getNotificationHref(type: string, data: unknown): string {
 }
 
 function formatNotificationTime(timestamp: number): string {
-  return new Intl.DateTimeFormat(undefined, {
+  return formatDateTime(timestamp, {
+    year: undefined,
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
-  }).format(timestamp);
+  });
 }
 
 function StatCard({
@@ -445,7 +451,11 @@ function TeamSettingsPanel() {
                 label="Last User Added"
                 value={
                   userManagementMetrics?.lastUserCreatedAt
-                    ? new Date(userManagementMetrics.lastUserCreatedAt).toLocaleDateString()
+                    ? formatDate(userManagementMetrics.lastUserCreatedAt, {
+                        year: "numeric",
+                        month: "numeric",
+                        day: "numeric",
+                      })
                     : "—"
                 }
                 caption="Most recent user creation"
@@ -491,7 +501,47 @@ function GeneralSettingsPanel() {
           <LanguageSwitcher />
         </div>
       </section>
+
+      <TimezoneSettingCard />
     </div>
+  );
+}
+
+function TimezoneSettingCard() {
+  const { timezone, setTimezone } = useTimezone();
+  return (
+    <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="flex items-center gap-2 text-lg font-semibold">
+            <Clock className="h-5 w-5" />
+            Timezone
+          </h3>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+            Dates and times across the app display in this zone (default Dallas ·
+            Central). Properties with their own timezone still show their local
+            time. Saved on this device.
+          </p>
+        </div>
+      </div>
+      <div className="mt-4 flex items-center gap-3">
+        <select
+          value={timezone}
+          onChange={(e) => setTimezone(e.target.value)}
+          className="rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+          aria-label="Display timezone"
+        >
+          {CURATED_TIMEZONES.map((tz) => (
+            <option key={tz.id} value={tz.id}>
+              {tz.label}
+            </option>
+          ))}
+        </select>
+        <span className="text-xs text-[var(--muted-foreground)]">
+          {timezoneAbbrev(timezone)} · now {formatTimeInZone(new Date(), timezone)}
+        </span>
+      </div>
+    </section>
   );
 }
 
@@ -747,13 +797,34 @@ function NotificationsSettingsPanel() {
 }
 
 export function SettingsPageClient({ initialTab }: { initialTab: SettingsTab }) {
-  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
+  const { isLoaded, isSignedIn, userId, sessionClaims } = useAuth();
+  const { user } = useUser();
+  const { isAuthenticated } = useConvexAuth();
+  const convexUser = useQuery(
+    api.users.queries.getByClerkId,
+    isAuthenticated && isLoaded && isSignedIn && userId ? { clerkId: userId } : "skip",
+  );
+  const roleFromClaims = getRoleFromSessionClaimsOrNull(
+    sessionClaims as Record<string, unknown> | null,
+  );
+  const roleFromMetadata = getRoleFromMetadata(user?.publicMetadata);
+  const currentRole: UserRole =
+    roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "admin";
+  const isAdmin = currentRole === "admin";
+
+  // Ops gets a simplified settings surface: no Team tab (user management is
+  // not an ops responsibility) and no Service usage & cost dashboard
+  // (financial reporting) within Integrations.
+  const visibleTabs = isAdmin ? tabs : tabs.filter((tab) => tab.id !== "team");
+  const [activeTab, setActiveTab] = useState<SettingsTab>(
+    !isAdmin && initialTab === "team" ? "general" : initialTab,
+  );
 
   return (
     <div className="space-y-4">
       <div className="border-b border-[var(--border)]">
         <div className="flex gap-1 overflow-x-auto">
-          {tabs.map(({ id, label, icon: Icon }) => (
+          {visibleTabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               type="button"
@@ -775,7 +846,7 @@ export function SettingsPageClient({ initialTab }: { initialTab: SettingsTab }) 
 
       {activeTab === "general" ? <GeneralSettingsPanel /> : null}
       {activeTab === "scheduling" ? <SchedulingSettingsPanel /> : null}
-      {activeTab === "team" ? <TeamSettingsPanel /> : null}
+      {activeTab === "team" && isAdmin ? <TeamSettingsPanel /> : null}
       {activeTab === "notifications" ? <NotificationsSettingsPanel /> : null}
       {activeTab === "integrations" ? (
         <div className="space-y-3">
@@ -789,14 +860,16 @@ export function SettingsPageClient({ initialTab }: { initialTab: SettingsTab }) 
             <FeatureFlagsCard />
           </CollapsibleSection>
 
-          <CollapsibleSection
-            persistKey="integrations-usage-dashboard"
-            icon={<Gauge className="h-4 w-4" />}
-            title="Service usage & cost"
-            subtitle="Month-to-date spend, quota consumption, and error health across tracked services. Requires the usage_dashboard flag."
-          >
-            <UsageDashboardCard />
-          </CollapsibleSection>
+          {isAdmin ? (
+            <CollapsibleSection
+              persistKey="integrations-usage-dashboard"
+              icon={<Gauge className="h-4 w-4" />}
+              title="Service usage & cost"
+              subtitle="Month-to-date spend, quota consumption, and error health across tracked services. Requires the usage_dashboard flag."
+            >
+              <UsageDashboardCard />
+            </CollapsibleSection>
+          ) : null}
 
           <CollapsibleSection
             persistKey="integrations-ai-provider"
@@ -805,6 +878,33 @@ export function SettingsPageClient({ initialTab }: { initialTab: SettingsTab }) 
             subtitle="Pick the model used for voice-message transcription."
           >
             <AIProviderCard />
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            persistKey="integrations-storage-provider"
+            icon={<HardDrive className="h-4 w-4" />}
+            title="Photo & video storage"
+            subtitle="Choose the object-storage backend new uploads are written to and served from."
+          >
+            <StorageProviderCard />
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            persistKey="integrations-app-icon-color"
+            icon={<Palette className="h-4 w-4" />}
+            title="Role colors"
+            subtitle="Brand color per role (Admin, Ops, Manager, Owner) — drives in-app logo/accent + app icons. Cleaner locked to purple."
+          >
+            <AppIconColorCard />
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            persistKey="integrations-rework-deadline"
+            icon={<AlarmClock className="h-4 w-4" />}
+            title="Rework fix deadline"
+            subtitle="How long a cleaner has to fix rejected work before it escalates (per-property overridable)."
+          >
+            <ReworkDeadlineCard />
           </CollapsibleSection>
 
           <CollapsibleSection

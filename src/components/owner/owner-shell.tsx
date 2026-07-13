@@ -92,11 +92,11 @@ export function OwnerShell({ children }: { children: ReactNode }) {
           <Link
             href="/owner"
             className="flex items-center gap-2.5"
-            aria-label="ChezSoiStays — Owner home"
+            aria-label="ChezSoi Ops — Owner home"
           >
             <Image
               src="/icons/chezsoi-icon-192.png"
-              alt="ChezSoiStays"
+              alt="ChezSoi Ops"
               width={32}
               height={32}
               priority
@@ -140,7 +140,7 @@ export function OwnerShell({ children }: { children: ReactNode }) {
         className="mx-auto max-w-5xl px-6 py-8 text-center text-xs"
         style={{ color: "var(--cleaner-muted)" }}
       >
-        ChezSoiStays — every line on this statement is a clickable receipt.
+        ChezSoi Ops — every line on this statement is a clickable receipt.
       </footer>
 
       {/* Mobile bottom nav — mirrors the cleaner PWA pattern so the owner

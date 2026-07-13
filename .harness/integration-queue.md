@@ -4,6 +4,17 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
+### TASK-OPS-SCOPE-001
+- Branch: task/ops-scope-and-settings-fix
+- Worktree: ~/sites/opscentral-admin-ops-scope
+- PR: (to be opened)
+- Schema impact: none
+- Convex impact: none (pure frontend role/nav/label changes)
+- Risk: low — no schema/backend touched; one judgment call on `/team` removal scope, documented in the handoff
+- What: fixes a bug (ops had no ROUTE_ACCESS entry for `/settings` at all) and rescopes `property_ops` nav/route access — removes Reports (+ Monthly Close, Property Costs), Team (user management), and Owner Overview (property-owner user management) from ops; keeps Companies; simplifies the Settings page for ops (hides Team tab + Service usage & cost card); renames "Incidents" nav label to "Incidents & Refills"
+- CI: eslint clean on all touched files; `tsc --noEmit` byte-identical to main's own (pre-existing, unrelated) output; `npm run build` webpack-compiles successfully, fails at the same pre-existing type-check point main itself already fails at (see handoff — unrelated `appSettings` codegen staleness)
+- Handoff: .harness/handoffs/TASK-OPS-SCOPE-001/worktree-handoff.md
+
 ### TASK-COMPANIES-HUB-UI-001
 - Branch: task/companies-hub-refined-ui
 - Worktree: ~/sites/opscentral-admin-companies-hub-ui
@@ -21,6 +32,39 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 _None._
 
 ## Done
+
+### TASK-APPSETTINGS-SCHEMA-FIX-001
+- Branch: main (direct commit, no worktree — root-cause fix for a build-breaking bug, not feature work)
+- Commit: 221651c
+- Schema impact: backward-compatible (registers an already-fully-defined, already-indexed table that was silently dropped from the `defineSchema({...})` export — likely a prior silent auto-merge casualty, same class of bug found and fixed in PR #193 earlier this session)
+- Convex impact: deploy-required (deployed to lovable-oriole-182 with the full typecheck gate enabled — previously needed `--typecheck disable` to push past the resulting error cascade; mirrored to jna-cleaners-app)
+- Risk: very low — one line, additive only, no data migration
+- What: root-caused what PR #227 flagged as "pre-existing appSettings codegen staleness." It wasn't codegen staleness at all — `appSettings` was fully `defineTable`'d with its `by_key` index but never added to the schema's export object, so TypeScript's generated data model didn't know the table existed. Fixed the cascade (~100 lines / dozens of errors, including red-herring errors on unrelated tables from TypeScript printing arbitrary union members) down to the one pre-existing, unrelated `vitest`-module test error.
+- Verified: `npx tsc --noEmit` clean except the known pre-existing issue; `npm run build` succeeds fully; `npx convex deploy` succeeds with default (enabled) typecheck.
+
+### TASK-B2-CDN-001
+- Branch: task/b2-cloudflare-cdn
+- Worktree: ~/sites/opscentral-admin-b2-cdn
+- PR: https://github.com/Atemndobs/ops-central/pull/208 (merged → 0bdc992)
+- Schema impact: none
+- Convex impact: deploy-required, deployed to lovable-oriole-182 (behavior-neutral — CDN path dormant until `B2_CDN_*` env set)
+- Risk: low (fully inert until enabled)
+- What: private edge-cached Cloudflare Worker CDN in front of B2 (`infra/b2-cdn-worker`) + `createExternalReadUrl` emits signed CDN URLs for B2 when `B2_CDN_BASE_URL`+`B2_CDN_SIGNING_SECRET` set. Durable fix for B2 cap exhaustion.
+- Merged: 2026-07-10
+- Handoff: .harness/handoffs/TASK-B2-CDN-001/worktree-handoff.md · integration-result.md
+- Post-merge: `npx convex deploy` ✓ (no _generated drift, no new functions), no regression (B2 photo presigned GET 200 with B2_CDN_* unset), sign.test.js 3/3, cleaners mirrored ✓. Enablement pending operator's Cloudflare setup (Worker deploy + DNS + secrets), then Convex env flip.
+
+### TASK-STORAGE-SWITCH-001
+- Branch: task/storage-provider-switch
+- Worktree: ~/sites/opscentral-admin-storage-switch
+- PR: https://github.com/Atemndobs/ops-central/pull/207 (merged → 3bbc88e)
+- Schema impact: backward-compatible (`appSettings.storageProvider` optional, no index/backfill) — combined-PR exception
+- Convex impact: deploy-required (deployed to lovable-oriole-182 — `appSettings.{listStorageProviders,getStorageProvider,setStorageProvider}` + schema field; provider-aware read path in `photoUrls`/`cleaningJobs.queries`/`files.mutations`)
+- Risk: medium (shared photo read/write path; b2 rows unaffected — reads default to b2)
+- What: admin-selectable object-storage backend (B2 ↔ MinIO) on the appSettings singleton + provider-aware reads (each object signed against its own `photos.provider`). Settings → Integrations → "Photo & video storage" picker.
+- Merged: 2026-07-10
+- Handoff: .harness/handoffs/TASK-STORAGE-SWITCH-001/worktree-handoff.md · integration-result.md
+- Post-merge: deploy order = convex deploy (codegen) → build → push bindings (d8ab304). Build ✓, schema validation ✓, cleaners mirrored ✓. Ships INERT (defaults to b2; MinIO refused until `MINIO_*` set in Convex prod). Tailscale Funnel `https://minio.goose-neon.ts.net` verified: presigned GET returns 200 off-tailnet, so MinIO serving is viable once env is set + a scoped key/`job-photos` bucket created. Existing broken B2 thumbnails need the B2 cap raised (not fixed by this — they live in B2).
 
 ### TASK-OWNER-DRAFT-ERROR-001
 - Branch: task/owner-draft-engine-error

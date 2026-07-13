@@ -6,7 +6,14 @@ type ClaimsLike = Record<string, unknown> | null | undefined;
 
 const ROUTE_ACCESS: Record<UserRole, string[]> = {
   admin: ["/"],
-  property_ops: ["/", "/schedule", "/jobs", "/tasks", "/messages", "/review", "/properties", "/companies", "/team", "/incidents", "/maintenance", "/reports"],
+  // Scoped 2026-07-12: ops handles day-to-day operations, not user
+  // management (/team, /admin/owner-overview) or financial reporting
+  // (/reports incl. Monthly Close + Property Costs, which live under it).
+  // /settings was previously missing entirely — that was a bug, not a
+  // deliberate restriction (ops needs Scheduling/Notifications/Integrations
+  // tabs; the Team tab and cost dashboard within Settings are separately
+  // role-gated in settings-page-client.tsx).
+  property_ops: ["/", "/schedule", "/jobs", "/tasks", "/messages", "/review", "/properties", "/companies", "/incidents", "/maintenance", "/settings"],
   manager: ["/", "/schedule", "/jobs", "/tasks", "/messages", "/review", "/properties", "/team", "/incidents", "/maintenance"],
   cleaner: ["/cleaner"],
   // Wave 1 of owner portal is schema-only — `/owner` routes ship in Wave 4.

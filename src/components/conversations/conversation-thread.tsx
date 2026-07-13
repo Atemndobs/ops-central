@@ -8,6 +8,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { getErrorMessage } from "@/lib/errors";
+import { formatDate, formatDateTime, formatTime } from "@/lib/tz";
 import { useToast } from "@/components/ui/toast-provider";
 import { VideoPlayer } from "@/components/media/VideoPlayer";
 import { useIsVideoEnabled } from "@/hooks/use-is-video-enabled";
@@ -30,10 +31,10 @@ function formatMessageTime(timestamp: number) {
     now.getDate() === date.getDate();
 
   if (isToday) {
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return formatTime(timestamp, { hour: "2-digit", minute: "2-digit" });
   }
 
-  return date.toLocaleString([], {
+  return formatDateTime(timestamp, {
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -215,9 +216,9 @@ export function ConversationThread({
   const helperText = isWhatsAppLane
     ? canReplyInApp
       ? detail.messagingEndpoint?.serviceWindowClosesAt
-        ? `Reply window open until ${new Date(
+        ? `Reply window open until ${formatDateTime(
             detail.messagingEndpoint.serviceWindowClosesAt,
-          ).toLocaleString()}`
+          )}`
         : "Reply window open"
       : "Await cleaner reply before sending another WhatsApp message."
     : "Internal team thread";
@@ -270,13 +271,13 @@ export function ConversationThread({
                 <ExternalLink className="h-3 w-3" />
                 <span>
                   {detail.linkedJob.scheduledStartAt
-                    ? new Date(detail.linkedJob.scheduledStartAt).toLocaleDateString(undefined, {
+                    ? formatDate(detail.linkedJob.scheduledStartAt, {
                         weekday: "short",
                         month: "short",
                         day: "numeric",
                       }) +
                       " · " +
-                      new Date(detail.linkedJob.scheduledStartAt).toLocaleTimeString(undefined, {
+                      formatTime(detail.linkedJob.scheduledStartAt, {
                         hour: "numeric",
                         minute: "2-digit",
                       })

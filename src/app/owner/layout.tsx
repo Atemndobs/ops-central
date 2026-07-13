@@ -24,24 +24,27 @@ const ownerMono = Atkinson_Hyperlegible({
 });
 
 export const metadata: Metadata = {
-  title: "ChezSoiStays — Owner",
+  title: "ChezSoi Ops — Owner",
   description:
     "Radical financial transparency for property owners. Every line on your statement is a clickable receipt.",
   manifest: "/owner-manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "ChezSoi Owner",
+    title: "ChezSoi Ops — Owner",
   },
   formatDetection: {
     telephone: false,
   },
+  // Color-aware: follow the admin-selected "owner" app icon color
+  // (see src/app/brand-icon/[app]/[asset]/route.ts).
   icons: {
     icon: [
-      { url: "/icons/chezsoi-icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icons/chezsoi-icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/brand-icon/owner/favicon.svg", type: "image/svg+xml" },
+      { url: "/brand-icon/owner/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/brand-icon/owner/icon-512.png", sizes: "512x512", type: "image/png" },
     ],
-    apple: [{ url: "/icons/chezsoi-apple-touch-icon.png", sizes: "180x180" }],
+    apple: [{ url: "/brand-icon/owner/apple-touch.png", sizes: "180x180" }],
   },
 };
 

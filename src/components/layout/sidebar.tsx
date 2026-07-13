@@ -15,12 +15,18 @@ import {
   type UserRole,
 } from "@/lib/auth";
 import { navigation } from "@/components/layout/navigation";
+import { brandColorForRole, iconAssetBase, iconColorHex } from "@/lib/brand";
 import {
+  Briefcase,
   HelpCircle,
+  Home,
   LogOut,
   Menu,
   Moon,
+  Settings,
+  Shield,
   Sun,
+  Wrench,
   X,
 } from "lucide-react";
 
@@ -39,9 +45,7 @@ function readClientThemePreference(): ThemePreference {
     return stored;
   }
 
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
+  return "light";
 }
 
 function subscribeToThemePreference(onStoreChange: () => void): () => void {
@@ -102,6 +106,13 @@ export function Sidebar() {
     api.admin.featureFlags.isFeatureEnabled,
     { key: "theme_switcher" },
   );
+  // Deactivated features shouldn't show a nav icon at all — same principle
+  // as the theme switcher above, applied to sidebar `navigation` entries
+  // that declare a `featureFlag`.
+  const reviewsAiReplyEnabled = useQuery(
+    api.admin.featureFlags.isFeatureEnabled,
+    { key: "reviewsAiReply" },
+  );
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
   const setThemePreferenceRef = useRef(setThemePreference);
   const convexUser = useQuery(
@@ -127,6 +138,19 @@ export function Sidebar() {
   );
   const roleFromMetadata = getRoleFromMetadata(user?.publicMetadata);
   const role: UserRole = roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "manager";
+  const isNavItemVisible = useCallback(
+    (item: (typeof navigation)[number]) =>
+      item.roles.includes(role) &&
+      (item.featureFlag !== "reviewsAiReply" || reviewsAiReplyEnabled === true),
+    [role, reviewsAiReplyEnabled],
+  );
+
+  // Admin-configured per-role brand colors (falls back to the static default
+  // while loading / for unknown roles).
+  const roleColors = useQuery(api.appSettings.getRoleIconColors, {});
+  const brandColor =
+    (roleColors ? roleColors[role as keyof typeof roleColors] : undefined) ??
+    brandColorForRole(role);
   const resolvedTheme: ThemePreference =
     isConvexAuthenticated && themePreference?.theme
       ? themePreference.theme
@@ -139,9 +163,16 @@ export function Sidebar() {
     cleaner: t("roles.cleaner"),
     owner: t("roles.owner"),
   };
-  const quickLinks = navigation
-    .filter((item) => item.roles.includes(role))
-    .slice(0, 5);
+  const roleIcon: Record<UserRole, React.ReactNode> = {
+    admin: <Shield className="h-3 w-3" />,
+    property_ops: <Settings className="h-3 w-3" />,
+    manager: <Briefcase className="h-3 w-3" />,
+    cleaner: <Wrench className="h-3 w-3" />,
+    owner: <Home className="h-3 w-3" />,
+  };
+  // #227's isNavItemVisible already filters by role AND hides inactive-feature
+  // icons — a superset of the old role-only filter.
+  const quickLinks = navigation.filter(isNavItemVisible).slice(0, 5);
   const themeScopeKey = isConvexAuthenticated
     ? `auth:${user?.id ?? "unknown"}`
     : "anon";
@@ -191,6 +222,27 @@ export function Sidebar() {
     }
   }, [isConvexAuthenticated, resolvedTheme]);
 
+  // Role-based branding: expose `--brand` for accents and point the browser-tab
+  // favicon at the logged-in role's color. (The INSTALLED home-screen icon is a
+  // separate, global admin choice served by the dynamic manifest route.)
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const color = brandColor;
+    document.documentElement.style.setProperty("--brand", iconColorHex(color));
+    const href = `${iconAssetBase(color)}.svg`;
+    let link = document.querySelector<HTMLLinkElement>(
+      'link[rel="icon"][data-role-brand]',
+    );
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      link.type = "image/svg+xml";
+      link.setAttribute("data-role-brand", "");
+      document.head.appendChild(link);
+    }
+    link.href = href;
+  }, [brandColor]);
+
   return (
     <aside
       className={cn(
@@ -201,14 +253,14 @@ export function Sidebar() {
       <div className={cn("pb-4 pt-6", isCollapsed ? "px-2" : "px-6")}>
         <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3")}>
           <Image
-            src="/icons/chezsoi-icon-192.png"
-            alt="ChezSoi logo"
+            src={`${iconAssetBase(brandColor)}-192.png`}
+            alt="ChezSoi Ops logo"
             width={44}
             height={44}
             className="h-11 w-11 rounded-md object-contain"
             priority
           />
-          {!isCollapsed ? <p className="text-3xl font-black tracking-tighter">ChezSoi</p> : null}
+          {!isCollapsed ? <p className="text-3xl font-black tracking-tighter">ChezSoi Ops</p> : null}
         </div>
         {!isCollapsed ? (
           <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
@@ -223,7 +275,7 @@ export function Sidebar() {
           isCollapsed ? "space-y-3 px-2" : "space-y-1 px-4",
         )}
       >
-        {navigation.filter((item) => item.roles.includes(role)).map((item) => {
+        {navigation.filter(isNavItemVisible).map((item) => {
           const label = t(item.nameKey);
           const isActive =
             pathname === item.href ||
@@ -351,17 +403,29 @@ export function Sidebar() {
 
         {!isCollapsed ? (
           <div className="mt-4 flex items-center justify-between rounded-none px-2 py-2 hover:bg-[var(--accent)]">
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">
                 {user?.fullName || user?.primaryEmailAddress?.emailAddress || "User"}
               </p>
-              <p className="truncate text-xs text-[var(--muted-foreground)]">
-                {roleLabel[role]}
-              </p>
+              <div className="mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5" style={{ backgroundColor: `${brandColor}22` }}>
+                <span style={{ color: brandColor }}>{roleIcon[role]}</span>
+                <span className="text-xs font-semibold" style={{ color: brandColor }}>
+                  {roleLabel[role]}
+                </span>
+              </div>
             </div>
             <UserButton signInUrl="/sign-in" />
           </div>
-        ) : null}
+        ) : (
+          <div className="mt-4 flex flex-col items-center gap-1.5 py-2">
+            <UserButton signInUrl="/sign-in" />
+            <div
+              className="h-1 w-8 rounded-full"
+              style={{ backgroundColor: brandColor }}
+              title={roleLabel[role]}
+            />
+          </div>
+        )}
       </div>
 
       {isHelpOpen ? (
