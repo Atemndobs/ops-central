@@ -39,7 +39,11 @@ async function verifyIntegrationBearerToken(request: Request) {
   }
 
   const provided = getBearerToken(request);
-  if (!provided || provided !== expected) {
+  const encoder = new TextEncoder();
+  if (
+    !provided ||
+    !constantTimeEqual(encoder.encode(provided), encoder.encode(expected))
+  ) {
     return {
       ok: false,
       response: jsonResponse({ error: "Unauthorized" }, 401),
