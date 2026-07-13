@@ -132,6 +132,7 @@ import type * as serviceUsage_providers_convex from "../serviceUsage/providers/c
 import type * as serviceUsage_providers_index from "../serviceUsage/providers/index.js";
 import type * as serviceUsage_providers_types from "../serviceUsage/providers/types.js";
 import type * as serviceUsage_queries from "../serviceUsage/queries.js";
+import type * as stays_queries from "../stays/queries.js";
 import type * as strCosts_buckets from "../strCosts/buckets.js";
 import type * as strCosts_costItems from "../strCosts/costItems.js";
 import type * as strCosts_costMath from "../strCosts/costMath.js";
@@ -283,6 +284,7 @@ declare const fullApi: ApiFromModules<{
   "serviceUsage/providers/index": typeof serviceUsage_providers_index;
   "serviceUsage/providers/types": typeof serviceUsage_providers_types;
   "serviceUsage/queries": typeof serviceUsage_queries;
+  "stays/queries": typeof stays_queries;
   "strCosts/buckets": typeof strCosts_buckets;
   "strCosts/costItems": typeof strCosts_costItems;
   "strCosts/costMath": typeof strCosts_costMath;

@@ -27,6 +27,7 @@ interface NormalizedReservation {
   guestName: string;
   guestEmail?: string;
   guestPhone?: string;
+  guestPhotoUrl?: string;
   numberOfGuests?: number;
   checkInAt: number;
   checkOutAt: number;
@@ -368,6 +369,22 @@ function buildGuestName(reservation: GenericRecord): string {
   return full.length > 0 ? full : "Guest";
 }
 
+/** Best-effort guest avatar from the Hospitable payload. Hospitable does not
+ *  document a single canonical field, so try the common shapes; return
+ *  undefined (→ UI falls back to initials) when none is present. */
+function buildGuestPhotoUrl(reservation: GenericRecord): string | undefined {
+  const guest = isRecord(reservation.guest) ? reservation.guest : undefined;
+  return (
+    asString(guest?.picture) ??
+    asString(guest?.avatar) ??
+    asString(guest?.photo_url) ??
+    asString(guest?.thumbnail_url) ??
+    asString(guest?.image) ??
+    asString(reservation.guest_picture) ??
+    undefined
+  );
+}
+
 function assessPartyRisk(
   numberOfGuests: number | undefined,
   specialRequests: string | undefined
@@ -520,6 +537,7 @@ export function normalizeReservation(
       guestName: buildGuestName(rawReservation),
       guestEmail: asString(rawReservation.guest_email),
       guestPhone: asString(rawReservation.guest_phone),
+      guestPhotoUrl: buildGuestPhotoUrl(rawReservation),
       numberOfGuests,
       checkInAt,
       checkOutAt,

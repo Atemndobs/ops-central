@@ -253,6 +253,10 @@ const stays = defineTable({
   guestName: v.string(),
   guestEmail: v.optional(v.string()),
   guestPhone: v.optional(v.string()),
+  // Guest avatar URL from the Hospitable payload (best-effort). Additive
+  // optional field — used by the schedule Occupancy view; falls back to
+  // initials when absent.
+  guestPhotoUrl: v.optional(v.string()),
   numberOfGuests: v.optional(v.number()),
 
   // Dates (Unix timestamps in milliseconds)
