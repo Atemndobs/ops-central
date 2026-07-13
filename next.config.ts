@@ -8,6 +8,13 @@ const nextConfig: NextConfig = {
     root: __dirname,
   },
   images: {
+    // Serve images directly, bypassing Vercel's Image Optimization. The account's
+    // optimizer quota gets exhausted (/_next/image returns 402), which breaks
+    // EVERY next/image on the site — the sidebar logo, property photos, avatars.
+    // These images are already appropriately sized / come from CDNs (B2, Clerk,
+    // Hospitable), so on-the-fly optimization adds no real benefit here and just
+    // reintroduces the 402 failure mode.
+    unoptimized: true,
     remotePatterns: [
       { protocol: "https", hostname: "*.convex.cloud" },
       { protocol: "https", hostname: "img.clerk.com" },
