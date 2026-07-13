@@ -61,6 +61,9 @@ const NOTIFICATION_TYPE = v.union(
   v.literal("owner_statement_issued"),
   v.literal("owner_approval_request"),
   v.literal("owner_incident_reported"),
+  v.literal("job_upcoming"),
+  v.literal("job_started"),
+  v.literal("job_submitted"),
 );
 
 /**

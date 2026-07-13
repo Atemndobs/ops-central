@@ -45,6 +45,18 @@ import {
 import { MediaThumbnail } from "@/components/media/MediaThumbnail";
 import { VideoPlayer } from "@/components/media/VideoPlayer";
 import { useIsVideoEnabled } from "@/hooks/use-is-video-enabled";
+import { formatDateTime } from "@/lib/tz";
+
+// Reproduces the bare `Date.toLocaleString()` output (en-US numeric date +
+// time with seconds), but pinned to the app default display zone.
+const DATE_TIME_OPTS: Intl.DateTimeFormatOptions = {
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  second: "2-digit",
+};
 
 type Props = {
   incidentId: Id<"incidents"> | null;
@@ -248,7 +260,7 @@ function DrawerBody({
           <InfoCell
             icon={<CalendarClock className="h-4 w-4" />}
             label={t("detail.reportedAt")}
-            value={new Date(incident.createdAt).toLocaleString()}
+            value={formatDateTime(incident.createdAt, DATE_TIME_OPTS)}
           />
           {incident.cleaningJobId ? (
             <div className="col-span-2 flex items-center justify-between gap-2 border-t px-5 py-3 text-sm">
@@ -350,7 +362,7 @@ function DrawerBody({
               {t(`tabs.${status}`)}
             </div>
             <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-              {new Date(incident.resolvedAt).toLocaleString()}{" "}
+              {formatDateTime(incident.resolvedAt, DATE_TIME_OPTS)}{" "}
               {t("detail.resolvedBy")}{" "}
               {incident.resolver?.name ??
                 incident.resolver?.email ??

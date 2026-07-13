@@ -23,10 +23,11 @@ import {
   buildPlatformClaimSummary,
   type PlatformClaim,
 } from "@/components/incidents/platform-claim";
+import { formatDate } from "@/lib/tz";
 
 function formatPeriod(periodStart: number): string {
-  const d = new Date(periodStart);
-  return d.toLocaleString(undefined, { month: "long", year: "numeric" });
+  // Monthly statement period — pin to UTC so the month label doesn't slip.
+  return formatDate(periodStart, { month: "long", year: "numeric", timeZone: "UTC" });
 }
 
 function formatPeriodKey(periodStart: number): string {

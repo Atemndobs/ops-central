@@ -1,0 +1,21 @@
+{
+  "name": "b2-cdn-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Private, edge-cached Cloudflare Worker CDN in front of the Backblaze B2 job-photos bucket.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "aws4fetch": "^1.0.20"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241106.0",
+    "typescript": "^5.6.0",
+    "wrangler": "^3.86.0"
+  }
+}

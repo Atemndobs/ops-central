@@ -11,6 +11,7 @@ import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Loader2, Save, Send, CheckCircle2, Undo2 } from "lucide-react";
+import { formatDate as formatDateInAppZone } from "@/lib/tz";
 
 type EditorBooking = {
   _id: Id<"stays">;
@@ -70,7 +71,7 @@ function formatCurrency(amount: number, currency = "USD"): string {
 }
 
 function formatDate(ms: number): string {
-  return new Date(ms).toLocaleDateString(undefined, {
+  return formatDateInAppZone(ms, {
     month: "short",
     day: "numeric",
   });

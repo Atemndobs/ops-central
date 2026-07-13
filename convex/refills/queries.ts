@@ -1,6 +1,11 @@
 import { ConvexError, v } from "convex/values";
 import { query } from "../_generated/server";
+import type { QueryCtx } from "../_generated/server";
 import { getCurrentUser } from "../lib/auth";
+import {
+  canCallerAccessPropertyById,
+  getCallerJobScopeForListing,
+} from "../lib/companyScope";
 import type { Doc } from "../_generated/dataModel";
 
 function isPrivilegedRole(user: Doc<"users">): boolean {
@@ -11,9 +16,26 @@ function isPrivilegedRole(user: Doc<"users">): boolean {
   );
 }
 
-function assertJobAccess(user: Doc<"users">, job: Doc<"cleaningJobs">) {
-  if (isPrivilegedRole(user)) {
+/**
+ * - admin / property_ops: any job.
+ * - manager: only jobs whose property their company currently services.
+ * - cleaner: only jobs they are assigned to.
+ */
+async function assertJobAccess(
+  ctx: QueryCtx,
+  user: Doc<"users">,
+  job: Doc<"cleaningJobs">,
+) {
+  if (user.role === "admin" || user.role === "property_ops") {
     return;
+  }
+  if (user.role === "manager") {
+    if (await canCallerAccessPropertyById(ctx, user, job.propertyId)) {
+      return;
+    }
+    throw new ConvexError(
+      "You are not authorized to access refill checks for this job.",
+    );
   }
   if (user.role === "cleaner" && job.assignedCleanerIds.includes(user._id)) {
     return;
@@ -43,7 +65,13 @@ export const getTrackedItemsByProperty = query({
     propertyId: v.id("properties"),
   },
   handler: async (ctx, args) => {
-    await getCurrentUser(ctx);
+    const user = await getCurrentUser(ctx);
+    // Company-scoped: admin/ops any property; manager only their company's;
+    // cleaners have no property-level access (they use the per-job query).
+    const allowed = await canCallerAccessPropertyById(ctx, user, args.propertyId);
+    if (!allowed) {
+      return [];
+    }
 
     const items = await ctx.db
       .query("inventoryItems")
@@ -64,7 +92,7 @@ export const getTrackedItemsForJob = query({
     if (!job) {
       return [];
     }
-    assertJobAccess(user, job);
+    await assertJobAccess(ctx, user, job);
 
     const items = await ctx.db
       .query("inventoryItems")
@@ -85,7 +113,7 @@ export const getJobRefillChecks = query({
     if (!job) {
       return [];
     }
-    assertJobAccess(user, job);
+    await assertJobAccess(ctx, user, job);
 
     const revision = args.revision ?? (job.currentRevision ?? 1);
     const rows = await ctx.db
@@ -142,6 +170,13 @@ export const getQueue = query({
       );
     } else {
       queueRows = await ctx.db.query("refillQueue").collect();
+    }
+
+    // Managers only see their company's properties in the queue; admin/ops
+    // (null scope) see everything.
+    const propertyScope = await getCallerJobScopeForListing(ctx, user);
+    if (propertyScope !== null) {
+      queueRows = queueRows.filter((row) => propertyScope.has(row.propertyId));
     }
 
     const [items, properties] = await Promise.all([

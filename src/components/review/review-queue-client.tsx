@@ -8,6 +8,7 @@ import type { Id } from "@convex/_generated/dataModel";
 import { Camera, CheckCircle2, Clock3, Loader2, RotateCcw } from "lucide-react";
 import { JOB_STATUSES, STATUS_CLASSNAMES, STATUS_LABELS, type JobStatus } from "@/components/jobs/job-status";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { formatDate, formatTime } from "@/lib/tz";
 
 function startOfDay(dateString: string): number | undefined {
   if (!dateString) {
@@ -252,7 +253,7 @@ export function ReviewQueueClient() {
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--muted-foreground)]">
-                  <span>{new Date(job.scheduledStartAt).toLocaleDateString()} · {new Date(job.scheduledStartAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                  <span>{formatDate(job.scheduledStartAt, { month: "numeric", day: "numeric", year: "numeric" })} · {formatTime(job.scheduledStartAt, { hour: "2-digit", minute: "2-digit" })}</span>
                   <span>{cleanerNames.length > 0 ? cleanerNames.join(", ") : "Unassigned"}</span>
                 </div>
 

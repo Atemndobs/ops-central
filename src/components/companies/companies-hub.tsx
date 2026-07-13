@@ -16,6 +16,7 @@ import {
 import { useToast } from "@/components/ui/toast-provider";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { getErrorMessage } from "@/lib/errors";
+import { formatDateTime as formatDateTimeInAppZone } from "@/lib/tz";
 
 type DraftAssignments = Record<string, string>;
 
@@ -23,7 +24,7 @@ function formatDateTime(value?: number | null) {
   if (!value) {
     return "—";
   }
-  return new Date(value).toLocaleString();
+  return formatDateTimeInAppZone(value);
 }
 
 function isActiveAssignment(assignment: {

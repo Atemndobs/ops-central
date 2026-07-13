@@ -2,6 +2,7 @@ import { query } from "../_generated/server";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import type { DatabaseReader } from "../_generated/server";
+import { requireRole } from "../lib/auth";
 import {
   bucketize,
   monthlyEquivalent,
@@ -262,6 +263,7 @@ export const resolvePropertyReportData = query({
     month: v.string(), // "YYYY-MM"
   },
   handler: async (ctx, args): Promise<PropertyReportPayload> => {
+    await requireRole(ctx, ["admin", "property_ops"]);
     return await buildReport(ctx.db, args.propertyId, args.month);
   },
 });
@@ -310,6 +312,7 @@ export const portfolioStatementData = query({
     propertyIds: v.optional(v.array(v.id("properties"))),
   },
   handler: async (ctx, args): Promise<{ properties: StatementPropertyRow[] }> => {
+    await requireRole(ctx, ["admin", "property_ops"]);
     // Load categories once (shared across all properties)
     const categories = await ctx.db.query("costCategories").collect();
     const categoryNameMap = new Map<string, string>(

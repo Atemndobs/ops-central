@@ -5,6 +5,7 @@ import { auth } from "@clerk/nextjs/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@convex/_generated/api";
 import { z } from "zod";
+import { formatDate, formatTime, formatDateTime } from "@/lib/tz";
 import {
   ADAPTERS,
   getAdapter,
@@ -26,7 +27,7 @@ const JOB_STATUS = z.enum([
 const REFILL_STATUS = z.enum(["open", "acknowledged", "ordered", "resolved"]);
 
 function buildSystemPrompt(): string {
-  const today = new Date().toLocaleDateString("en-US", {
+  const today = formatDate(new Date(), {
     weekday: "long",
     year: "numeric",
     month: "long",
@@ -34,7 +35,7 @@ function buildSystemPrompt(): string {
   });
 
   return [
-    "You are OpsBot, the AI assistant for OpsCentral property care operations.",
+    "You are OpsBot, the AI assistant for ChezSoi Ops property care operations.",
     `Today is ${today}.`,
     "",
     "IMPORTANT RULES:",
@@ -108,10 +109,10 @@ function buildTools(convex: ConvexHttpClient) {
           isUrgent: j.isUrgent,
           propertyName: j.propertyName,
           cleanerName: j.cleanerName,
-          scheduledStartAt: new Date(j.scheduledStartAt).toLocaleTimeString(
-            "en-US",
-            { hour: "numeric", minute: "2-digit" },
-          ),
+          scheduledStartAt: formatTime(j.scheduledStartAt, {
+            hour: "numeric",
+            minute: "2-digit",
+          }),
         }));
       },
     }),
@@ -128,12 +129,12 @@ function buildTools(convex: ConvexHttpClient) {
         return stays.map((s) => ({
           propertyName: s.propertyName,
           guestName: s.guestName,
-          checkIn: new Date(s.checkInAt).toLocaleDateString("en-US", {
+          checkIn: formatDate(s.checkInAt, {
             weekday: "short",
             month: "short",
             day: "numeric",
           }),
-          checkOut: new Date(s.checkOutAt).toLocaleDateString("en-US", {
+          checkOut: formatDate(s.checkOutAt, {
             weekday: "short",
             month: "short",
             day: "numeric",
@@ -156,7 +157,7 @@ function buildTools(convex: ConvexHttpClient) {
           status: a.status,
           propertyName: a.propertyName,
           cleanerName: a.cleanerName,
-          time: new Date(a.timestamp).toLocaleTimeString("en-US", {
+          time: formatTime(a.timestamp, {
             hour: "numeric",
             minute: "2-digit",
           }),
@@ -196,7 +197,7 @@ function buildTools(convex: ConvexHttpClient) {
             .filter(Boolean)
             .map((c) => c!.name ?? c!.email)
             .join(", "),
-          scheduledStart: new Date(j.scheduledStartAt).toLocaleString("en-US", {
+          scheduledStart: formatDateTime(j.scheduledStartAt, {
             month: "short",
             day: "numeric",
             hour: "numeric",
@@ -233,7 +234,7 @@ function buildTools(convex: ConvexHttpClient) {
             .filter(Boolean)
             .map((c) => c!.name ?? c!.email)
             .join(", "),
-          scheduledStart: new Date(j.scheduledStartAt).toLocaleString("en-US", {
+          scheduledStart: formatDateTime(j.scheduledStartAt, {
             month: "short",
             day: "numeric",
             hour: "numeric",
@@ -373,18 +374,15 @@ function buildTools(convex: ConvexHttpClient) {
               .filter(Boolean)
               .map((c) => c!.name ?? c!.email)
               .join(", "),
-            scheduledStart: new Date(j.scheduledStartAt).toLocaleString(
-              "en-US",
-              {
-                weekday: "short",
-                month: "short",
-                day: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-              },
-            ),
+            scheduledStart: formatDateTime(j.scheduledStartAt, {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+            }),
             completedAt: j.updatedAt
-              ? new Date(j.updatedAt).toLocaleString("en-US", {
+              ? formatDateTime(j.updatedAt, {
                   weekday: "short",
                   month: "short",
                   day: "numeric",

@@ -2,7 +2,8 @@ import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import {
   createExternalReadUrl,
-  getExternalStorageConfigOrNull,
+  getConfigForProviderOrNull,
+  normalizeStorageProvider,
 } from "./externalStorage";
 
 type UrlContext = Pick<QueryCtx | MutationCtx, "storage">;
@@ -39,12 +40,13 @@ export async function resolvePhotoAccessUrl(
       photo.posterBucket &&
       photo.posterObjectKey
     ) {
-      const config = getExternalStorageConfigOrNull();
-      if (!config) return null;
+      const posterProvider = normalizeStorageProvider(photo.posterProvider);
+      if (getConfigForProviderOrNull(posterProvider) === null) return null;
       try {
         return await createExternalReadUrl({
           bucket: photo.posterBucket,
           objectKey: photo.posterObjectKey,
+          provider: posterProvider,
         });
       } catch {
         return null;
@@ -72,8 +74,8 @@ async function resolvePrimary(
   }
 
   if (photo.provider && photo.bucket && photo.objectKey) {
-    const config = getExternalStorageConfigOrNull();
-    if (!config) {
+    const provider = normalizeStorageProvider(photo.provider);
+    if (getConfigForProviderOrNull(provider) === null) {
       return null;
     }
 
@@ -81,6 +83,7 @@ async function resolvePrimary(
       return await createExternalReadUrl({
         bucket: photo.bucket,
         objectKey: photo.objectKey,
+        provider,
       });
     } catch {
       return null;

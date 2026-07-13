@@ -19,13 +19,21 @@ import { PropertyRoomsPanel } from "@/components/properties/property-rooms-panel
 import { InventoryImportModal } from "@/components/inventory/inventory-import-modal";
 import { ReviewCard } from "@/components/reviews/review-card";
 import type { Id } from "@convex/_generated/dataModel";
+import { formatDateTimeInZone, resolveDisplayTimezone } from "@/lib/tz";
 
-function formatDateTime(timestamp?: number) {
+function formatDateTime(timestamp: number | undefined, zone: string) {
   if (!timestamp) {
     return "-";
   }
 
-  return new Date(timestamp).toLocaleString();
+  return formatDateTimeInZone(timestamp, zone, {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 function toMutationInput(values: PropertyFormValues) {
@@ -97,7 +105,10 @@ export function PropertyDetail({ id }: { id: string }) {
       },
       {
         label: "Next Check-In",
-        value: formatDateTime(property.nextCheckInAt),
+        value: formatDateTime(
+          property.nextCheckInAt,
+          resolveDisplayTimezone((property as { timezone?: string | null }).timezone),
+        ),
       },
       {
         label: "Primary Cleaner",
@@ -146,6 +157,10 @@ export function PropertyDetail({ id }: { id: string }) {
       </div>
     );
   }
+
+  const displayZone = resolveDisplayTimezone(
+    (property as { timezone?: string | null }).timezone,
+  );
 
   return (
     <div className="space-y-6">
@@ -277,7 +292,7 @@ export function PropertyDetail({ id }: { id: string }) {
 
                   return (
                     <tr key={job._id} className="border-t">
-                      <td className="px-4 py-3 text-sm font-semibold">{formatDateTime(job.scheduledStartAt)}</td>
+                      <td className="px-4 py-3 text-sm font-semibold">{formatDateTime(job.scheduledStartAt, displayZone)}</td>
                       <td className="px-4 py-3 text-sm">
                         {job.cleaners?.[0]?.name || "Unassigned"}
                       </td>

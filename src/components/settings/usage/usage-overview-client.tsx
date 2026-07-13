@@ -26,6 +26,7 @@ import {
   type ServiceCardQuota,
 } from "./service-card";
 import { formatDelta, formatUsd } from "./format";
+import { formatTime } from "@/lib/tz";
 
 function StatTile({
   label,
@@ -154,7 +155,7 @@ export function UsageOverviewClient() {
             <p className="text-sm text-[var(--muted-foreground)]">
               Aggregated across {overview.services.length} tracked service
               {overview.services.length === 1 ? "" : "s"}. Updated{" "}
-              {new Date(overview.generatedAt).toLocaleTimeString(undefined, {
+              {formatTime(overview.generatedAt, {
                 hour: "2-digit",
                 minute: "2-digit",
               })}

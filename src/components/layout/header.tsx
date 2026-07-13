@@ -18,6 +18,7 @@ import { localeNames, type Locale } from "@/lib/locales";
 import { useConsumeNotificationIdFromSearchParam } from "@/lib/notifications-client";
 import { cn } from "@/lib/utils";
 import { navigation } from "@/components/layout/navigation";
+import { formatDateTime } from "@/lib/tz";
 
 const pageTitleKeys: Record<string, string> = {
   "/": "common.dashboard",
@@ -48,9 +49,7 @@ function readClientThemePreference(): ThemePreference {
     return stored;
   }
 
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
+  return "light";
 }
 
 function subscribeToThemePreference(onStoreChange: () => void): () => void {
@@ -138,6 +137,12 @@ export function Header() {
     api.admin.featureFlags.isFeatureEnabled,
     { key: "theme_switcher" },
   );
+  // Deactivated features shouldn't show a nav icon — same principle as the
+  // theme switcher above, applied to `navigation` entries with a `featureFlag`.
+  const reviewsAiReplyEnabled = useQuery(
+    api.admin.featureFlags.isFeatureEnabled,
+    { key: "reviewsAiReply" },
+  );
   const roleFromClaims = getRoleFromSessionClaimsOrNull(
     sessionClaims as Record<string, unknown> | null,
   );
@@ -145,7 +150,11 @@ export function Header() {
   const role: UserRole = roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "manager";
   const canViewSettings = isLoaded && canAccessPath(role, "/settings");
   const canViewReports = isLoaded && canAccessPath(role, "/reports");
-  const mobileNavigation = navigation.filter((item) => item.roles.includes(role));
+  const mobileNavigation = navigation.filter(
+    (item) =>
+      item.roles.includes(role) &&
+      (item.featureFlag !== "reviewsAiReply" || reviewsAiReplyEnabled === true),
+  );
   const unreadMessageCount = useQuery(
     api.conversations.queries.getUnreadConversationCount,
     convexUser?._id ? {} : "skip",
@@ -245,7 +254,7 @@ export function Header() {
   }, [currentLocale, isLoaded, isSignedIn, setLocalePreference]);
 
   const titleKey = getPageTitleKey(pathname);
-  const title = titleKey ? t(titleKey) : "ChezSoi";
+  const title = titleKey ? t(titleKey) : "ChezSoi Ops";
 
   return (
     <>
@@ -292,7 +301,7 @@ export function Header() {
             </button>
 
             {isNotificationsOpen ? (
-              <div className="absolute right-0 top-11 z-50 w-[320px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border bg-[var(--card)] shadow-xl max-sm:-right-2 max-sm:w-[calc(100vw-1rem)]">
+              <div className="absolute right-0 top-11 z-50 w-[320px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border bg-[var(--card)] shadow-xl max-sm:fixed max-sm:inset-x-2 max-sm:top-16 max-sm:w-auto max-sm:max-w-none">
                 <div className="flex items-center justify-between border-b px-3 py-2">
                   <p className="text-sm font-semibold">Notifications</p>
                   <span className="text-xs text-[var(--muted-foreground)]">
@@ -526,7 +535,8 @@ function getNotificationHref(type: string, data: unknown): string {
 }
 
 function formatNotificationTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleString([], {
+  // No property context here — use the app default display zone.
+  return formatDateTime(timestamp, {
     month: "short",
     day: "numeric",
     hour: "2-digit",
