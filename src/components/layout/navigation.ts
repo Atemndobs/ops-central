@@ -89,7 +89,9 @@ export const navigation: NavigationItem[] = [
     nameKey: "nav.companies",
     href: "/companies",
     icon: Building,
-    roles: ["admin", "property_ops"],
+    // Admin-only for now — the ops team isn't ready to manage cleaning-company
+    // assignments and managers don't need it. Widen this list to re-enable.
+    roles: ["admin"],
   },
   {
     // User management — ops does not handle this. Kept for manager (existing
