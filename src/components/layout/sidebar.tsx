@@ -106,6 +106,13 @@ export function Sidebar() {
     api.admin.featureFlags.isFeatureEnabled,
     { key: "theme_switcher" },
   );
+  // Deactivated features shouldn't show a nav icon at all — same principle
+  // as the theme switcher above, applied to sidebar `navigation` entries
+  // that declare a `featureFlag`.
+  const reviewsAiReplyEnabled = useQuery(
+    api.admin.featureFlags.isFeatureEnabled,
+    { key: "reviewsAiReply" },
+  );
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
   const setThemePreferenceRef = useRef(setThemePreference);
   const convexUser = useQuery(
@@ -131,6 +138,12 @@ export function Sidebar() {
   );
   const roleFromMetadata = getRoleFromMetadata(user?.publicMetadata);
   const role: UserRole = roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "manager";
+  const isNavItemVisible = useCallback(
+    (item: (typeof navigation)[number]) =>
+      item.roles.includes(role) &&
+      (item.featureFlag !== "reviewsAiReply" || reviewsAiReplyEnabled === true),
+    [role, reviewsAiReplyEnabled],
+  );
 
   // Admin-configured per-role brand colors (falls back to the static default
   // while loading / for unknown roles).
@@ -157,9 +170,9 @@ export function Sidebar() {
     cleaner: <Wrench className="h-3 w-3" />,
     owner: <Home className="h-3 w-3" />,
   };
-  const quickLinks = navigation
-    .filter((item) => item.roles.includes(role))
-    .slice(0, 5);
+  // #227's isNavItemVisible already filters by role AND hides inactive-feature
+  // icons — a superset of the old role-only filter.
+  const quickLinks = navigation.filter(isNavItemVisible).slice(0, 5);
   const themeScopeKey = isConvexAuthenticated
     ? `auth:${user?.id ?? "unknown"}`
     : "anon";
@@ -262,7 +275,7 @@ export function Sidebar() {
           isCollapsed ? "space-y-3 px-2" : "space-y-1 px-4",
         )}
       >
-        {navigation.filter((item) => item.roles.includes(role)).map((item) => {
+        {navigation.filter(isNavItemVisible).map((item) => {
           const label = t(item.nameKey);
           const isActive =
             pathname === item.href ||
