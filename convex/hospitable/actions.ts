@@ -847,9 +847,16 @@ interface NormalizedRoom {
 interface NormalizedPropertyDetails {
   hospitableId: string;
   name?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+  country?: string;
+  timezone?: string;
+  currency?: string;
+  imageUrl?: string;
   bedrooms?: number;
   bathrooms?: number;
-  timezone?: string;
   rooms: NormalizedRoom[];
 }
 
@@ -943,17 +950,35 @@ function normalizePropertyDetails(rawProperty: unknown): NormalizedPropertyDetai
 
   const rooms = extractRoomsFromProperty(rawProperty);
 
+  // Hospitable v2 returns an `address` object: { street, city, state, postcode, country, ... }
+  const addr = isRecord(rawProperty.address) ? rawProperty.address : undefined;
+  const streetAddress =
+    asString(addr?.street) ??
+    asString(addr?.display) ??
+    asString(addr?.line1) ??
+    asString(rawProperty.address_line1);
+
   // Hospitable returns IANA timezone like "America/Chicago" on the property.
-  const address = isRecord(rawProperty.address) ? rawProperty.address : undefined;
   const timezone =
     asString(rawProperty.timezone) ??
     asString(rawProperty.time_zone) ??
-    asString(address?.timezone) ??
-    asString(address?.time_zone);
+    asString(addr?.timezone) ??
+    asString(addr?.time_zone);
 
   return {
     hospitableId,
     name: asString(rawProperty.name) ?? asString(rawProperty.title),
+    address: streetAddress,
+    city: asString(addr?.city) ?? asString(rawProperty.city),
+    state: asString(addr?.state) ?? asString(addr?.region) ?? asString(rawProperty.state),
+    zipCode:
+      asString(addr?.postcode) ?? asString(addr?.postal_code) ?? asString(rawProperty.zip_code),
+    country: asString(addr?.country) ?? asString(addr?.country_code),
+    currency: asString(rawProperty.currency),
+    imageUrl:
+      asString(rawProperty.picture) ??
+      asString(rawProperty.main_picture) ??
+      asString(rawProperty.thumbnail_url),
     bedrooms: bedroomCount,
     bathrooms: bathroomCount,
     timezone,
@@ -961,12 +986,42 @@ function normalizePropertyDetails(rawProperty: unknown): NormalizedPropertyDetai
   };
 }
 
+async function fetchAllHospitableProperties(
+  apiKey: string,
+  baseUrl: string,
+  ctx?: UsageLogCtx,
+): Promise<unknown[]> {
+  const perPage = 50;
+  const maxPages = 20; // hard cap — 1,000 properties is plenty of headroom
+  const all: unknown[] = [];
+
+  for (let page = 1; page <= maxPages; page++) {
+    const url = `${baseUrl}/properties?page=${page}&per_page=${perPage}`;
+    const payload = await fetchHospitableJson(apiKey, url, ctx, "hospitable_properties_sync");
+    const rows = getArrayFromApiPayload(payload);
+    if (rows.length === 0) break;
+    all.push(...rows);
+
+    // Stop early if we can see we've fetched everything
+    const meta = isRecord(payload) && isRecord(payload.meta) ? payload.meta : undefined;
+    const lastPage = asNumber(meta?.last_page);
+    if (typeof lastPage === "number" && page >= lastPage) break;
+    if (rows.length < perPage) break;
+  }
+
+  return all;
+}
+
 export const syncPropertyDetails = internalAction({
   args: {},
   handler: async (ctx): Promise<{
     success: boolean;
     propertiesSynced: number;
+    propertiesInserted: number;
+    propertiesUpdated: number;
     propertiesSkipped: number;
+    propertiesDeactivated: number;
+    deactivationSkipped: string | null;
     errors: string[];
   }> => {
     const apiKey = process.env.HOSPITABLE_API_KEY ?? process.env.HOSPITABLE_API_TOKEN;
@@ -976,26 +1031,23 @@ export const syncPropertyDetails = internalAction({
 
     const baseUrl = process.env.HOSPITABLE_API_URL ?? DEFAULT_HOSPITABLE_BASE_URL;
 
-    const propertiesPayload = await fetchHospitableJson(
-      apiKey,
-      `${baseUrl}/properties`,
-      ctx,
-      "hospitable_properties_sync",
-    );
-    const rawProperties = getArrayFromApiPayload(propertiesPayload);
+    const rawProperties = await fetchAllHospitableProperties(apiKey, baseUrl, ctx);
 
-    let propertiesSynced = 0;
+    let propertiesInserted = 0;
+    let propertiesUpdated = 0;
     let propertiesSkipped = 0;
+    const hospitableIdsSeen: string[] = [];
     const errors: string[] = [];
 
     for (const rawProperty of rawProperties) {
       const details = normalizePropertyDetails(rawProperty);
       if (!details) {
         propertiesSkipped++;
+        errors.push("Skipped a Hospitable property with no id / non-object shape.");
         continue;
       }
 
-      // Also try fetching individual property detail for richer room data
+      // Fetch individual property detail for richer address + room data
       let enrichedRooms = details.rooms;
       try {
         const detailPayload = await fetchHospitableJson(
@@ -1006,7 +1058,6 @@ export const syncPropertyDetails = internalAction({
         );
         const detailData = isRecord(detailPayload) && isRecord(detailPayload.data) ? detailPayload.data : detailPayload;
         if (isRecord(detailData)) {
-          // Update counts from detail endpoint capacity object
           const detailCapacity = isRecord(detailData.capacity) ? detailData.capacity : undefined;
           details.bedrooms = details.bedrooms ?? asNumber(detailCapacity?.bedrooms);
           details.bathrooms = details.bathrooms ?? asNumber(detailCapacity?.bathrooms);
@@ -1025,20 +1076,44 @@ export const syncPropertyDetails = internalAction({
           if (detailRooms.length > enrichedRooms.length) {
             enrichedRooms = detailRooms;
           }
+
+          // Address merge — prefer detail endpoint since list is often sparse
+          const detailNormalized = normalizePropertyDetails(detailData);
+          if (detailNormalized) {
+            details.name ??= detailNormalized.name;
+            details.address ??= detailNormalized.address;
+            details.city ??= detailNormalized.city;
+            details.state ??= detailNormalized.state;
+            details.zipCode ??= detailNormalized.zipCode;
+            details.country ??= detailNormalized.country;
+            details.timezone ??= detailNormalized.timezone;
+            details.currency ??= detailNormalized.currency;
+            details.imageUrl ??= detailNormalized.imageUrl;
+          }
         }
       } catch {
-        // Individual property detail fetch failed, use list data
+        // Fall through with list-level data
       }
 
       try {
-        await ctx.runMutation(internal.hospitable.mutations.updatePropertyDetails, {
+        const result = await ctx.runMutation(internal.hospitable.mutations.upsertPropertyFromHospitable, {
           hospitableId: details.hospitableId,
+          name: details.name,
+          address: details.address,
+          city: details.city,
+          state: details.state,
+          zipCode: details.zipCode,
+          country: details.country,
+          timezone: details.timezone,
+          currency: details.currency,
+          imageUrl: details.imageUrl,
           bedrooms: details.bedrooms,
           bathrooms: details.bathrooms,
-          timezone: details.timezone,
           rooms: enrichedRooms,
         });
-        propertiesSynced++;
+        if (result.action === "inserted") propertiesInserted++;
+        else propertiesUpdated++;
+        hospitableIdsSeen.push(details.hospitableId);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         errors.push(`Property ${details.hospitableId}: ${message}`);
@@ -1046,10 +1121,28 @@ export const syncPropertyDetails = internalAction({
       }
     }
 
+    // Deactivation pass — anything in Convex with a hospitableId that we did NOT see is now gone
+    // from Hospitable. Safety cap: never deactivate >25% in a single run.
+    const deactivationResult = await ctx.runMutation(
+      internal.hospitable.mutations.deactivateMissingProperties,
+      {
+        hospitableIdsSeen,
+        maxDeactivationRatio: 0.25,
+      },
+    );
+
+    if (deactivationResult.skipped) {
+      errors.push(`Deactivation pass skipped: ${deactivationResult.reason}`);
+    }
+
     return {
       success: errors.length === 0,
-      propertiesSynced,
+      propertiesSynced: propertiesInserted + propertiesUpdated,
+      propertiesInserted,
+      propertiesUpdated,
       propertiesSkipped,
+      propertiesDeactivated: deactivationResult.deactivated,
+      deactivationSkipped: deactivationResult.skipped ? deactivationResult.reason ?? null : null,
       errors,
     };
   },

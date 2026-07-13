@@ -25,6 +25,7 @@ import {
   markUploadSyncing,
   resetFailedUploads,
 } from "@/features/cleaner/offline/queue";
+import { getIncidentPhotoPreviews } from "@/features/cleaner/incident-photo-previews";
 import type { DraftIncident, DraftProgress, PendingUpload } from "@/features/cleaner/offline/types";
 import { JobConversationPanel } from "@/components/conversations/job-conversation-panel";
 import { getErrorMessage } from "@/lib/errors";
@@ -165,25 +166,6 @@ function getVideoPostersByRoom(args: {
     }));
 }
 
-function getPendingUploadPreviews(
-  photoRefs: string[],
-  pendingUploads: PendingUpload[],
-  previewCache: Record<string, string> = {},
-): Array<{ photoRef: string; url: string }> {
-  return photoRefs
-    .map((photoRef) => {
-      // Prefer the in-memory cache — it survives the local-id -> server-id
-      // swap. Fall back to the pending-uploads queue for backward compat.
-      const cached = previewCache[photoRef];
-      if (typeof cached === "string" && cached.length > 0) {
-        return { photoRef, url: cached };
-      }
-      const url = pendingUploads.find((upload) => upload.id === photoRef)?.fileDataUrl;
-      return typeof url === "string" && url.length > 0 ? { photoRef, url } : null;
-    })
-    .filter((preview): preview is { photoRef: string; url: string } => preview !== null);
-}
-
 type JobDetailLike = {
   job: {
     _id: Id<"cleaningJobs">;
@@ -199,9 +181,9 @@ type JobDetailLike = {
   evidence: {
     current: {
       byType: {
-        before: Array<{ roomName?: string | null; url?: string | null }>;
-        after:  Array<{ roomName?: string | null; url?: string | null }>;
-        incident: Array<{ roomName?: string | null; url?: string | null }>;
+        before: Array<{ photoId?: Id<"photos">; roomName?: string | null; url?: string | null }>;
+        after:  Array<{ photoId?: Id<"photos">; roomName?: string | null; url?: string | null }>;
+        incident: Array<{ photoId?: Id<"photos">; roomName?: string | null; url?: string | null }>;
       };
       byRoom: Array<{ roomName?: string | null }>;
     };
@@ -572,6 +554,8 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
   const [completionNotes, setCompletionNotes]       = useState("");
   const [guestReady, setGuestReady]                 = useState(false);
   const [incidents, setIncidents]                   = useState<DraftIncident[]>([]);
+  const incidentsRef                                = useRef<DraftIncident[]>([]);
+  incidentsRef.current                              = incidents;
 
   const [newIncidentTitle, setNewIncidentTitle]             = useState("");
   const [newIncidentDescription, setNewIncidentDescription] = useState("");
@@ -982,6 +966,11 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
   const currentAfterTotal = roomList.reduce(
     (sum, rn) => sum + getCountByRoom({ roomName: rn, type: "after", detail, pendingUploads }), 0,
   );
+  const reviewIncidentPreviews = getIncidentPhotoPreviews({
+    photoRefs: incidents.flatMap((incident) => incident.localPhotoIds),
+    pendingUploads,
+    serverIncidentPhotos: detail.evidence.current.byType.incident,
+  });
 
   const isLastStep  = currentStepIndex === STEPS.length - 1;
   const isFirstStep = currentStepIndex === 0;
@@ -1014,7 +1003,8 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
         throw new Error(t("cleaner.active.uploadsFailed"));
       }
 
-      for (const incident of incidents) {
+      const syncedIncidents = incidentsRef.current;
+      for (const incident of syncedIncidents) {
         await createIncident({
           propertyId: detail.job.propertyId,
           cleaningJobId: detail.job._id,
@@ -1441,7 +1431,11 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                     {t("cleaner.active.photoCountSelected", { count: newIncidentPhotoIds.length })}
                   </p>
                   <div className="flex gap-2 overflow-x-auto pb-1">
-                    {getPendingUploadPreviews(newIncidentPhotoIds, pendingUploads, photoPreviewCache).map(({ photoRef, url }, index) => {
+                    {getIncidentPhotoPreviews({
+                      photoRefs: newIncidentPhotoIds,
+                      pendingUploads,
+                      serverIncidentPhotos: detail.evidence.current.byType.incident,
+                    }).map(({ photoRef, url }, index) => {
                       return (
                         <div key={`${photoRef}-${index}`} className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border border-[var(--border)]">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1461,7 +1455,11 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                       );
                     })}
                   </div>
-                  {getPendingUploadPreviews(newIncidentPhotoIds, pendingUploads, photoPreviewCache).length < newIncidentPhotoIds.length && (
+                  {getIncidentPhotoPreviews({
+                    photoRefs: newIncidentPhotoIds,
+                    pendingUploads,
+                    serverIncidentPhotos: detail.evidence.current.byType.incident,
+                  }).length < newIncidentPhotoIds.length && (
                     <p className="text-[11px] text-[var(--muted-foreground)]">
                       {t("cleaner.active.somePhotosAlreadyAttached")}
                     </p>
@@ -1615,6 +1613,39 @@ export function CleanerActiveJobClient({ id }: { id: string }) {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {incidents.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+                {t("cleaner.active.incidents")} ({reviewIncidentPreviews.length})
+              </p>
+              <div className="rounded-md border border-[var(--border)] bg-[var(--background)] p-3">
+                {reviewIncidentPreviews.length > 0 ? (
+                  <div className="flex gap-2 overflow-x-auto">
+                    {reviewIncidentPreviews.map(({ photoRef, url }, index) => (
+                      <button
+                        key={`${photoRef}-${index}`}
+                        type="button"
+                        onClick={() => setLightboxUrl(url)}
+                        className="h-16 w-16 shrink-0 overflow-hidden rounded border border-[var(--border)] active:opacity-70"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={url}
+                          alt={t("cleaner.active.incidentPreviewAlt", { index: index + 1 })}
+                          className="h-full w-full object-cover"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex h-16 items-center justify-center rounded border border-dashed border-[var(--border)] text-[10px] text-[var(--muted-foreground)]">
+                    {t("cleaner.active.none")}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
