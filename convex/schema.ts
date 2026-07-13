@@ -318,6 +318,7 @@ const cleaningJobs = defineTable({
   scheduledEndAt: v.number(),
   actualStartAt: v.optional(v.number()),
   actualEndAt: v.optional(v.number()),
+  upcomingNotifiedAt: v.optional(v.number()),
   currentRevision: v.optional(v.number()),
   latestSubmissionId: v.optional(v.id("jobSubmissions")),
 
@@ -1159,7 +1160,10 @@ const notifications = defineTable({
     v.literal("system"),
     v.literal("owner_statement_issued"),
     v.literal("owner_approval_request"),
-    v.literal("owner_incident_reported")
+    v.literal("owner_incident_reported"),
+    v.literal("job_upcoming"),
+    v.literal("job_started"),
+    v.literal("job_submitted")
   ),
   title: v.string(),
   // English fallback body. Kept for back-compat with old clients and for

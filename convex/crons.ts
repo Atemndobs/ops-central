@@ -46,6 +46,16 @@ crons.interval(
 // one deploy cycle so in-flight acks seeded before the event-driven path
 // shipped still get escalated. Delete after verifying one cycle of logs
 // shows zero escalations. Tracking: Docs/2026-04-24-cron-jobs-architecture-and-cost-reduction.md
+// 30-min pre-job alert — runs every 5 min, finds jobs starting in the
+// 25–35 min window, notifies assigned cleaners + ops once per job via
+// upcomingNotifiedAt dedup flag (set on first fire, prevents re-send).
+crons.interval(
+  "send-upcoming-job-notifications",
+  { minutes: 5 },
+  internal.cleaningJobs.upcoming.sendUpcomingJobNotifications,
+  {},
+);
+
 crons.interval(
   "escalate-pending-acknowledgements",
   { minutes: 15 },
