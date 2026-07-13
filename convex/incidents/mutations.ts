@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import { getCurrentUser, requireRole } from "../lib/auth";
+import { getCallerJobScopeForListing } from "../lib/companyScope";
 import { normalizeRoomName } from "../lib/rooms";
 
 const claimFollowUpStateValidator = v.union(
@@ -185,11 +186,22 @@ export const updatePlatformClaim = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, ["admin", "property_ops", "manager"]);
+    const user = await requireRole(ctx, ["admin", "property_ops", "manager"]);
 
     const incident = await ctx.db.get(args.incidentId);
     if (!incident) {
       throw new Error("Incident not found");
+    }
+
+    // Issue #93 — managers may only touch incidents on properties in their
+    // company. Without this a manager from company A could overwrite an
+    // incident's platform claim in company B by guessing its _id (mirrors the
+    // read-side scope in incidents/queries.getIncidentById).
+    if (user.role === "manager") {
+      const propertyScope = await getCallerJobScopeForListing(ctx, user);
+      if (propertyScope === null || !propertyScope.has(incident.propertyId)) {
+        throw new Error("Not authorized to update this incident");
+      }
     }
 
     if (args.platformClaim === null) {
