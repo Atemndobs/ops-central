@@ -3,8 +3,17 @@ import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import { getCurrentUser, requireRole } from "../lib/auth";
-import { resolvePhotoAccessUrl } from "../lib/photoUrls";
 import { normalizeRoomName } from "../lib/rooms";
+
+const claimFollowUpStateValidator = v.union(
+  v.literal("not_started"),
+  v.literal("collecting_evidence"),
+  v.literal("submitted"),
+  v.literal("awaiting_platform"),
+  v.literal("approved"),
+  v.literal("denied"),
+  v.literal("closed"),
+);
 
 export const createIncident = mutation({
   args: {
@@ -154,6 +163,65 @@ export const updateIncidentStatus = mutation({
         { incidentId: args.incidentId, status: args.status },
       );
     }
+
+    return args.incidentId;
+  },
+});
+
+export const updatePlatformClaim = mutation({
+  args: {
+    incidentId: v.id("incidents"),
+    platformClaim: v.union(
+      v.null(),
+      v.object({
+        affectedPlatform: v.optional(v.string()),
+        suspensionStartedAt: v.optional(v.number()),
+        suspensionEndedAt: v.optional(v.number()),
+        canceledBookingCount: v.optional(v.number()),
+        claimFollowUpState: v.optional(claimFollowUpStateValidator),
+        claimFollowUpDueAt: v.optional(v.number()),
+        claimNotes: v.optional(v.string()),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    await requireRole(ctx, ["admin", "property_ops", "manager"]);
+
+    const incident = await ctx.db.get(args.incidentId);
+    if (!incident) {
+      throw new Error("Incident not found");
+    }
+
+    if (args.platformClaim === null) {
+      await ctx.db.patch(args.incidentId, {
+        platformClaim: undefined,
+        updatedAt: Date.now(),
+      });
+      return args.incidentId;
+    }
+
+    const platform = args.platformClaim.affectedPlatform?.trim();
+    const notes = args.platformClaim.claimNotes?.trim();
+    const count =
+      args.platformClaim.canceledBookingCount === undefined
+        ? undefined
+        : Math.max(0, Math.trunc(args.platformClaim.canceledBookingCount));
+
+    const platformClaim = {
+      affectedPlatform: platform || undefined,
+      suspensionStartedAt: args.platformClaim.suspensionStartedAt,
+      suspensionEndedAt: args.platformClaim.suspensionEndedAt,
+      canceledBookingCount: count,
+      claimFollowUpState:
+        args.platformClaim.claimFollowUpState ?? "not_started",
+      claimFollowUpDueAt: args.platformClaim.claimFollowUpDueAt,
+      claimNotes: notes || undefined,
+    };
+
+    await ctx.db.patch(args.incidentId, {
+      platformClaim,
+      updatedAt: Date.now(),
+    });
 
     return args.incidentId;
   },

@@ -9,7 +9,20 @@ import { use } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { Loader2, ChevronLeft, Building2, FileText } from "lucide-react";
+import {
+  AlertTriangle,
+  Ban,
+  Building2,
+  ChevronLeft,
+  ExternalLink,
+  FileText,
+  Loader2,
+} from "lucide-react";
+import {
+  CLAIM_FOLLOW_UP_LABELS,
+  buildPlatformClaimSummary,
+  type PlatformClaim,
+} from "@/components/incidents/platform-claim";
 import { formatDate } from "@/lib/tz";
 
 function formatPeriod(periodStart: number): string {
@@ -48,7 +61,7 @@ export default function AdminOwnerDashboardPage({
     );
   }
 
-  const { user, properties, statements } = data;
+  const { user, properties, statements, platformClaims } = data;
 
   return (
     <div className="space-y-8">
@@ -69,7 +82,8 @@ export default function AdminOwnerDashboardPage({
         )}
         <p className="mt-2 text-sm text-muted-foreground">
           {properties.length} {properties.length === 1 ? "property" : "properties"} ·{" "}
-          {statements.length} {statements.length === 1 ? "statement" : "statements"} on file
+          {statements.length} {statements.length === 1 ? "statement" : "statements"} on file ·{" "}
+          {platformClaims.length} platform {platformClaims.length === 1 ? "claim" : "claims"}
         </p>
       </header>
 
@@ -101,6 +115,99 @@ export default function AdminOwnerDashboardPage({
                 </div>
               </Link>
             ))}
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Platform claims
+          </h2>
+          {platformClaims.some((claim) =>
+            isActivePlatformClaim(claim.platformClaim),
+          ) ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-600 dark:text-rose-400">
+              <AlertTriangle className="h-3 w-3" />
+              Active follow-up
+            </span>
+          ) : null}
+        </div>
+        {platformClaims.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border bg-muted/20 p-6 text-center">
+            <Ban className="mx-auto h-8 w-8 text-muted-foreground" />
+            <p className="mt-2 text-sm text-muted-foreground">
+              No platform suspension or claim follow-up incidents for this owner.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-lg border border-border bg-card">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3 text-left font-medium">Incident</th>
+                  <th className="px-4 py-3 text-left font-medium">Platform</th>
+                  <th className="px-4 py-3 text-left font-medium">
+                    Suspension
+                  </th>
+                  <th className="px-4 py-3 text-right font-medium">
+                    Canceled
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium">
+                    Follow-up
+                  </th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {platformClaims.map((claim) => {
+                  const summary = buildPlatformClaimSummary(claim.platformClaim);
+                  return (
+                    <tr
+                      key={claim._id}
+                      className="border-t border-border transition-colors hover:bg-muted/30"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{claim.title}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {claim.propertyName}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {summary.platform}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {summary.suspensionWindow}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        {claim.platformClaim.canceledBookingCount ?? 0}
+                      </td>
+                      <td className="px-4 py-3">
+                        <ClaimStateBadge
+                          state={
+                            claim.platformClaim.claimFollowUpState ??
+                            "not_started"
+                          }
+                        />
+                        {summary.followUpDueAt ? (
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            Due {summary.followUpDueAt}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Link
+                          href={`/incidents?id=${claim._id}`}
+                          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          Open <ExternalLink className="h-3 w-3" />
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </section>
@@ -174,6 +281,31 @@ export default function AdminOwnerDashboardPage({
         )}
       </section>
     </div>
+  );
+}
+
+function isActivePlatformClaim(platformClaim: PlatformClaim): boolean {
+  const state = platformClaim.claimFollowUpState ?? "not_started";
+  return state !== "approved" && state !== "denied" && state !== "closed";
+}
+
+function ClaimStateBadge({
+  state,
+}: {
+  state: keyof typeof CLAIM_FOLLOW_UP_LABELS;
+}) {
+  const active = state !== "approved" && state !== "denied" && state !== "closed";
+  return (
+    <span
+      className={
+        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium uppercase tracking-wide " +
+        (active
+          ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+          : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300")
+      }
+    >
+      {CLAIM_FOLLOW_UP_LABELS[state]}
+    </span>
   );
 }
 
