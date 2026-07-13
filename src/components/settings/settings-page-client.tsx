@@ -812,12 +812,15 @@ export function SettingsPageClient({ initialTab }: { initialTab: SettingsTab }) 
     roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "admin";
   const isAdmin = currentRole === "admin";
 
-  // Ops gets a simplified settings surface: no Team tab (user management is
-  // not an ops responsibility) and no Service usage & cost dashboard
-  // (financial reporting) within Integrations.
-  const visibleTabs = isAdmin ? tabs : tabs.filter((tab) => tab.id !== "team");
+  // Ops gets a simplified settings surface: no Team tab (user management is not
+  // an ops responsibility) and no Integrations tab (feature flags, storage/AI
+  // providers, app-icon config, usage & cost — all admin-only).
+  const ADMIN_ONLY_TABS: SettingsTab[] = ["team", "integrations"];
+  const visibleTabs = isAdmin
+    ? tabs
+    : tabs.filter((tab) => !ADMIN_ONLY_TABS.includes(tab.id));
   const [activeTab, setActiveTab] = useState<SettingsTab>(
-    !isAdmin && initialTab === "team" ? "general" : initialTab,
+    !isAdmin && ADMIN_ONLY_TABS.includes(initialTab) ? "general" : initialTab,
   );
 
   return (
@@ -848,7 +851,7 @@ export function SettingsPageClient({ initialTab }: { initialTab: SettingsTab }) 
       {activeTab === "scheduling" ? <SchedulingSettingsPanel /> : null}
       {activeTab === "team" && isAdmin ? <TeamSettingsPanel /> : null}
       {activeTab === "notifications" ? <NotificationsSettingsPanel /> : null}
-      {activeTab === "integrations" ? (
+      {activeTab === "integrations" && isAdmin ? (
         <div className="space-y-3">
           <CollapsibleSection
             persistKey="integrations-feature-flags"
