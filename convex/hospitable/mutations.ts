@@ -11,6 +11,7 @@ const normalizedReservationValidator = v.object({
   guestName: v.string(),
   guestEmail: v.optional(v.string()),
   guestPhone: v.optional(v.string()),
+  guestPhotoUrl: v.optional(v.string()),
   numberOfGuests: v.optional(v.number()),
   checkInAt: v.number(),
   checkOutAt: v.number(),
@@ -101,6 +102,10 @@ export async function upsertSingleReservation(
       partyRiskFlag: reservation.partyRiskFlag,
       platform: reservation.platform,
       confirmationCode: reservation.confirmationCode,
+      // Don't overwrite a stored photo with undefined on a partial re-sync.
+      ...(reservation.guestPhotoUrl !== undefined && {
+        guestPhotoUrl: reservation.guestPhotoUrl,
+      }),
       // Owner-portal financial fields. Wave 4b: extracted from Hospitable
       // payload by normalizeReservation. Don't overwrite a previously-set
       // value with undefined (avoids data loss on a partial re-sync).
@@ -121,6 +126,7 @@ export async function upsertSingleReservation(
       guestName: reservation.guestName,
       guestEmail: reservation.guestEmail,
       guestPhone: reservation.guestPhone,
+      guestPhotoUrl: reservation.guestPhotoUrl,
       numberOfGuests: reservation.numberOfGuests,
       checkInAt: reservation.checkInAt,
       checkOutAt: reservation.checkOutAt,

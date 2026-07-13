@@ -44,6 +44,17 @@ type JobWithRelations = {
   cleaners?: Array<{ _id?: Id<"users">; name?: string | null; avatarUrl?: string | null }>;
 };
 
+type Reservation = {
+  _id: Id<"stays">;
+  propertyId: Id<"properties">;
+  guestName: string;
+  guestPhotoUrl?: string;
+  numberOfGuests?: number;
+  platform?: string;
+  checkInAt: number;
+  checkOutAt: number;
+};
+
 const readinessDotClass: Record<PropertyStatus, string> = {
   ready: "bg-emerald-500",
   dirty: "bg-rose-500",
@@ -116,6 +127,57 @@ function AssignedCleanerBadge({
   );
 }
 
+function guestInitials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) {
+    return "G";
+  }
+  if (words.length === 1) {
+    return words[0].slice(0, 2).toUpperCase();
+  }
+  return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase();
+}
+
+// Map a reservation platform string to a compact single-letter channel badge.
+function channelBadge(platform?: string): { letter: string; label: string } | null {
+  if (!platform) {
+    return null;
+  }
+  const p = platform.toLowerCase();
+  if (p.includes("airbnb")) return { letter: "A", label: "Airbnb" };
+  if (p.includes("vrbo") || p.includes("homeaway")) return { letter: "V", label: "Vrbo" };
+  if (p.includes("booking")) return { letter: "B", label: "Booking.com" };
+  if (p.includes("direct")) return { letter: "D", label: "Direct" };
+  return { letter: platform.slice(0, 1).toUpperCase(), label: platform };
+}
+
+function clampIndex(value: number, max: number): number {
+  return Math.max(0, Math.min(max, value));
+}
+
+// Small round guest avatar for occupancy bars — an external photo that falls
+// back to initials when it's missing or fails to load (mirrors the
+// AssignedCleanerBadge initials pattern).
+function GuestAvatar({ name, photoUrl }: { name: string; photoUrl?: string }) {
+  const [errored, setErrored] = useState(false);
+  const showImage = Boolean(photoUrl) && !errored;
+  return (
+    <span className="relative inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/50 bg-white/25 text-white">
+      {showImage ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={photoUrl}
+          alt={`${name} avatar`}
+          className="h-full w-full rounded-full object-cover"
+          onError={() => setErrored(true)}
+        />
+      ) : (
+        <span className="text-[8px] font-bold leading-none">{guestInitials(name)}</span>
+      )}
+    </span>
+  );
+}
+
 export function ScheduleClient() {
   const { showToast } = useToast();
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
@@ -125,6 +187,9 @@ export function ScheduleClient() {
   // than snapping to Monday, so the current day is always the left-most column
   // and the board rolls forward day by day.
   const [rangeMode, setRangeMode] = useState<"week" | "month" | "custom">("week");
+  // Board mode: "tasks" is the existing cleaning-jobs grid; "occupancy" swaps
+  // the per-day job cells for Hospitable-style reservation bars.
+  const [boardMode, setBoardMode] = useState<"tasks" | "occupancy">("tasks");
   const [rangeStart, setRangeStart] = useState(() => startOfDay(new Date()));
   const [rangeEnd, setRangeEnd] = useState(() => addDays(startOfDay(new Date()), 6));
 
@@ -266,6 +331,15 @@ export function ScheduleClient() {
   const jobs = useQuery(
     api.cleaningJobs.queries.getInDateRange,
     isAuthenticated ? { from: rangeStartTime, to: rangeEndExclusiveTime } : "skip",
+  );
+  // Occupancy mode — reservations in the visible window. Same local-midnight
+  // date bounds as the jobs query; only fetched while the occupancy board is
+  // active (skipped in Tasks mode to avoid an idle subscription).
+  const reservations = useQuery(
+    api.stays.queries.getInDateRange,
+    isAuthenticated && boardMode === "occupancy"
+      ? { from: rangeStartTime, to: rangeEndExclusiveTime }
+      : "skip",
   );
   const cleaners = useQuery(api.users.queries.getCleaners, isAuthenticated ? {} : "skip");
   const assignJob = useMutation(api.cleaningJobs.mutations.assign);
@@ -419,6 +493,18 @@ export function ScheduleClient() {
     map.forEach((value) => value.sort((a, b) => (a.scheduledStartAt ?? 0) - (b.scheduledStartAt ?? 0)));
     return map;
   }, [jobs, rangeEndExclusiveTime, rangeStartTime]);
+
+  // --- Computed: reservations by property (occupancy mode) ---
+  const reservationsByProperty = useMemo(() => {
+    const map = new Map<string, Reservation[]>();
+    for (const reservation of (reservations ?? []) as Reservation[]) {
+      const existing = map.get(reservation.propertyId) ?? [];
+      existing.push(reservation);
+      map.set(reservation.propertyId, existing);
+    }
+    map.forEach((value) => value.sort((a, b) => a.checkInAt - b.checkInAt));
+    return map;
+  }, [reservations]);
 
   // --- Computed: active vs idle properties ---
   const { activeProperties, idleProperties } = useMemo(() => {
@@ -954,6 +1040,71 @@ export function ScheduleClient() {
     );
   };
 
+  // --- Render helper: occupancy lane ---
+  // Replaces the per-day job cells with absolutely-positioned reservation bars
+  // for one property row. The lane spans every day column of the grid so bar
+  // offsets map directly onto `dayColPx`.
+  const renderOccupancyLane = (propertyId: string) => {
+    const stays = reservationsByProperty.get(propertyId) ?? [];
+    const todayIdx = daysBetween(rangeStart, todayStart);
+    const showToday = todayIdx >= 0 && todayIdx < rangeDays.length;
+    return (
+      <div
+        className="relative h-14 sm:h-16"
+        style={{
+          gridColumn: `span ${Math.max(1, rangeDays.length)}`,
+          backgroundImage: `repeating-linear-gradient(to right, var(--border) 0, var(--border) 1px, transparent 1px, transparent ${dayColPx}px)`,
+        }}
+      >
+        {/* Today column highlight, drawn under the bars. */}
+        {showToday ? (
+          <div
+            className="pointer-events-none absolute bottom-0 top-0 border-l-2 border-l-violet-500 bg-violet-500/[0.06]"
+            style={{ left: todayIdx * dayColPx, width: dayColPx }}
+          />
+        ) : null}
+        {stays.map((stay) => {
+          // Clip to the visible range; skip stays entirely outside it.
+          if (stay.checkOutAt <= rangeStartTime || stay.checkInAt >= rangeEndExclusiveTime) {
+            return null;
+          }
+          const startIdx = clampIndex(daysBetween(rangeStart, new Date(stay.checkInAt)), rangeDays.length);
+          const endIdx = clampIndex(daysBetween(rangeStart, new Date(stay.checkOutAt)), rangeDays.length);
+          const left = startIdx * dayColPx;
+          const width = Math.max(dayColPx, (endIdx - startIdx) * dayColPx);
+          const channel = channelBadge(stay.platform);
+          const checkInLabel = new Date(stay.checkInAt).toLocaleDateString([], { month: "short", day: "numeric" });
+          const checkOutLabel = new Date(stay.checkOutAt).toLocaleDateString([], { month: "short", day: "numeric" });
+          return (
+            <div
+              key={stay._id}
+              className="absolute bottom-1 top-1 flex items-center gap-1 overflow-hidden rounded-md border border-teal-600/40 bg-teal-500/90 px-1.5 text-[10px] font-medium text-white shadow-sm"
+              style={{ left, width }}
+              title={`${stay.guestName} · ${checkInLabel} – ${checkOutLabel}${channel ? ` · ${channel.label}` : ""}`}
+            >
+              <GuestAvatar name={stay.guestName} photoUrl={stay.guestPhotoUrl} />
+              <span className="min-w-0 flex-1 truncate">{stay.guestName}</span>
+              {channel ? (
+                <span
+                  className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-white/25 text-[8px] font-bold leading-none"
+                  aria-label={channel.label}
+                >
+                  {channel.letter}
+                </span>
+              ) : null}
+              {typeof stay.numberOfGuests === "number" ? (
+                <span className="flex shrink-0 items-center gap-0.5 text-[9px]">
+                  <Users className="h-2.5 w-2.5" />
+                  {stay.numberOfGuests}
+                </span>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   // --- Bottom sheet data ---
   const bottomSheetData = useMemo(() => {
     if (!selectedCell) return null;
@@ -998,6 +1149,26 @@ export function ScheduleClient() {
               aria-pressed={rangeMode === "month"}
             >
               Month
+            </button>
+          </div>
+
+          {/* Occupancy | Tasks board switcher */}
+          <div className="flex shrink-0 overflow-hidden rounded-md border text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setBoardMode("occupancy")}
+              className={cn("px-2 py-1 sm:px-3 sm:py-1.5", boardMode === "occupancy" ? "bg-[var(--accent)]" : "hover:bg-[var(--accent)]")}
+              aria-pressed={boardMode === "occupancy"}
+            >
+              Occupancy
+            </button>
+            <button
+              type="button"
+              onClick={() => setBoardMode("tasks")}
+              className={cn("border-l px-2 py-1 sm:px-3 sm:py-1.5", boardMode === "tasks" ? "bg-[var(--accent)]" : "hover:bg-[var(--accent)]")}
+              aria-pressed={boardMode === "tasks"}
+            >
+              Tasks
             </button>
           </div>
 
@@ -1388,7 +1559,9 @@ export function ScheduleClient() {
                   >
                     {day.toLocaleDateString([], { day: "2-digit" })}
                   </p>
-                  <ScheduleDateHeaderTaskOverlay day={day} mineOnly={mineOnly} myUserId={myUserId} summary={summaryFor("global", day)} />
+                  {boardMode === "tasks" ? (
+                    <ScheduleDateHeaderTaskOverlay day={day} mineOnly={mineOnly} myUserId={myUserId} summary={summaryFor("global", day)} />
+                  ) : null}
                 </div>
               );
             })}
@@ -1413,11 +1586,13 @@ export function ScheduleClient() {
                   style={{ gridTemplateColumns: scheduleGridTemplateColumns }}
                 >
                   {renderPropertyCell(property as { _id: string; name: string; address: string; status?: unknown })}
-                  {rangeDays.map((day) => {
-                    const key = `${property._id}-${dateKeyFn(day)}`;
-                    const cellJobs = jobsByCell.get(key) ?? [];
-                    return renderJobCell(cellJobs, property._id, day);
-                  })}
+                  {boardMode === "occupancy"
+                    ? renderOccupancyLane(property._id)
+                    : rangeDays.map((day) => {
+                        const key = `${property._id}-${dateKeyFn(day)}`;
+                        const cellJobs = jobsByCell.get(key) ?? [];
+                        return renderJobCell(cellJobs, property._id, day);
+                      })}
                 </div>
               ))}
             </>
