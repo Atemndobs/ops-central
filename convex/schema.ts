@@ -318,6 +318,7 @@ const cleaningJobs = defineTable({
   scheduledEndAt: v.number(),
   actualStartAt: v.optional(v.number()),
   actualEndAt: v.optional(v.number()),
+  upcomingNotifiedAt: v.optional(v.number()),
   currentRevision: v.optional(v.number()),
   latestSubmissionId: v.optional(v.id("jobSubmissions")),
 
@@ -1159,7 +1160,10 @@ const notifications = defineTable({
     v.literal("system"),
     v.literal("owner_statement_issued"),
     v.literal("owner_approval_request"),
-    v.literal("owner_incident_reported")
+    v.literal("owner_incident_reported"),
+    v.literal("job_upcoming"),
+    v.literal("job_started"),
+    v.literal("job_submitted")
   ),
   title: v.string(),
   // English fallback body. Kept for back-compat with old clients and for
@@ -1399,6 +1403,17 @@ const aiProviderSettings = defineTable({
 //   - If no row exists → fall back to the default (America/Chicago).
 //   - If a row exists → use its values.
 
+// J&A brand palette (see src/lib/brand.ts). Shared by every icon-color field.
+const brandIconColorV = v.union(
+  v.literal("darkgreen"),
+  v.literal("sage"),
+  v.literal("taupe"),
+  v.literal("navy"),
+  v.literal("terracotta"),
+  v.literal("rust"),
+  v.literal("purple"),
+);
+
 const appSettings = defineTable({
   key: v.literal("global"),
   // IANA timezone identifier, e.g. "America/Chicago". All admin-app date/time
@@ -1416,53 +1431,20 @@ const appSettings = defineTable({
   // Global choice — the manifest is one shared resource fetched before login, so
   // it can't vary per role. Absent ⇒ "teal". The dynamic manifest route
   // (src/app/manifest.webmanifest/route.ts) maps this to the matching icon set.
-  installedIconColor: v.optional(
-    v.union(
-      v.literal("indigo"),
-      v.literal("teal"),
-      v.literal("amber"),
-      v.literal("blue"),
-      v.literal("purple"),
-    ),
-  ),
-  // Per-app installed-icon colors for the OTHER installable PWAs. `installedIconColor`
-  // above is the Ops app. Absent ⇒ per-app default (cleaner ⇒ purple, owner ⇒ blue).
-  installedIconColorCleaner: v.optional(
-    v.union(
-      v.literal("indigo"),
-      v.literal("teal"),
-      v.literal("amber"),
-      v.literal("blue"),
-      v.literal("purple"),
-    ),
-  ),
-  installedIconColorOwner: v.optional(
-    v.union(
-      v.literal("indigo"),
-      v.literal("teal"),
-      v.literal("amber"),
-      v.literal("blue"),
-      v.literal("purple"),
-    ),
-  ),
-  // Per-ROLE brand colors (admin-configurable). Drive the in-app logo/favicon
-  // per logged-in role, and the 3 installable apps' icons (ops→property_ops,
-  // owner→owner, cleaner→locked purple). Absent ⇒ role default
-  // (admin indigo / ops teal / manager amber / owner blue). The two
-  // `installedIconColor*` fields above remain as back-compat fallbacks for
-  // ops/owner so earlier picks aren't lost. Cleaner is always purple (not stored).
-  roleColorAdmin: v.optional(
-    v.union(v.literal("indigo"), v.literal("teal"), v.literal("amber"), v.literal("blue"), v.literal("purple")),
-  ),
-  roleColorPropertyOps: v.optional(
-    v.union(v.literal("indigo"), v.literal("teal"), v.literal("amber"), v.literal("blue"), v.literal("purple")),
-  ),
-  roleColorManager: v.optional(
-    v.union(v.literal("indigo"), v.literal("teal"), v.literal("amber"), v.literal("blue"), v.literal("purple")),
-  ),
-  roleColorOwner: v.optional(
-    v.union(v.literal("indigo"), v.literal("teal"), v.literal("amber"), v.literal("blue"), v.literal("purple")),
-  ),
+  // Deprecated per-app fields (superseded by roleColor* below). Kept optional so
+  // no migration is needed; no longer written or read.
+  installedIconColor: v.optional(brandIconColorV),
+  installedIconColorCleaner: v.optional(brandIconColorV),
+  installedIconColorOwner: v.optional(brandIconColorV),
+  // Per-ROLE brand colors (admin-configurable, J&A brand palette). Drive the
+  // in-app logo/favicon per logged-in role, and the installable apps' icons
+  // (ops→property_ops, owner→owner). Absent ⇒ role default
+  // (admin dark green / ops sage / manager taupe / owner navy). Cleaner is
+  // always purple (not stored).
+  roleColorAdmin: v.optional(brandIconColorV),
+  roleColorPropertyOps: v.optional(brandIconColorV),
+  roleColorManager: v.optional(brandIconColorV),
+  roleColorOwner: v.optional(brandIconColorV),
   updatedBy: v.optional(v.id("users")),
   updatedAt: v.number(),
 })
@@ -2294,4 +2276,6 @@ export default defineSchema({
   maintenanceApprovalRequests,
   ownerDateBlocks,
   ownerNotificationPrefs,
+
+  appSettings,
 });

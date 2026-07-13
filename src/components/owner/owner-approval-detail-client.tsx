@@ -32,7 +32,7 @@ export function OwnerApprovalDetailClient({
   const [error, setError] = useState<string | null>(null);
 
   if (isLoading || req === undefined || property === undefined) {
-    return <div className="h-96 animate-pulse rounded-2xl bg-white" />;
+    return <div className="h-96 animate-pulse rounded-2xl bg-[var(--card)]" />;
   }
 
   const currency = property.property.currency ?? "USD";
@@ -61,7 +61,7 @@ export function OwnerApprovalDetailClient({
         </h1>
       </div>
 
-      <section className="rounded-2xl border border-black/[0.06] bg-white p-6">
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
         <div className="mb-4 flex items-baseline justify-between">
           <div className="text-xs uppercase tracking-wide text-[var(--cleaner-muted)]">
             Proposed cost
@@ -114,7 +114,7 @@ export function OwnerApprovalDetailClient({
       )}
 
       {isPending && property.ownership.isPrimaryApprover && (
-        <section className="rounded-2xl border border-black/[0.06] bg-white p-6">
+        <section className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
           <label className="mb-2 block text-sm font-medium">Note (optional)</label>
           <textarea
             value={note}
@@ -139,7 +139,7 @@ export function OwnerApprovalDetailClient({
             <button
               onClick={() => handle("declined")}
               disabled={submitting !== null}
-              className="flex flex-1 items-center justify-center gap-2 rounded-lg border-2 border-red-300 bg-white px-4 py-3 text-sm font-medium text-red-900 hover:bg-red-50 disabled:opacity-60"
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg border-2 border-red-300 bg-[var(--card)] px-4 py-3 text-sm font-medium text-red-900 hover:bg-red-50 disabled:opacity-60"
             >
               <XCircle size={16} />
               {submitting === "declined" ? "Declining…" : "Decline"}

@@ -17,11 +17,16 @@ import {
 import { navigation } from "@/components/layout/navigation";
 import { brandColorForRole, iconAssetBase, iconColorHex } from "@/lib/brand";
 import {
+  Briefcase,
   HelpCircle,
+  Home,
   LogOut,
   Menu,
   Moon,
+  Settings,
+  Shield,
   Sun,
+  Wrench,
   X,
 } from "lucide-react";
 
@@ -40,9 +45,7 @@ function readClientThemePreference(): ThemePreference {
     return stored;
   }
 
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
+  return "light";
 }
 
 function subscribeToThemePreference(onStoreChange: () => void): () => void {
@@ -160,6 +163,15 @@ export function Sidebar() {
     cleaner: t("roles.cleaner"),
     owner: t("roles.owner"),
   };
+  const roleIcon: Record<UserRole, React.ReactNode> = {
+    admin: <Shield className="h-3 w-3" />,
+    property_ops: <Settings className="h-3 w-3" />,
+    manager: <Briefcase className="h-3 w-3" />,
+    cleaner: <Wrench className="h-3 w-3" />,
+    owner: <Home className="h-3 w-3" />,
+  };
+  // #227's isNavItemVisible already filters by role AND hides inactive-feature
+  // icons — a superset of the old role-only filter.
   const quickLinks = navigation.filter(isNavItemVisible).slice(0, 5);
   const themeScopeKey = isConvexAuthenticated
     ? `auth:${user?.id ?? "unknown"}`
@@ -391,17 +403,29 @@ export function Sidebar() {
 
         {!isCollapsed ? (
           <div className="mt-4 flex items-center justify-between rounded-none px-2 py-2 hover:bg-[var(--accent)]">
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">
                 {user?.fullName || user?.primaryEmailAddress?.emailAddress || "User"}
               </p>
-              <p className="truncate text-xs text-[var(--muted-foreground)]">
-                {roleLabel[role]}
-              </p>
+              <div className="mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5" style={{ backgroundColor: `${brandColor}22` }}>
+                <span style={{ color: brandColor }}>{roleIcon[role]}</span>
+                <span className="text-xs font-semibold" style={{ color: brandColor }}>
+                  {roleLabel[role]}
+                </span>
+              </div>
             </div>
             <UserButton signInUrl="/sign-in" />
           </div>
-        ) : null}
+        ) : (
+          <div className="mt-4 flex flex-col items-center gap-1.5 py-2">
+            <UserButton signInUrl="/sign-in" />
+            <div
+              className="h-1 w-8 rounded-full"
+              style={{ backgroundColor: brandColor }}
+              title={roleLabel[role]}
+            />
+          </div>
+        )}
       </div>
 
       {isHelpOpen ? (

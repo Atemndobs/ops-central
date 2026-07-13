@@ -33,7 +33,7 @@ export function OwnerStatementDetailClient({
   );
 
   if (isLoading || result === undefined || property === undefined) {
-    return <div className="h-96 animate-pulse rounded-2xl bg-white" />;
+    return <div className="h-96 animate-pulse rounded-2xl bg-[var(--card)]" />;
   }
 
   const { statement, flags } = result;
@@ -44,7 +44,7 @@ export function OwnerStatementDetailClient({
   if (!flags.showStatements) {
     return (
       <div
-        className="rounded-2xl border border-black/[0.06] p-12 text-center"
+        className="rounded-2xl border border-[var(--border)] p-12 text-center"
         style={{ background: "var(--cleaner-surface)" }}
       >
         <p
@@ -107,7 +107,7 @@ export function OwnerStatementDetailClient({
       )}
 
       {/* The waterfall */}
-      <section className="rounded-2xl border border-black/[0.06] bg-white p-6">
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
         <h2 className="mb-4 text-lg font-semibold">How we got there</h2>
 
         <Waterfall
@@ -168,12 +168,12 @@ export function OwnerStatementDetailClient({
       </section>
 
       {/* Source receipts */}
-      <section className="rounded-2xl border border-black/[0.06] bg-white p-6">
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
         <h2 className="mb-2 text-lg font-semibold">Source records</h2>
         <p className="mb-4 text-xs text-[var(--cleaner-muted)]">
           Every line above traces back to a specific record. The only number without a backing receipt is the management fee — that one shows the formula.
         </p>
-        <div className="max-h-96 overflow-y-auto rounded-lg border border-black/[0.04]">
+        <div className="max-h-96 overflow-y-auto rounded-lg border border-[var(--border)]">
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-[var(--cleaner-bg)] text-xs uppercase tracking-wide text-[var(--cleaner-muted)]">
               <tr>
@@ -186,7 +186,7 @@ export function OwnerStatementDetailClient({
               {statement.sourceRefs.map((ref, idx) => (
                 <tr
                   key={`${ref.table}-${ref.rowId}-${idx}`}
-                  className="border-t border-black/[0.04]"
+                  className="border-t border-[var(--border)]"
                 >
                   <td className="px-3 py-2 font-mono text-xs text-[var(--cleaner-muted)]">
                     {ref.table}
@@ -216,7 +216,7 @@ function PdfButton({
 }) {
   if (generating) {
     return (
-      <div className="flex items-center gap-2 rounded-lg border border-black/[0.06] bg-white px-4 py-2 text-sm text-[var(--cleaner-muted)]">
+      <div className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-2 text-sm text-[var(--cleaner-muted)]">
         <Loader2 size={14} className="animate-spin" />
         Generating PDF…
       </div>
@@ -224,7 +224,7 @@ function PdfButton({
   }
   if (!pdfUrl) {
     return (
-      <div className="flex items-center gap-2 rounded-lg border border-black/[0.06] bg-white px-4 py-2 text-sm text-[var(--cleaner-muted)]">
+      <div className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-2 text-sm text-[var(--cleaner-muted)]">
         PDF unavailable
       </div>
     );
