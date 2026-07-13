@@ -605,6 +605,19 @@ export const start = mutation({
       });
     }
 
+    // Notify ops team when a cleaner starts a job
+    if (transitionedToInProgress) {
+      const property = await ctx.db.get(job.propertyId);
+      await createOpsNotifications(ctx, {
+        type: "job_started",
+        title: "Job Started",
+        message: `${property?.name ?? "Property"} — cleaning has started.`,
+        messageKey: "notifications.messages.job_started",
+        messageParams: { propertyName: property?.name ?? "Property" },
+        data: { jobId: job._id, propertyId: job.propertyId },
+      });
+    }
+
     // Wave 4: defer non-critical side effects (conversation-status sync +
     // notification dismissal) to a scheduled internal mutation so they
     // don't add latency or bandwidth to the synchronous start call.
@@ -931,6 +944,19 @@ async function submitForApprovalInternal(
       submissionId,
     },
   });
+
+  // Confirm submission back to the cleaner(s) who did the work
+  if (job.assignedCleanerIds && job.assignedCleanerIds.length > 0) {
+    await createNotificationsForUsers(ctx, {
+      userIds: job.assignedCleanerIds,
+      type: "job_submitted",
+      title: "Job Submitted",
+      message: `${property?.name ?? "Your job"} submitted — waiting for approval.`,
+      messageKey: "notifications.messages.job_submitted",
+      messageParams: { propertyName: property?.name ?? "Your job" },
+      data: { jobId: job._id, propertyId: job.propertyId, submissionId },
+    });
+  }
 
   return {
     ok: true,
