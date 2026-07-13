@@ -17,6 +17,7 @@ import {
 import { localeNames, type Locale } from "@/lib/locales";
 import { useConsumeNotificationIdFromSearchParam } from "@/lib/notifications-client";
 import { cn } from "@/lib/utils";
+import { brandColorForRole, iconColorHex } from "@/lib/brand";
 import { navigation } from "@/components/layout/navigation";
 import { formatDateTime } from "@/lib/tz";
 
@@ -148,6 +149,14 @@ export function Header() {
   );
   const roleFromMetadata = getRoleFromMetadata(user?.publicMetadata);
   const role: UserRole = roleFromClaims ?? roleFromMetadata ?? convexUser?.role ?? "manager";
+  const roleBadgeLabel: Record<UserRole, string> = {
+    admin: "Admin",
+    property_ops: "Ops",
+    manager: "Manager",
+    cleaner: "Cleaner",
+    owner: "Owner",
+  };
+  const roleBrandHex = iconColorHex(brandColorForRole(role));
   const canViewSettings = isLoaded && canAccessPath(role, "/settings");
   const canViewReports = isLoaded && canAccessPath(role, "/reports");
   const mobileNavigation = navigation.filter(
@@ -403,7 +412,16 @@ export function Header() {
           ) : null}
 
           {isSignedIn ? (
-            <div className="flex items-center">
+            <div className="flex items-center gap-2">
+              {isLoaded ? (
+                <span
+                  className="hidden items-center rounded-full px-2 py-0.5 text-xs font-semibold sm:inline-flex"
+                  style={{ backgroundColor: `${roleBrandHex}1a`, color: roleBrandHex }}
+                  title={`Signed in as ${roleBadgeLabel[role]}`}
+                >
+                  {roleBadgeLabel[role]}
+                </span>
+              ) : null}
               <UserButton signInUrl="/sign-in" />
             </div>
           ) : null}

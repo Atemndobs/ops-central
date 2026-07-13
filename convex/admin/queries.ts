@@ -117,10 +117,9 @@ export const getAllUsers = query({
     status: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // admin + property_ops + manager. property_ops needs this for the Companies
-    // Hub (/companies, which ops can access) — its only caller. Without ops here
-    // the Companies page crashed with a Convex "Server Error" for ops users.
-    await requireRole(ctx, ["admin", "property_ops", "manager"]);
+    // Admin-only — the Companies Hub (/companies) is its only caller and that
+    // page is now admin-only, so no non-admin should reach this all-users list.
+    await requireRole(ctx, ["admin"]);
 
     const usersQuery = ctx.db.query("users");
 
