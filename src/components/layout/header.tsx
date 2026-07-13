@@ -7,7 +7,21 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslations } from "next-intl";
 import { api } from "@convex/_generated/api";
-import { Bell, LogOut, Menu, Moon, Settings, Sun, X } from "lucide-react";
+import {
+  Bell,
+  Briefcase,
+  Gauge,
+  Home,
+  LogOut,
+  Menu,
+  Moon,
+  Settings,
+  Shield,
+  Sparkles,
+  Sun,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import {
   canAccessPath,
   getRoleFromMetadata,
@@ -156,6 +170,14 @@ export function Header() {
     cleaner: "Cleaner",
     owner: "Owner",
   };
+  const roleBadgeIcon: Record<UserRole, LucideIcon> = {
+    admin: Shield,
+    property_ops: Gauge,
+    manager: Briefcase,
+    cleaner: Sparkles,
+    owner: Home,
+  };
+  const RoleIcon = roleBadgeIcon[role];
   const roleBrandHex = iconColorHex(brandColorForRole(role));
   const canViewSettings = isLoaded && canAccessPath(role, "/settings");
   const canViewReports = isLoaded && canAccessPath(role, "/reports");
@@ -415,11 +437,12 @@ export function Header() {
             <div className="flex items-center gap-2">
               {isLoaded ? (
                 <span
-                  className="hidden items-center rounded-full px-2 py-0.5 text-xs font-semibold sm:inline-flex"
+                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold"
                   style={{ backgroundColor: `${roleBrandHex}1a`, color: roleBrandHex }}
                   title={`Signed in as ${roleBadgeLabel[role]}`}
                 >
-                  {roleBadgeLabel[role]}
+                  <RoleIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span className="hidden sm:inline">{roleBadgeLabel[role]}</span>
                 </span>
               ) : null}
               <UserButton signInUrl="/sign-in" />
