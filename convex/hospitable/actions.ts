@@ -375,12 +375,14 @@ function buildGuestName(reservation: GenericRecord): string {
 function buildGuestPhotoUrl(reservation: GenericRecord): string | undefined {
   const guest = isRecord(reservation.guest) ? reservation.guest : undefined;
   return (
+    // Hospitable's canonical field (verified against a live payload — an
+    // Airbnb muscache.com URL). The rest are defensive fallbacks.
+    asString(guest?.profile_picture) ??
     asString(guest?.picture) ??
     asString(guest?.avatar) ??
     asString(guest?.photo_url) ??
     asString(guest?.thumbnail_url) ??
     asString(guest?.image) ??
-    asString(reservation.guest_picture) ??
     undefined
   );
 }
