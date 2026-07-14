@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
@@ -34,6 +34,10 @@ export function ReviewsInbox() {
   const [propertyFilter, setPropertyFilter] = useState<string>(
     searchParams.get("property") ?? "",
   );
+
+  useEffect(() => {
+    setPropertyFilter(searchParams.get("property") ?? "");
+  }, [searchParams]);
 
   const enabled = useQuery(
     api.admin.featureFlags.isFeatureEnabled,
