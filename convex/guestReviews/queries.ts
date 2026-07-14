@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { query } from "../_generated/server";
 import type { QueryCtx } from "../_generated/server";
+import type { Doc, Id } from "../_generated/dataModel";
 import { requireRole } from "../lib/auth";
 
 const guestReviewValidator = v.object({
@@ -35,20 +36,41 @@ const guestReviewValidator = v.object({
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
-async function resolveGuestPhotoUrl(
-  ctx: QueryCtx,
-  propertyId: string,
+/**
+ * Pick a review's guest photo from a property's stays — pure, in memory.
+ *
+ * Read-cost: this was previously `resolveGuestPhotoUrl(ctx, propertyId, reviewedAt)`,
+ * which ran a full `stays.by_property(propertyId).collect()` on EVERY call — and it
+ * was called once per review row. `listInbox` (~124 reviews across ~8 properties)
+ * therefore re-scanned a property's entire stay list ~124 times per execution, and
+ * it's a reactive query, so that repeated on every review write (~1.16 GB/mo — the
+ * #3 read consumer). Callers now fetch each property's stays ONCE and pass them in.
+ */
+function pickGuestPhotoUrl(
+  stays: Doc<"stays">[],
   reviewedAt: number,
-): Promise<string | undefined> {
-  const stays = await ctx.db
-    .query("stays")
-    .withIndex("by_property", (q) => q.eq("propertyId", propertyId as Parameters<typeof q.eq>[1]))
-    .collect();
+): string | undefined {
   const candidates = stays.filter(
     (s) => s.checkOutAt <= reviewedAt && s.checkOutAt >= reviewedAt - THIRTY_DAYS_MS,
   );
   if (candidates.length === 0) return undefined;
   return candidates.sort((a, b) => b.checkOutAt - a.checkOutAt)[0].guestPhotoUrl;
+}
+
+/** Fetch each property's stays exactly once, keyed by propertyId. */
+async function fetchStaysByProperty(
+  ctx: QueryCtx,
+  propertyIds: Id<"properties">[],
+): Promise<Map<Id<"properties">, Doc<"stays">[]>> {
+  const lists = await Promise.all(
+    propertyIds.map((propertyId) =>
+      ctx.db
+        .query("stays")
+        .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
+        .collect(),
+    ),
+  );
+  return new Map(propertyIds.map((propertyId, index) => [propertyId, lists[index]]));
 }
 
 // Needs-action statuses sort first in the inbox.
@@ -65,13 +87,30 @@ export const listInbox = query({
     await requireRole(ctx, ["admin", "property_ops"]);
 
     const rows = await ctx.db.query("guestReviews").collect();
-    const withNames = await Promise.all(
-      rows.map(async (row) => {
-        const property = await ctx.db.get(row.propertyId);
-        const guestPhotoUrl = await resolveGuestPhotoUrl(ctx, row.propertyId, row.reviewedAt);
-        return { ...row, propertyName: property?.name, guestPhotoUrl };
-      }),
+    if (rows.length === 0) return [];
+
+    // Read-cost: this previously did `ctx.db.get(propertyId)` AND a full
+    // per-property stays scan for EVERY review row. With ~124 reviews across ~8
+    // properties that meant ~116 redundant property reads plus ~124 redundant
+    // whole-property stay scans on every reactive re-execution. Fetch each unique
+    // property (and its stays) exactly once, then resolve in memory. Same output.
+    const uniquePropertyIds = [...new Set(rows.map((row) => row.propertyId))];
+    const [propertyDocs, staysByPropertyId] = await Promise.all([
+      Promise.all(uniquePropertyIds.map((propertyId) => ctx.db.get(propertyId))),
+      fetchStaysByProperty(ctx, uniquePropertyIds),
+    ]);
+    const propertyNameById = new Map(
+      uniquePropertyIds.map((propertyId, index) => [propertyId, propertyDocs[index]?.name]),
     );
+
+    const withNames = rows.map((row) => ({
+      ...row,
+      propertyName: propertyNameById.get(row.propertyId),
+      guestPhotoUrl: pickGuestPhotoUrl(
+        staysByPropertyId.get(row.propertyId) ?? [],
+        row.reviewedAt,
+      ),
+    }));
 
     return withNames.sort((a, b) => {
       const aNeeds = NEEDS_ACTION.has(a.status) ? 0 : 1;
@@ -161,13 +200,20 @@ export const listByProperty = query({
       .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId))
       .collect();
 
-    const property = await ctx.db.get(args.propertyId);
-    const withPhotos = await Promise.all(
-      rows.map(async (row) => {
-        const guestPhotoUrl = await resolveGuestPhotoUrl(ctx, row.propertyId, row.reviewedAt);
-        return { ...row, propertyName: property?.name, guestPhotoUrl };
-      }),
-    );
+    // Read-cost: same fix as listInbox — the stays scan used to run once per
+    // review row for this single property. Fetch it once, resolve in memory.
+    const [property, stays] = await Promise.all([
+      ctx.db.get(args.propertyId),
+      ctx.db
+        .query("stays")
+        .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId))
+        .collect(),
+    ]);
+    const withPhotos = rows.map((row) => ({
+      ...row,
+      propertyName: property?.name,
+      guestPhotoUrl: pickGuestPhotoUrl(stays, row.reviewedAt),
+    }));
     return withPhotos.sort((a, b) => b.reviewedAt - a.reviewedAt);
   },
 });
