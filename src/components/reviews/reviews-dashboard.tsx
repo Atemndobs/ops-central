@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
-import { Loader2, Star, AlertTriangle, CheckCircle, MessageSquare } from "lucide-react";
+import { Loader2, Star, AlertTriangle, CheckCircle, ChevronDown, ChevronUp } from "lucide-react";
 
 function StatCard({
   label,
@@ -33,7 +34,7 @@ function StatCard({
 function StatusChip({ badCount, respondedCount }: { badCount: number; respondedCount: number }) {
   if (badCount === 0) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-900/40 border border-emerald-700/50 px-2 py-0.5 text-xs text-emerald-400 font-medium">
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2 py-0.5 text-xs text-white font-medium">
         <CheckCircle className="h-3 w-3" /> Healthy
       </span>
     );
@@ -41,10 +42,8 @@ function StatusChip({ badCount, respondedCount }: { badCount: number; respondedC
   if (respondedCount < badCount) {
     const urgent = respondedCount === 0;
     return (
-      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium border ${
-        urgent
-          ? "bg-rose-900/40 border-rose-700/50 text-rose-400"
-          : "bg-amber-900/40 border-amber-700/50 text-amber-400"
+      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium text-white ${
+        urgent ? "bg-rose-600" : "bg-amber-500"
       }`}>
         <AlertTriangle className="h-3 w-3" />
         {urgent ? "Action needed" : "Respond"}
@@ -52,7 +51,7 @@ function StatusChip({ badCount, respondedCount }: { badCount: number; respondedC
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-blue-900/40 border border-blue-700/50 px-2 py-0.5 text-xs text-blue-400 font-medium">
+    <span className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-2 py-0.5 text-xs text-white font-medium">
       <CheckCircle className="h-3 w-3" /> Responded
     </span>
   );
@@ -82,6 +81,7 @@ function Stars({ rating }: { rating: number }) {
 
 export function ReviewsDashboard() {
   const { isAuthenticated } = useConvexAuth();
+  const [tableOpen, setTableOpen] = useState(true);
   const summary = useQuery(
     api.guestReviews.queries.getInboxSummary,
     isAuthenticated ? {} : "skip",
@@ -129,10 +129,15 @@ export function ReviewsDashboard() {
 
       {/* Property health table */}
       <div className="rounded-xl border bg-[var(--card)] overflow-hidden">
-        <div className="px-4 py-3 border-b">
+        <button
+          type="button"
+          onClick={() => setTableOpen((o) => !o)}
+          className="w-full flex items-center justify-between px-4 py-3 border-b hover:bg-[var(--muted)]/40 transition-colors"
+        >
           <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">Property Health</p>
-        </div>
-        <div className="overflow-x-auto">
+          {tableOpen ? <ChevronUp className="h-4 w-4 text-[var(--muted-foreground)]" /> : <ChevronDown className="h-4 w-4 text-[var(--muted-foreground)]" />}
+        </button>
+        {tableOpen && <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-xs text-[var(--muted-foreground)] uppercase tracking-wider">
@@ -152,7 +157,7 @@ export function ReviewsDashboard() {
                   <td className="px-4 py-3"><Stars rating={p.avgRating} /></td>
                   <td className="px-4 py-3 text-center">
                     {p.badCount > 0 ? (
-                      <span className="inline-block rounded-full bg-rose-900/40 border border-rose-700/40 px-2 py-0.5 text-xs text-rose-400 font-medium tabular-nums">
+                      <span className="inline-block rounded-full bg-rose-600 px-2 py-0.5 text-xs text-white font-medium tabular-nums">
                         {p.badCount} bad
                       </span>
                     ) : (
@@ -175,7 +180,7 @@ export function ReviewsDashboard() {
               ))}
             </tbody>
           </table>
-        </div>
+        </div>}
       </div>
     </div>
   );
