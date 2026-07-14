@@ -8,6 +8,7 @@ import { Star, Loader2, Send, X, RotateCcw, Sparkles, ChevronDown, ChevronUp } f
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/components/ui/toast-provider";
 import type { ReviewProvider } from "@convex/lib/reviewResponseDraft";
+import { VoiceRecordButton } from "@/components/voice/voice-record-button";
 
 export type ReviewRow = {
   _id: Id<"guestReviews">;
@@ -251,14 +252,22 @@ export function ReviewCard({
                 <label className="block text-xs text-[var(--muted-foreground)] mb-1">
                   Refinement instruction (optional)
                 </label>
-                <input
-                  type="text"
-                  placeholder='e.g. "Be more apologetic about the cleanliness issue" or leave blank to auto-improve'
-                  value={refineInstruction}
-                  onChange={(e) => setRefineInstruction(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && !refining && handleRefine()}
-                  className="w-full rounded-md border px-2.5 py-1.5 text-sm bg-[var(--background)]"
-                />
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    placeholder='e.g. "Be more apologetic about the cleanliness issue" or leave blank to auto-improve'
+                    value={refineInstruction}
+                    onChange={(e) => setRefineInstruction(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && !refining && handleRefine()}
+                    className="flex-1 rounded-md border px-2.5 py-1.5 text-sm bg-[var(--background)]"
+                  />
+                  <VoiceRecordButton
+                    size="sm"
+                    onTranscript={(text) => setRefineInstruction((prev) => prev ? `${prev} ${text}` : text)}
+                    onError={(msg) => showToast(msg, "error")}
+                    disabled={refining}
+                  />
+                </div>
               </div>
 
               <button
@@ -324,14 +333,22 @@ export function ReviewCard({
                   </button>
                 ))}
               </div>
-              <input
-                type="text"
-                placeholder='e.g. "Be more apologetic about the cleanliness issue"'
-                value={refineInstruction}
-                onChange={(e) => setRefineInstruction(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && !refining && handleRefine()}
-                className="w-full rounded-md border px-2.5 py-1.5 text-sm bg-[var(--background)]"
-              />
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  placeholder='e.g. "Be more apologetic about the cleanliness issue"'
+                  value={refineInstruction}
+                  onChange={(e) => setRefineInstruction(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !refining && handleRefine()}
+                  className="flex-1 rounded-md border px-2.5 py-1.5 text-sm bg-[var(--background)]"
+                />
+                <VoiceRecordButton
+                  size="sm"
+                  onTranscript={(text) => setRefineInstruction((prev) => prev ? `${prev} ${text}` : text)}
+                  onError={(msg) => showToast(msg, "error")}
+                  disabled={refining}
+                />
+              </div>
               <button
                 onClick={handleRefine}
                 disabled={refining}

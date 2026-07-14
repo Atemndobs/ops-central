@@ -13,7 +13,7 @@ const ROUTE_ACCESS: Record<UserRole, string[]> = {
   // deliberate restriction (ops needs Scheduling/Notifications/Integrations
   // tabs; the Team tab and cost dashboard within Settings are separately
   // role-gated in settings-page-client.tsx).
-  property_ops: ["/", "/schedule", "/jobs", "/tasks", "/messages", "/review", "/properties", "/incidents", "/maintenance", "/settings"],
+  property_ops: ["/", "/schedule", "/jobs", "/tasks", "/messages", "/review", "/reviews", "/properties", "/incidents", "/maintenance", "/settings"],
   manager: ["/", "/schedule", "/jobs", "/tasks", "/messages", "/review", "/properties", "/team", "/incidents", "/maintenance"],
   cleaner: ["/cleaner"],
   // Wave 1 of owner portal is schema-only — `/owner` routes ship in Wave 4.
