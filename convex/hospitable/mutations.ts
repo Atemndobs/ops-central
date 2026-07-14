@@ -731,3 +731,10 @@ export const upsertGuestReview = internalMutation({
     return { outcome: "inserted" };
   },
 });
+
+export const patchStayPhoto = internalMutation({
+  args: { stayId: v.string(), guestPhotoUrl: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.stayId as Parameters<typeof ctx.db.patch>[0], { guestPhotoUrl: args.guestPhotoUrl });
+  },
+});

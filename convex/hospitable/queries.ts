@@ -113,3 +113,17 @@ export const listStaysMissingTotalAmount = internalQuery({
     return out;
   },
 });
+
+export const listStaysMissingPhoto = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const stays = await ctx.db.query("stays").collect();
+    return stays
+      .filter((s) => !s.guestPhotoUrl && s.hospitableId)
+      .map((s) => ({
+        _id: s._id,
+        hospitableId: s.hospitableId!,
+        guestPhotoUrl: s.guestPhotoUrl,
+      }));
+  },
+});

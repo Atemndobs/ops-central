@@ -1974,3 +1974,54 @@ export async function postReviewResponse(args: {
     respondedAt: json.responded_at ?? new Date().toISOString(),
   };
 }
+
+/**
+ * One-time backfill: fetch individual Hospitable reservation records for every
+ * stay that is missing guestPhotoUrl, and patch those stays.
+ * Safe to re-run — already-populated stays are skipped.
+ */
+export const backfillGuestPhotos = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{ patched: number; skipped: number; errors: string[] }> => {
+    const apiKey = process.env.HOSPITABLE_API_KEY ?? process.env.HOSPITABLE_API_TOKEN;
+    if (!apiKey) throw new Error("Missing HOSPITABLE_API_KEY/HOSPITABLE_API_TOKEN");
+    const baseUrl = process.env.HOSPITABLE_API_URL ?? DEFAULT_HOSPITABLE_BASE_URL;
+
+    const allStays: Array<{ _id: string; hospitableId: string; guestPhotoUrl?: string }> =
+      await ctx.runQuery(internal.hospitable.queries.listStaysMissingPhoto, {});
+
+    let patched = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+
+    for (const stay of allStays) {
+      if (stay.guestPhotoUrl) { skipped++; continue; }
+
+      const url = `${baseUrl}/reservations/${stay.hospitableId}?include=guest`;
+      try {
+        const res = await fetch(url, {
+          headers: { Accept: "application/json", Authorization: `Bearer ${apiKey}` },
+        });
+        if (!res.ok) {
+          errors.push(`${stay.hospitableId}: HTTP ${res.status}`);
+          continue;
+        }
+        const raw = (await res.json()) as { data?: { guest?: { profile_picture?: string } } };
+        const photo = raw?.data?.guest?.profile_picture;
+        if (photo) {
+          await ctx.runMutation(internal.hospitable.mutations.patchStayPhoto, {
+            stayId: stay._id as string,
+            guestPhotoUrl: photo,
+          });
+          patched++;
+        } else {
+          skipped++;
+        }
+      } catch (err) {
+        errors.push(`${stay.hospitableId}: ${String(err)}`);
+      }
+    }
+
+    return { patched, skipped, errors };
+  },
+});
