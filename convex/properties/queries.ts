@@ -10,11 +10,14 @@ import {
 
 type PropertyStatus = "ready" | "dirty" | "in_progress" | "vacant";
 
-const JOB_SCAN_LIMIT_MIN = 2000;
-const JOB_SCAN_LIMIT_MAX = 10000;
-const STAY_SCAN_LIMIT_MIN = 2000;
-const STAY_SCAN_LIMIT_MAX = 10000;
 const JOB_LOOKBACK_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
+// Generous upper bound on a single reservation's length — bounds the historical
+// lookback when reading a property's current/upcoming stays via `by_property_dates`.
+const MAX_STAY_MS = 180 * 24 * 60 * 60 * 1000;
+// Per-property read ceiling for the readiness enrichment. A property has only a
+// handful of upcoming stays / recent jobs, so this stays tiny while never
+// missing the next-stay / active-job selection.
+const PER_PROPERTY_SCAN_CAP = 50;
 
 const ACTIVE_JOB_STATUS_PRIORITY: Record<
   Extract<Doc<"cleaningJobs">["status"], "in_progress" | "awaiting_approval" | "rework_required" | "assigned" | "scheduled">,
@@ -26,15 +29,6 @@ const ACTIVE_JOB_STATUS_PRIORITY: Record<
   assigned: 3,
   scheduled: 4,
 };
-
-function calcScanLimit(
-  propertyCount: number,
-  multiplier: number,
-  min: number,
-  max: number,
-): number {
-  return Math.max(min, Math.min(max, propertyCount * multiplier));
-}
 
 function isTrackedJobStatus(
   status: Doc<"cleaningJobs">["status"],
@@ -94,51 +88,60 @@ async function enrichProperties(ctx: QueryCtx, properties: Doc<"properties">[]) 
   }
 
   const now = Date.now();
-  const propertyIds = new Set<Id<"properties">>(properties.map((property) => property._id));
-  const stayScanLimit = calcScanLimit(
-    propertyIds.size,
-    20,
-    STAY_SCAN_LIMIT_MIN,
-    STAY_SCAN_LIMIT_MAX,
-  );
-  const jobScanLimit = calcScanLimit(
-    propertyIds.size,
-    25,
-    JOB_SCAN_LIMIT_MIN,
-    JOB_SCAN_LIMIT_MAX,
-  );
+  const relevantStayFloor = now - MAX_STAY_MS;
+  const jobFloor = now - JOB_LOOKBACK_WINDOW_MS;
 
-  const [candidateStays, candidateJobs] = await Promise.all([
-    ctx.db
-      .query("stays")
-      .withIndex("by_checkout", (q) => q.gte("checkOutAt", now))
-      .take(stayScanLimit),
-    ctx.db
-      .query("cleaningJobs")
-      .withIndex("by_scheduled", (q) => q.gte("scheduledStartAt", now - JOB_LOOKBACK_WINDOW_MS))
-      .take(jobScanLimit),
-  ]);
+  // Per-property bounded index reads. The previous implementation scanned up to
+  // 10k rows of BOTH `stays` and `cleaningJobs` on every call (effectively the
+  // whole tables at this app's scale) and, by subscribing to those entire index
+  // ranges, re-executed on every job/stay write across ALL properties. This
+  // query is mounted on ~10 always-open pages, which made it the single biggest
+  // read-cost driver (~2.6 GB/mo). Reading each property's OWN recent stays/jobs
+  // via `by_property_dates` / `by_property_and_scheduled` bounds the read to a
+  // handful of rows per property and narrows the reactive footprint to that
+  // property's rows.
+  const perProperty = await Promise.all(
+    properties.map(async (property) => {
+      const [stays, jobs] = await Promise.all([
+        ctx.db
+          .query("stays")
+          .withIndex("by_property_dates", (q) =>
+            q.eq("propertyId", property._id).gte("checkInAt", relevantStayFloor),
+          )
+          .take(PER_PROPERTY_SCAN_CAP),
+        ctx.db
+          .query("cleaningJobs")
+          .withIndex("by_property_and_scheduled", (q) =>
+            q.eq("propertyId", property._id).gte("scheduledStartAt", jobFloor),
+          )
+          .take(PER_PROPERTY_SCAN_CAP),
+      ]);
+      return { propertyId: property._id, stays, jobs };
+    }),
+  );
 
   const nextStayByProperty = new Map<Id<"properties">, Doc<"stays">>();
-  for (const stay of candidateStays) {
-    if (!propertyIds.has(stay.propertyId)) {
-      continue;
-    }
-    const current = nextStayByProperty.get(stay.propertyId);
-    if (!current || shouldReplaceSelectedStay(current, stay)) {
-      nextStayByProperty.set(stay.propertyId, stay);
-    }
-  }
-
   const activeJobByProperty = new Map<Id<"properties">, Doc<"cleaningJobs">>();
-  for (const job of candidateJobs) {
-    if (!propertyIds.has(job.propertyId) || !isTrackedJobStatus(job.status)) {
-      continue;
+  for (const { propertyId, stays, jobs } of perProperty) {
+    for (const stay of stays) {
+      // Match the old `by_checkout >= now` candidate filter: only stays that
+      // have not yet departed count toward "next stay".
+      if (stay.checkOutAt < now) {
+        continue;
+      }
+      const current = nextStayByProperty.get(propertyId);
+      if (!current || shouldReplaceSelectedStay(current, stay)) {
+        nextStayByProperty.set(propertyId, stay);
+      }
     }
-
-    const current = activeJobByProperty.get(job.propertyId);
-    if (!current || shouldReplaceSelectedJob(current, job)) {
-      activeJobByProperty.set(job.propertyId, job);
+    for (const job of jobs) {
+      if (!isTrackedJobStatus(job.status)) {
+        continue;
+      }
+      const current = activeJobByProperty.get(propertyId);
+      if (!current || shouldReplaceSelectedJob(current, job)) {
+        activeJobByProperty.set(propertyId, job);
+      }
     }
   }
 
