@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { query } from "../_generated/server";
+import type { QueryCtx } from "../_generated/server";
 import { requireRole } from "../lib/auth";
 
 const guestReviewValidator = v.object({
@@ -8,6 +9,7 @@ const guestReviewValidator = v.object({
   hospitableReviewId: v.string(),
   propertyId: v.id("properties"),
   propertyName: v.optional(v.string()),
+  guestPhotoUrl: v.optional(v.string()),
   platform: v.union(v.literal("airbnb"), v.literal("direct")),
   rating: v.number(),
   publicReview: v.string(),
@@ -31,6 +33,24 @@ const guestReviewValidator = v.object({
   sendError: v.optional(v.string()),
 });
 
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+async function resolveGuestPhotoUrl(
+  ctx: QueryCtx,
+  propertyId: string,
+  reviewedAt: number,
+): Promise<string | undefined> {
+  const stays = await ctx.db
+    .query("stays")
+    .withIndex("by_property", (q) => q.eq("propertyId", propertyId as Parameters<typeof q.eq>[1]))
+    .collect();
+  const candidates = stays.filter(
+    (s) => s.checkOutAt <= reviewedAt && s.checkOutAt >= reviewedAt - THIRTY_DAYS_MS,
+  );
+  if (candidates.length === 0) return undefined;
+  return candidates.sort((a, b) => b.checkOutAt - a.checkOutAt)[0].guestPhotoUrl;
+}
+
 // Needs-action statuses sort first in the inbox.
 const NEEDS_ACTION = new Set(["needs_draft", "drafted", "send_failed"]);
 
@@ -48,7 +68,8 @@ export const listInbox = query({
     const withNames = await Promise.all(
       rows.map(async (row) => {
         const property = await ctx.db.get(row.propertyId);
-        return { ...row, propertyName: property?.name };
+        const guestPhotoUrl = await resolveGuestPhotoUrl(ctx, row.propertyId, row.reviewedAt);
+        return { ...row, propertyName: property?.name, guestPhotoUrl };
       }),
     );
 
@@ -74,8 +95,12 @@ export const listByProperty = query({
       .collect();
 
     const property = await ctx.db.get(args.propertyId);
-    return rows
-      .map((row) => ({ ...row, propertyName: property?.name }))
-      .sort((a, b) => b.reviewedAt - a.reviewedAt);
+    const withPhotos = await Promise.all(
+      rows.map(async (row) => {
+        const guestPhotoUrl = await resolveGuestPhotoUrl(ctx, row.propertyId, row.reviewedAt);
+        return { ...row, propertyName: property?.name, guestPhotoUrl };
+      }),
+    );
+    return withPhotos.sort((a, b) => b.reviewedAt - a.reviewedAt);
   },
 });

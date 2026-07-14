@@ -14,6 +14,7 @@ export type ReviewRow = {
   _id: Id<"guestReviews">;
   propertyId: Id<"properties">;
   propertyName?: string;
+  guestPhotoUrl?: string;
   platform: "airbnb" | "direct";
   rating: number;
   publicReview: string;
@@ -143,21 +144,39 @@ export function ReviewCard({
     <div className="rounded-2xl border bg-[var(--card)] p-5 space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-0.5">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Star
-                key={i}
-                className={`h-4 w-4 ${i < review.rating ? starColor : "text-slate-300"}`}
-              />
-            ))}
-          </div>
-          <span className="text-sm font-medium">
-            {review.guestFirstName} {review.guestLastName}
-          </span>
-          {showProperty && review.propertyName && (
-            <span className="text-xs text-[var(--muted-foreground)]">· {review.propertyName}</span>
+        <div className="flex items-center gap-2.5">
+          {/* Guest avatar */}
+          {review.guestPhotoUrl ? (
+            <img
+              src={review.guestPhotoUrl}
+              alt={`${review.guestFirstName} ${review.guestLastName}`}
+              className="h-9 w-9 rounded-full object-cover shrink-0 ring-1 ring-[var(--border)]"
+            />
+          ) : (
+            <div className="h-9 w-9 rounded-full bg-[var(--muted)] flex items-center justify-center shrink-0 ring-1 ring-[var(--border)]">
+              <span className="text-xs font-semibold text-[var(--muted-foreground)] select-none">
+                {review.guestFirstName[0]}{review.guestLastName[0]}
+              </span>
+            </div>
           )}
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-sm font-medium">
+                {review.guestFirstName} {review.guestLastName}
+              </span>
+              {showProperty && review.propertyName && (
+                <span className="text-xs text-[var(--muted-foreground)]">· {review.propertyName}</span>
+              )}
+            </div>
+            <div className="flex items-center gap-0.5 mt-0.5">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Star
+                  key={i}
+                  className={`h-3.5 w-3.5 ${i < review.rating ? starColor : "text-slate-300"}`}
+                />
+              ))}
+            </div>
+          </div>
         </div>
         <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_CLASS[review.status]}`}>
           {STATUS_LABEL[review.status]}
@@ -165,7 +184,7 @@ export function ReviewCard({
       </div>
 
       {/* Review text */}
-      <p className="text-sm text-[var(--foreground)]">{review.publicReview}</p>
+      <p className="text-sm text-[var(--foreground)] leading-relaxed">{review.publicReview}</p>
 
       {!canReply && (
         <p className="text-xs text-[var(--muted-foreground)] italic">
