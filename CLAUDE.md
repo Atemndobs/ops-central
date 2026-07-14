@@ -207,3 +207,31 @@ Rules:
 - If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
 - For cross-module "how does X relate to Y" questions, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, or `graphify explain "<concept>"` over grep — these traverse the graph's EXTRACTED + INFERRED edges instead of scanning files
 - After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)
+
+## 🐛 Bug Reporting & Tracking
+
+### Slack Channel
+- **Channel:** `#cleaner-app-testing`
+- **Channel ID:** `C0BGUPCSW1X`
+- **Workspace:** J&A Business Solutions (`jabusinesssolutions.slack.com`)
+- **MCP tool:** `mcp__2115d2e0-caa6-43dd-8f78-16337e16b121__slack_*`
+
+### Trello Bug Board
+- **Board:** Cleaner App — Bug Tracker
+- **Board ID:** `6a53a2187c58a51f2faae3f6`
+- **URL:** https://trello.com/b/50WXLH0n/cleaner-app-bug-tracker
+- **Lists:**
+  - `6a53a21e0b9e01598bc493fd` → 🆕 Reported
+  - `6a53a2215c0e53dc42446367` → 🔍 Investigating
+  - `6a53a226223fed62c2bef8b1` → 🔧 In Progress
+  - `6a53a22bf48f3700865f32e0` → ✅ Fixed
+  - `6a53a233dc8b79f105643177` → 🚫 Won't Fix / Duplicate
+
+### Bug Workflow (ALWAYS follow this when a bug is reported)
+When a user posts a bug in `#cleaner-app-testing`:
+1. **Read** the message via `slack_read_channel` (channel ID `C0BGUPCSW1X`)
+2. **Create a Trello card** in the 🆕 Reported list with:
+   - Title: `[Role] Short description of bug`
+   - Description: full bug details + Slack message link
+3. **Create a doc** at `jna-cleaners-app/docs/bugs/YYYY-MM-DD-short-title.md`
+4. **Reply in Slack** thread with the Trello card link so the reporter knows it's tracked

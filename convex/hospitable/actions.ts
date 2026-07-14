@@ -1764,7 +1764,13 @@ export const syncGuestReviews = internalAction({
       }
 
       for (const rawReview of rawReviews) {
-        const { review, error } = normalizeGuestReview(rawReview);
+        // The per-property endpoint doesn't embed a `property` block on each
+        // review — inject the known hospitableId so the normalizer can find it.
+        const enrichedReview =
+          typeof rawReview === "object" && rawReview !== null
+            ? { ...(rawReview as Record<string, unknown>), property: { id: property.hospitableId } }
+            : rawReview;
+        const { review, error } = normalizeGuestReview(enrichedReview);
         if (!review) {
           if (error) errors.push(error);
           reviewsSkipped++;

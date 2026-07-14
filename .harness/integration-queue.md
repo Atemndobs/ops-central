@@ -4,18 +4,15 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
-### TASK-PROPERTIES-PAGE-BUGS-001
-- Branch: task/properties-page-bugs
-- Worktree: ~/sites/opscentral-admin-properties-bugs
-- PR: https://github.com/Atemndobs/ops-central/pull/248
-- Schema impact: none (`propertyImages` table + indexes already exist & registered)
-- Convex impact: deploy-required (changed fn bodies + new `updateRooms` export on an existing module — no api.ts regen needed; mirror to cleaners after)
-- Risk: low — additive; shared photo read path is bounded; `updateRooms` kept separate from `update` on purpose (see handoff)
-- Ready since: 2026-07-14 10:20
-- What: fixes the 3 Admin Properties page bugs from Jule's 2026-07-12 report — (a) multi-image gallery now persists+renders via the previously-dead `propertyImages` table, (b) edit modal is height-capped + scrollable (Save reachable on 13"), (c) rooms reorderable (order = cleaner photo sequence)
-- CI: eslint exit 0 on touched files; `npm run build` exit 0 (TypeScript passes) with `.env.local` present — without it, only the pre-existing `/delete-account` prerender fails on `NEXT_PUBLIC_CONVEX_URL`
-- Not verified: browser preview blocked by Clerk auth + backend not live until deploy — needs human eyeball on `/properties` post-deploy, then move Trello card to ✅ Fixed
-- Handoff: .harness/handoffs/TASK-PROPERTIES-PAGE-BUGS-001/worktree-handoff.md
+### TASK-CONVEX-READ-COST-001
+- Branch: task/convex-read-cost
+- Worktree: ~/sites/opscentral-admin-read-cost
+- PR: https://github.com/Atemndobs/ops-central/pull/242
+- Schema impact: none
+- Convex impact: deploy-required (changed fn bodies + cron; no api.ts regen)
+- Risk: low
+- Ready since: 2026-07-14 02:30
+- Handoff: .harness/handoffs/TASK-CONVEX-READ-COST-001/worktree-handoff.md
 
 ### TASK-OPS-SCOPE-001
 - Branch: task/ops-scope-and-settings-fix
@@ -45,6 +42,18 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 _None._
 
 ## Done
+
+### TASK-PROPERTIES-PAGE-BUGS-001
+- Branch: task/properties-page-bugs
+- Worktree: ~/sites/opscentral-admin-properties-bugs
+- PR: https://github.com/Atemndobs/ops-central/pull/248 (merged → 2026-07-14 08:14 UTC)
+- Schema impact: none (`propertyImages` table + `by_property`/`by_property_order` indexes already existed and were registered)
+- Convex impact: deploy-required (deployed to lovable-oriole-182 — `properties/mutations.{create,update}` accept `photoUrls`, new `properties/mutations.updateRooms`, `properties/queries.enrichProperties` attaches ordered `photoUrls[]`; new export on an existing module so no api.ts regen)
+- Risk: low (additive; bounded per-property `propertyImages` read; `updateRooms` deliberately separate from `update`)
+- What: fixes the 3 Admin Properties page bugs from Jule's 2026-07-12 report — (a) multi-image gallery persists+renders via the previously-dead `propertyImages` table (detail thumbnail strip, modal set-primary/remove grid, list "+N photos" badge); (b) edit modal height-capped + scrollable so Save is reachable on 13"; (c) rooms reorderable via up/down controls (order = cleaner photo sequence)
+- Merged: 2026-07-14
+- Handoff: .harness/handoffs/TASK-PROPERTIES-PAGE-BUGS-001/worktree-handoff.md · integration-result.md
+- Post-merge: `npm run lint` (my files exit 0; 56 pre-existing baseline errors unchanged), `npm run build` exit 0, `npx convex deploy` → lovable-oriole-182 ✓ (schema validation complete, no indexes deleted), cleaners mirrored via `npm run sync:convex-backend` ✓. Still needs a human eyeball on `/properties` + a property detail post-deploy, then move Trello card (https://trello.com/c/wbe98LVi) to ✅ Fixed.
 
 ### TASK-APPSETTINGS-SCHEMA-FIX-001
 - Branch: main (direct commit, no worktree — root-cause fix for a build-breaking bug, not feature work)
