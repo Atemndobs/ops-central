@@ -5,13 +5,20 @@ import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import {
+  Briefcase,
   Building2,
   ChevronDown,
+  Gauge,
+  Home,
   Loader2,
   Plus,
   RefreshCcw,
+  Shield,
   ShieldCheck,
+  Sparkles,
+  UserRound,
   Users,
+  type LucideIcon,
 } from "lucide-react";
 import { useToast } from "@/components/ui/toast-provider";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -41,16 +48,27 @@ function companyNameKey(name: string) {
 const destructiveGhostBtn =
   "rounded-md border border-red-500/40 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-500/10 disabled:opacity-60";
 
+// Same per-role shapes as the header role badge (src/components/layout/header.tsx).
+const ROLE_PILL_ICON: Record<string, LucideIcon> = {
+  admin: Shield,
+  property_ops: Gauge,
+  manager: Briefcase,
+  owner: Home,
+  cleaner: Sparkles,
+};
+
 function RolePill({ role }: { role: string }) {
   const isManager = role === "manager";
+  const Icon = ROLE_PILL_ICON[role] ?? UserRound;
   return (
     <span
-      className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
         isManager
           ? "bg-[var(--primary)]/15 text-[var(--primary)]"
           : "border border-blue-500/30 bg-blue-500/10 text-blue-600"
       }`}
     >
+      <Icon className="h-3 w-3" aria-hidden="true" />
       {role}
     </span>
   );
