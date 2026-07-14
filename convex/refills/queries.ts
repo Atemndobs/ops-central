@@ -165,9 +165,17 @@ export const getQueue = query({
         .withIndex("by_status", (q) => q.eq("status", args.status!))
         .collect();
     } else if (args.propertyId) {
-      queueRows = (await ctx.db.query("refillQueue").collect()).filter(
-        (row) => row.propertyId === args.propertyId,
-      );
+      // Read-cost: this used to collect the WHOLE `refillQueue` table and filter
+      // by propertyId in JS — a scan-then-discard on a query subscribed from the
+      // property-detail refill panel, re-running on every refillQueue write.
+      // `by_property_and_status` already exists and its `propertyId` prefix
+      // bounds this exactly. Same result set.
+      queueRows = await ctx.db
+        .query("refillQueue")
+        .withIndex("by_property_and_status", (q) =>
+          q.eq("propertyId", args.propertyId!),
+        )
+        .collect();
     } else {
       queueRows = await ctx.db.query("refillQueue").collect();
     }
