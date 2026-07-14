@@ -130,15 +130,17 @@ export const getAllUsers = query({
     // page is now admin-only, so no non-admin should reach this all-users list.
     await requireRole(ctx, ["admin"]);
 
-    const usersQuery = ctx.db.query("users");
-
-    // Get all users
-    let users = await usersQuery.collect();
-
-    // Filter by role if specified
-    if (args.role) {
-      users = users.filter((u) => u.role === args.role);
-    }
+    // Read-cost: this used to always `.collect()` the whole `users` table and then
+    // apply `args.role` in JS — so `getAllUsers({ role: "cleaner" })` scanned every
+    // user to keep a handful. `users.by_role` already exists and bounds it exactly.
+    // The unfiltered branch has no argument to bound on (the Companies Hub genuinely
+    // wants every user), so it stays a scan — `users` is a small table.
+    const users = args.role
+      ? await ctx.db
+          .query("users")
+          .withIndex("by_role", (q) => q.eq("role", args.role!))
+          .collect()
+      : await ctx.db.query("users").collect();
 
     // Get role assignments for each user
     const usersWithRoles = await Promise.all(
@@ -928,32 +930,67 @@ export const listCompanyPropertyAssignments = query({
     const cityFilter = args.city?.trim().toLowerCase();
     const limit = Math.max(1, Math.min(args.limit ?? 250, 500));
 
-    const [properties, assignments, companies, users] = await Promise.all([
-      ctx.db
-        .query("properties")
-        .withIndex("by_active", (q) => q.eq("isActive", true))
-        .collect(),
-      ctx.db.query("companyProperties").collect(),
-      ctx.db.query("cleaningCompanies").collect(),
-      ctx.db.query("users").collect(),
-    ]);
+    // Read-cost: this used to `.collect()` companyProperties, cleaningCompanies
+    // AND users in full — three bare table scans — right next to a correctly
+    // `by_active`-bounded properties read, throwing that win away. It's subscribed
+    // from the Properties page (the highest-traffic mount) and companies-hub, so
+    // every write to ANY user, company, or assignment re-ran all three scans. The
+    // `limit` arg (up to 500) was applied post-scan and bounded nothing.
+    //
+    // It only ever needs: the assignments of the properties actually shown, the
+    // companies those assignments reference, and the users that made them. So
+    // narrow the property set first (the city filter reads only property fields),
+    // then fan out from it by index / deduped id.
+    const activeProperties = await ctx.db
+      .query("properties")
+      .withIndex("by_active", (q) => q.eq("isActive", true))
+      .collect();
 
-    const companyById = new Map(companies.map((company) => [company._id, company] as const));
-    const userById = new Map(users.map((user) => [user._id, user] as const));
+    const properties = activeProperties.filter((property) => {
+      if (!cityFilter) return true;
+      const value = `${property.city ?? ""} ${property.state ?? ""}`.toLowerCase();
+      return value.includes(cityFilter);
+    });
+
+    const perProperty = await Promise.all(
+      properties.map((property) =>
+        ctx.db
+          .query("companyProperties")
+          .withIndex("by_property", (q) => q.eq("propertyId", property._id))
+          .collect(),
+      ),
+    );
+
     const assignmentsByPropertyId = new Map<Id<"properties">, Doc<"companyProperties">[]>();
+    properties.forEach((property, index) => {
+      assignmentsByPropertyId.set(property._id, perProperty[index]);
+    });
 
-    for (const assignment of assignments) {
-      const existing = assignmentsByPropertyId.get(assignment.propertyId) ?? [];
-      existing.push(assignment);
-      assignmentsByPropertyId.set(assignment.propertyId, existing);
-    }
+    const assignments = perProperty.flat();
+    const companyIds = [...new Set(assignments.map((a) => a.companyId))];
+    const assignedByIds = [
+      ...new Set(
+        assignments
+          .map((a) => a.assignedBy)
+          .filter((id): id is Id<"users"> => Boolean(id)),
+      ),
+    ];
+    const [companyDocs, userDocs] = await Promise.all([
+      Promise.all(companyIds.map((id) => ctx.db.get(id))),
+      Promise.all(assignedByIds.map((id) => ctx.db.get(id))),
+    ]);
+    const companyById = new Map(
+      companyDocs
+        .filter((company): company is NonNullable<typeof company> => company !== null)
+        .map((company) => [company._id, company] as const),
+    );
+    const userById = new Map(
+      userDocs
+        .filter((user): user is NonNullable<typeof user> => user !== null)
+        .map((user) => [user._id, user] as const),
+    );
 
     const rows = properties
-      .filter((property) => {
-        if (!cityFilter) return true;
-        const value = `${property.city ?? ""} ${property.state ?? ""}`.toLowerCase();
-        return value.includes(cityFilter);
-      })
       .map((property) => {
         const propertyAssignments = (assignmentsByPropertyId.get(property._id) ?? []).sort(
           (a, b) => b.assignedAt - a.assignedAt,
