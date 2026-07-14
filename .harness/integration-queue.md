@@ -4,6 +4,19 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
+### TASK-PROPERTIES-PAGE-BUGS-001
+- Branch: task/properties-page-bugs
+- Worktree: ~/sites/opscentral-admin-properties-bugs
+- PR: https://github.com/Atemndobs/ops-central/pull/248
+- Schema impact: none (`propertyImages` table + indexes already exist & registered)
+- Convex impact: deploy-required (changed fn bodies + new `updateRooms` export on an existing module — no api.ts regen needed; mirror to cleaners after)
+- Risk: low — additive; shared photo read path is bounded; `updateRooms` kept separate from `update` on purpose (see handoff)
+- Ready since: 2026-07-14 10:20
+- What: fixes the 3 Admin Properties page bugs from Jule's 2026-07-12 report — (a) multi-image gallery now persists+renders via the previously-dead `propertyImages` table, (b) edit modal is height-capped + scrollable (Save reachable on 13"), (c) rooms reorderable (order = cleaner photo sequence)
+- CI: eslint exit 0 on touched files; `npm run build` exit 0 (TypeScript passes) with `.env.local` present — without it, only the pre-existing `/delete-account` prerender fails on `NEXT_PUBLIC_CONVEX_URL`
+- Not verified: browser preview blocked by Clerk auth + backend not live until deploy — needs human eyeball on `/properties` post-deploy, then move Trello card to ✅ Fixed
+- Handoff: .harness/handoffs/TASK-PROPERTIES-PAGE-BUGS-001/worktree-handoff.md
+
 ### TASK-OPS-SCOPE-001
 - Branch: task/ops-scope-and-settings-fix
 - Worktree: ~/sites/opscentral-admin-ops-scope

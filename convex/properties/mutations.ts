@@ -4,6 +4,45 @@ import { ConvexError, v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { requireRole } from "../lib/auth";
 
+/**
+ * Replace a property's `propertyImages` rows with `photoUrls` (order preserved,
+ * blanks + duplicates dropped). The property's own `imageUrl` remains the
+ * primary; the matching gallery row is flagged `isPrimary` (falls back to the
+ * first image when `primaryUrl` isn't in the list). Full-replace semantics match
+ * the edit modal, which always submits the complete list.
+ */
+async function reconcilePropertyImages(
+  ctx: MutationCtx,
+  propertyId: Id<"properties">,
+  photoUrls: string[],
+  primaryUrl: string | undefined,
+): Promise<void> {
+  const existing = await ctx.db
+    .query("propertyImages")
+    .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
+    .collect();
+  for (const row of existing) {
+    await ctx.db.delete(row._id);
+  }
+
+  const now = Date.now();
+  const seen = new Set<string>();
+  let order = 0;
+  for (const raw of photoUrls) {
+    const url = raw.trim();
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    await ctx.db.insert("propertyImages", {
+      propertyId,
+      imageUrl: url,
+      sortOrder: order,
+      isPrimary: primaryUrl ? url === primaryUrl : order === 0,
+      createdAt: now,
+    });
+    order += 1;
+  }
+}
+
 const SUPPORTED_LANGS = ["en", "es"] as const;
 type SupportedLang = (typeof SUPPORTED_LANGS)[number];
 
@@ -104,6 +143,9 @@ export const create = mutation({
     vrboUrl: v.optional(v.string()),
     directBookingUrl: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
+    // Full gallery list. `imageUrl` stays the primary; these are persisted into
+    // the `propertyImages` table for the property thumbnail strip.
+    photoUrls: v.optional(v.array(v.string())),
     accessNotes: v.optional(v.string()),
     keyLocation: v.optional(v.string()),
     parkingNotes: v.optional(v.string()),
@@ -137,7 +179,7 @@ export const create = mutation({
         throw new ConvexError("Bathrooms must be a non-negative number.");
       }
 
-      return await ctx.db.insert("properties", {
+      const propertyId = await ctx.db.insert("properties", {
         name,
         address,
         city: args.city?.trim(),
@@ -165,6 +207,17 @@ export const create = mutation({
         createdAt: timestamp,
         updatedAt: timestamp,
       });
+
+      if (args.photoUrls !== undefined) {
+        await reconcilePropertyImages(
+          ctx,
+          propertyId,
+          args.photoUrls,
+          args.imageUrl,
+        );
+      }
+
+      return propertyId;
     } catch (error) {
       if (error instanceof ConvexError) {
         throw error;
@@ -193,6 +246,9 @@ export const update = mutation({
     vrboUrl: v.optional(v.string()),
     directBookingUrl: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
+    // Full gallery list. Reconciled into `propertyImages` separately — it is NOT
+    // a `properties` column, so it must be destructured out of the patch spread.
+    photoUrls: v.optional(v.array(v.string())),
     accessNotes: v.optional(v.string()),
     keyLocation: v.optional(v.string()),
     parkingNotes: v.optional(v.string()),
@@ -212,7 +268,7 @@ export const update = mutation({
         throw new ConvexError("Property not found.");
       }
 
-      const { id, ...patch } = args;
+      const { id, photoUrls, ...patch } = args;
 
       if (patch.name !== undefined && !patch.name.trim()) {
         throw new ConvexError("Name cannot be empty.");
@@ -265,6 +321,15 @@ export const update = mutation({
         updatedAt: Date.now(),
       });
 
+      if (photoUrls !== undefined) {
+        await reconcilePropertyImages(
+          ctx,
+          id,
+          photoUrls,
+          patch.imageUrl ?? existing.imageUrl,
+        );
+      }
+
       return id;
     } catch (error) {
       if (error instanceof ConvexError) {
@@ -272,6 +337,40 @@ export const update = mutation({
       }
       throw new ConvexError("Unable to update property right now.");
     }
+  },
+});
+
+/**
+ * Persist the room order (and any manual add/rename/remove) for a property.
+ *
+ * Room order IS the cleaner's photo sequence (adjacent rooms photographed in
+ * order), so this is a first-class edit. Kept as its own mutation rather than
+ * folding `rooms` into `update`: that handler rebuilds a full patch object with
+ * `name`/`address` set to `patch.<field>?.trim()`, so a partial `{ id, rooms }`
+ * call would blank the required `name`/`address` columns and fail validation.
+ */
+export const updateRooms = mutation({
+  args: {
+    id: v.id("properties"),
+    rooms: v.array(v.object({ name: v.string(), type: v.string() })),
+  },
+  handler: async (ctx, args) => {
+    await requireRole(ctx, ["admin", "property_ops"]);
+    const existing = await ctx.db.get(args.id);
+    if (!existing || !existing.isActive) {
+      throw new ConvexError("Property not found.");
+    }
+
+    const rooms = args.rooms.map((room) => ({
+      name: room.name.trim(),
+      type: room.type.trim(),
+    }));
+    if (rooms.some((room) => !room.name)) {
+      throw new ConvexError("Room name cannot be empty.");
+    }
+
+    await ctx.db.patch(args.id, { rooms, updatedAt: Date.now() });
+    return args.id;
   },
 });
 

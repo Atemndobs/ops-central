@@ -48,6 +48,7 @@ function toMutationInput(values: PropertyFormValues) {
     bedrooms: values.bedrooms,
     bathrooms: values.bathrooms,
     imageUrl: values.primaryPhotoUrl || undefined,
+    photoUrls: values.photoUrls ?? [],
   };
 }
 
@@ -57,6 +58,7 @@ export function PropertyDetail({ id }: { id: string }) {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [activePhotoUrl, setActivePhotoUrl] = useState<string | null>(null);
   const { showToast } = useToast();
 
   const property = useQuery(
@@ -162,6 +164,21 @@ export function PropertyDetail({ id }: { id: string }) {
     (property as { timezone?: string | null }).timezone,
   );
 
+  const galleryPhotoUrls =
+    property.photoUrls && property.photoUrls.length > 0
+      ? property.photoUrls
+      : property.primaryPhotoUrl
+        ? [property.primaryPhotoUrl]
+        : [];
+  // Selected thumbnail wins; fall back to primary, then first gallery image.
+  const heroPhotoUrl =
+    (activePhotoUrl && galleryPhotoUrls.includes(activePhotoUrl)
+      ? activePhotoUrl
+      : null) ??
+    property.primaryPhotoUrl ??
+    galleryPhotoUrls[0] ??
+    null;
+
   return (
     <div className="space-y-6">
       <Link
@@ -200,18 +217,48 @@ export function PropertyDetail({ id }: { id: string }) {
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-          <div className="overflow-hidden rounded-xl border">
-            <div className="relative h-64 w-full bg-[var(--secondary)]">
-              {property.primaryPhotoUrl ? (
-                <Image
-                  src={property.primaryPhotoUrl}
-                  alt={property.name}
-                  fill
-                  sizes="(min-width: 1024px) 66vw, 100vw"
-                  className="object-cover"
-                />
-              ) : null}
+          <div className="space-y-2">
+            <div className="overflow-hidden rounded-xl border">
+              <div className="relative h-64 w-full bg-[var(--secondary)]">
+                {heroPhotoUrl ? (
+                  <Image
+                    src={heroPhotoUrl}
+                    alt={property.name}
+                    fill
+                    sizes="(min-width: 1024px) 66vw, 100vw"
+                    className="object-cover"
+                  />
+                ) : null}
+              </div>
             </div>
+            {galleryPhotoUrls.length > 1 ? (
+              <div className="flex flex-wrap gap-2">
+                {galleryPhotoUrls.map((url) => {
+                  const isActive = url === heroPhotoUrl;
+                  return (
+                    <button
+                      key={url}
+                      type="button"
+                      onClick={() => setActivePhotoUrl(url)}
+                      className={`relative h-14 w-20 shrink-0 overflow-hidden rounded-md border ${
+                        isActive
+                          ? "border-[var(--primary)] ring-2 ring-[var(--primary)]"
+                          : "border-[var(--border)] opacity-80 hover:opacity-100"
+                      }`}
+                      title="View photo"
+                    >
+                      <Image
+                        src={url}
+                        alt={property.name}
+                        fill
+                        sizes="80px"
+                        className="object-cover"
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
 
           <div className="rounded-xl border bg-[var(--card)]">
