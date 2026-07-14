@@ -867,7 +867,13 @@ const photos = defineTable({
   .index("by_job_type", ["cleaningJobId", "type"])
   // Lets a gallery query "videos only on this job" without scanning every photo.
   .index("by_job_kind", ["cleaningJobId", "mediaKind"])
-  .index("by_uploaded_at", ["uploadedAt"]);
+  .index("by_uploaded_at", ["uploadedAt"])
+  // Lets the MinIO archive sweep read only NOT-yet-archived photos. Without it,
+  // listArchiveCandidates walked `by_uploaded_at` (ascending) and dropped
+  // already-archived rows in memory — so once the oldest batch was archived it
+  // returned zero forever and archiving silently stopped. See
+  // convex/files/archiveState.ts.
+  .index("by_archived_tier_and_uploaded", ["archivedTier", "uploadedAt"]);
 
 const photoArchives = defineTable({
   photoId: v.id("photos"),

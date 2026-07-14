@@ -120,9 +120,13 @@ crons.interval(
   {},
 );
 
-crons.cron(
+// Was `crons.cron("...", "0 2 */7 * *", ...)`, which is NOT a 7-day interval:
+// `*/7` in the day-of-month field means days 1, 8, 15, 22, 29 — so it fired 3 days
+// after the 29th at every month boundary, and never on a true weekly cadence
+// despite the name. `crons.interval({ days: 7 })` is what the name always meant.
+crons.interval(
   "archive-photos-to-minio-every-7-days",
-  "0 2 */7 * *",
+  { hours: 168 }, // 7 days — `interval` takes seconds/minutes/hours, not days.
   internal.files.archiveActions.archiveSevenDayPhotos,
   {
     olderThanDays: 7,

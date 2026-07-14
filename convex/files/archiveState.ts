@@ -2,6 +2,8 @@ import { v } from "convex/values";
 import { internalMutation, internalQuery } from "../_generated/server";
 
 const ARCHIVED_TIER = "archive_minio";
+/** Tier stamped on upload (see files/mutations.ts) — i.e. "not archived yet". */
+const HOT_TIER = "hot";
 
 export const listArchiveCandidates = internalQuery({
   args: {
@@ -10,15 +12,48 @@ export const listArchiveCandidates = internalQuery({
   },
   handler: async (ctx, args) => {
     const limit = Math.max(1, Math.min(200, Math.floor(args.limit)));
-    const rows = await ctx.db
-      .query("photos")
-      .withIndex("by_uploaded_at", (q) => q.lte("uploadedAt", args.beforeTs))
-      .take(limit * 4);
+
+    // STARVATION FIX. This previously walked `by_uploaded_at` — which is ASCENDING
+    // — with `.take(limit * 4)` and then dropped already-archived rows in memory:
+    //
+    //     .withIndex("by_uploaded_at", (q) => q.lte("uploadedAt", beforeTs))
+    //     .take(limit * 4)
+    //     .filter((row) => row.archivedTier !== ARCHIVED_TIER)
+    //
+    // So it always re-read the SAME oldest N photos. Once those were archived the
+    // in-memory filter dropped every one of them, the query returned [], and the
+    // cron made no further progress — permanently — while still paying ~400 reads
+    // per run. Archiving to MinIO was silently dead.
+    //
+    // Read only rows that are actually still candidates, via
+    // `by_archived_tier_and_uploaded`. Note there are TWO un-archived states, not
+    // one: rows uploaded since the tier field was introduced carry "hot"
+    // (files/mutations.ts), while older rows predate it and have no tier at all.
+    // The old `!== ARCHIVED_TIER` filter matched both, so both must be read here —
+    // indexing on `undefined` alone would have kept archiving dead.
+    const [hotRows, legacyRows] = await Promise.all([
+      ctx.db
+        .query("photos")
+        .withIndex("by_archived_tier_and_uploaded", (q) =>
+          q.eq("archivedTier", HOT_TIER).lte("uploadedAt", args.beforeTs),
+        )
+        .take(limit * 4),
+      ctx.db
+        .query("photos")
+        .withIndex("by_archived_tier_and_uploaded", (q) =>
+          q.eq("archivedTier", undefined).lte("uploadedAt", args.beforeTs),
+        )
+        .take(limit * 4),
+    ]);
+
+    // Oldest first — same order the ascending `by_uploaded_at` walk produced.
+    const rows = [...hotRows, ...legacyRows].sort(
+      (a, b) => a.uploadedAt - b.uploadedAt,
+    );
 
     return rows
       .filter((row) => row.provider === "b2")
       .filter((row) => Boolean(row.bucket && row.objectKey))
-      .filter((row) => row.archivedTier !== ARCHIVED_TIER)
       .slice(0, limit)
       .map((row) => ({
         photoId: row._id,
