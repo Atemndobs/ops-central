@@ -30,24 +30,32 @@ import type { DataModel } from "../_generated/dataModel";
 
 type TrackedTable = TableNamesInDataModel<DataModel>;
 
-/** Tables we care about for a "how big is our data" snapshot. Keep the
- *  list small — each entry = one full-table scan at snapshot time. */
+/** Tables we count for a "how big is our data" snapshot. Each entry is a
+ *  full-table scan at snapshot time, so this list is DELIBERATELY limited to
+ *  business-scale tables whose row count tracks the number of properties/
+ *  users and stays modest.
+ *
+ *  The fast-growing, append-only tables are intentionally EXCLUDED because
+ *  counting them means scanning them, and their scan cost climbs without
+ *  bound — the daily row-count scan of `serviceUsageEvents` in particular
+ *  was reading up to 50k of its own rows every night purely to self-report,
+ *  a meaningful slice of total Convex read volume. Excluded on purpose:
+ *  serviceUsageEvents, serviceUsageRollups, conversationMessages, photos.
+ *  Their volume is inferred from `convex_events_24h` (indexed, bounded)
+ *  plus the authoritative Convex dashboard. */
 const TRACKED_TABLES: TrackedTable[] = [
   "users",
-  "photos",
   "cleaningJobs",
   "properties",
   "conversations",
-  "conversationMessages",
   "notifications",
-  "serviceUsageEvents",
-  "serviceUsageRollups",
   "serviceQuotaCounters",
 ];
 
-/** Upper bound on rows pulled per table. 50k is plenty for this app's
- *  scale and caps worst-case cost at ~500k reads per snapshot/day. */
-const PER_TABLE_SCAN_CAP = 50_000;
+/** Upper bound on rows pulled per table. A defensive ceiling — the tracked
+ *  tables above are all business-scale (well under this). If any hits the
+ *  cap, `capHits` surfaces it so we can drop it from the list. */
+const PER_TABLE_SCAN_CAP = 10_000;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
