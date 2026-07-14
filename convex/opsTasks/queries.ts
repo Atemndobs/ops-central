@@ -11,6 +11,26 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { getTaskVisibility } from "../lib/opsTaskAuth";
 import { getCurrentUser } from "../lib/auth";
 
+/**
+ * How far back a still-open task may "drag in" to a visible range.
+ *
+ * Read-cost: the `draggingIn` reads below used `.lt("anchorDate", rangeStart)` with
+ * NO lower bound — i.e. a scan of every task ever anchored before the window, back
+ * to epoch, growing with table age forever. `listAssigneeAvatarsForRange` is
+ * always-mounted on the schedule, so EVERY write to ANY opsTasks doc — any
+ * property, any date — re-executed a full-history rescan for every ops user with
+ * the schedule open. At ~18k rows that is ~36M reads/month, and it scales with how
+ * long the feature has been live rather than with usage: it looks fine for weeks
+ * after launch, then degrades continuously with nothing in the usage graphs to
+ * explain why.
+ *
+ * A horizon is a behavior change in the tail: an open task anchored more than this
+ * long ago stops dragging into the current view. 180 days is deliberately generous
+ * — an ops task open for half a year is a data-hygiene problem, not a grid-render
+ * problem — and `opsTasks` is currently empty, so nothing observable changes today.
+ */
+const DRAG_BACK_HORIZON_MS = 180 * 24 * 60 * 60 * 1000;
+
 const STATUS = v.union(
   v.literal("open"),
   v.literal("in_progress"),
@@ -164,11 +184,15 @@ export const listForPropertyRange = query({
       )
       .collect();
 
-    // Plus open tasks anchored *before* the window that still drag into it.
+    // Plus open tasks anchored *before* the window that still drag into it,
+    // bounded to DRAG_BACK_HORIZON_MS (was unbounded — see the constant).
     const draggingIn = await ctx.db
       .query("opsTasks")
       .withIndex("by_property_anchor", (q) =>
-        q.eq("propertyId", args.propertyId).lt("anchorDate", args.rangeStart),
+        q
+          .eq("propertyId", args.propertyId)
+          .gte("anchorDate", args.rangeStart - DRAG_BACK_HORIZON_MS)
+          .lt("anchorDate", args.rangeStart),
       )
       .collect();
     const stillOpen = draggingIn.filter(
@@ -218,10 +242,14 @@ export const listGlobalRange = query({
       )
       .collect();
 
+    // Bounded to DRAG_BACK_HORIZON_MS — this was `.lt()` with no lower bound,
+    // i.e. a full-history scan back to epoch. See the constant.
     const draggingIn = await ctx.db
       .query("opsTasks")
       .withIndex("by_anchor_status", (q) =>
-        q.lt("anchorDate", args.rangeStart),
+        q
+          .gte("anchorDate", args.rangeStart - DRAG_BACK_HORIZON_MS)
+          .lt("anchorDate", args.rangeStart),
       )
       .collect();
 
@@ -283,10 +311,14 @@ export const listAssigneeAvatarsForRange = query({
       )
       .collect();
 
+    // Bounded to DRAG_BACK_HORIZON_MS — this was `.lt()` with no lower bound,
+    // i.e. a full-history scan back to epoch. See the constant.
     const draggingIn = await ctx.db
       .query("opsTasks")
       .withIndex("by_anchor_status", (q) =>
-        q.lt("anchorDate", args.rangeStart),
+        q
+          .gte("anchorDate", args.rangeStart - DRAG_BACK_HORIZON_MS)
+          .lt("anchorDate", args.rangeStart),
       )
       .collect();
 
