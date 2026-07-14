@@ -162,7 +162,7 @@ function GuestAvatar({ name, photoUrl }: { name: string; photoUrl?: string }) {
   const [errored, setErrored] = useState(false);
   const showImage = Boolean(photoUrl) && !errored;
   return (
-    <span className="relative inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/50 bg-white/25 text-white">
+    <span className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/60 bg-white/25 text-white sm:h-12 sm:w-12">
       {showImage ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -172,7 +172,7 @@ function GuestAvatar({ name, photoUrl }: { name: string; photoUrl?: string }) {
           onError={() => setErrored(true)}
         />
       ) : (
-        <span className="text-[8px] font-bold leading-none">{guestInitials(name)}</span>
+        <span className="text-xs font-bold leading-none sm:text-sm">{guestInitials(name)}</span>
       )}
     </span>
   );
