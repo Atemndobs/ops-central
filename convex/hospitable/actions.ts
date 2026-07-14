@@ -738,6 +738,11 @@ export const syncReservations = internalAction({
         params.set("check_out_from", checkOutFrom);
         params.set("check_out_to", checkOutTo);
         params.append("properties[]", propertyId);
+        // Embed related resources — the LIST endpoint omits them by default,
+        // which is why guest name/photo AND financials (totalAmount) came back
+        // empty ("Guest" + no avatar). Verified include names against the live
+        // API: `guest` (singular) carries first_name/last_name/profile_picture.
+        params.set("include", "guest,financials");
 
         // Page through ALL reservations matching the window — Hospitable
         // paginates at ~10/page by default, which is why a 3-year backfill
