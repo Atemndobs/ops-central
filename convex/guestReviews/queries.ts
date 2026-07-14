@@ -82,6 +82,73 @@ export const listInbox = query({
   },
 });
 
+export const getInboxSummary = query({
+  args: {},
+  returns: v.object({
+    totalReviews: v.number(),
+    avgRating: v.number(),
+    fiveStarPct: v.number(),
+    badReviewsUnanswered: v.number(),
+    canStillRespond: v.number(),
+    propertyHealth: v.array(v.object({
+      propertyId: v.id("properties"),
+      propertyName: v.optional(v.string()),
+      reviewCount: v.number(),
+      avgRating: v.number(),
+      badCount: v.number(),
+      respondedCount: v.number(),
+    })),
+  }),
+  handler: async (ctx) => {
+    await requireRole(ctx, ["admin", "property_ops"]);
+
+    const rows = await ctx.db.query("guestReviews").collect();
+    if (rows.length === 0) {
+      return { totalReviews: 0, avgRating: 0, fiveStarPct: 0, badReviewsUnanswered: 0, canStillRespond: 0, propertyHealth: [] };
+    }
+
+    const totalReviews = rows.length;
+    const avgRating = rows.reduce((s, r) => s + r.rating, 0) / totalReviews;
+    const fiveStarPct = Math.round((rows.filter((r) => r.rating === 5).length / totalReviews) * 100);
+    const badReviewsUnanswered = rows.filter(
+      (r) => r.rating <= 3 && r.status !== "sent" && r.status !== "dismissed",
+    ).length;
+    const canStillRespond = rows.filter(
+      (r) => r.canRespond && r.status !== "sent",
+    ).length;
+
+    // Per-property aggregation
+    const byProperty = new Map<string, { propertyId: typeof rows[0]["propertyId"]; ratings: number[]; badCount: number; respondedCount: number }>();
+    for (const r of rows) {
+      const id = r.propertyId as string;
+      const existing = byProperty.get(id) ?? { propertyId: r.propertyId, ratings: [], badCount: 0, respondedCount: 0 };
+      existing.ratings.push(r.rating);
+      if (r.rating <= 3) existing.badCount++;
+      if (r.status === "sent") existing.respondedCount++;
+      byProperty.set(id, existing);
+    }
+
+    const propertyHealth = await Promise.all(
+      [...byProperty.entries()].map(async ([, v]) => {
+        const property = await ctx.db.get(v.propertyId);
+        return {
+          propertyId: v.propertyId,
+          propertyName: property?.name,
+          reviewCount: v.ratings.length,
+          avgRating: v.ratings.reduce((s, r) => s + r, 0) / v.ratings.length,
+          badCount: v.badCount,
+          respondedCount: v.respondedCount,
+        };
+      }),
+    );
+
+    // Sort by bad count desc, then review count desc
+    propertyHealth.sort((a, b) => b.badCount - a.badCount || b.reviewCount - a.reviewCount);
+
+    return { totalReviews, avgRating, fiveStarPct, badReviewsUnanswered, canStillRespond, propertyHealth };
+  },
+});
+
 /** Reviews for a single property, for the property-detail Reviews section. */
 export const listByProperty = query({
   args: { propertyId: v.id("properties") },

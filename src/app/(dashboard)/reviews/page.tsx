@@ -1,4 +1,5 @@
 import { ReviewsInbox } from "@/components/reviews/reviews-inbox";
+import { ReviewsDashboard } from "@/components/reviews/reviews-dashboard";
 
 export default function ReviewsPage() {
   return (
@@ -9,6 +10,7 @@ export default function ReviewsPage() {
           AI-drafted replies to guest reviews — approve, edit, or dismiss.
         </p>
       </div>
+      <ReviewsDashboard />
       <ReviewsInbox />
     </div>
   );
