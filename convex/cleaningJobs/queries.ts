@@ -278,7 +278,13 @@ export const getById = query({
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
-    const detail = await getJobDetailInternal(ctx, args.jobId);
+    // Lightweight: getById returns only job/property/cleaners/current-photos, so
+    // skip the execution-session + submission reads. This is what stops the
+    // pingActiveSession heartbeat from re-running (and re-reading) the whole
+    // heavy detail — the ~1.85 GB/mo read driver.
+    const detail = await getJobDetailInternal(ctx, args.jobId, {
+      lightweight: true,
+    });
     if (!detail) {
       return null;
     }
@@ -817,7 +823,19 @@ export const getAssignableCleanersByProperty = query({
   },
 });
 
-async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
+async function getJobDetailInternal(
+  ctx: QueryCtx,
+  jobId: Id<"cleaningJobs">,
+  opts?: { lightweight?: boolean },
+) {
+  // `lightweight` skips the execution-session + submission-history reads. Used by
+  // getById, which returns only job/property/cleaners/current-photos and never
+  // the execution or submission blocks. Those reads made getById the ~1.85 GB/mo
+  // consumer: `jobExecutionSessions` is written by the pingActiveSession
+  // heartbeat, so reading it re-ran this whole heavy detail (incl. the ~50 KB
+  // latestSubmission) on every ping while an admin had the job open. Full callers
+  // (getMyJobDetail / getJobDetail) pass nothing and get the complete bundle.
+  const lightweight = opts?.lightweight ?? false;
   const job = await ctx.db.get(jobId);
   if (!job) {
     return null;
@@ -830,12 +848,16 @@ async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
 
   const revision = getCurrentRevision(job);
   const [sessions, photos, submissionHistoryMeta] = await Promise.all([
-    ctx.db
-      .query("jobExecutionSessions")
-      .withIndex("by_job_and_revision", (q) =>
-        q.eq("jobId", jobId).eq("revision", revision),
-      )
-      .collect(),
+    // Skipped in lightweight mode: `jobExecutionSessions` is the heartbeat-
+    // written table, so reading it is what re-ran getById on every ping.
+    lightweight
+      ? Promise.resolve([] as Doc<"jobExecutionSessions">[])
+      : ctx.db
+          .query("jobExecutionSessions")
+          .withIndex("by_job_and_revision", (q) =>
+            q.eq("jobId", jobId).eq("revision", revision),
+          )
+          .collect(),
     // Bandwidth: photos for a job have no `revision` field, so we can't
     // narrow the read to just the current revision without a schema change.
     // As a defensive cap, take the 200 most-recent rows by creation time.
@@ -850,11 +872,14 @@ async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
     // (which carries 50 KB+ of snapshot data per row). The full latest
     // submission is fetched separately below via cleaningJob.latestSubmissionId.
     // Wave 2.b — see Docs/2026-04-28-convex-bandwidth-optimization-plan.md.
-    ctx.db
-      .query("jobSubmissionsMeta")
-      .withIndex("by_job_and_revision", (q) => q.eq("jobId", jobId))
-      .order("desc")
-      .take(20),
+    // Skipped in lightweight mode (getById renders no submission history).
+    lightweight
+      ? Promise.resolve([] as Doc<"jobSubmissionsMeta">[])
+      : ctx.db
+          .query("jobSubmissionsMeta")
+          .withIndex("by_job_and_revision", (q) => q.eq("jobId", jobId))
+          .order("desc")
+          .take(20),
   ]);
 
   // Fetch the one heavy submission doc that the UI actually renders in full
@@ -866,15 +891,17 @@ async function getJobDetailInternal(ctx: QueryCtx, jobId: Id<"cleaningJobs">) {
   //     loading just that one doc. Covers edge cases where latestSubmissionId
   //     was cleared (e.g., reopenForRework) but a sealed snapshot still exists.
   let latestSubmission: Doc<"jobSubmissions"> | null = null;
-  if (job.latestSubmissionId) {
-    latestSubmission = await ctx.db.get(job.latestSubmissionId);
-  } else {
-    const latestSealedMeta =
-      submissionHistoryMeta.find((meta) => meta.status === "sealed") ??
-      submissionHistoryMeta[0] ??
-      null;
-    if (latestSealedMeta) {
-      latestSubmission = await ctx.db.get(latestSealedMeta.submissionId);
+  if (!lightweight) {
+    if (job.latestSubmissionId) {
+      latestSubmission = await ctx.db.get(job.latestSubmissionId);
+    } else {
+      const latestSealedMeta =
+        submissionHistoryMeta.find((meta) => meta.status === "sealed") ??
+        submissionHistoryMeta[0] ??
+        null;
+      if (latestSealedMeta) {
+        latestSubmission = await ctx.db.get(latestSealedMeta.submissionId);
+      }
     }
   }
 
