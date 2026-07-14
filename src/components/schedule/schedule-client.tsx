@@ -186,12 +186,14 @@ export function ScheduleClient() {
   // Rolling calendar (Hospitable-style): the week is anchored on TODAY rather
   // than snapping to Monday, so the current day is always the left-most column
   // and the board rolls forward day by day.
-  const [rangeMode, setRangeMode] = useState<"week" | "month" | "custom">("week");
+  // Default to the MONTH view (today is centered in the viewport by the
+  // centerTodayInView effect that runs whenever rangeMode === "month").
+  const [rangeMode, setRangeMode] = useState<"week" | "month" | "custom">("month");
   // Board mode: "tasks" is the existing cleaning-jobs grid; "occupancy" swaps
   // the per-day job cells for Hospitable-style reservation bars.
   const [boardMode, setBoardMode] = useState<"tasks" | "occupancy">("tasks");
-  const [rangeStart, setRangeStart] = useState(() => startOfDay(new Date()));
-  const [rangeEnd, setRangeEnd] = useState(() => addDays(startOfDay(new Date()), 6));
+  const [rangeStart, setRangeStart] = useState(() => startOfMonth(new Date()));
+  const [rangeEnd, setRangeEnd] = useState(() => endOfMonth(new Date()));
 
   // `todayStart` drives the "today" column highlight and moves at midnight so
   // the marker (and, when still anchored, the whole rolling window) advances
