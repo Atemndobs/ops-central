@@ -421,9 +421,22 @@ export function ScheduleClient() {
   const summaryFor = (cellKey: string, day: Date) => {
     const hit = taskCellSummaries.get(`${cellKey}@${taskCellAnchor(day)}`);
     if (hit) return hit;
-    // Batched range query has loaded → a missing cell is authoritatively empty.
-    if (taskAvatarRange?.cells) return emptyCellSummary;
-    return undefined;
+    // A missing cell is empty. NEVER return `undefined` here.
+    //
+    // Read-cost: `undefined` sets ScheduleCellTaskOverlay's `useEagerCellQuery`,
+    // so EVERY cell in the grid subscribes to `listForCell` at once. That fired
+    // on every schedule mount and every range change — for the whole window
+    // between first render and `taskAvatarRange` resolving — and fired
+    // *permanently* for non-ops callers, since listAssigneeAvatarsForRange is
+    // ops-only and throws for them, so `taskAvatarRange` never resolves. Result:
+    // 351K listForCell calls/month (36% of ALL function calls), each superseded
+    // by the batched summary one round-trip later.
+    //
+    // Rendering empty while the batch is in flight matches what the grid showed
+    // before anyway (the eager per-cell query hadn't resolved either), and badges
+    // appear when the batch lands. Per-cell queries now fire only when a cell's
+    // popover is actually opened (`showList`).
+    return emptyCellSummary;
   };
 
   // --- Computed: days ---
