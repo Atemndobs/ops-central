@@ -1,10 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "@convex/_generated/api";
-import { Loader2, Star, AlertTriangle, CheckCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, Star, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, EyeOff, Eye } from "lucide-react";
+
+const HIDDEN_KEY = "reviews-dashboard-hidden-properties";
+
+function useHiddenProperties() {
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(HIDDEN_KEY);
+      if (stored) setHidden(new Set(JSON.parse(stored)));
+    } catch {}
+  }, []);
+  const hide = (id: string) => {
+    setHidden((prev) => {
+      const next = new Set(prev).add(id);
+      localStorage.setItem(HIDDEN_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  };
+  const restore = (id: string) => {
+    setHidden((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      localStorage.setItem(HIDDEN_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  };
+  return { hidden, hide, restore };
+}
 
 function StatCard({
   label,
@@ -83,7 +111,9 @@ function Stars({ rating }: { rating: number }) {
 export function ReviewsDashboard() {
   const { isAuthenticated } = useConvexAuth();
   const [tableOpen, setTableOpen] = useState(true);
+  const [showHidden, setShowHidden] = useState(false);
   const router = useRouter();
+  const { hidden, hide, restore } = useHiddenProperties();
   const summary = useQuery(
     api.guestReviews.queries.getInboxSummary,
     isAuthenticated ? {} : "skip",
@@ -149,43 +179,71 @@ export function ReviewsDashboard() {
                 <th className="text-center px-4 py-2 font-medium">Low (≤3★)</th>
                 <th className="text-center px-4 py-2 font-medium">Responded</th>
                 <th className="text-left px-4 py-2 font-medium">Status</th>
+                <th className="w-8" />
               </tr>
             </thead>
             <tbody>
-              {summary.propertyHealth.map((p) => (
-                <tr
-                  key={p.propertyId as string}
-                  className="border-b last:border-0 hover:bg-[var(--muted)]/40 transition-colors cursor-pointer"
-                  onClick={() => router.push(`/reviews?property=${p.propertyId}`)}
-                >
-                  <td className="px-4 py-3 font-medium text-[var(--primary)] hover:underline">{p.propertyName ?? p.propertyId}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-[var(--muted-foreground)]">{p.reviewCount}</td>
-                  <td className="px-4 py-3"><Stars rating={p.avgRating} /></td>
-                  <td className="px-4 py-3 text-center">
-                    {p.badCount > 0 ? (
-                      <span className="inline-block rounded-full bg-rose-600 px-2 py-0.5 text-xs text-white font-medium tabular-nums">
-                        {p.badCount} bad
-                      </span>
-                    ) : (
-                      <span className="text-[var(--muted-foreground)]">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-center tabular-nums">
-                    {p.badCount > 0 ? (
-                      <span className={p.respondedCount < p.badCount ? "text-rose-400" : "text-emerald-400"}>
-                        {p.respondedCount} / {p.badCount}
-                      </span>
-                    ) : (
-                      <span className="text-[var(--muted-foreground)]">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusChip badCount={p.badCount} respondedCount={p.respondedCount} />
-                  </td>
-                </tr>
-              ))}
+              {summary.propertyHealth
+                .filter((p) => showHidden || !hidden.has(p.propertyId as string))
+                .map((p) => {
+                  const isHidden = hidden.has(p.propertyId as string);
+                  return (
+                    <tr
+                      key={p.propertyId as string}
+                      className={`border-b last:border-0 hover:bg-[var(--muted)]/40 transition-colors group ${isHidden ? "opacity-40" : "cursor-pointer"}`}
+                      onClick={() => !isHidden && router.push(`/reviews?property=${p.propertyId}`)}
+                    >
+                      <td className="px-4 py-3 font-medium text-[var(--primary)] hover:underline">{p.propertyName ?? p.propertyId}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-[var(--muted-foreground)]">{p.reviewCount}</td>
+                      <td className="px-4 py-3"><Stars rating={p.avgRating} /></td>
+                      <td className="px-4 py-3 text-center">
+                        {p.badCount > 0 ? (
+                          <span className="inline-block rounded-full bg-rose-600 px-2 py-0.5 text-xs text-white font-medium tabular-nums">
+                            {p.badCount} bad
+                          </span>
+                        ) : (
+                          <span className="text-[var(--muted-foreground)]">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center tabular-nums">
+                        {p.badCount > 0 ? (
+                          <span className={p.respondedCount < p.badCount ? "text-rose-400" : "text-emerald-400"}>
+                            {p.respondedCount} / {p.badCount}
+                          </span>
+                        ) : (
+                          <span className="text-[var(--muted-foreground)]">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusChip badCount={p.badCount} respondedCount={p.respondedCount} />
+                      </td>
+                      <td className="px-2 py-3">
+                        <button
+                          type="button"
+                          title={isHidden ? "Show property" : "Hide from dashboard"}
+                          onClick={(e) => { e.stopPropagation(); isHidden ? restore(p.propertyId as string) : hide(p.propertyId as string); }}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-[var(--muted)] text-[var(--muted-foreground)]"
+                        >
+                          {isHidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
+          {hidden.size > 0 && (
+            <div className="px-4 py-2 border-t">
+              <button
+                type="button"
+                onClick={() => setShowHidden((s) => !s)}
+                className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] flex items-center gap-1 transition-colors"
+              >
+                {showHidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                {showHidden ? "Hide excluded" : `Show ${hidden.size} excluded propert${hidden.size === 1 ? "y" : "ies"}`}
+              </button>
+            </div>
+          )}
         </div>}
       </div>
     </div>
