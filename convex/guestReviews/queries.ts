@@ -57,20 +57,53 @@ function pickGuestPhotoUrl(
   return candidates.sort((a, b) => b.checkOutAt - a.checkOutAt)[0].guestPhotoUrl;
 }
 
-/** Fetch each property's stays exactly once, keyed by propertyId. */
+/** Generous upper bound on a single reservation's length — see fetchStaysByProperty. */
+const MAX_STAY_MS = 180 * 24 * 60 * 60 * 1000;
+
+/**
+ * Fetch each property's stays exactly once, keyed by propertyId, bounded to the
+ * check-out window the callers can actually use.
+ *
+ * Read-cost: this previously read each property's ENTIRE stay history via
+ * `by_property` — it fixed the per-review N+1 but left the remaining per-property
+ * reads unbounded, so cost still grew forever with reservation history on a
+ * reactive query. `pickGuestPhotoUrl` only ever looks at stays whose `checkOutAt`
+ * falls in [reviewedAt - 30d, reviewedAt], so callers pass the union of those
+ * windows across their reviews.
+ *
+ * There is no [propertyId, checkOutAt] index, but `by_property_dates` is
+ * [propertyId, checkInAt, checkOutAt]. Since checkOutAt >= checkInAt and a stay is
+ * at most MAX_STAY_MS long, any stay checking out in [from, to] must check in
+ * within [from - MAX_STAY_MS, to] — so bound `checkInAt` on the index and let
+ * `pickGuestPhotoUrl` apply the exact `checkOutAt` predicate in memory.
+ */
 async function fetchStaysByProperty(
   ctx: QueryCtx,
   propertyIds: Id<"properties">[],
+  checkOutWindow: { from: number; to: number },
 ): Promise<Map<Id<"properties">, Doc<"stays">[]>> {
+  const checkInFloor = checkOutWindow.from - MAX_STAY_MS;
   const lists = await Promise.all(
     propertyIds.map((propertyId) =>
       ctx.db
         .query("stays")
-        .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
+        .withIndex("by_property_dates", (q) =>
+          q
+            .eq("propertyId", propertyId)
+            .gte("checkInAt", checkInFloor)
+            .lte("checkInAt", checkOutWindow.to),
+        )
         .collect(),
     ),
   );
   return new Map(propertyIds.map((propertyId, index) => [propertyId, lists[index]]));
+}
+
+/** Union of the per-review guest-photo lookup windows. */
+function guestPhotoWindow(reviewedAts: number[]): { from: number; to: number } {
+  const to = Math.max(...reviewedAts);
+  const from = Math.min(...reviewedAts) - THIRTY_DAYS_MS;
+  return { from, to };
 }
 
 // Needs-action statuses sort first in the inbox.
@@ -97,7 +130,11 @@ export const listInbox = query({
     const uniquePropertyIds = [...new Set(rows.map((row) => row.propertyId))];
     const [propertyDocs, staysByPropertyId] = await Promise.all([
       Promise.all(uniquePropertyIds.map((propertyId) => ctx.db.get(propertyId))),
-      fetchStaysByProperty(ctx, uniquePropertyIds),
+      fetchStaysByProperty(
+        ctx,
+        uniquePropertyIds,
+        guestPhotoWindow(rows.map((row) => row.reviewedAt)),
+      ),
     ]);
     const propertyNameById = new Map(
       uniquePropertyIds.map((propertyId, index) => [propertyId, propertyDocs[index]?.name]),
@@ -200,15 +237,22 @@ export const listByProperty = query({
       .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId))
       .collect();
 
-    // Read-cost: same fix as listInbox — the stays scan used to run once per
-    // review row for this single property. Fetch it once, resolve in memory.
-    const [property, stays] = await Promise.all([
+    // Read-cost: same fix as listInbox — the stays read used to run once per review
+    // row for this single property, and then (after that was batched) still pulled
+    // the property's entire stay history. Fetch it once, bounded to the check-out
+    // window the photo lookup can actually use, and resolve in memory.
+    if (rows.length === 0) {
+      return [];
+    }
+    const [property, staysByPropertyId] = await Promise.all([
       ctx.db.get(args.propertyId),
-      ctx.db
-        .query("stays")
-        .withIndex("by_property", (q) => q.eq("propertyId", args.propertyId))
-        .collect(),
+      fetchStaysByProperty(
+        ctx,
+        [args.propertyId],
+        guestPhotoWindow(rows.map((row) => row.reviewedAt)),
+      ),
     ]);
+    const stays = staysByPropertyId.get(args.propertyId) ?? [];
     const withPhotos = rows.map((row) => ({
       ...row,
       propertyName: property?.name,
