@@ -70,6 +70,7 @@ function toMutationInput(values: PropertyFormValues) {
     bedrooms: values.bedrooms,
     bathrooms: values.bathrooms,
     imageUrl: values.primaryPhotoUrl || undefined,
+    photoUrls: values.photoUrls ?? [],
     accessNotes: values.accessNotes || undefined,
     keyLocation: values.keyLocation || undefined,
     parkingNotes: values.parkingNotes || undefined,
@@ -200,6 +201,7 @@ function PropertiesPageContent() {
         property,
         status: property.status ?? "vacant",
         imageUrl: property.primaryPhotoUrl || property.imageUrl || property.picture,
+        photoCount: property.photoUrls?.length ?? 0,
         companyName: activeCompanyByPropertyId.get(property._id) ?? "Unassigned",
       }))
       .filter(({ property, status }) => {
@@ -387,7 +389,7 @@ function PropertiesPageContent() {
         </div>
       ) : viewMode === "card" ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {filteredProperties.map(({ property, status, imageUrl, companyName }) => (
+          {filteredProperties.map(({ property, status, imageUrl, photoCount, companyName }) => (
             <div
               key={property._id}
               className="overflow-hidden border bg-[var(--card)]"
@@ -406,6 +408,12 @@ function PropertiesPageContent() {
                     <Building2 className="h-8 w-8 text-[var(--muted-foreground)]" />
                   </div>
                 )}
+
+                {photoCount > 1 ? (
+                  <span className="absolute bottom-2 left-2 rounded bg-black/60 px-1.5 py-0.5 text-[11px] font-medium text-white">
+                    {photoCount} photos
+                  </span>
+                ) : null}
 
                 <span
                   className={`absolute right-2 top-2 rounded-none px-2 py-1 text-xs font-medium ${statusStyles[status]}`}
@@ -474,7 +482,7 @@ function PropertiesPageContent() {
       ) : (
         <div className="rounded-none border bg-[var(--card)]">
           <div className="divide-y md:hidden">
-            {filteredProperties.map(({ property, status, imageUrl, companyName }) => (
+            {filteredProperties.map(({ property, status, imageUrl, photoCount, companyName }) => (
               <article key={property._id} className="space-y-3 p-4">
                 <div className="flex items-start gap-3">
                   <div className="relative h-16 w-20 shrink-0 overflow-hidden border bg-[var(--accent)]">
@@ -491,6 +499,11 @@ function PropertiesPageContent() {
                         <Building2 className="h-5 w-5 text-[var(--muted-foreground)]" />
                       </div>
                     )}
+                    {photoCount > 1 ? (
+                      <span className="absolute bottom-0.5 right-0.5 rounded bg-black/60 px-1 text-[10px] font-medium text-white">
+                        {photoCount}
+                      </span>
+                    ) : null}
                   </div>
 
                   <div className="min-w-0 flex-1">
@@ -571,7 +584,7 @@ function PropertiesPageContent() {
                 </tr>
               </thead>
               <tbody>
-                {filteredProperties.map(({ property, status, imageUrl, companyName }) => (
+                {filteredProperties.map(({ property, status, imageUrl, photoCount, companyName }) => (
                   <tr key={property._id} className="border-t">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
@@ -589,6 +602,11 @@ function PropertiesPageContent() {
                               <Building2 className="h-4 w-4 text-[var(--muted-foreground)]" />
                             </div>
                           )}
+                          {photoCount > 1 ? (
+                            <span className="absolute bottom-0.5 right-0.5 rounded bg-black/60 px-1 text-[10px] font-medium text-white">
+                              {photoCount}
+                            </span>
+                          ) : null}
                         </div>
                         <div className="min-w-0">
                           <Link

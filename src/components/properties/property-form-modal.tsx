@@ -114,6 +114,21 @@ export function PropertyFormModal({
     }
   };
 
+  const setPrimaryPhoto = (url: string) => {
+    setFormValues((current) => ({ ...current, primaryPhotoUrl: url }));
+  };
+
+  const removePhoto = (url: string) => {
+    setFormValues((current) => {
+      const nextPhotoUrls = (current.photoUrls ?? []).filter((item) => item !== url);
+      const nextPrimary =
+        current.primaryPhotoUrl === url
+          ? nextPhotoUrls[0] ?? ""
+          : current.primaryPhotoUrl;
+      return { ...current, photoUrls: nextPhotoUrls, primaryPhotoUrl: nextPrimary };
+    });
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!formValues.name.trim() || !formValues.address.trim()) {
@@ -158,8 +173,8 @@ export function PropertyFormModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-2xl rounded-lg border border-[var(--border)] bg-[var(--card)]">
-        <div className="flex items-center justify-between border-b border-[var(--border)] p-4">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-lg border border-[var(--border)] bg-[var(--card)]">
+        <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] p-4">
           <h3 className="text-lg font-semibold">{title}</h3>
           <button
             type="button"
@@ -170,7 +185,11 @@ export function PropertyFormModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 p-4">
+        <form
+          onSubmit={handleSubmit}
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        >
+          <div className="flex-1 space-y-4 overflow-y-auto p-4">
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-1">
               <span className="text-sm">Name</span>
@@ -374,7 +393,56 @@ export function PropertyFormModal({
                 disabled={isUploading}
               />
             </label>
-            {formValues.primaryPhotoUrl ? (
+            {(formValues.photoUrls ?? []).length > 0 ? (
+              <>
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {(formValues.photoUrls ?? []).map((url) => {
+                    const isPrimary = formValues.primaryPhotoUrl === url;
+                    return (
+                      <div
+                        key={url}
+                        className={`group relative aspect-square overflow-hidden rounded-md border ${
+                          isPrimary
+                            ? "border-[var(--primary)] ring-2 ring-[var(--primary)]"
+                            : "border-[var(--border)]"
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setPrimaryPhoto(url)}
+                          className="absolute inset-0 h-full w-full"
+                          title={isPrimary ? "Primary photo" : "Set as primary"}
+                        >
+                          <Image
+                            src={url}
+                            alt="Property photo"
+                            fill
+                            sizes="120px"
+                            className="object-cover"
+                          />
+                        </button>
+                        {isPrimary ? (
+                          <span className="absolute bottom-1 left-1 rounded bg-[var(--primary)] px-1.5 py-0.5 text-[10px] font-medium text-white">
+                            Primary
+                          </span>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => removePhoto(url)}
+                          className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white opacity-0 transition group-hover:opacity-100"
+                          title="Remove photo"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  Tap a photo to make it the primary (cover) image.
+                </p>
+              </>
+            ) : formValues.primaryPhotoUrl ? (
               <div className="relative h-28 w-full overflow-hidden rounded-md">
                 <Image
                   src={formValues.primaryPhotoUrl}
@@ -388,8 +456,9 @@ export function PropertyFormModal({
           </div>
 
           {errorMessage ? <p className="text-sm text-red-500">{errorMessage}</p> : null}
+          </div>
 
-          <div className="flex items-center justify-end gap-2 border-t border-[var(--border)] pt-4">
+          <div className="flex shrink-0 items-center justify-end gap-2 border-t border-[var(--border)] p-4">
             <button
               type="button"
               onClick={onClose}

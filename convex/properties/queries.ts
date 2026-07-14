@@ -18,6 +18,8 @@ const MAX_STAY_MS = 180 * 24 * 60 * 60 * 1000;
 // handful of upcoming stays / recent jobs, so this stays tiny while never
 // missing the next-stay / active-job selection.
 const PER_PROPERTY_SCAN_CAP = 50;
+// A property's gallery is a small hand-curated set; bound the read anyway.
+const PER_PROPERTY_IMAGE_CAP = 20;
 
 const ACTIVE_JOB_STATUS_PRIORITY: Record<
   Extract<Doc<"cleaningJobs">["status"], "in_progress" | "awaiting_approval" | "rework_required" | "assigned" | "scheduled">,
@@ -102,7 +104,7 @@ async function enrichProperties(ctx: QueryCtx, properties: Doc<"properties">[]) 
   // property's rows.
   const perProperty = await Promise.all(
     properties.map(async (property) => {
-      const [stays, jobs] = await Promise.all([
+      const [stays, jobs, images] = await Promise.all([
         ctx.db
           .query("stays")
           .withIndex("by_property_dates", (q) =>
@@ -115,14 +117,27 @@ async function enrichProperties(ctx: QueryCtx, properties: Doc<"properties">[]) 
             q.eq("propertyId", property._id).gte("scheduledStartAt", jobFloor),
           )
           .take(PER_PROPERTY_SCAN_CAP),
+        // Gallery images, ordered by `sortOrder`. A property has a handful; the
+        // cap keeps this bounded like the stays/jobs reads above.
+        ctx.db
+          .query("propertyImages")
+          .withIndex("by_property_order", (q) => q.eq("propertyId", property._id))
+          .take(PER_PROPERTY_IMAGE_CAP),
       ]);
-      return { propertyId: property._id, stays, jobs };
+      return { propertyId: property._id, stays, jobs, images };
     }),
   );
 
   const nextStayByProperty = new Map<Id<"properties">, Doc<"stays">>();
   const activeJobByProperty = new Map<Id<"properties">, Doc<"cleaningJobs">>();
-  for (const { propertyId, stays, jobs } of perProperty) {
+  const photoUrlsByProperty = new Map<Id<"properties">, string[]>();
+  for (const { propertyId, stays, jobs, images } of perProperty) {
+    const urls = images
+      .map((image) => image.imageUrl)
+      .filter((url): url is string => Boolean(url));
+    if (urls.length > 0) {
+      photoUrlsByProperty.set(propertyId, urls);
+    }
     for (const stay of stays) {
       // Match the old `by_checkout >= now` candidate filter: only stays that
       // have not yet departed count toward "next stay".
@@ -168,13 +183,20 @@ async function enrichProperties(ctx: QueryCtx, properties: Doc<"properties">[]) 
       ? cleanerNameById.get(assignedCleanerId)
       : undefined;
 
+    // Fall back to the single legacy `imageUrl` when no gallery rows exist yet,
+    // so existing single-image properties keep rendering unchanged.
+    const galleryUrls = photoUrlsByProperty.get(property._id);
+    const photoUrls =
+      galleryUrls ?? (property.imageUrl ? [property.imageUrl] : []);
+
     return {
       ...property,
       status: derivePropertyStatus(activeJob?.status, Boolean(nextStay)),
       nextCheckInAt: nextStay?.checkInAt,
       nextCheckOutAt: nextStay?.checkOutAt,
       assignedCleanerName,
-      primaryPhotoUrl: property.imageUrl,
+      primaryPhotoUrl: property.imageUrl ?? photoUrls[0],
+      photoUrls,
       postalCode: property.zipCode,
     };
   });
