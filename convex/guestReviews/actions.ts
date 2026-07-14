@@ -1,11 +1,75 @@
 // convex/guestReviews/actions.ts
 import { v } from "convex/values";
-import { internalAction } from "../_generated/server";
+import { action, internalAction } from "../_generated/server";
+import { ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
-import { draftReviewResponse, ReviewResponseDraftError } from "../lib/reviewResponseDraft";
+import {
+  draftReviewResponse,
+  refineReviewResponse,
+  ReviewResponseDraftError,
+} from "../lib/reviewResponseDraft";
 import { postReviewResponse } from "../hospitable/actions";
 
 const DEFAULT_HOSPITABLE_BASE_URL = "https://public.api.hospitable.com/v2";
+
+/**
+ * Client-callable action: regenerate or refine an AI draft using the
+ * chosen provider (Gemini / Claude / OpenAI). Fetches rich context —
+ * property details, linked stay dates, private feedback — so the prompt
+ * has everything needed for a high-quality, specific reply.
+ *
+ * Returns the new draft text. The caller (ReviewCard) places it into the
+ * editable textarea; the user can edit further before approving.
+ */
+export const refineReviewDraft = action({
+  args: {
+    reviewId: v.id("guestReviews"),
+    currentDraft: v.string(),
+    instruction: v.optional(v.string()),
+    provider: v.union(v.literal("gemini"), v.literal("claude"), v.literal("openai")),
+  },
+  returns: v.string(),
+  handler: async (ctx, args): Promise<string> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new ConvexError("Not authenticated.");
+
+    const review = await ctx.runQuery(internal.guestReviews.internalQueries.getById, {
+      reviewId: args.reviewId,
+    });
+    if (!review) throw new ConvexError("Review not found.");
+
+    const property = await ctx.runQuery(internal.guestReviews.internalQueries.getPropertyName, {
+      propertyId: review.propertyId,
+    });
+
+    const stay = await ctx.runQuery(internal.guestReviews.internalQueries.getLinkedStay, {
+      propertyId: review.propertyId,
+      reviewedAt: review.reviewedAt,
+    });
+
+    try {
+      return await refineReviewResponse({
+        rating: review.rating,
+        publicReview: review.publicReview,
+        privateFeedback: review.privateFeedback,
+        guestFirstName: review.guestFirstName,
+        guestLastName: review.guestLastName,
+        propertyName: property?.name ?? "the property",
+        stayCheckIn: stay?.checkInAt,
+        stayCheckOut: stay?.checkOutAt,
+        totalAmount: stay?.totalAmount,
+        currency: stay?.currency,
+        currentDraft: args.currentDraft,
+        instruction: args.instruction,
+        provider: args.provider,
+      });
+    } catch (error) {
+      throw new ConvexError(
+        error instanceof ReviewResponseDraftError ? error.message : String(error),
+      );
+    }
+  },
+});
 
 /**
  * Generates an AI draft reply for a newly-ingested review. Triggered by

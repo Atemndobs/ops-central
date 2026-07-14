@@ -5,6 +5,141 @@
 // failure — the review row simply stays in "needs_draft" and is retried by
 // the next daily sync pass.
 
+export type ReviewProvider = "gemini" | "claude" | "openai";
+
+export interface RefineReviewResponseInput {
+  rating: number;
+  publicReview: string;
+  privateFeedback?: string;
+  guestFirstName: string;
+  guestLastName: string;
+  propertyName: string;
+  stayCheckIn?: number;
+  stayCheckOut?: number;
+  totalAmount?: number;
+  currency?: string;
+  currentDraft: string;
+  instruction?: string;
+  provider: ReviewProvider;
+  systemPromptOverride?: string;
+}
+
+const DEFAULT_REVIEW_SYSTEM_PROMPT = `You are a hospitality operations manager drafting public replies to guest reviews for ChezSoi Stays, a premium short-term rental company. Your replies appear publicly on Airbnb and are visible to future guests. Always:
+- Thank the guest by first name and reference something specific from their review
+- Be warm and appreciative for positive reviews; measured, non-defensive, and professional for complaints
+- Acknowledge issues without admitting fault or making specific fix promises with dates
+- Never offer discounts, refunds, or use legal/liability language
+- Keep replies to 2–4 sentences maximum
+- Show that management cares and acts on feedback`;
+
+function buildRefinePrompt(input: RefineReviewResponseInput): string {
+  const fmt = (ts: number) =>
+    new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const stayLine =
+    input.stayCheckIn && input.stayCheckOut
+      ? `Stay: ${fmt(input.stayCheckIn)} – ${fmt(input.stayCheckOut)}${input.totalAmount ? ` · ${input.currency ?? "USD"} ${input.totalAmount.toFixed(2)} total` : ""}`
+      : null;
+
+  return [
+    `Property: ${input.propertyName}`,
+    `Guest: ${[input.guestFirstName, input.guestLastName].filter(Boolean).join(" ")}`,
+    `Rating: ${input.rating}/5 stars`,
+    stayLine,
+    `Review: "${input.publicReview}"`,
+    input.privateFeedback ? `Private guest feedback: "${input.privateFeedback}"` : null,
+    "",
+    "Current draft reply:",
+    `"${input.currentDraft}"`,
+    "",
+    input.instruction
+      ? `Refinement instruction: ${input.instruction}`
+      : "Improve this draft — make it more specific, natural, and professional while keeping the same intent.",
+    "",
+    "Return ONLY the improved reply text — no preamble, no quotes, no commentary.",
+  ]
+    .filter((l) => l !== null)
+    .join("\n");
+}
+
+async function callGeminiRefine(system: string, user: string): Promise<string> {
+  const apiKey =
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new ReviewResponseDraftError("GEMINI_API_KEY not set.");
+  const model = process.env.GEMINI_REVIEW_REPLY_MODEL ?? DEFAULT_MODEL;
+  const url = `${GEMINI_BASE}${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: "user", parts: [{ text: user }] }],
+      generationConfig: { temperature: 0.6, maxOutputTokens: 512 },
+    }),
+  });
+  if (!res.ok) throw new ReviewResponseDraftError(`Gemini ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  const payload = await res.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+  const out = payload.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("").trim();
+  if (!out) throw new ReviewResponseDraftError("Gemini returned no text.");
+  return out;
+}
+
+async function callClaudeRefine(system: string, user: string): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new ReviewResponseDraftError("ANTHROPIC_API_KEY not set in Convex environment.");
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: process.env.CLAUDE_REVIEW_REPLY_MODEL ?? "claude-haiku-4-5-20251001",
+      max_tokens: 512,
+      system,
+      messages: [{ role: "user", content: user }],
+    }),
+  });
+  if (!res.ok) throw new ReviewResponseDraftError(`Claude ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  const payload = await res.json() as { content?: Array<{ text?: string }> };
+  const out = payload.content?.map((c) => c.text ?? "").join("").trim();
+  if (!out) throw new ReviewResponseDraftError("Claude returned no text.");
+  return out;
+}
+
+async function callOpenAIRefine(system: string, user: string): Promise<string> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new ReviewResponseDraftError("OPENAI_API_KEY not set in Convex environment.");
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: process.env.OPENAI_REVIEW_REPLY_MODEL ?? "gpt-4o-mini",
+      max_tokens: 512,
+      temperature: 0.6,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+    }),
+  });
+  if (!res.ok) throw new ReviewResponseDraftError(`OpenAI ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  const payload = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
+  const out = payload.choices?.[0]?.message?.content?.trim();
+  if (!out) throw new ReviewResponseDraftError("OpenAI returned no text.");
+  return out;
+}
+
+export async function refineReviewResponse(input: RefineReviewResponseInput): Promise<string> {
+  const system = input.systemPromptOverride ?? DEFAULT_REVIEW_SYSTEM_PROMPT;
+  const user = buildRefinePrompt(input);
+  switch (input.provider) {
+    case "gemini": return callGeminiRefine(system, user);
+    case "claude": return callClaudeRefine(system, user);
+    case "openai": return callOpenAIRefine(system, user);
+  }
+}
+
 const DEFAULT_MODEL = "gemini-2.5-flash";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models/";
 
