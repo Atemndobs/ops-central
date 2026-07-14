@@ -106,6 +106,7 @@ import type * as owner_pdf from "../owner/pdf.js";
 import type * as owner_pdfHelpers from "../owner/pdfHelpers.js";
 import type * as owner_queries from "../owner/queries.js";
 import type * as properties_mutations from "../properties/mutations.js";
+import type * as properties_pruneMetadata from "../properties/pruneMetadata.js";
 import type * as properties_queries from "../properties/queries.js";
 import type * as properties_seed from "../properties/seed.js";
 import type * as propertyChecks_mutations from "../propertyChecks/mutations.js";
@@ -258,6 +259,7 @@ declare const fullApi: ApiFromModules<{
   "owner/pdfHelpers": typeof owner_pdfHelpers;
   "owner/queries": typeof owner_queries;
   "properties/mutations": typeof properties_mutations;
+  "properties/pruneMetadata": typeof properties_pruneMetadata;
   "properties/queries": typeof properties_queries;
   "properties/seed": typeof properties_seed;
   "propertyChecks/mutations": typeof propertyChecks_mutations;
