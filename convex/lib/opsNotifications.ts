@@ -1,12 +1,9 @@
 import type { MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
+import { listOpsUserIds } from "./notificationLifecycle";
 
 type OpsNotificationType = Doc<"notifications">["type"];
-
-function isOpsRole(role: Doc<"users">["role"]): boolean {
-  return role === "admin" || role === "property_ops" || role === "manager";
-}
 
 /**
  * Param values for `messageParams`. Strings and numbers are the only types
@@ -81,10 +78,13 @@ export async function createOpsNotifications(
     data?: Record<string, unknown>;
   },
 ) {
-  const users = await ctx.db.query("users").collect();
-  const recipientIds = users
-    .filter((user) => isOpsRole(user.role))
-    .map((user) => user._id);
+  // Read-cost: this previously did `ctx.db.query("users").collect()` — a FULL
+  // TABLE SCAN of `users` — and then discarded everyone who wasn't ops. It runs
+  // on the hottest write paths in the backend (job create/update/approve/
+  // acknowledge, refills, job checks), so EVERY one of those writes scanned the
+  // entire users table. `listOpsUserIds` returns the same set (admin +
+  // property_ops + manager) via three `by_role` indexed reads.
+  const recipientIds = await listOpsUserIds(ctx);
 
   return await createNotificationsForUsers(ctx, {
     userIds: recipientIds,

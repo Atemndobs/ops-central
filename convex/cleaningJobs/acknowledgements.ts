@@ -7,6 +7,10 @@ import {
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { getCurrentUser } from "../lib/auth";
+// Read-cost: this file used to define its own `listOpsUserIds` that did a FULL
+// `users` table scan, while the indexed (`by_role` ×3) implementation already
+// existed one import away. Use the shared one — same result set, 3 indexed reads.
+import { listOpsUserIds } from "../lib/notificationLifecycle";
 import {
   createNotificationsForUsers,
   createOpsNotifications,
@@ -91,18 +95,6 @@ export function markAcknowledgementAccepted(
     };
   });
   return changed ? next : acks;
-}
-
-async function listOpsUserIds(ctx: MutationCtx): Promise<Id<"users">[]> {
-  const users = await ctx.db.query("users").collect();
-  return users
-    .filter(
-      (user) =>
-        user.role === "admin" ||
-        user.role === "property_ops" ||
-        user.role === "manager",
-    )
-    .map((user) => user._id);
 }
 
 export const acknowledge = mutation({
