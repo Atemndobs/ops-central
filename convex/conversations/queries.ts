@@ -222,6 +222,39 @@ async function buildConversationSummary(
   };
 }
 
+/**
+ * Open conversations visible to a privileged caller, read with bounded cost.
+ * - admin / property_ops (`propertyScope === null`): every open conversation —
+ *   they keep full oversight so no incoming message goes unseen.
+ * - manager (scoped Set): only the open conversations for their company's
+ *   properties, read via the `by_property_status` index. This replaces the old
+ *   "scan every open conversation, then filter in JS" pattern — the read is now
+ *   bounded to the manager's own properties.
+ */
+async function readScopedOpenConversations(
+  ctx: QueryCtx,
+  propertyScope: Set<Id<"properties">> | null,
+): Promise<Doc<"conversations">[]> {
+  if (propertyScope === null) {
+    return ctx.db
+      .query("conversations")
+      .withIndex("by_status_last_message", (q) => q.eq("status", "open"))
+      .order("desc")
+      .collect();
+  }
+  const perProperty = await Promise.all(
+    [...propertyScope].map((propertyId) =>
+      ctx.db
+        .query("conversations")
+        .withIndex("by_property_status", (q) =>
+          q.eq("propertyId", propertyId).eq("status", "open"),
+        )
+        .collect(),
+    ),
+  );
+  return perProperty.flat();
+}
+
 export const listMyConversations = query({
   args: {},
   handler: async (ctx) => {
@@ -246,11 +279,10 @@ export const listMyConversations = query({
 
     let activeConversations: Doc<"conversations">[];
     if (privileged) {
-      const allOpenConversations = await ctx.db
-        .query("conversations")
-        .withIndex("by_status_last_message", (q) => q.eq("status", "open"))
-        .order("desc")
-        .collect();
+      const openConversations = await readScopedOpenConversations(
+        ctx,
+        propertyScope,
+      );
       const closedParticipantConversations = await Promise.all(
         [...participantConversationIds].map((conversationId) =>
           ctx.db.get(conversationId),
@@ -258,19 +290,22 @@ export const listMyConversations = query({
       );
 
       activeConversations = [
-        ...allOpenConversations,
+        ...openConversations,
         ...closedParticipantConversations.filter(
           (conversation): conversation is Doc<"conversations"> =>
             conversation !== null &&
             conversation.status === "closed" &&
-            !allOpenConversations.some(
+            !openConversations.some(
               (openConversation) => openConversation._id === conversation._id,
             ),
         ),
       ];
 
-      // Managers only see conversations for properties their company services.
-      // `propertyScope === null` (admin/ops) skips the filter.
+      // Open conversations are already property-scoped at read time (via the
+      // index) for managers. This final filter still applies the scope to the
+      // CLOSED participant conversations pulled in above, so a manager never
+      // sees a closed conversation outside their company's properties.
+      // `propertyScope === null` (admin/ops) skips it.
       if (propertyScope !== null) {
         activeConversations = activeConversations.filter(
           (conversation) =>
@@ -591,24 +626,42 @@ export const getUnreadConversationCount = query({
 
     let count = 0;
     if (privileged) {
-      // Managers only count conversations for their company's properties;
-      // `null` scope (admin/ops) counts everything.
       const propertyScope = await getCallerJobScopeForListing(ctx, user);
-      const allOpenConversations = await ctx.db
-        .query("conversations")
-        .withIndex("by_status_last_message", (q) => q.eq("status", "open"))
-        .collect();
 
-      for (const conversation of allOpenConversations) {
-        if (
-          propertyScope !== null &&
-          !(
-            conversation.propertyId != null &&
-            propertyScope.has(conversation.propertyId)
+      // Admin / property_ops keep full oversight. This query is subscribed in
+      // the app shell (sidebar / header / mobile nav), so the old
+      // "scan every open conversation" re-ran system-wide on EVERY message —
+      // the dominant read-cost driver. Instead count only the open
+      // conversations updated since the caller last opened the inbox
+      // (`inboxLastSeenAt`, advanced by markConversationRead). Absent ⇒ 0 ⇒
+      // counts everything, identical to the previous behavior (no backfill).
+      if (propertyScope === null) {
+        const since = user.inboxLastSeenAt ?? 0;
+        const recentlyUpdated = await ctx.db
+          .query("conversations")
+          .withIndex("by_status_last_message", (q) =>
+            q.eq("status", "open").gt("lastMessageAt", since),
           )
-        ) {
-          continue;
+          .collect();
+        for (const conversation of recentlyUpdated) {
+          if (
+            typeof conversation.lastMessageAt === "number" &&
+            (readAtByConversationId.get(conversation._id) ?? 0) <
+              conversation.lastMessageAt
+          ) {
+            count += 1;
+          }
         }
+        return count;
+      }
+
+      // Managers: read only their company's properties' open conversations via
+      // the `by_property_status` index (no whole-table scan), then count unread.
+      const openConversations = await readScopedOpenConversations(
+        ctx,
+        propertyScope,
+      );
+      for (const conversation of openConversations) {
         if (
           typeof conversation.lastMessageAt === "number" &&
           (readAtByConversationId.get(conversation._id) ?? 0) <
