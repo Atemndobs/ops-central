@@ -16,6 +16,7 @@ import { AIProviderCard } from "@/components/settings/ai-provider-card";
 import { StorageProviderCard } from "@/components/settings/storage-provider-card";
 import { AppIconColorCard } from "@/components/settings/app-icon-color-card";
 import { ReworkDeadlineCard } from "@/components/settings/rework-deadline-card";
+import { ReviewPromptCard } from "@/components/settings/review-prompt-card";
 import { FeatureFlagsCard } from "@/components/settings/feature-flags-card";
 import { UsageDashboardCard } from "@/components/settings/usage/usage-dashboard-card";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
@@ -908,6 +909,15 @@ export function SettingsPageClient({ initialTab }: { initialTab: SettingsTab }) 
             subtitle="How long a cleaner has to fix rejected work before it escalates (per-property overridable)."
           >
             <ReworkDeadlineCard />
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            persistKey="integrations-review-prompt"
+            icon={<Sparkles className="h-4 w-4" />}
+            title="AI review reply prompt"
+            subtitle="System prompt injected into every AI-generated review response. Fine-tune tone, constraints, and brand voice."
+          >
+            <ReviewPromptCard />
           </CollapsibleSection>
 
           <CollapsibleSection

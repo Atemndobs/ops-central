@@ -47,6 +47,8 @@ export const refineReviewDraft = action({
       reviewedAt: review.reviewedAt,
     });
 
+    const promptSettings = await ctx.runQuery(internal.appSettings.getReviewSystemPromptInternal, {});
+
     try {
       return await refineReviewResponse({
         rating: review.rating,
@@ -62,6 +64,7 @@ export const refineReviewDraft = action({
         currentDraft: args.currentDraft,
         instruction: args.instruction,
         provider: args.provider,
+        systemPromptOverride: promptSettings?.prompt ?? undefined,
       });
     } catch (error) {
       throw new ConvexError(

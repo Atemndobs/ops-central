@@ -1469,6 +1469,9 @@ const appSettings = defineTable({
   roleColorPropertyOps: v.optional(brandIconColorV),
   roleColorManager: v.optional(brandIconColorV),
   roleColorOwner: v.optional(brandIconColorV),
+  // Admin-editable system prompt injected into all AI review reply calls.
+  // Absent ⇒ the built-in DEFAULT_REVIEW_SYSTEM_PROMPT in reviewResponseDraft.ts.
+  reviewSystemPrompt: v.optional(v.string()),
   updatedBy: v.optional(v.id("users")),
   updatedAt: v.number(),
 })

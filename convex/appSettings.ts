@@ -15,7 +15,7 @@
  */
 
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAdmin } from "./lib/auth";
 import { DEFAULT_REWORK_DEADLINE_MINUTES } from "./lib/reworkDeadline";
@@ -589,5 +589,61 @@ export const setRoleIconColor = mutation({
     }
 
     return { role, color: args.color, updatedAt: now };
+  },
+});
+
+// ─── Review Response Prompt ────────────────────────────────────────────────
+
+export const getReviewSystemPrompt = query({
+  args: {},
+  returns: v.object({ prompt: v.union(v.string(), v.null()), updatedAt: v.union(v.number(), v.null()) }),
+  handler: async (ctx) => {
+    const row = await ctx.db
+      .query("appSettings")
+      .withIndex("by_key", (q) => q.eq("key", "global"))
+      .first();
+    return {
+      prompt: row?.reviewSystemPrompt ?? null,
+      updatedAt: row?.reviewSystemPrompt ? (row.updatedAt ?? null) : null,
+    };
+  },
+});
+
+export const setReviewSystemPrompt = mutation({
+  args: { prompt: v.string() },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("appSettings")
+      .withIndex("by_key", (q) => q.eq("key", "global"))
+      .first();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        reviewSystemPrompt: args.prompt,
+        updatedBy: admin._id,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("appSettings", {
+        key: "global",
+        timezone: DEFAULT_TIMEZONE,
+        reviewSystemPrompt: args.prompt,
+        updatedBy: admin._id,
+        updatedAt: now,
+      });
+    }
+    return { updatedAt: now };
+  },
+});
+
+export const getReviewSystemPromptInternal = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const row = await ctx.db
+      .query("appSettings")
+      .withIndex("by_key", (q) => q.eq("key", "global"))
+      .first();
+    return { prompt: row?.reviewSystemPrompt ?? null };
   },
 });
