@@ -5,6 +5,7 @@ import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { Loader2 } from "lucide-react";
 import { ReviewCard } from "./review-card";
+import { FilterDropdown } from "./filter-dropdown";
 
 type StatusFilter = "all" | "needs_action" | "sent" | "dismissed";
 
@@ -122,50 +123,46 @@ export function ReviewsInbox() {
 
   return (
     <div className="space-y-4">
-      {/* Filter row — dropdowns */}
+      {/* Filter row — styled dropdowns */}
       <div className="flex flex-wrap gap-2 items-center">
         {/* Status */}
-        <select
+        <FilterDropdown
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-          className="rounded-md border bg-[var(--background)] px-2.5 py-1.5 text-sm text-[var(--foreground)] cursor-pointer"
-        >
-          {(["needs_action", "all", "sent", "dismissed"] as StatusFilter[]).map((f) => (
-            <option key={f} value={f}>
-              {STATUS_LABELS[f]}{statusCounts[f] ? ` (${statusCounts[f]})` : ""}
-            </option>
-          ))}
-        </select>
+          onChange={(v) => setStatusFilter(v as StatusFilter)}
+          options={(["needs_action", "all", "sent", "dismissed"] as StatusFilter[]).map((f) => ({
+            value: f,
+            label: STATUS_LABELS[f],
+            count: statusCounts[f],
+          }))}
+        />
 
         {/* Rating */}
-        <select
-          value={ratingFilter}
-          onChange={(e) => setRatingFilter(Number(e.target.value))}
-          className="rounded-md border bg-[var(--background)] px-2.5 py-1.5 text-sm text-[var(--foreground)] cursor-pointer"
-        >
-          <option value={0}>All ratings{ratingCounts[0] ? ` (${ratingCounts[0]})` : ""}</option>
-          {[5, 4, 3, 2, 1].map((star) =>
-            ratingCounts[star] !== undefined ? (
-              <option key={star} value={star}>
-                {"★".repeat(star)}{"☆".repeat(5 - star)} — {star} star{star !== 1 ? "s" : ""} ({ratingCounts[star]})
-              </option>
-            ) : null,
-          )}
-        </select>
+        <FilterDropdown
+          value={String(ratingFilter)}
+          onChange={(v) => setRatingFilter(Number(v))}
+          options={[
+            { value: "0", label: "All ratings", count: ratingCounts[0] },
+            ...[5, 4, 3, 2, 1]
+              .filter((s) => ratingCounts[s] !== undefined)
+              .map((s) => ({
+                value: String(s),
+                label: `${"★".repeat(s)}${"☆".repeat(5 - s)} ${s} star${s !== 1 ? "s" : ""}`,
+                count: ratingCounts[s],
+              })),
+          ]}
+        />
 
         {/* Property */}
-        <select
+        <FilterDropdown
           value={propertyFilter}
-          onChange={(e) => setPropertyFilter(e.target.value)}
-          className="rounded-md border bg-[var(--background)] px-2.5 py-1.5 text-sm text-[var(--foreground)] cursor-pointer"
-        >
-          <option value="">All properties{totalForProperty ? ` (${totalForProperty})` : ""}</option>
-          {[...propertyMap.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name)).map(([id, { name, count }]) => (
-            <option key={id} value={id}>
-              {name} ({count})
-            </option>
-          ))}
-        </select>
+          onChange={setPropertyFilter}
+          options={[
+            { value: "", label: "All properties", count: totalForProperty },
+            ...[...propertyMap.entries()]
+              .sort((a, b) => a[1].name.localeCompare(b[1].name))
+              .map(([id, { name, count }]) => ({ value: id, label: name, count })),
+          ]}
+        />
 
         {/* Clear all */}
         {activeFilters > 0 && (
