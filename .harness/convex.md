@@ -74,3 +74,27 @@ Every `worktree-handoff.md` declares `Schema impact:` as one of:
 - `backward-compatible` — additive optional fields only, eligible for combined PR
 - `schema-first-required` — must ship as separate PR before feature
 - `migration-required` — needs a backfill script; coordinate live with main session
+
+## Read-cost gate (added 2026-07-14 after the 10.66 GB incident)
+
+Convex bills reads by documents SCANNED; reactive queries re-run on every write to
+their read set. Full rules: `convex/CLAUDE.md`. Full story:
+`Docs/2026-07-14-convex-database-optimization-playbook.md`.
+
+**Main session (integrator), before every Convex deploy:**
+
+```bash
+npm run check:convex-readcost   # fails on any NEW scan/filter/giant-take vs baseline
+```
+
+**Any PR touching `convex/` must state in its description:**
+1. Which indexes each new/changed query uses, and the range bounds.
+2. What subscribes to it (reactive vs one-shot) and from which components.
+3. If it raises the read-cost baseline: why, with explicit human sign-off.
+
+**Worktree sessions:** run the checker before opening the PR. A baseline increase
+without justification is grounds for the integrator to bounce the handoff.
+
+**Weekly (5 min):** dashboard → Usage → last 7 days → Database I/O breakdown by
+function. Any function >200 MB/week gets a ticket. Spot-check doc sizes with
+`npx convex data <table> --limit 8 --format jsonl` (never the pretty format).

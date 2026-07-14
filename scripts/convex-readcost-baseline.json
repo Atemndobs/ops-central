@@ -1,0 +1,105 @@
+{
+  "convex/admin/cleanup.ts": {
+    "bare-scan": 2
+  },
+  "convex/admin/featureFlags.ts": {
+    "bare-scan": 1
+  },
+  "convex/admin/mutations.ts": {
+    "bare-scan": 10
+  },
+  "convex/admin/ownerOverview.ts": {
+    "bare-scan": 4
+  },
+  "convex/admin/queries.ts": {
+    "bare-scan": 14
+  },
+  "convex/admin/userSync.ts": {
+    "bare-scan": 19
+  },
+  "convex/admin/wipeGoLiveData.ts": {
+    "bare-scan": 8
+  },
+  "convex/dashboard/queries.ts": {
+    "bare-scan": 2
+  },
+  "convex/guestReviews/queries.ts": {
+    "bare-scan": 2
+  },
+  "convex/hospitable/diagnostics.ts": {
+    "bare-scan": 2
+  },
+  "convex/hospitable/mutations.ts": {
+    "bare-scan": 3
+  },
+  "convex/hospitable/queries.ts": {
+    "bare-scan": 5
+  },
+  "convex/incidents/mutations.ts": {
+    "bare-scan": 4
+  },
+  "convex/integrations/queries.ts": {
+    "bare-scan": 2
+  },
+  "convex/integrations/trello.ts": {
+    "bare-scan": 3
+  },
+  "convex/inventory/import.ts": {
+    "bare-scan": 8
+  },
+  "convex/inventory/queries.ts": {
+    "bare-scan": 3
+  },
+  "convex/lib/opsNotifications.ts": {
+    "bare-scan": 1
+  },
+  "convex/lib/photoStorageAggregate.ts": {
+    "bare-scan": 2
+  },
+  "convex/owner/backfill.ts": {
+    "bare-scan": 3
+  },
+  "convex/owner/mutations.ts": {
+    "bare-scan": 4
+  },
+  "convex/owner/queries.ts": {
+    "bare-scan": 3
+  },
+  "convex/properties/pruneMetadata.ts": {
+    "bare-scan": 1
+  },
+  "convex/properties/queries.ts": {
+    "bare-scan": 3
+  },
+  "convex/refills/queries.ts": {
+    "bare-scan": 1
+  },
+  "convex/serviceUsage/b2Snapshot.ts": {
+    "bare-scan": 4,
+    "giant-take": 2
+  },
+  "convex/strCosts/costItems.ts": {
+    "bare-scan": 2
+  },
+  "convex/strCosts/mutations.ts": {
+    "bare-scan": 2
+  },
+  "convex/strCosts/portfolio.ts": {
+    "bare-scan": 2
+  },
+  "convex/strCosts/queries.ts": {
+    "bare-scan": 1
+  },
+  "convex/strCosts/reports.ts": {
+    "bare-scan": 3
+  },
+  "convex/strCosts/views.ts": {
+    "bare-scan": 2
+  },
+  "convex/users/avatarBackfill.ts": {
+    "bare-scan": 1
+  },
+  "convex/users/queries.ts": {
+    "bare-scan": 4
+  }
+}
