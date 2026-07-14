@@ -175,6 +175,12 @@ function getCurrentRevision(job: Doc<"cleaningJobs">): number {
 // Wave 3 — see Docs/2026-04-28-convex-bandwidth-optimization-plan.md.
 const GET_ALL_HARD_CAP = 500;
 
+// Defensive ceiling on `getForCleaner`, which previously had no limit at all and
+// grew with a cleaner's tenure. Same spirit as GET_ALL_HARD_CAP: not a
+// product-driven number, just a bound so one long-tenured cleaner can't pull
+// their entire job history (enriched) to a phone on every job write.
+const GET_FOR_CLEANER_HARD_CAP = 500;
+
 export const getAll = query({
   args: {
     status: v.optional(JOB_STATUS_FILTER),
@@ -522,10 +528,32 @@ export const getForCleaner = query({
 
     // Use the `userJobAssignments` reverse-index instead of scanning the
     // whole jobs table. Mirrors the pattern in `getMyAssigned`.
+    //
+    // Read-cost: this query previously had NO limit of any kind — no `take`, no
+    // cap, no slice. It read EVERY assignment row the cleaner had ever had,
+    // `ctx.db.get`-ed each of those jobs, and enriched all of them. It is
+    // subscribed from the cleaner mobile app's CleanerTopBar (home tab, every
+    // cleaner) and useConvexJobs, so it re-executed on every `cleaningJobs`
+    // write and grew with tenure forever — a two-year cleaner pulled 1000+
+    // enriched jobs to their phone on every job write.
+    //
+    // `userJobAssignments` deliberately does NOT denormalize `scheduledStartAt`
+    // (see schema.ts — the rows are kept thin on purpose), so we cannot bound by
+    // schedule without first reading the jobs. Bound the assignment read instead
+    // and take the most recently-created assignments. 500 is a defensive ceiling
+    // — same rationale as GET_ALL_HARD_CAP, not a product-driven number: any
+    // cleaner under the cap sees exactly what they saw before, and the cap only
+    // truncates the oldest tail of a very long history.
+    //
+    // The real fix is for the mobile app to pass status/from/to filters (which
+    // `getMyAssigned` already accepts) instead of fetching everything and
+    // filtering client-side in useConvexJobs — and for CleanerTopBar, which only
+    // reads `status`, to use a thin counter rather than the enriched list.
     const assignments = await ctx.db
       .query("userJobAssignments")
       .withIndex("by_user", (q) => q.eq("userId", args.cleanerId))
-      .collect();
+      .order("desc")
+      .take(GET_FOR_CLEANER_HARD_CAP);
     const jobDocs = await Promise.all(
       assignments.map((row) => ctx.db.get(row.jobId)),
     );
