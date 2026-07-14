@@ -46,10 +46,16 @@ export const getUnreadCount = internalQuery({
     userId: v.id("users"),
   },
   handler: async (ctx, args): Promise<number> => {
+    // Read-cost: this was `by_user` + `.filter(readAt === undefined)` + `.collect()`
+    // — the `.filter()` does not bound reads, so it scanned the user's ENTIRE
+    // notification history just to produce one integer, and the cost grew with
+    // account age forever. `by_unread` ([userId, readAt]) bounds the read to the
+    // unread rows themselves.
     const notifications = await ctx.db
       .query("notifications")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .filter((q) => q.eq(q.field("readAt"), undefined))
+      .withIndex("by_unread", (q) =>
+        q.eq("userId", args.userId).eq("readAt", undefined),
+      )
       .collect();
 
     return notifications.length;
@@ -66,17 +72,42 @@ export const getUserNotifications = query({
     includeRead: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    let queryBuilder = ctx.db
-      .query("notifications")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .order("desc");
-
-    if (!args.includeRead) {
-      queryBuilder = queryBuilder.filter((q) => q.eq(q.field("readAt"), undefined));
+    // SECURITY (IDOR): this was a public query taking `userId` with NO auth check
+    // whatsoever — any authenticated client could read ANY other user's
+    // notifications just by passing their id. Notifications are strictly
+    // personal, so fail closed to self-only. Both existing callers
+    // (layout/header.tsx and settings/settings-page-client.tsx) already pass
+    // their own `convexUser._id`, so this is a no-op for them. Returning [] rather
+    // than throwing matches the codebase idiom (cleaningJobs.getForCleaner) and
+    // avoids crashing a reactive subscription.
+    const user = await getCurrentUser(ctx);
+    if (user._id !== args.userId) {
+      return [];
     }
 
     const limit = args.limit ?? 50;
-    return await queryBuilder.take(limit);
+
+    if (!args.includeRead) {
+      // Read-cost: this was `by_user` + `.filter(readAt === undefined)`. A
+      // `.filter()` after `.withIndex()` does NOT bound the read — it scans
+      // forward until it collects `limit` matches, so a user with 3,000 read and
+      // 2 unread notifications scanned 3,002 docs to return 2. Worst case is
+      // unbounded. `by_unread` ([userId, readAt]) matches this exactly — it was
+      // defined in the schema and never used anywhere.
+      return await ctx.db
+        .query("notifications")
+        .withIndex("by_unread", (q) =>
+          q.eq("userId", args.userId).eq("readAt", undefined),
+        )
+        .order("desc")
+        .take(limit);
+    }
+
+    return await ctx.db
+      .query("notifications")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .order("desc")
+      .take(limit);
   },
 });
 
@@ -95,23 +126,41 @@ export const getMyNotifications = query({
         ? Math.max(1, Math.min(100, Math.floor(args.limit)))
         : 50;
 
-    const all = await ctx.db
+    // Read-cost: this used `by_user .order("desc").take(200)` and then dropped
+    // dismissed/read rows in JS before slicing to `limit` (<=100, default 50) —
+    // a hard 4x over-read on the most-mounted notification query (4 cleaner-app
+    // mounts: cleaner-shell, cleaner-home-client, cleaner-notifications-client,
+    // cleaner-settings-client), re-running on every notification write for that
+    // user. Both predicates have a matching index that was going unused.
+    if (args.includeRead) {
+      // `dismissedAt === undefined` is then the ONLY predicate, and
+      // `by_user_and_dismissed` matches it exactly — so `take(limit)` now reads
+      // precisely what we return, nothing more.
+      return await ctx.db
+        .query("notifications")
+        .withIndex("by_user_and_dismissed", (q) =>
+          q.eq("userId", user._id).eq("dismissedAt", undefined),
+        )
+        .order("desc")
+        .take(limit);
+    }
+
+    // Unread-only: bound on `by_unread` ([userId, readAt]) and drop dismissed in
+    // memory. No composite index covers unread AND undismissed together, but the
+    // unread set is inherently small, so this reads the unread rows rather than
+    // the user's whole history. Keep the 200 cushion the old code used so a run
+    // of dismissed-but-unread rows can't starve the result.
+    const unread = await ctx.db
       .query("notifications")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .withIndex("by_unread", (q) =>
+        q.eq("userId", user._id).eq("readAt", undefined),
+      )
       .order("desc")
       .take(200);
 
-    const filtered = all.filter((notification) => {
-      if (notification.dismissedAt !== undefined) {
-        return false;
-      }
-      if (args.includeRead) {
-        return true;
-      }
-      return notification.readAt === undefined;
-    });
-
-    return filtered.slice(0, limit);
+    return unread
+      .filter((notification) => notification.dismissedAt === undefined)
+      .slice(0, limit);
   },
 });
 
