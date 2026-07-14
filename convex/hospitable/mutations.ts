@@ -92,7 +92,11 @@ export async function upsertSingleReservation(
   if (existingStay) {
     await ctx.db.patch(existingStay._id, {
       propertyId: property._id,
-      guestName: reservation.guestName,
+      // Don't downgrade a real stored name back to the "Guest" placeholder if
+      // a future sync ever lacks guest detail (e.g. missing include=guest).
+      ...(reservation.guestName && reservation.guestName !== "Guest"
+        ? { guestName: reservation.guestName }
+        : {}),
       guestEmail: reservation.guestEmail,
       guestPhone: reservation.guestPhone,
       numberOfGuests: reservation.numberOfGuests,
