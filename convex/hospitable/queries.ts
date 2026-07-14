@@ -80,11 +80,23 @@ export const listStaysMissingTotalAmount = internalQuery({
     includeAlreadyPopulated: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const stays = await ctx.db.query("stays").collect();
+    // Read-cost: this used to be `ctx.db.query("stays").collect()` — a FULL TABLE
+    // SCAN of a growing table — with `checkInAt >= sinceMs` applied in JS
+    // afterwards. It runs from the daily 03:30 UTC financials-backfill cron
+    // (`owner-hospitable-financials-backfill-daily`), which passes
+    // `lookbackDays: 30` — so a 30-day window was being paid for as a scan of
+    // every stay ever recorded, every single night, growing forever.
+    //
+    // `by_checkin` already exists (and is used two-sided by
+    // stays/queries.getInDateRange). Bind the lower bound on the index; the
+    // `checkInAt` predicate then drops out of the JS filter. Same result set.
+    const stays = await ctx.db
+      .query("stays")
+      .withIndex("by_checkin", (q) => q.gte("checkInAt", args.sinceMs))
+      .collect();
     const candidates = stays.filter(
       (s) =>
         (args.includeAlreadyPopulated || s.totalAmount === undefined) &&
-        s.checkInAt >= args.sinceMs &&
         s.hospitableId !== undefined,
     );
     // Join property.hospitableId for each candidate
