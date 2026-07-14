@@ -119,14 +119,19 @@ export const getMyNotifications = query({
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
 
+    // Read-cost: this used `by_user .collect()` — the user's ENTIRE notification
+    // history — and then dropped dismissed rows in JS, with `limit` applied only
+    // as a JS slice afterwards. `by_user_and_dismissed` bounds the read to exactly
+    // the undismissed set, which is the same rows the JS filter kept. The
+    // (optional-limit) contract is unchanged.
     const notifications = await ctx.db
       .query("notifications")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .withIndex("by_user_and_dismissed", (q) =>
+        q.eq("userId", user._id).eq("dismissedAt", undefined),
+      )
       .collect();
 
-    let filtered = notifications.filter(
-      (notification) => notification.dismissedAt === undefined,
-    );
+    let filtered = notifications;
 
     if (args.unreadOnly) {
       filtered = filtered.filter((notification) => notification.readAt === undefined);
@@ -148,14 +153,19 @@ export const getUnreadNotificationCount = query({
   handler: async (ctx) => {
     const user = await getCurrentUser(ctx);
 
-    const notifications = await ctx.db
+    // Read-cost: this used `by_user .collect()` — scanning the user's ENTIRE
+    // notification history to produce a single integer, with cost growing with
+    // account age forever. `by_unread` ([userId, readAt]) bounds the read to the
+    // unread rows; dismissed is then dropped over that small set. Same count.
+    const unread = await ctx.db
       .query("notifications")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .withIndex("by_unread", (q) =>
+        q.eq("userId", user._id).eq("readAt", undefined),
+      )
       .collect();
 
-    return notifications.filter(
-      (notification) =>
-        notification.readAt === undefined && notification.dismissedAt === undefined,
+    return unread.filter(
+      (notification) => notification.dismissedAt === undefined,
     ).length;
   },
 });
