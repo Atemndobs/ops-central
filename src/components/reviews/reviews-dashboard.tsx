@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
+import { useRouter } from "next/navigation";
 import { api } from "@convex/_generated/api";
 import { Loader2, Star, AlertTriangle, CheckCircle, ChevronDown, ChevronUp } from "lucide-react";
 
@@ -82,6 +83,7 @@ function Stars({ rating }: { rating: number }) {
 export function ReviewsDashboard() {
   const { isAuthenticated } = useConvexAuth();
   const [tableOpen, setTableOpen] = useState(true);
+  const router = useRouter();
   const summary = useQuery(
     api.guestReviews.queries.getInboxSummary,
     isAuthenticated ? {} : "skip",
@@ -151,8 +153,12 @@ export function ReviewsDashboard() {
             </thead>
             <tbody>
               {summary.propertyHealth.map((p) => (
-                <tr key={p.propertyId as string} className="border-b last:border-0 hover:bg-[var(--muted)]/40 transition-colors">
-                  <td className="px-4 py-3 font-medium">{p.propertyName ?? p.propertyId}</td>
+                <tr
+                  key={p.propertyId as string}
+                  className="border-b last:border-0 hover:bg-[var(--muted)]/40 transition-colors cursor-pointer"
+                  onClick={() => router.push(`/reviews?property=${p.propertyId}`)}
+                >
+                  <td className="px-4 py-3 font-medium text-[var(--primary)] hover:underline">{p.propertyName ?? p.propertyId}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-[var(--muted-foreground)]">{p.reviewCount}</td>
                   <td className="px-4 py-3"><Stars rating={p.avgRating} /></td>
                   <td className="px-4 py-3 text-center">

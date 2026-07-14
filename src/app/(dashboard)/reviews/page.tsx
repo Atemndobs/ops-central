@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { ReviewsInbox } from "@/components/reviews/reviews-inbox";
 import { ReviewsDashboard } from "@/components/reviews/reviews-dashboard";
 
@@ -11,7 +12,9 @@ export default function ReviewsPage() {
         </p>
       </div>
       <ReviewsDashboard />
-      <ReviewsInbox />
+      <Suspense>
+        <ReviewsInbox />
+      </Suspense>
     </div>
   );
 }

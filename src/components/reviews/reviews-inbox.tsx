@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { Loader2 } from "lucide-react";
@@ -27,9 +28,12 @@ const STATUS_LABELS: Record<StatusFilter, string> = {
 
 export function ReviewsInbox() {
   const { isAuthenticated } = useConvexAuth();
+  const searchParams = useSearchParams();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("needs_action");
   const [ratingFilter, setRatingFilter] = useState<number>(0); // 0 = all
-  const [propertyFilter, setPropertyFilter] = useState<string>(""); // "" = all
+  const [propertyFilter, setPropertyFilter] = useState<string>(
+    searchParams.get("property") ?? "",
+  );
 
   const enabled = useQuery(
     api.admin.featureFlags.isFeatureEnabled,
