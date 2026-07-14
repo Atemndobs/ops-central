@@ -33,6 +33,15 @@ const ACTIVE_ASSIGNMENT_STATUSES = new Set<Doc<"cleaningJobs">["status"]>([
   "in_progress",
   "awaiting_approval",
 ]);
+/**
+ * Slack between a job's `scheduledStartAt` (indexed) and its `metricTimestamp`
+ * (completion time — not indexed). Used to bound getTeamMetrics' job read while
+ * keeping the exact in-memory `isWithinLookback` filter authoritative. Generous
+ * on purpose: a job completed/approved more than this long after it was
+ * scheduled would be excluded from the lookback metrics, which does not happen
+ * in practice (and if such a job is still open, it arrives via the by_status read).
+ */
+const METRIC_SCHEDULE_BUFFER_MS = 60 * 24 * 60 * 60 * 1000;
 const QUALITY_RATED_STATUSES = new Set<Doc<"cleaningJobs">["status"]>([
   "completed",
   "awaiting_approval",
@@ -191,12 +200,53 @@ export const getTeamMetrics = query({
     const lookbackStart = now - lookbackDays * 24 * 60 * 60 * 1000;
     const horizonEnd = now + horizonHours * 60 * 60 * 1000;
 
-    const [users, jobs, memberships, ownerships] = await Promise.all([
-      ctx.db.query("users").collect(),
-      ctx.db.query("cleaningJobs").collect(),
-      ctx.db.query("companyMembers").collect(),
-      ctx.db.query("propertyOwners").collect(),
-    ]);
+    // Read-cost: this query is subscribed on the Team page and previously did
+    // `ctx.db.query("cleaningJobs").collect()` — a full scan of the largest,
+    // most-written table on every reactive tick (~773 MB/mo). The bulk of that
+    // table is old COMPLETED history that no metric here can use.
+    //
+    // Bounded replacement = union of:
+    //  (a) jobs scheduled within the metric window, plus a buffer. We can't
+    //      index on `metricTimestamp` (actualEndAt ?? approvedAt ?? rejectedAt
+    //      ?? scheduledEndAt ?? scheduledStartAt) since those fields have no
+    //      index, so we bound on `by_scheduled` and still apply the exact
+    //      `isWithinLookback` filter in memory. The buffer covers jobs completed
+    //      some time after they were scheduled; no lower bound is needed on the
+    //      future side because future-scheduled jobs are ACTIVE and arrive via (b).
+    //  (b) every job in an ACTIVE status regardless of date — `activeAssignmentsCount`
+    //      and `pickAvailability` are NOT window-filtered, so a stale open job
+    //      scheduled before the window must still be counted. Active jobs are a
+    //      small operational set (unlike completed history, they don't accumulate).
+    const activeStatuses = [...ACTIVE_ASSIGNMENT_STATUSES];
+    const [users, memberships, ownerships, windowJobs, ...activeJobsByStatus] =
+      await Promise.all([
+        ctx.db.query("users").collect(),
+        ctx.db.query("companyMembers").collect(),
+        ctx.db.query("propertyOwners").collect(),
+        ctx.db
+          .query("cleaningJobs")
+          .withIndex("by_scheduled", (q) =>
+            q.gte("scheduledStartAt", lookbackStart - METRIC_SCHEDULE_BUFFER_MS),
+          )
+          .collect(),
+        ...activeStatuses.map((status) =>
+          ctx.db
+            .query("cleaningJobs")
+            .withIndex("by_status", (q) => q.eq("status", status))
+            .collect(),
+        ),
+      ]);
+
+    const jobById = new Map<Id<"cleaningJobs">, Doc<"cleaningJobs">>();
+    for (const job of windowJobs) {
+      jobById.set(job._id, job);
+    }
+    for (const statusJobs of activeJobsByStatus) {
+      for (const job of statusJobs) {
+        jobById.set(job._id, job);
+      }
+    }
+    const jobs = [...jobById.values()];
     const stakesByUser = groupActiveByUser(ownerships);
 
     const activeMembershipByUserId = new Map<Id<"users">, Doc<"companyMembers">>();
