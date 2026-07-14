@@ -382,6 +382,11 @@ export const markConversationRead = mutation({
       markReadAt,
     });
 
+    // Advance the caller's inbox "seen" marker so the cheap admin/ops unread
+    // badge (getUnreadConversationCount) can bound its read to conversations
+    // updated after this point. Harmless for other roles (they don't read it).
+    await ctx.db.patch(user._id, { inboxLastSeenAt: Date.now() });
+
     return {
       success: true,
       conversationId: args.conversationId,

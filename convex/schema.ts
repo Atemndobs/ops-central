@@ -30,6 +30,11 @@ const users = defineTable({
   phone: v.optional(v.string()),
   preferredLocale: v.optional(v.union(v.literal("en"), v.literal("es"))),
   metadata: v.optional(v.any()),
+  // Timestamp the caller last "saw" the message inbox (advanced when they open
+  // any conversation). Drives the cheap admin/ops unread badge: count open
+  // conversations updated after this, instead of scanning them all. Absent ⇒ 0
+  // ⇒ counts everything (identical to the pre-existing behavior, no backfill).
+  inboxLastSeenAt: v.optional(v.number()),
   createdAt: v.number(),
   updatedAt: v.optional(v.number()),
 })
@@ -584,7 +589,11 @@ const conversations = defineTable({
     "linkedCleanerId",
   ])
   .index("by_messaging_endpoint", ["messagingEndpointId"])
-  .index("by_status_last_message", ["status", "lastMessageAt"]);
+  .index("by_status_last_message", ["status", "lastMessageAt"])
+  // Lets manager-scoped reads pull only the open conversations for a given
+  // property instead of scanning every open conversation and filtering in JS.
+  // See conversations/queries.ts (listMyConversations, getUnreadConversationCount).
+  .index("by_property_status", ["propertyId", "status"]);
 
 const conversationParticipants = defineTable({
   conversationId: v.id("conversations"),
