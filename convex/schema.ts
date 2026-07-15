@@ -18,7 +18,16 @@ const users = defineTable({
   // statement when this user is the statement client. Optional + additive; when
   // absent the statement falls back to `name`. See strCosts/views.listStatementClients.
   company: v.optional(v.string()),
+  // A *link* to the avatar — never the image itself. Kept as a plain string so
+  // every read site stays untouched and cheap. Guarded by lib/avatarUrl.ts:
+  // storing a `data:` URI here once made this table 98% avatar bytes and burned
+  // GB/month, because `users` is the hottest table and Convex has no field
+  // projection. See Docs/2026-07-14-convex-database-optimization-playbook.md.
   avatarUrl: v.optional(v.string()),
+  // Set when the avatar is a Convex-hosted upload (users/avatarUpload.ts). Tracked
+  // only so a re-upload can delete the file it replaces; readers use `avatarUrl`.
+  // Absent for Clerk-hosted avatars, which are the common case.
+  avatarStorageId: v.optional(v.id("_storage")),
   role: v.union(
     v.literal("cleaner"),
     v.literal("manager"),

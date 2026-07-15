@@ -150,6 +150,9 @@
   "convex/users/avatarBackfill.ts": {
     "bare-scan": 1
   },
+  "convex/users/migrateBase64Avatars.ts": {
+    "bare-scan": 1
+  },
   "convex/users/queries.ts": {
     "bare-scan": 4,
     "query-in-loop": 1
