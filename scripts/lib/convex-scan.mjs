@@ -249,7 +249,13 @@ export function findViolations(source) {
   // stripCommentsAndStrings preserves length and newlines.
   const scan = stripCommentsAndStrings(source);
   const violations = [];
-  const re = /\bdb\.query\(/g;
+  // `\s*` around the dot is load-bearing. `ctx.db\n  .query(...)` is the dominant
+  // style here (396 of 548 call sites); the original /\bdb\.query\(/ required them
+  // contiguous and so inspected only 28% of the surface — the ratchet was silently
+  // guarding a quarter of the code it exists to guard. Found 2026-07-16; surfacing
+  // these added 35 previously-invisible violations, incl. a live R2 in
+  // users/mutations.ts:markAllNotificationsRead and 5 giant-takes on cleaningJobs.
+  const re = /\bdb\s*\.\s*query\(/g;
   let match;
   while ((match = re.exec(scan)) !== null) {
     const chain = chainWindowAt(scan, match.index);

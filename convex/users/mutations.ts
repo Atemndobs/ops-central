@@ -192,10 +192,16 @@ export const markAllNotificationsRead = mutation({
   handler: async (ctx) => {
     const user = await getCurrentUser(ctx);
 
+    // Read only the unread rows via `by_unread` ["userId", "readAt"]. The old
+    // `by_user` + `.filter()` scanned EVERY notification this user has ever had and
+    // discarded the read ones in memory — `.filter()` does not bound reads
+    // (convex/CLAUDE.md R2). The index already existed, and four other call sites
+    // (notifications/queries.ts, users/queries.ts) already read it this way.
     const unread = await ctx.db
       .query("notifications")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .filter((q) => q.eq(q.field("readAt"), undefined))
+      .withIndex("by_unread", (q) =>
+        q.eq("userId", user._id).eq("readAt", undefined),
+      )
       .collect();
 
     const now = Date.now();
