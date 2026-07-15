@@ -29,6 +29,7 @@ import {
 
 import { getRoleDefinition, type RoleKey } from "@/lib/roles";
 import { formatDateTime } from "@/lib/tz";
+import { capture } from "@/lib/posthog/client";
 type UserRole = RoleKey;
 type CompanyMemberRole = "cleaner" | "manager" | "owner";
 type AvailabilityFilter = "all" | "active" | "working" | "available" | "off";
@@ -575,6 +576,7 @@ export default function TeamPage() {
         throw new Error(data.error || "Failed to update role.");
       }
 
+      capture("team_member_role_updated", { new_role: roleDraft });
       showToast("Role updated successfully.");
       setRoleEditor(null);
     } catch (error) {
@@ -671,6 +673,7 @@ export default function TeamPage() {
         memberRole: companyDraft === "" ? undefined : companyRoleDraft,
       });
 
+      capture("team_member_company_assigned", { cleared: companyDraft === "" });
       showToast(
         companyDraft === ""
           ? "Company assignment cleared."
@@ -705,6 +708,7 @@ export default function TeamPage() {
         cleanerIds: [jobEditor.userId],
         notifyCleaners: false,
       });
+      capture("cleaner_assigned_to_job");
       showToast("User assigned to job.");
       setJobEditor(null);
     } catch (error) {

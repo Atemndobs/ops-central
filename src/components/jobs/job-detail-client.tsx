@@ -22,6 +22,7 @@ import { useToast } from "@/components/ui/toast-provider";
 import { JobConversationLanesPanel } from "@/components/conversations/job-conversation-lanes-panel";
 import { getRoleFromMetadata, getRoleFromSessionClaimsOrNull } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
+import { capture } from "@/lib/posthog/client";
 import { formatDateTimeInZone, resolveDisplayTimezone } from "@/lib/tz";
 
 // Reproduces the bare `Date.toLocaleString()` output (en-US numeric date +
@@ -229,6 +230,11 @@ export function JobDetailClient({ id }: { id: string }) {
         await approveCompletion({ jobId });
       }
 
+      capture("job_status_advanced", {
+        from_status: canonicalJob.status,
+        to_status: nextStatus,
+        job_id: jobId,
+      });
       showToast(`Job moved to ${STATUS_LABELS[nextStatus]}.`);
     } catch (statusError) {
       const message = getErrorMessage(statusError, "Unable to update status.");
@@ -251,6 +257,7 @@ export function JobDetailClient({ id }: { id: string }) {
         jobId,
         rejectionReason: "Rejected from admin dashboard for rework.",
       });
+      capture("job_sent_to_rework", { job_id: jobId });
       showToast("Submission rejected and reopened for rework.");
     } catch (mutationError) {
       const message = getErrorMessage(mutationError, "Unable to send job to rework.");
@@ -294,6 +301,7 @@ export function JobDetailClient({ id }: { id: string }) {
         return;
       }
 
+      capture("job_force_stopped", { job_id: jobId, sessions_stopped: pendingSessions.length });
       showToast("Pending cleaner session(s) stopped. Job moved to Awaiting Approval.");
     } catch (mutationError) {
       const message = getErrorMessage(
