@@ -59,6 +59,11 @@
 #   csoi analytics raw '<hogql>'        # PostHog: arbitrary HogQL query
 #                                        # (reads POSTHOG_PERSONAL_API_KEY_J&A-Project from
 #                                        #  <workspace>/.env — override CSOI_POSTHOG_ENV; project 211614)
+#   csoi perf [--docs] [--json] [--strict]
+#                                      # performance audit: new bad queries vs baseline,
+#                                      # blast radius (violations x client mounts), and
+#                                      # --docs adds live document-weight. Run it manually
+#                                      # and paste the report; --json for an AI reviewer.
 #   csoi install                        # symlink this script -> ~/.local/bin/csoi
 
 set -euo pipefail
@@ -153,10 +158,22 @@ case "$cmd" in
     esac
     ;;
 
+  perf)
+    # Manual performance audit — see Docs/csoi-cli.md. Cheap static proxy you can run
+    # every time; the Convex dashboard (Usage -> Database I/O -> by function) remains
+    # the billing ground truth, since `convex insights` refuses deploy keys.
+    node_major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
+    if [ "$node_major" -lt 20 ]; then
+      echo "csoi: Node $(node -v 2>/dev/null || echo '?') is too old (needs 20+). Run: nvm use lts/jod" >&2
+      exit 1
+    fi
+    node "$CSOI_SCRIPT_DIR/perf-audit.mjs" "$@"
+    ;;
+
   help|-h|--help)
     # NOTE: this range must cover the whole header comment block. If you add lines
     # up there, bump the end. (A stale range silently truncates `csoi help`.)
-    sed -n '4,62p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '4,67p' "$0" | sed 's/^# \{0,1\}//'
     ;;
 
   sync)

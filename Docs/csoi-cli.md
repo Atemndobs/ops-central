@@ -62,6 +62,55 @@ Run `csoi help` for the authoritative list — the header comment in `scripts/cs
 - **Dev/danger** — `purge:synthetic`, `reset:job`, `reset:completed`, `reset:all`
 - **Meta** — `install`, `help`
 
+### `csoi perf` — performance audit
+
+Run it **manually** after a feature and paste the report. It's built so a reviewer
+(human or AI) can judge a change from the report alone, without re-reading the code —
+which is the point: it keeps review cheap.
+
+```bash
+csoi perf              # report
+csoi perf --json       # machine-readable — paste this to an AI reviewer
+csoi perf --docs       # + live document-weight scan (exports prod, ~10s)
+csoi perf --strict     # exit 1 on regressions (CI / pre-push)
+```
+
+It answers three questions:
+
+| Question | How |
+|---|---|
+| Did we write bad queries? | Static scan for the anti-patterns in `convex/CLAUDE.md` (R1–R4) |
+| **Did we make something ELSE worse?** | **Diff vs the committed ratchet baseline** — any *new* violation anywhere is a regression, reported with file, line, function and snippet |
+| Is the code in good shape? | **Blast radius** (violations × client mount points, flagging always-mounted screens) + **document weight** + a PASS/WARN/FAIL verdict |
+
+**Blast radius** matters because reactive cost is `per-exec reads × writes to that
+range × subscribers`. A cheap query on ten always-mounted screens beats an ugly one
+behind a rarely-opened page — the ranking reflects that.
+
+**Document weight** (`--docs`) exports a prod snapshot and reports average bytes per
+document per table plus the fattest field. `ctx.db.get()` reads the WHOLE document,
+so a fat field taxes *every* read of that table. This is how `properties.metadata`
+(72% dead Hospitable payload) and the 240 KB `users.avatarUrl` were found — neither
+was visible as a "bad query".
+
+#### What it deliberately cannot do
+
+**Real per-function read bytes.** `npx convex insights` requires interactive user auth
+and explicitly refuses deploy keys, so billing ground truth stays on the dashboard:
+**Usage → Database I/O → breakdown by function.** Treat `csoi perf` as the cheap proxy
+you run every time, and the dashboard as the weekly truth. The playbook's measurement
+protocol covers both.
+
+#### Extending the rules
+
+Rules live in `scripts/lib/convex-scan.mjs`, shared with the CI ratchet
+(`npm run check:convex-readcost`) so they cannot rot apart. When adding a rule, test it
+against a **true positive, a correct pattern, and a false-positive guard** — the
+`query-in-loop` rule initially flagged 39 files of noise (it matched comments, and its
+loop-body extraction overshot the closing brace) and would have trained everyone to
+ignore the tool. `ctx.db.get()` inside `Promise.all(ids.map(...))` over a de-duplicated
+id set is CORRECT batching and is deliberately never flagged.
+
 ### `csoi backup`
 
 Snapshots the **prod** Convex database to `<repo>/backups/` (gitignored — snapshots

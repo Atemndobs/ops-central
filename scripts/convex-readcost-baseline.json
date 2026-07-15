@@ -9,10 +9,12 @@
     "bare-scan": 10
   },
   "convex/admin/ownerOverview.ts": {
-    "bare-scan": 4
+    "bare-scan": 4,
+    "query-in-loop": 5
   },
   "convex/admin/queries.ts": {
-    "bare-scan": 14
+    "bare-scan": 13,
+    "query-in-loop": 5
   },
   "convex/admin/userSync.ts": {
     "bare-scan": 19
@@ -20,11 +22,39 @@
   "convex/admin/wipeGoLiveData.ts": {
     "bare-scan": 8
   },
+  "convex/cleaningJobs/acknowledgements.ts": {
+    "query-in-loop": 1
+  },
+  "convex/cleaningJobs/backfillMeta.ts": {
+    "query-in-loop": 1
+  },
+  "convex/cleaningJobs/backfillUserJobAssignments.ts": {
+    "query-in-loop": 2
+  },
+  "convex/cleaningJobs/devClearStaleTimers.ts": {
+    "query-in-loop": 2
+  },
+  "convex/cleaningJobs/devResetJobs.ts": {
+    "query-in-loop": 1
+  },
+  "convex/cleaningJobs/markPastDone.ts": {
+    "query-in-loop": 1
+  },
+  "convex/cleaningJobs/queries.ts": {
+    "query-in-loop": 5
+  },
+  "convex/cleaningJobs/unassignFuture.ts": {
+    "query-in-loop": 1
+  },
+  "convex/conversations/queries.ts": {
+    "query-in-loop": 1
+  },
   "convex/dashboard/queries.ts": {
     "bare-scan": 2
   },
   "convex/guestReviews/queries.ts": {
-    "bare-scan": 2
+    "bare-scan": 2,
+    "query-in-loop": 1
   },
   "convex/hospitable/diagnostics.ts": {
     "bare-scan": 2
@@ -33,13 +63,14 @@
     "bare-scan": 3
   },
   "convex/hospitable/queries.ts": {
-    "bare-scan": 5
+    "bare-scan": 4
   },
   "convex/incidents/mutations.ts": {
     "bare-scan": 4
   },
   "convex/integrations/queries.ts": {
-    "bare-scan": 2
+    "bare-scan": 2,
+    "query-in-loop": 1
   },
   "convex/integrations/trello.ts": {
     "bare-scan": 3
@@ -50,8 +81,8 @@
   "convex/inventory/queries.ts": {
     "bare-scan": 3
   },
-  "convex/lib/opsNotifications.ts": {
-    "bare-scan": 1
+  "convex/lib/notificationLifecycle.ts": {
+    "query-in-loop": 1
   },
   "convex/lib/photoStorageAggregate.ts": {
     "bare-scan": 2
@@ -60,23 +91,41 @@
     "bare-scan": 3
   },
   "convex/owner/mutations.ts": {
-    "bare-scan": 4
+    "bare-scan": 4,
+    "query-in-loop": 2
   },
   "convex/owner/queries.ts": {
-    "bare-scan": 3
+    "bare-scan": 3,
+    "query-in-loop": 1
   },
   "convex/properties/pruneMetadata.ts": {
     "bare-scan": 1
   },
   "convex/properties/queries.ts": {
-    "bare-scan": 3
+    "bare-scan": 2,
+    "query-in-loop": 1
   },
   "convex/refills/queries.ts": {
     "bare-scan": 1
   },
+  "convex/reports/queries.ts": {
+    "query-in-loop": 1
+  },
   "convex/serviceUsage/b2Snapshot.ts": {
     "bare-scan": 4,
     "giant-take": 2
+  },
+  "convex/serviceUsage/convexSnapshot.ts": {
+    "query-in-loop": 1
+  },
+  "convex/serviceUsage/counterBackfill.ts": {
+    "query-in-loop": 1
+  },
+  "convex/serviceUsage/crons.ts": {
+    "query-in-loop": 3
+  },
+  "convex/serviceUsage/providerSyncWriter.ts": {
+    "query-in-loop": 1
   },
   "convex/strCosts/costItems.ts": {
     "bare-scan": 2
@@ -91,15 +140,18 @@
     "bare-scan": 1
   },
   "convex/strCosts/reports.ts": {
-    "bare-scan": 3
+    "bare-scan": 3,
+    "query-in-loop": 1
   },
   "convex/strCosts/views.ts": {
-    "bare-scan": 2
+    "bare-scan": 2,
+    "query-in-loop": 1
   },
   "convex/users/avatarBackfill.ts": {
     "bare-scan": 1
   },
   "convex/users/queries.ts": {
-    "bare-scan": 4
+    "bare-scan": 4,
+    "query-in-loop": 1
   }
 }
