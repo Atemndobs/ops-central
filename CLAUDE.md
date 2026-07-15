@@ -166,7 +166,32 @@ src/app/
 npm run dev        # Start dev server (Turbopack)
 npm run build      # Production build
 npm run lint       # ESLint
+npm run check:convex-readcost   # Convex read-cost ratchet (see convex/CLAUDE.md)
 ```
+
+## `csoi` — the project CLI
+
+**`csoi` is THE CLI for this project. When a command/CLI is requested, it goes in
+`csoi` — never build a second CLI, npm script, or one-off wrapper alongside it.**
+(One was built by mistake and had to be reverted: PR #263 → #264.)
+
+```bash
+./scripts/csoi install     # symlinks scripts/csoi -> ~/.local/bin/csoi (any machine)
+csoi help                  # authoritative command list
+```
+
+Source: [`scripts/csoi`](scripts/csoi) — version-controlled, so it works on any
+machine, server, or fresh clone. All paths resolve from the script's own location
+(symlink-safe); nothing is hardcoded per machine. Full docs: [Docs/csoi-cli.md](Docs/csoi-cli.md).
+
+It already wraps: Hospitable sync, Convex `data`/`raw`/`env`, user role management,
+property reports, PostHog analytics, Vercel logs, `mobile:check` / `mobile:drift`
+(admin↔mobile convex mirror), prod `backup`, and dev reset/purge helpers.
+
+To add a command: add a `case` branch in `scripts/csoi`, add a line to the header
+comment (that block *is* `csoi help`), **bump the `sed -n '4,NNp'` range in the
+`help` case if you added header lines** (a stale range silently truncates help), and
+run `bash -n scripts/csoi`.
 
 ---
 
