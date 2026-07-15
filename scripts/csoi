@@ -57,8 +57,10 @@
 #   csoi analytics sites [days=7]       # PostHog: event counts by `site` tag (jna-bs-admin/chezsoi-wp/chez-soi-decks)
 #   csoi analytics top-pages [days=7]   # PostHog: most-viewed URLs
 #   csoi analytics raw '<hogql>'        # PostHog: arbitrary HogQL query
-#                                        # (reads POSTHOG_PERSONAL_API_KEY_J&A-Project from
-#                                        #  <workspace>/.env — override CSOI_POSTHOG_ENV; project 211614)
+#                                        # (project 514212 "chezsoi" — this app's own
+#                                        #  PostHog. Reads POSTHOG_PERSONAL_API_KEY_OPSCENTRAL
+#                                        #  + POSTHOG_PROJECT_ID_OPSCENTRAL from env, else
+#                                        #  .env.local, else <workspace>/.env.)
 #   csoi perf [--docs] [--json] [--strict]
 #                                      # performance audit: new bad queries vs baseline,
 #                                      # blast radius (violations x client mounts), and
@@ -173,7 +175,12 @@ case "$cmd" in
   help|-h|--help)
     # NOTE: this range must cover the whole header comment block. If you add lines
     # up there, bump the end. (A stale range silently truncates `csoi help`.)
-    sed -n '4,67p' "$0" | sed 's/^# \{0,1\}//'
+    #
+    # Read $CSOI_SELF, never "$0": we `cd "$PROJECT_DIR"` above, so a relative $0
+    # (e.g. `bash scripts/csoi help`) resolves against the PROJECT dir afterwards
+    # and prints some OTHER checkout's header — silently, with a plausible-looking
+    # result. $CSOI_SELF is the absolute, symlink-resolved path to this file.
+    sed -n '4,69p' "$CSOI_SELF" | sed 's/^# \{0,1\}//'
     ;;
 
   sync)
@@ -577,9 +584,30 @@ case "$cmd" in
   analytics)
     subcmd="${1:-help}"; shift || true
 
+    # This app reports to its OWN PostHog project (514212, "chezsoi"). It used to
+    # be hardcoded to 211614 (JnA-BusinessSolutions), which also collects the
+    # marketing sites — so `csoi analytics` was reporting numbers that were not
+    # this app's. A third project (169649) belongs to an unrelated app. Resolve
+    # from env so the CLI and the app can never drift apart again.
+    #
+    # Lookup order per value: real env var -> .env.local (app) -> workspace .env.
     posthog_env_file="${CSOI_POSTHOG_ENV:-$PROJECT_DIR/../../.env}"
-    posthog_project_id=211614
+    posthog_local_env="$PROJECT_DIR/.env.local"
     posthog_base="https://us.posthog.com"
+
+    # Read KEY=value from the first file that has it. Never echoes the value.
+    posthog_env_lookup() {
+      local name="$1" file val
+      for file in "$posthog_local_env" "$posthog_env_file"; do
+        [ -f "$file" ] || continue
+        val="$(grep -m1 "^${name}=" "$file" | cut -d= -f2- | tr -d '"'"'"'\r')"
+        if [ -n "$val" ]; then printf '%s' "$val"; return 0; fi
+      done
+      return 1
+    }
+
+    posthog_project_id="${POSTHOG_PROJECT_ID_OPSCENTRAL:-$(posthog_env_lookup POSTHOG_PROJECT_ID_OPSCENTRAL || true)}"
+    : "${posthog_project_id:=514212}"
 
     posthog_query() {
       if ! command -v jq >/dev/null 2>&1; then
@@ -587,9 +615,20 @@ case "$cmd" in
         exit 1
       fi
       local key
-      key="$(grep -m1 '^POSTHOG_PERSONAL_API_KEY_J&A-Project=' "$posthog_env_file" | cut -d= -f2-)"
+      key="${POSTHOG_PERSONAL_API_KEY_OPSCENTRAL:-$(posthog_env_lookup POSTHOG_PERSONAL_API_KEY_OPSCENTRAL || true)}"
       if [ -z "$key" ]; then
-        echo "csoi analytics: no POSTHOG_PERSONAL_API_KEY_J&A-Project= in $posthog_env_file" >&2
+        cat >&2 <<EOF
+csoi analytics: no POSTHOG_PERSONAL_API_KEY_OPSCENTRAL found.
+
+  Looked in: $posthog_local_env
+             $posthog_env_file
+
+  Create a personal API key (PostHog -> Settings -> Personal API keys) scoped to
+  project $posthog_project_id with Query read access, then add to .env.local:
+
+    POSTHOG_PERSONAL_API_KEY_OPSCENTRAL=phx_...
+    POSTHOG_PROJECT_ID_OPSCENTRAL=$posthog_project_id
+EOF
         exit 1
       fi
       curl -s -X POST "$posthog_base/api/projects/$posthog_project_id/query/" \
