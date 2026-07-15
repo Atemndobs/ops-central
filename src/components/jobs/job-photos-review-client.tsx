@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import {
   useEffect,
   useMemo,
@@ -13,7 +14,7 @@ import {
 } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { makeFunctionReference } from "convex/server";
-import { ArrowDownAZ, Check, Filter, Search, X } from "lucide-react";
+import { ArrowDownAZ, Check, Filter, Loader2, Search, X } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useToast } from "@/components/ui/toast-provider";
@@ -43,6 +44,24 @@ type RoomReviewState = {
   note: string;
 };
 type SortMode = "checklist" | "az";
+
+// Beat between recording a verdict and swiping to the next room. Long enough
+// that the reviewer sees the button fill and the badge land (so the tap is
+// confirmed), short enough that it never feels like waiting.
+const ADVANCE_DELAY_MS = 450;
+
+// How long the decision confirmation holds before loading the next job in the
+// queue. Long enough to read what was decided; the reviewer can skip it or bail
+// to the queue at any point.
+const NEXT_JOB_DELAY_S = 4;
+
+type DecisionResult = {
+  kind: "approved" | "rework";
+  propertyName: string;
+  passCount: number;
+  reworkCount: number;
+  totalRooms: number;
+};
 
 type EvidencePhoto = {
   photoId: Id<"photos">;
@@ -317,6 +336,15 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const { isAuthenticated } = useConvexAuth();
   const jobId = id as Id<"cleaningJobs">;
   const { showToast } = useToast();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // This component serves two routes (`/jobs/…` and `/review/jobs/…`). Keep the
+  // reviewer inside whichever one they came in through.
+  const isReviewRoute = (pathname ?? "").startsWith("/review/");
+  const queueHref = isReviewRoute ? "/review" : "/jobs";
+  const photosHrefFor = (nextId: string) =>
+    isReviewRoute ? `/review/jobs/${nextId}/photos-review` : `/jobs/${nextId}/photos-review`;
 
   const detail = useQuery(api.cleaningJobs.queries.getJobDetail, isAuthenticated ? { jobId } : "skip");
   // Every timestamp here belongs to this job's property — display in its zone.
@@ -337,6 +365,17 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const [compareAfterIndex, setCompareAfterIndex] = useState(0);
   const [compareLinked, setCompareLinked] = useState(true);
   const [pendingDecision, setPendingDecision] = useState<"approve" | "reject" | null>(null);
+  const [decisionResult, setDecisionResult] = useState<DecisionResult | null>(null);
+  const [redirectSeconds, setRedirectSeconds] = useState(NEXT_JOB_DELAY_S);
+  const [autoAdvanceJob, setAutoAdvanceJob] = useState(true);
+
+  // Deliberately gated on `decisionResult`: the reviewer only needs the queue
+  // once they've finished a job, so this subscription costs nothing during the
+  // review itself. Same query the /review queue page already runs.
+  const reviewQueue = useQuery(
+    api.cleaningJobs.queries.getReviewQueue,
+    isAuthenticated && decisionResult ? { status: "awaiting_approval", limit: 25 } : "skip",
+  );
   const [activeRoomKey, setActiveRoomKey] = useState<string | null>(null);
   const [viewer, setViewer] = useState<ViewerState | null>(null);
   const [annotateEnabled, setAnnotateEnabled] = useState(false);
@@ -350,6 +389,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const [isDrawingShape, setIsDrawingShape] = useState(false);
   const [draftShape, setDraftShape] = useState<DraftShape | null>(null);
   const viewerCanvasRef = useRef<HTMLDivElement | null>(null);
+  const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const videoEnabled = useIsVideoEnabled();
   const rawCurrentPhotos = detail?.evidence.current.byType.all ?? [];
@@ -485,6 +525,70 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const compareBeforePhoto = compareRow?.before[compareBeforeIndex] ?? null;
   const compareAfterPhoto = compareRow?.after[compareAfterIndex] ?? null;
 
+  // The next job waiting on this reviewer. `getReviewQueue` already sorts
+  // awaiting_approval first; drop the job just decided (its status flip may not
+  // have propagated to the queue subscription yet).
+  const nextJob = useMemo(() => {
+    if (!reviewQueue) {
+      return null;
+    }
+    return (
+      reviewQueue.find(
+        (job) => job._id !== jobId && job.status === "awaiting_approval",
+      ) ?? null
+    );
+  }, [reviewQueue, jobId]);
+
+  // Never let a queued room-advance fire after the workspace is gone.
+  useEffect(() => {
+    return () => {
+      if (advanceTimerRef.current) {
+        clearTimeout(advanceTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Hard reset when the job changes.
+  //
+  // Loading the next job is a same-route param change, so React keeps this
+  // component mounted and every piece of per-job state survives. `reviewByRoom`
+  // is keyed by normalized room NAME, so without this a "Kitchen" passed on the
+  // previous job would show as already-passed on the next one. The snapshot
+  // loader below can't cover it — it early-returns when a job has no saved
+  // snapshot, which is exactly the fresh-job case. Declared before that loader
+  // so a real snapshot still wins on mount.
+  useEffect(() => {
+    setDecisionResult(null);
+    setReviewByRoom({});
+    setNotesOpenByRoom({});
+    setCompareRoomKey(null);
+    setActiveRoomKey(null);
+    setViewer(null);
+    setSearch("");
+    setFilter("all");
+    setRedirectSeconds(NEXT_JOB_DELAY_S);
+  }, [id]);
+
+  // Hand the reviewer straight to the next job in the queue. Opt-out (not
+  // opt-in) — clearing a queue is the whole job, so continuing is the default
+  // and "Back to queue" is always one click away.
+  useEffect(() => {
+    if (!decisionResult || !nextJob || !autoAdvanceJob) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      router.push(photosHrefFor(nextJob._id));
+    }, NEXT_JOB_DELAY_S * 1000);
+    const ticker = setInterval(() => {
+      setRedirectSeconds((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(ticker);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [decisionResult, nextJob?._id, autoAdvanceJob]);
+
   useEffect(() => {
     if (persistedAnnotations === undefined) {
       return;
@@ -586,6 +690,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
 
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") {
+        clearAdvanceTimer();
         setCompareRoomKey(null);
         return;
       }
@@ -915,7 +1020,14 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
         jobId,
         roomReviewSnapshot: buildRoomReviewSnapshot(roomRows, reviewByRoom),
       });
-      showToast("Job approved from photo review.");
+      setRedirectSeconds(NEXT_JOB_DELAY_S);
+      setDecisionResult({
+        kind: "approved",
+        propertyName: detail?.property?.name ?? "this property",
+        passCount,
+        reworkCount,
+        totalRooms,
+      });
     } catch (error) {
       showToast(getErrorMessage(error, "Unable to approve job."), "error");
     } finally {
@@ -936,7 +1048,14 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
         rejectionReason,
         roomReviewSnapshot: buildRoomReviewSnapshot(roomRows, reviewByRoom),
       });
-      showToast("Job rejected to rework from photo review.");
+      setRedirectSeconds(NEXT_JOB_DELAY_S);
+      setDecisionResult({
+        kind: "rework",
+        propertyName: detail?.property?.name ?? "this property",
+        passCount,
+        reworkCount,
+        totalRooms,
+      });
     } catch (error) {
       showToast(getErrorMessage(error, "Unable to reject job."), "error");
     } finally {
@@ -977,10 +1096,50 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
     }));
   }
 
+  function clearAdvanceTimer() {
+    if (advanceTimerRef.current) {
+      clearTimeout(advanceTimerRef.current);
+      advanceTimerRef.current = null;
+    }
+  }
+
   function openCompare(roomKey: string) {
+    clearAdvanceTimer();
     setCompareRoomKey(roomKey);
     setCompareBeforeIndex(0);
     setCompareAfterIndex(0);
+  }
+
+  function closeCompare() {
+    clearAdvanceTimer();
+    setCompareRoomKey(null);
+  }
+
+  /**
+   * Verdict from inside the Compare modal: record it, then swipe to the next
+   * room. The swipe is the confirmation — it's the one signal a reviewer can't
+   * miss while their eyes are on the photos, not on the button they just hit.
+   * `nextCompareRoom` is read at call time so the target is resolved against the
+   * list as it looked when the reviewer decided, not after the verdict re-filters
+   * it (e.g. under the "Needs Review" filter the room leaves the list).
+   */
+  function setCompareVerdict(roomKey: string, verdict: Exclude<ReviewVerdict, null>) {
+    if (isReadOnlyReview) {
+      return;
+    }
+    setVerdict(roomKey, verdict);
+
+    const upcoming = nextCompareRoom;
+    clearAdvanceTimer();
+    if (!upcoming) {
+      // Last room: nothing to advance to. The filled button + badge carry the
+      // confirmation on their own.
+      return;
+    }
+    advanceTimerRef.current = setTimeout(() => {
+      advanceTimerRef.current = null;
+      openCompare(upcoming.key);
+    }, ADVANCE_DELAY_MS);
   }
 
   function compareNavigate(delta: number, side: "before" | "after") {
@@ -1254,6 +1413,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                 >
                   <div className="border-r border-[var(--border)] p-4">
                     <div className="flex flex-wrap items-center gap-2">
+                      <RoomVerdictBadge verdict={review.verdict} />
                       <h3 className="text-sm font-semibold">{row.roomName}</h3>
                       <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] text-[var(--muted-foreground)]">
                         B {row.before.length} · A {row.after.length}
@@ -1269,8 +1429,6 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                       {row.hasMissingBefore ? <Pill tone="warning">Missing Before</Pill> : null}
                       {row.hasMissingAfter ? <Pill tone="warning">Missing After</Pill> : null}
                       {row.hasCountMismatch ? <Pill tone="warning">Count mismatch</Pill> : null}
-                      {review.verdict === "pass" ? <Pill tone="success">Pass</Pill> : null}
-                      {review.verdict === "rework" ? <Pill tone="danger">Needs Rework</Pill> : null}
                     </div>
 
                     <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -1394,11 +1552,14 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-[10px] text-[var(--muted-foreground)]">
-                        {rowIdx + 1} of {visibleRows.length}
-                      </p>
-                      <h3 className="truncate text-sm font-semibold">{row.roomName}</h3>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <RoomVerdictBadge verdict={review.verdict} />
+                      <div className="min-w-0">
+                        <p className="text-[10px] text-[var(--muted-foreground)]">
+                          {rowIdx + 1} of {visibleRows.length}
+                        </p>
+                        <h3 className="truncate text-sm font-semibold">{row.roomName}</h3>
+                      </div>
                     </div>
                     <button
                       type="button"
@@ -1558,21 +1719,131 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
         </div>
       </div>
 
+      {decisionResult ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 text-center">
+            <div className="flex justify-center">
+              <RoomVerdictBadge
+                verdict={decisionResult.kind === "approved" ? "pass" : "rework"}
+                size="xl"
+              />
+            </div>
+
+            <h2 className="mt-4 text-xl font-semibold">
+              {decisionResult.kind === "approved" ? "Approved" : "Sent back for rework"}
+            </h2>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+              {decisionResult.propertyName}
+            </p>
+            <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+              {decisionResult.kind === "approved"
+                ? `All ${decisionResult.totalRooms} room${decisionResult.totalRooms === 1 ? "" : "s"} passed.`
+                : `${decisionResult.reworkCount} room${decisionResult.reworkCount === 1 ? "" : "s"} need rework · ${decisionResult.passCount} passed.`}
+            </p>
+
+            <div className="mt-5 border-t border-[var(--border)] pt-5">
+              {reviewQueue === undefined ? (
+                <p className="inline-flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  Checking the queue…
+                </p>
+              ) : nextJob ? (
+                <>
+                  <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
+                    Next up
+                  </p>
+                  <p className="mt-1 text-sm font-semibold">
+                    {nextJob.property?.name ?? "Unknown property"}
+                  </p>
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    {nextJob.cleaners?.[0]?.name ?? "Unassigned cleaner"}
+                  </p>
+
+                  <div className="mt-4 flex items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => router.push(photosHrefFor(nextJob._id))}
+                      className="rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] hover:opacity-90"
+                    >
+                      Review next job
+                    </button>
+                    <Link
+                      href={queueHref}
+                      className="rounded-md border border-[var(--border)] px-4 py-2 text-sm hover:bg-[var(--accent)]"
+                    >
+                      Back to queue
+                    </Link>
+                  </div>
+
+                  {autoAdvanceJob ? (
+                    <button
+                      type="button"
+                      onClick={() => setAutoAdvanceJob(false)}
+                      className="mt-3 text-xs text-[var(--muted-foreground)] underline underline-offset-2 hover:text-[var(--foreground)]"
+                    >
+                      Loading in {redirectSeconds}s · stay here
+                    </button>
+                  ) : (
+                    <p className="mt-3 text-xs text-[var(--muted-foreground)]">
+                      Auto-advance paused
+                    </p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-semibold">Queue clear</p>
+                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                    Nothing else is waiting for review.
+                  </p>
+                  <Link
+                    href={queueHref}
+                    className="mt-4 inline-block rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] hover:opacity-90"
+                  >
+                    Back to queue
+                  </Link>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {compareRow ? (
         <div className="fixed inset-0 z-40 flex flex-col bg-black/90 p-2">
           {/* ── Top bar ─────────────────────────────────────────── */}
           <div className="mb-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2">
-            {/* Row 1: room name + close */}
+            {/* Row 1: verdict badge + room name + progress + close */}
             <div className="flex items-center justify-between gap-2">
-              <h2 className="truncate text-sm font-semibold">{compareRow.roomName} · Compare</h2>
-              <button
-                type="button"
-                onClick={() => setCompareRoomKey(null)}
-                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--border)] px-2.5 py-1 text-xs"
-              >
-                <X className="h-3 w-3" aria-hidden />
-                Close
-              </button>
+              <div className="flex min-w-0 items-center gap-2">
+                <RoomVerdictBadge
+                  verdict={reviewByRoom[compareRow.key]?.verdict ?? null}
+                  size="lg"
+                />
+                <h2 className="truncate text-sm font-semibold">{compareRow.roomName} · Compare</h2>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="hidden items-center gap-2 text-xs sm:inline-flex">
+                  <span className="inline-flex items-center gap-1 text-emerald-500">
+                    <Check className="h-3 w-3" aria-hidden />
+                    {passCount}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-rose-500">
+                    <X className="h-3 w-3" aria-hidden />
+                    {reworkCount}
+                  </span>
+                  <span className="text-[var(--muted-foreground)]">
+                    {Math.max(totalRooms - reviewedCount, 0)} left
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={closeCompare}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--border)] px-2.5 py-1 text-xs"
+                >
+                  <X className="h-3 w-3" aria-hidden />
+                  Close
+                </button>
+              </div>
             </div>
             {/* Row 2: verdict + linked buttons */}
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -1598,27 +1869,31 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                   <>
                     <button
                       type="button"
-                      onClick={() => setVerdict(compareRow.key, "pass")}
+                      onClick={() => setCompareVerdict(compareRow.key, "pass")}
                       disabled={isReadOnlyReview}
-                      className={`rounded-md border px-2.5 py-1 text-[11px] ${
+                      aria-pressed={review.verdict === "pass"}
+                      className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${
                         review.verdict === "pass"
-                          ? "border-emerald-600 bg-emerald-100 text-emerald-700"
-                          : "border-[var(--border)]"
+                          ? "border-emerald-600 bg-emerald-500 text-white"
+                          : "border-[var(--border)] hover:border-emerald-500 hover:text-emerald-500"
                       } disabled:cursor-not-allowed disabled:opacity-60`}
                     >
-                      Pass
+                      <Check className="h-3.5 w-3.5" aria-hidden />
+                      {review.verdict === "pass" ? "Passed" : "Pass"}
                     </button>
                     <button
                       type="button"
-                      onClick={() => setVerdict(compareRow.key, "rework")}
+                      onClick={() => setCompareVerdict(compareRow.key, "rework")}
                       disabled={isReadOnlyReview}
-                      className={`rounded-md border px-2.5 py-1 text-[11px] ${
+                      aria-pressed={review.verdict === "rework"}
+                      className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${
                         review.verdict === "rework"
-                          ? "border-rose-600 bg-rose-100 text-rose-700"
-                          : "border-[var(--border)]"
+                          ? "border-rose-600 bg-rose-500 text-white"
+                          : "border-[var(--border)] hover:border-rose-500 hover:text-rose-500"
                       } disabled:cursor-not-allowed disabled:opacity-60`}
                     >
-                      Rework
+                      <X className="h-3.5 w-3.5" aria-hidden />
+                      {review.verdict === "rework" ? "Rework set" : "Rework"}
                     </button>
                   </>
                 );
@@ -1801,29 +2076,64 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
             </div>
           </div>
 
-          {/* ── Prev / Next Room bar ─────────────────────────────── */}
-          <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2">
-            <button
-              type="button"
-              disabled={!prevCompareRoom}
-              onClick={() => prevCompareRoom && openCompare(prevCompareRoom.key)}
-              className="flex max-w-[38%] items-center gap-1 truncate rounded-md border border-[var(--border)] px-2 py-1 text-xs disabled:opacity-40"
-            >
-              <span>◀</span>
-              <span className="truncate">{prevCompareRoom ? prevCompareRoom.roomName : "Prev"}</span>
-            </button>
-            <span className="shrink-0 font-mono text-xs text-[var(--muted-foreground)]">
-              {compareRoomIdx + 1} / {visibleRows.length}
-            </span>
-            <button
-              type="button"
-              disabled={!nextCompareRoom}
-              onClick={() => nextCompareRoom && openCompare(nextCompareRoom.key)}
-              className="flex max-w-[38%] items-center gap-1 truncate rounded-md border border-[var(--border)] px-2 py-1 text-xs disabled:opacity-40"
-            >
-              <span className="truncate">{nextCompareRoom ? nextCompareRoom.roomName : "Next"}</span>
-              <span>▶</span>
-            </button>
+          {/* ── Room rail + Prev / Next Room bar ─────────────────── */}
+          <div className="mt-2 space-y-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2">
+            {/* The whole job at a glance: filled = decided, hollow = still open.
+                Doubles as navigation — jump straight to anything needing attention. */}
+            <div className="flex items-center gap-2">
+              <div className="flex flex-1 items-center gap-1.5 overflow-x-auto">
+                {visibleRows.map((row, idx) => {
+                  const verdict = reviewByRoom[row.key]?.verdict ?? null;
+                  return (
+                    <button
+                      key={row.key}
+                      type="button"
+                      onClick={() => openCompare(row.key)}
+                      title={`${idx + 1}. ${row.roomName} — ${
+                        verdict === "pass"
+                          ? "passed"
+                          : verdict === "rework"
+                            ? "needs rework"
+                            : "not reviewed"
+                      }`}
+                      aria-label={`Go to room ${idx + 1}, ${row.roomName}`}
+                      aria-current={row.key === compareRoomKey ? "true" : undefined}
+                      className="shrink-0 rounded-full p-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
+                    >
+                      <RoomVerdictBadge
+                        verdict={verdict}
+                        size="sm"
+                        isCurrent={row.key === compareRoomKey}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+              <span className="shrink-0 font-mono text-xs text-[var(--muted-foreground)]">
+                {compareRoomIdx + 1} / {visibleRows.length}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                disabled={!prevCompareRoom}
+                onClick={() => prevCompareRoom && openCompare(prevCompareRoom.key)}
+                className="flex max-w-[46%] items-center gap-1 truncate rounded-md border border-[var(--border)] px-2 py-1 text-xs disabled:opacity-40"
+              >
+                <span>◀</span>
+                <span className="truncate">{prevCompareRoom ? prevCompareRoom.roomName : "Prev"}</span>
+              </button>
+              <button
+                type="button"
+                disabled={!nextCompareRoom}
+                onClick={() => nextCompareRoom && openCompare(nextCompareRoom.key)}
+                className="flex max-w-[46%] items-center gap-1 truncate rounded-md border border-[var(--border)] px-2 py-1 text-xs disabled:opacity-40"
+              >
+                <span className="truncate">{nextCompareRoom ? nextCompareRoom.roomName : "Next"}</span>
+                <span>▶</span>
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
@@ -2259,6 +2569,63 @@ function renderDraftShape(draftShape: DraftShape, color: string): ReactNode {
       color,
     },
     true,
+  );
+}
+
+/**
+ * The review status language, in one glyph.
+ *
+ *   pass   → filled emerald circle + check
+ *   rework → filled rose circle + cross
+ *   null   → hollow ring (not yet reviewed)
+ *
+ * Filled vs hollow is the load-bearing distinction: a reviewer scanning the room
+ * rail reads "decided" vs "still open" before they read which colour it is. Used
+ * at every altitude (room rail, compare header, room rows) so the same mark
+ * always means the same thing.
+ */
+function RoomVerdictBadge({
+  verdict,
+  size = "md",
+  isCurrent = false,
+  className = "",
+}: {
+  verdict: ReviewVerdict;
+  size?: "sm" | "md" | "lg" | "xl";
+  isCurrent?: boolean;
+  className?: string;
+}) {
+  const box =
+    size === "sm" ? "h-4 w-4" : size === "lg" ? "h-7 w-7" : size === "xl" ? "h-16 w-16" : "h-5 w-5";
+  const glyph =
+    size === "sm"
+      ? "h-2.5 w-2.5"
+      : size === "lg"
+        ? "h-4 w-4"
+        : size === "xl"
+          ? "h-9 w-9"
+          : "h-3 w-3";
+  const tone =
+    verdict === "pass"
+      ? "border-emerald-500 bg-emerald-500 text-white"
+      : verdict === "rework"
+        ? "border-rose-500 bg-rose-500 text-white"
+        : "border-[var(--border)] bg-transparent";
+  const ring = isCurrent
+    ? "ring-2 ring-[var(--primary)] ring-offset-1 ring-offset-[var(--card)]"
+    : "";
+
+  return (
+    <span
+      role="img"
+      aria-label={
+        verdict === "pass" ? "Passed" : verdict === "rework" ? "Needs rework" : "Not reviewed"
+      }
+      className={`inline-flex shrink-0 items-center justify-center rounded-full border-2 transition-colors ${box} ${tone} ${ring} ${className}`}
+    >
+      {verdict === "pass" ? <Check className={glyph} strokeWidth={3} aria-hidden /> : null}
+      {verdict === "rework" ? <X className={glyph} strokeWidth={3} aria-hidden /> : null}
+    </span>
   );
 }
 
