@@ -55,12 +55,47 @@ Run `csoi help` for the authoritative list — the header comment in `scripts/cs
 - **Convex env** — `env`, `env:set`
 - **Users** — `user check <email>`, `user set-role <email> <role>` (`--prod` for prod)
 - **Reporting** — `property report <name-or-id> <YYYY-MM>`
-- **Analytics (PostHog)** — `analytics stats|visits|sites|top-pages|raw`
+- **Analytics (PostHog)** — `analytics stats|visits|sites|top-pages|raw` (see below)
 - **Mobile mirror** — `mobile:check` (typecheck mobile against admin's convex),
   `mobile:drift` (diff admin convex vs the mobile mirror)
 - **Backup** — `backup [--with-files] [--keep N]`
 - **Dev/danger** — `purge:synthetic`, `reset:job`, `reset:completed`, `reset:all`
 - **Meta** — `install`, `help`
+
+### `csoi analytics` — PostHog
+
+Reports against **project 514212 ("chezsoi")** — this app's own PostHog.
+
+> **Three PostHog projects exist and they are easy to confuse.** 514212 is this app.
+> 211614 ("JnA-BusinessSolutions") collects the marketing sites (`chezsoistays.com`,
+> `jnabusinesssolutions.com`). 169649 ("Readme", org Atem) belongs to an unrelated
+> app (Reel Plug). `csoi analytics` was hardcoded to **211614** until 2026-07-15, so
+> any pageview/session number it printed before then described the marketing sites,
+> **not** this app. Don't trust historical readings.
+
+Config — resolved per value as **env var → `.env.local` → `<workspace>/.env`**:
+
+```bash
+POSTHOG_PERSONAL_API_KEY_OPSCENTRAL=phx_...   # PostHog → Settings → Personal API keys
+POSTHOG_PROJECT_ID_OPSCENTRAL=514212          # optional; 514212 is the default
+```
+
+The personal key needs **Query** read access on the project. It is a *personal*
+key (`phx_`), not the project's write token (`phc_`) — keep it out of git; the app
+env files are gitignored.
+
+The app itself is configured separately, in `.env.local` **and in Vercel for
+production** (prod is what real traffic uses):
+
+```bash
+NEXT_PUBLIC_POSTHOG_API_KEY=phc_...            # project 514212's write token
+NEXT_PUBLIC_POSTHOG_API_HOST=https://us.i.posthog.com
+```
+
+`src/lib/posthog/client.ts` falls back to `NEXT_PUBLIC_POSTHOG_KEY` /
+`NEXT_PUBLIC_POSTHOG_HOST` if the `_API_` names are absent — so delete the old
+names rather than leaving them, or a stale fallback silently reports to the wrong
+project.
 
 ### `csoi perf` — performance audit
 
