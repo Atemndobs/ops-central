@@ -22,9 +22,14 @@ ready-for-integration
 https://github.com/Atemndobs/ops-central/pull/275
 
 ## Source
-Reported live by Atem (2026-07-15): "if I press the Pass button, nothing happens."
-Passing should advance to the next room, and the round pass/fail status badges that
-used to make room status scannable were gone.
+Reported live by Atem (2026-07-15), two asks on the same screen:
+1. "if I press the Pass button, nothing happens." Passing should advance to the next
+   room, and the round pass/fail badges that made room status scannable were gone.
+2. Finishing a job should show a success state and then load the next job awaiting
+   review — the reviewer's actual task is clearing the queue.
+
+Both are the same defect (the UI never confirms an action landed) at two altitudes,
+in the same file, so they ship together.
 
 ## Root cause
 `src/components/jobs/job-photos-review-client.tsx` — the Compare modal's verdict
@@ -54,6 +59,18 @@ Single file: `src/components/jobs/job-photos-review-client.tsx`.
   kept alongside).
 - **Room rows** (desktop + mobile): badge added to the header; redundant
   `Pass` / `Needs Rework` text pills removed (badge + filled button already said it).
+- **Decision screen + next-job handoff** (`DecisionResult`, `NEXT_JOB_DELAY_S = 4`):
+  approve/reject now set `decisionResult` instead of only toasting. Overlay shows the
+  xl badge, property, and room tally, then loads the next awaiting-approval job.
+  Reads the existing `getReviewQueue({status:"awaiting_approval", limit:25})` —
+  **gated on `decisionResult`** so it stays `"skip"` (zero read cost) until a job is
+  actually finished. "Review next job" skips the wait, "stay here" cancels the
+  countdown, "Back to queue" always present, empty queue → "Queue clear".
+- **Route awareness** (`usePathname`): this component backs BOTH
+  `/jobs/[id]/photos-review` and `/review/jobs/[id]/photos-review` (the latter via the
+  66-line role-gate wrapper `review-photos-review-client.tsx`, which just renders this
+  component). Next-job/queue links keep the reviewer in the route family they entered.
+- **State-bleed fix** (reset effect on `[id]`): see Known risks.
 
 ## What main should test
 1. `npm run lint && npm run build` clean.
@@ -76,9 +93,20 @@ none — pure frontend, no queries/mutations touched. No deploy needed, no clean
 
 ## Known risks
 - low. Only surface touched is the photo-review workspace.
-- The one behavioural change is auto-advance. If reviewers turn out to want to linger
-  on a room after deciding, the knob is `ADVANCE_DELAY_MS` (or gate the advance behind
-  a preference). Deliberately not made configurable yet — no evidence it's wanted.
+- **State bleed across jobs (fixed here, worth understanding).** Loading the next job
+  is a same-route param change, so React keeps this component mounted and every piece
+  of per-job state survives. `reviewByRoom` is keyed by normalized room NAME, so a
+  "Kitchen" passed on job A would show as already-passed on job B. The existing
+  snapshot loader can't cover it — it early-returns when a job has no saved snapshot,
+  which is exactly the fresh-job case. Fixed with an explicit reset effect on `[id]`,
+  declared BEFORE the snapshot loader so a real snapshot still wins on mount. If you
+  add per-job state to this component, add it to that reset.
+- Two behavioural changes are auto-advance (room, `ADVANCE_DELAY_MS`) and auto-load
+  next job (`NEXT_JOB_DELAY_S`). Both are opt-out, not opt-in — clearing the queue is
+  the reviewer's actual task. Neither is user-configurable yet; no evidence that's
+  wanted, and the knobs are two constants at the top of the file.
+- The next-job query is a real subscription, but `"skip"`-gated on `decisionResult`,
+  so it costs nothing during the review itself and only opens once per finished job.
 - Under the "Needs Review" filter the rail shrinks as rooms are decided (they leave
   `visibleRows`). Expected filter behaviour; the default "All" filter shows the full rail.
 

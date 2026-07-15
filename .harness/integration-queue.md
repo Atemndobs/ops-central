@@ -12,7 +12,7 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 - Convex impact: none (pure frontend — no deploy, no cleaners mirror)
 - Risk: low — one file, photo-review workspace only
 - Ready since: 2026-07-15 22:55
-- What: fixes "press Pass and nothing happens" in the photo-review Compare modal — (1) round verdict badges restored (filled green check = pass, filled red cross = rework, hollow = unreviewed) across compare header/rail/room rows, (2) recording a verdict auto-advances to the next room after a 450ms beat, (3) new room rail replaces the bare "1 / 10" counter with a per-room status map you can jump from. Compare's Pass/Rework buttons now use the solid fill the room list already used.
+- What: fixes "no confirmation that anything happened" in the photo-review flow, at both altitudes — (1) round verdict badges restored (filled green check = pass, filled red cross = rework, hollow = unreviewed) across compare header/rail/room rows, (2) a verdict auto-advances to the next room after a 450ms beat, (3) new room rail replaces the bare "1 / 10" counter with a per-room status map you can jump from, (4) approving/rejecting a job now shows a decision screen then loads the next awaiting-approval job (gated queue subscription, opt-out auto-load, "Queue clear" empty state). Also fixes a latent per-job state bleed that the next-job handoff would have exposed.
 - CI: eslint exit 0 on the touched file; `npm run build` exit 0 (TypeScript passes)
 - Not verified: browser preview blocked by Clerk auth — needs human eyeball on the Compare modal
 - Handoff: .harness/handoffs/TASK-REVIEW-VERDICT-FEEDBACK-001/worktree-handoff.md
