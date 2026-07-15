@@ -6,6 +6,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { z } from "zod";
 import { ROLE_KEYS } from "@/lib/roles";
+import { getPostHogServerClient } from "@/lib/posthog/server";
 
 // This endpoint is upsert — used for both invites AND in-place role updates
 // (the role-editor modal on /team posts here too). Accept every role.
@@ -182,6 +183,18 @@ export async function POST(request: Request) {
       }
     }
 
+    const posthog = getPostHogServerClient();
+    posthog.capture({
+      distinctId: userId,
+      event: "team_member_created",
+      properties: {
+        role: payload.role,
+        has_company: !!attachedCompanyId,
+        is_new_clerk_user: !existingConvexUser?._id,
+      },
+    });
+    await posthog.flush();
+
     return NextResponse.json({
       success: true,
       clerkUserId: clerkUser.id,
@@ -280,6 +293,16 @@ export async function DELETE(request: Request) {
         console.error("Clerk user delete failed", clerkError);
       }
     }
+
+    const posthog = getPostHogServerClient();
+    posthog.capture({
+      distinctId: userId,
+      event: "team_member_deleted",
+      properties: {
+        clerk_deleted: clerkDeleted,
+      },
+    });
+    await posthog.flush();
 
     return NextResponse.json({
       success: true,

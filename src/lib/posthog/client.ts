@@ -25,9 +25,12 @@ export function initPostHog(): PostHog | null {
   if (client) return client;
 
   posthog.init(KEY, {
-    api_host: HOST,
+    api_host: "/ingest",
+    ui_host: HOST,
+    defaults: "2026-01-30",
     capture_pageview: false, // we handle pageviews via the provider
     capture_pageleave: true,
+    capture_exceptions: true,
     person_profiles: "identified_only",
     loaded: (ph) => {
       if (process.env.NODE_ENV === "development") ph.debug(false);

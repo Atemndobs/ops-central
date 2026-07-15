@@ -20,6 +20,7 @@ import {
 import { PropertyFormModal } from "@/components/properties/property-form-modal";
 import { useToast } from "@/components/ui/toast-provider";
 import { getErrorMessage } from "@/lib/errors";
+import { capture } from "@/lib/posthog/client";
 import { PropertyFormValues, PropertyRecord, PropertyStatus } from "@/types/property";
 import { formatDate as formatDateTz } from "@/lib/tz";
 
@@ -134,6 +135,11 @@ function PropertiesPageContent() {
       const msg = parts.length > 0
         ? `Synced from Hospitable: ${parts.join(", ")}.`
         : "Synced from Hospitable — already up to date.";
+      capture("hospitable_sync_triggered", {
+        properties_created: result.bootstrap.created,
+        jobs_created: result.reservations.summary.jobsCreated,
+        jobs_updated: result.reservations.summary.jobsUpdated,
+      });
       showToast(msg, "success");
     } catch (error) {
       const message = getErrorMessage(error, "Failed to sync from Hospitable.");
@@ -220,6 +226,7 @@ function PropertiesPageContent() {
 
     try {
       await createProperty(toMutationInput(values));
+      capture("property_created", { property_type: values.propertyType });
       showToast("Property created successfully.");
     } catch (error) {
       const message = getErrorMessage(error, "Failed to create property.");
@@ -244,6 +251,7 @@ function PropertiesPageContent() {
         id: editingProperty._id as never,
         ...toMutationInput(values),
       });
+      capture("property_updated", { property_type: values.propertyType });
       setEditingProperty(null);
       showToast("Property updated successfully.");
     } catch (error) {
@@ -266,6 +274,7 @@ function PropertiesPageContent() {
 
     try {
       await softDeleteProperty({ id: id as never });
+      capture("property_archived");
       showToast("Property archived.");
     } catch (error) {
       const message = getErrorMessage(error, "Failed to archive property.");

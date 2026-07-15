@@ -36,6 +36,7 @@ import { NextResponse } from "next/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@convex/_generated/api";
 import crypto from "node:crypto";
+import { getPostHogServerClient } from "@/lib/posthog/server";
 
 export const runtime = "nodejs";
 
@@ -146,6 +147,17 @@ export async function POST(
       signatureValid: undefined,
       signatureHeaders: observedHeaders,
     });
+
+    const posthog = getPostHogServerClient();
+    posthog.capture({
+      distinctId: "hospitable-webhook",
+      event: "hospitable_webhook_received",
+      properties: {
+        action,
+        hospitable_event_id: hospitableEventId,
+      },
+    });
+    await posthog.flush();
   } catch (err) {
     console.error("Hospitable webhook: Convex ingest failed", err);
   }

@@ -68,3 +68,4 @@ SESSIONS.md
 # Convex prod snapshots from `csoi backup` — never commit these.
 # They contain the full production database (guest names, addresses, financials).
 /backups/
+.env.local

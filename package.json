@@ -39,6 +39,7 @@
     "papaparse": "^5.5.3",
     "pdfkit": "^0.18.0",
     "posthog-js": "^1.370.1",
+    "posthog-node": "^5.43.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",
