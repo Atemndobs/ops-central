@@ -65,6 +65,6 @@ graphify-out/
 skills/convex
 SESSIONS.md
 
-# Convex prod snapshots from `npm run cswa:backup` — never commit these.
+# Convex prod snapshots from `csoi backup` — never commit these.
 # They contain the full production database (guest names, addresses, financials).
 /backups/
