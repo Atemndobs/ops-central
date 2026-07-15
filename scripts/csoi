@@ -76,6 +76,12 @@ while [ -L "$_csoi_src" ]; do
 done
 CSOI_SCRIPT_DIR="$(cd -P "$(dirname "$_csoi_src")" && pwd)"
 CSOI_REPO_ROOT="$(cd -P "$CSOI_SCRIPT_DIR/.." && pwd)"
+# Absolute path to the real script. `$_csoi_src` may still be RELATIVE here — it
+# starts life as the invocation path, so `./scripts/csoi install` leaves it as
+# "./scripts/csoi". Symlinking that verbatim produced a symlink relative to the
+# TARGET dir (~/.local/bin/csoi -> ./scripts/csoi -> ~/.local/bin/scripts/csoi),
+# i.e. a dangling link and "command not found". Always symlink this instead.
+CSOI_SELF="$CSOI_SCRIPT_DIR/$(basename "$_csoi_src")"
 
 # All paths derive from the repo root. Every one is overridable by env var so this
 # also works from an odd layout, a CI runner, or a server.
@@ -135,8 +141,8 @@ case "$cmd" in
       echo "csoi: existing non-symlink moved aside -> $backup" >&2
     fi
 
-    ln -sfn "$_csoi_src" "$target"
-    echo "✓ installed: $target -> $_csoi_src"
+    ln -sfn "$CSOI_SELF" "$target"
+    echo "✓ installed: $target -> $CSOI_SELF"
 
     case ":$PATH:" in
       *":$target_dir:"*) ;;
