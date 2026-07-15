@@ -26,9 +26,10 @@
  *   node scripts/check-convex-readcost.mjs --update-baseline --force
  */
 
-import { readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
-import { join, relative } from "node:path";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { scanConvexDir, totalOf } from "./lib/convex-scan.mjs";
 
 const ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const CONVEX_DIR = join(ROOT, "convex");
@@ -127,20 +128,7 @@ function resolveNumericConst(source, name) {
 }
 
 // ---- run ----
-const files = listSourceFiles(CONVEX_DIR);
-const current = {}; // relPath -> { rule: count }
-const detail = {}; // relPath -> violations[]
-for (const file of files) {
-  const source = readFileSync(file, "utf8");
-  const violations = findViolations(source);
-  if (violations.length === 0) continue;
-  const rel = relative(ROOT, file);
-  detail[rel] = violations;
-  current[rel] = {};
-  for (const v of violations) {
-    current[rel][v.rule] = (current[rel][v.rule] ?? 0) + 1;
-  }
-}
+const { counts: current, detail } = scanConvexDir(CONVEX_DIR, ROOT);
 
 if (UPDATE) {
   if (existsSync(BASELINE_PATH) && !FORCE) {
@@ -161,9 +149,7 @@ if (UPDATE) {
     }
   }
   writeFileSync(BASELINE_PATH, JSON.stringify(current, null, 2) + "\n");
-  const total = Object.values(current)
-    .flatMap((r) => Object.values(r))
-    .reduce((a, b) => a + b, 0);
+  const total = totalOf(current);
   console.log(`✓ Baseline written: ${total} accepted violation(s) across ${Object.keys(current).length} file(s).`);
   process.exit(0);
 }
@@ -209,9 +195,7 @@ if (failed) {
   process.exit(1);
 }
 
-const totalNow = Object.values(current)
-  .flatMap((r) => Object.values(r))
-  .reduce((a, b) => a + b, 0);
+const totalNow = totalOf(current);
 console.log(`✓ Read-cost check passed. ${totalNow} known violation(s) within baseline.`);
 if (improved > 0) {
   console.log(
