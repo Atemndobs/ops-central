@@ -151,6 +151,15 @@ function channelBadge(platform?: string): { letter: string; label: string } | nu
   return { letter: platform.slice(0, 1).toUpperCase(), label: platform };
 }
 
+/** Stable key for a property's city filter value ("City|ST", or "City" when
+ *  the state is blank). Single source of truth for the city dropdown, the
+ *  city→property scoping, and the board's own filtering. */
+function cityFilterValue(property: { city?: string | null; state?: string | null }): string {
+  const city = (property.city ?? "").trim();
+  const state = (property.state ?? "").trim();
+  return state ? `${city}|${state}` : city;
+}
+
 function clampIndex(value: number, max: number): number {
   return Math.max(0, Math.min(max, value));
 }
@@ -451,13 +460,35 @@ export function ScheduleClient() {
       const city = (p.city ?? "").trim();
       if (!city) continue;
       const state = (p.state ?? "").trim();
-      const value = state ? `${city}|${state}` : city;
+      const value = cityFilterValue(p);
       if (!seen.has(value)) {
         seen.set(value, { value, label: state ? `${city}, ${state}` : city });
       }
     }
     return Array.from(seen.values()).sort((a, b) => a.label.localeCompare(b.label));
   }, [properties]);
+
+  // --- Computed: property picker options, scoped to the selected city ---
+  // Progressive filtering: once a city is chosen the property dropdown must
+  // only offer that city's properties. Offering the rest is misleading, and
+  // picking one produces a city+property combo that matches nothing.
+  const propertyPickerOptions = useMemo(() => {
+    const source = properties ?? [];
+    const scoped =
+      cityFilter === "all"
+        ? source
+        : source.filter((property) => cityFilterValue(property) === cityFilter);
+    return scoped.map((property) => ({ id: property._id, label: property.name }));
+  }, [properties, cityFilter]);
+
+  // Switching city can orphan an already-picked property. Clear it instead of
+  // leaving two filters that contradict each other and render an empty board.
+  useEffect(() => {
+    if (propertyFilter === "all") return;
+    if (!propertyPickerOptions.some((option) => option.id === propertyFilter)) {
+      setPropertyFilter("all");
+    }
+  }, [propertyPickerOptions, propertyFilter]);
 
   // --- Computed: filtered properties ---
   const filteredProperties = useMemo(() => {
@@ -466,13 +497,7 @@ export function ScheduleClient() {
     return source.filter((property) => {
       const propertyMatches = propertyFilter === "all" || property._id === propertyFilter;
       const textMatches = !q || property.name.toLowerCase().includes(q) || property.address.toLowerCase().includes(q);
-      let cityMatches = true;
-      if (cityFilter !== "all") {
-        const city = (property.city ?? "").trim();
-        const state = (property.state ?? "").trim();
-        const propValue = state ? `${city}|${state}` : city;
-        cityMatches = propValue === cityFilter;
-      }
+      const cityMatches = cityFilter === "all" || cityFilterValue(property) === cityFilter;
       return propertyMatches && textMatches && cityMatches;
     });
   }, [properties, propertyFilter, search, cityFilter]);
@@ -1276,7 +1301,7 @@ export function ScheduleClient() {
                 placeholder="All Properties"
                 searchPlaceholder="Search properties…"
                 aria-label="Filter by property"
-                items={(properties ?? []).map((p) => ({ id: p._id, label: p.name }))}
+                items={propertyPickerOptions}
               />
             </div>
 
@@ -1389,7 +1414,7 @@ export function ScheduleClient() {
                 placeholder="All"
                 searchPlaceholder="Search…"
                 aria-label="Filter by property"
-                items={(properties ?? []).map((p) => ({ id: p._id, label: p.name }))}
+                items={propertyPickerOptions}
               />
             </div>
 
