@@ -44,6 +44,11 @@ type RoomReviewState = {
 };
 type SortMode = "checklist" | "az";
 
+// Beat between recording a verdict and swiping to the next room. Long enough
+// that the reviewer sees the button fill and the badge land (so the tap is
+// confirmed), short enough that it never feels like waiting.
+const ADVANCE_DELAY_MS = 450;
+
 type EvidencePhoto = {
   photoId: Id<"photos">;
   roomName: string;
@@ -350,6 +355,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const [isDrawingShape, setIsDrawingShape] = useState(false);
   const [draftShape, setDraftShape] = useState<DraftShape | null>(null);
   const viewerCanvasRef = useRef<HTMLDivElement | null>(null);
+  const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const videoEnabled = useIsVideoEnabled();
   const rawCurrentPhotos = detail?.evidence.current.byType.all ?? [];
@@ -485,6 +491,15 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const compareBeforePhoto = compareRow?.before[compareBeforeIndex] ?? null;
   const compareAfterPhoto = compareRow?.after[compareAfterIndex] ?? null;
 
+  // Never let a queued room-advance fire after the workspace is gone.
+  useEffect(() => {
+    return () => {
+      if (advanceTimerRef.current) {
+        clearTimeout(advanceTimerRef.current);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (persistedAnnotations === undefined) {
       return;
@@ -586,6 +601,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
 
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") {
+        clearAdvanceTimer();
         setCompareRoomKey(null);
         return;
       }
@@ -977,10 +993,50 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
     }));
   }
 
+  function clearAdvanceTimer() {
+    if (advanceTimerRef.current) {
+      clearTimeout(advanceTimerRef.current);
+      advanceTimerRef.current = null;
+    }
+  }
+
   function openCompare(roomKey: string) {
+    clearAdvanceTimer();
     setCompareRoomKey(roomKey);
     setCompareBeforeIndex(0);
     setCompareAfterIndex(0);
+  }
+
+  function closeCompare() {
+    clearAdvanceTimer();
+    setCompareRoomKey(null);
+  }
+
+  /**
+   * Verdict from inside the Compare modal: record it, then swipe to the next
+   * room. The swipe is the confirmation — it's the one signal a reviewer can't
+   * miss while their eyes are on the photos, not on the button they just hit.
+   * `nextCompareRoom` is read at call time so the target is resolved against the
+   * list as it looked when the reviewer decided, not after the verdict re-filters
+   * it (e.g. under the "Needs Review" filter the room leaves the list).
+   */
+  function setCompareVerdict(roomKey: string, verdict: Exclude<ReviewVerdict, null>) {
+    if (isReadOnlyReview) {
+      return;
+    }
+    setVerdict(roomKey, verdict);
+
+    const upcoming = nextCompareRoom;
+    clearAdvanceTimer();
+    if (!upcoming) {
+      // Last room: nothing to advance to. The filled button + badge carry the
+      // confirmation on their own.
+      return;
+    }
+    advanceTimerRef.current = setTimeout(() => {
+      advanceTimerRef.current = null;
+      openCompare(upcoming.key);
+    }, ADVANCE_DELAY_MS);
   }
 
   function compareNavigate(delta: number, side: "before" | "after") {
@@ -1254,6 +1310,7 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                 >
                   <div className="border-r border-[var(--border)] p-4">
                     <div className="flex flex-wrap items-center gap-2">
+                      <RoomVerdictBadge verdict={review.verdict} />
                       <h3 className="text-sm font-semibold">{row.roomName}</h3>
                       <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] text-[var(--muted-foreground)]">
                         B {row.before.length} · A {row.after.length}
@@ -1269,8 +1326,6 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                       {row.hasMissingBefore ? <Pill tone="warning">Missing Before</Pill> : null}
                       {row.hasMissingAfter ? <Pill tone="warning">Missing After</Pill> : null}
                       {row.hasCountMismatch ? <Pill tone="warning">Count mismatch</Pill> : null}
-                      {review.verdict === "pass" ? <Pill tone="success">Pass</Pill> : null}
-                      {review.verdict === "rework" ? <Pill tone="danger">Needs Rework</Pill> : null}
                     </div>
 
                     <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -1394,11 +1449,14 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-[10px] text-[var(--muted-foreground)]">
-                        {rowIdx + 1} of {visibleRows.length}
-                      </p>
-                      <h3 className="truncate text-sm font-semibold">{row.roomName}</h3>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <RoomVerdictBadge verdict={review.verdict} />
+                      <div className="min-w-0">
+                        <p className="text-[10px] text-[var(--muted-foreground)]">
+                          {rowIdx + 1} of {visibleRows.length}
+                        </p>
+                        <h3 className="truncate text-sm font-semibold">{row.roomName}</h3>
+                      </div>
                     </div>
                     <button
                       type="button"
@@ -1562,17 +1620,38 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
         <div className="fixed inset-0 z-40 flex flex-col bg-black/90 p-2">
           {/* ── Top bar ─────────────────────────────────────────── */}
           <div className="mb-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2">
-            {/* Row 1: room name + close */}
+            {/* Row 1: verdict badge + room name + progress + close */}
             <div className="flex items-center justify-between gap-2">
-              <h2 className="truncate text-sm font-semibold">{compareRow.roomName} · Compare</h2>
-              <button
-                type="button"
-                onClick={() => setCompareRoomKey(null)}
-                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--border)] px-2.5 py-1 text-xs"
-              >
-                <X className="h-3 w-3" aria-hidden />
-                Close
-              </button>
+              <div className="flex min-w-0 items-center gap-2">
+                <RoomVerdictBadge
+                  verdict={reviewByRoom[compareRow.key]?.verdict ?? null}
+                  size="lg"
+                />
+                <h2 className="truncate text-sm font-semibold">{compareRow.roomName} · Compare</h2>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="hidden items-center gap-2 text-xs sm:inline-flex">
+                  <span className="inline-flex items-center gap-1 text-emerald-500">
+                    <Check className="h-3 w-3" aria-hidden />
+                    {passCount}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-rose-500">
+                    <X className="h-3 w-3" aria-hidden />
+                    {reworkCount}
+                  </span>
+                  <span className="text-[var(--muted-foreground)]">
+                    {Math.max(totalRooms - reviewedCount, 0)} left
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={closeCompare}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--border)] px-2.5 py-1 text-xs"
+                >
+                  <X className="h-3 w-3" aria-hidden />
+                  Close
+                </button>
+              </div>
             </div>
             {/* Row 2: verdict + linked buttons */}
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -1598,27 +1677,31 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
                   <>
                     <button
                       type="button"
-                      onClick={() => setVerdict(compareRow.key, "pass")}
+                      onClick={() => setCompareVerdict(compareRow.key, "pass")}
                       disabled={isReadOnlyReview}
-                      className={`rounded-md border px-2.5 py-1 text-[11px] ${
+                      aria-pressed={review.verdict === "pass"}
+                      className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${
                         review.verdict === "pass"
-                          ? "border-emerald-600 bg-emerald-100 text-emerald-700"
-                          : "border-[var(--border)]"
+                          ? "border-emerald-600 bg-emerald-500 text-white"
+                          : "border-[var(--border)] hover:border-emerald-500 hover:text-emerald-500"
                       } disabled:cursor-not-allowed disabled:opacity-60`}
                     >
-                      Pass
+                      <Check className="h-3.5 w-3.5" aria-hidden />
+                      {review.verdict === "pass" ? "Passed" : "Pass"}
                     </button>
                     <button
                       type="button"
-                      onClick={() => setVerdict(compareRow.key, "rework")}
+                      onClick={() => setCompareVerdict(compareRow.key, "rework")}
                       disabled={isReadOnlyReview}
-                      className={`rounded-md border px-2.5 py-1 text-[11px] ${
+                      aria-pressed={review.verdict === "rework"}
+                      className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${
                         review.verdict === "rework"
-                          ? "border-rose-600 bg-rose-100 text-rose-700"
-                          : "border-[var(--border)]"
+                          ? "border-rose-600 bg-rose-500 text-white"
+                          : "border-[var(--border)] hover:border-rose-500 hover:text-rose-500"
                       } disabled:cursor-not-allowed disabled:opacity-60`}
                     >
-                      Rework
+                      <X className="h-3.5 w-3.5" aria-hidden />
+                      {review.verdict === "rework" ? "Rework set" : "Rework"}
                     </button>
                   </>
                 );
@@ -1801,29 +1884,64 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
             </div>
           </div>
 
-          {/* ── Prev / Next Room bar ─────────────────────────────── */}
-          <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2">
-            <button
-              type="button"
-              disabled={!prevCompareRoom}
-              onClick={() => prevCompareRoom && openCompare(prevCompareRoom.key)}
-              className="flex max-w-[38%] items-center gap-1 truncate rounded-md border border-[var(--border)] px-2 py-1 text-xs disabled:opacity-40"
-            >
-              <span>◀</span>
-              <span className="truncate">{prevCompareRoom ? prevCompareRoom.roomName : "Prev"}</span>
-            </button>
-            <span className="shrink-0 font-mono text-xs text-[var(--muted-foreground)]">
-              {compareRoomIdx + 1} / {visibleRows.length}
-            </span>
-            <button
-              type="button"
-              disabled={!nextCompareRoom}
-              onClick={() => nextCompareRoom && openCompare(nextCompareRoom.key)}
-              className="flex max-w-[38%] items-center gap-1 truncate rounded-md border border-[var(--border)] px-2 py-1 text-xs disabled:opacity-40"
-            >
-              <span className="truncate">{nextCompareRoom ? nextCompareRoom.roomName : "Next"}</span>
-              <span>▶</span>
-            </button>
+          {/* ── Room rail + Prev / Next Room bar ─────────────────── */}
+          <div className="mt-2 space-y-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2">
+            {/* The whole job at a glance: filled = decided, hollow = still open.
+                Doubles as navigation — jump straight to anything needing attention. */}
+            <div className="flex items-center gap-2">
+              <div className="flex flex-1 items-center gap-1.5 overflow-x-auto">
+                {visibleRows.map((row, idx) => {
+                  const verdict = reviewByRoom[row.key]?.verdict ?? null;
+                  return (
+                    <button
+                      key={row.key}
+                      type="button"
+                      onClick={() => openCompare(row.key)}
+                      title={`${idx + 1}. ${row.roomName} — ${
+                        verdict === "pass"
+                          ? "passed"
+                          : verdict === "rework"
+                            ? "needs rework"
+                            : "not reviewed"
+                      }`}
+                      aria-label={`Go to room ${idx + 1}, ${row.roomName}`}
+                      aria-current={row.key === compareRoomKey ? "true" : undefined}
+                      className="shrink-0 rounded-full p-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
+                    >
+                      <RoomVerdictBadge
+                        verdict={verdict}
+                        size="sm"
+                        isCurrent={row.key === compareRoomKey}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+              <span className="shrink-0 font-mono text-xs text-[var(--muted-foreground)]">
+                {compareRoomIdx + 1} / {visibleRows.length}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                disabled={!prevCompareRoom}
+                onClick={() => prevCompareRoom && openCompare(prevCompareRoom.key)}
+                className="flex max-w-[46%] items-center gap-1 truncate rounded-md border border-[var(--border)] px-2 py-1 text-xs disabled:opacity-40"
+              >
+                <span>◀</span>
+                <span className="truncate">{prevCompareRoom ? prevCompareRoom.roomName : "Prev"}</span>
+              </button>
+              <button
+                type="button"
+                disabled={!nextCompareRoom}
+                onClick={() => nextCompareRoom && openCompare(nextCompareRoom.key)}
+                className="flex max-w-[46%] items-center gap-1 truncate rounded-md border border-[var(--border)] px-2 py-1 text-xs disabled:opacity-40"
+              >
+                <span className="truncate">{nextCompareRoom ? nextCompareRoom.roomName : "Next"}</span>
+                <span>▶</span>
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
@@ -2259,6 +2377,55 @@ function renderDraftShape(draftShape: DraftShape, color: string): ReactNode {
       color,
     },
     true,
+  );
+}
+
+/**
+ * The review status language, in one glyph.
+ *
+ *   pass   → filled emerald circle + check
+ *   rework → filled rose circle + cross
+ *   null   → hollow ring (not yet reviewed)
+ *
+ * Filled vs hollow is the load-bearing distinction: a reviewer scanning the room
+ * rail reads "decided" vs "still open" before they read which colour it is. Used
+ * at every altitude (room rail, compare header, room rows) so the same mark
+ * always means the same thing.
+ */
+function RoomVerdictBadge({
+  verdict,
+  size = "md",
+  isCurrent = false,
+  className = "",
+}: {
+  verdict: ReviewVerdict;
+  size?: "sm" | "md" | "lg";
+  isCurrent?: boolean;
+  className?: string;
+}) {
+  const box = size === "sm" ? "h-4 w-4" : size === "lg" ? "h-7 w-7" : "h-5 w-5";
+  const glyph = size === "sm" ? "h-2.5 w-2.5" : size === "lg" ? "h-4 w-4" : "h-3 w-3";
+  const tone =
+    verdict === "pass"
+      ? "border-emerald-500 bg-emerald-500 text-white"
+      : verdict === "rework"
+        ? "border-rose-500 bg-rose-500 text-white"
+        : "border-[var(--border)] bg-transparent";
+  const ring = isCurrent
+    ? "ring-2 ring-[var(--primary)] ring-offset-1 ring-offset-[var(--card)]"
+    : "";
+
+  return (
+    <span
+      role="img"
+      aria-label={
+        verdict === "pass" ? "Passed" : verdict === "rework" ? "Needs rework" : "Not reviewed"
+      }
+      className={`inline-flex shrink-0 items-center justify-center rounded-full border-2 transition-colors ${box} ${tone} ${ring} ${className}`}
+    >
+      {verdict === "pass" ? <Check className={glyph} strokeWidth={3} aria-hidden /> : null}
+      {verdict === "rework" ? <X className={glyph} strokeWidth={3} aria-hidden /> : null}
+    </span>
   );
 }
 
