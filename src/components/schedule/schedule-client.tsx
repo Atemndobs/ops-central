@@ -1136,11 +1136,16 @@ export function ScheduleClient() {
     <div className="space-y-3 sm:space-y-4">
       {/* === HEADER === */}
       <header className="rounded-2xl border bg-[var(--card)] px-3 py-2 sm:px-4 sm:py-2.5">
-        {/* Single row: everything on one line */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* Today */}
+        {/* Single row on desktop. On mobile it may wrap rather than overflow —
+            an overflowing row pushed the filter outside the viewport and made
+            the whole page horizontally scrollable. Wrapping is the guard; with
+            "Today" hidden below sm the controls normally still fit one line. */}
+        <div className="flex flex-wrap items-center gap-1.5 sm:flex-nowrap sm:gap-2">
+          {/* Today — desktop only. The mobile row must fit the viewport: an
+              overflowing toolbar pushed the filter off-screen and made the whole
+              page horizontally scrollable. On mobile you swipe the grid instead. */}
           <button
-            className="shrink-0 rounded-md border px-2 py-1 text-xs font-semibold hover:bg-[var(--accent)] sm:px-3 sm:py-1.5 sm:text-sm"
+            className="hidden shrink-0 rounded-md border px-2 py-1 text-xs font-semibold hover:bg-[var(--accent)] sm:inline-block sm:px-3 sm:py-1.5 sm:text-sm"
             onClick={goToToday}
             title="Jump to today"
           >
@@ -1187,10 +1192,14 @@ export function ScheduleClient() {
             </button>
           </div>
 
-          <button className="rounded-md p-1 hover:bg-[var(--accent)] sm:p-1.5" onClick={() => shiftRange(-1)} aria-label="Previous">
+          {/* Range arrows stay on mobile: they are the ONLY way to page to the
+              next/previous month. The swipe handler only calls shiftRange in
+              week view (month view scrolls internally), so hiding these would
+              strand month-view users in the current month. */}
+          <button className="shrink-0 rounded-md p-1 hover:bg-[var(--accent)] sm:p-1.5" onClick={() => shiftRange(-1)} aria-label="Previous">
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <button className="rounded-md p-1 hover:bg-[var(--accent)] sm:p-1.5" onClick={() => shiftRange(1)} aria-label="Next">
+          <button className="shrink-0 rounded-md p-1 hover:bg-[var(--accent)] sm:p-1.5" onClick={() => shiftRange(1)} aria-label="Next">
             <ChevronRight className="h-4 w-4" />
           </button>
           <span className="min-w-0 truncate px-1 text-xs font-semibold text-[var(--muted-foreground)] sm:px-2 sm:text-sm">
