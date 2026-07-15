@@ -69,10 +69,20 @@ fi
 
 # Optional deep check — slow, opt-in.
 if [ "${CSOI_DEEP_PREPUSH:-0}" = "1" ]; then
+  # csoi lives at scripts/csoi in this repo; prefer the PATH install, fall back to
+  # the repo copy so the deep check still runs on a machine that hasn't run
+  # `./scripts/csoi install` yet.
+  CSOI_BIN=""
   if command -v csoi >/dev/null 2>&1; then
+    CSOI_BIN="csoi"
+  elif [ -x "$(git rev-parse --show-toplevel)/scripts/csoi" ]; then
+    CSOI_BIN="$(git rev-parse --show-toplevel)/scripts/csoi"
+  fi
+
+  if [ -n "$CSOI_BIN" ]; then
     echo ""
     echo "=== pre-push: deep mobile typecheck (CSOI_DEEP_PREPUSH=1) ==="
-    if ! csoi mobile:check; then
+    if ! "$CSOI_BIN" mobile:check; then
       cat <<EOF
 
 ❌ pre-push blocked: mobile deep typecheck failed.

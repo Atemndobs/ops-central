@@ -1,0 +1,711 @@
+#!/usr/bin/env bash
+#
+# csoi — Chez Soi / OpsCentral admin CLI
+#
+# Wraps the most-used npx convex commands so you can run them from anywhere
+# without remembering the project path or function names.
+#
+# This script is VERSION-CONTROLLED at <repo>/scripts/csoi. Install it on any
+# machine, server, or fresh clone by symlinking it onto your PATH:
+#
+#   ./scripts/csoi install     # symlinks this file -> ~/.local/bin/csoi
+#   csoi help                  # (ensure ~/.local/bin is on your PATH)
+#
+# Every path resolves from this script's own location (symlinks are followed), so it
+# works from any checkout without editing. Overrides, if your layout differs:
+#   CSOI_PROJECT_DIR   admin repo root      (default: the repo containing this file)
+#   CSOI_MOBILE_DIR    cleaners app repo    (default: <repo>/../jna-cleaners-app)
+#   CSOI_POSTHOG_ENV   file holding the PostHog key (default: <repo>/../../.env)
+#
+# Requires: node 20+, npx. Some commands also need: jq, curl, vercel, python3.
+#
+# Usage:
+#   csoi help
+#   csoi sync                          # full Hospitable sync (reservations + properties)
+#   csoi sync:reservations             # reservations only (via cron-exposed action)
+#   csoi sync:properties               # property details only
+#   csoi events [N=10]                 # latest N hospitableWebhookEvents
+#   csoi jobs [N=10]                   # latest N cleaningJobs
+#   csoi stays [N=10]                  # latest N stays
+#   csoi env                           # list Convex env vars
+#   csoi env:set KEY VALUE             # set a Convex env var
+#   csoi purge:synthetic               # delete synthetic test artifacts
+#   csoi reset:job <jobId>             # full reset one job (status=scheduled, unassign, detach photos)
+#   csoi reset:completed [--dry-run]   # reset all completed jobs
+#   csoi reset:all [--dry-run]         # reset every job regardless of status
+#   csoi raw <function> [--arg val]    # arbitrary `convex run` passthrough
+#   csoi data <table> [--limit N]      # arbitrary `convex data` passthrough
+#   csoi logs                          # tail Vercel logs for app.chezsoistays.com
+#   csoi webhook-test 2030             # fire a synthetic reservation.created for year 2030
+#   csoi mobile:check                  # typecheck mobile app against admin's current convex
+#   csoi mobile:drift                  # diff admin convex vs mobile convex mirror
+#   csoi backup [--with-files] [--keep N]
+#                                      # snapshot the PROD Convex DB -> <project>/backups/
+#                                      # (gitignored). All 121 tables ~= 3 MB zipped, ~7s.
+#                                      # --with-files adds Convex file storage (~674 MB) —
+#                                      # photos live on B2, so that's mostly legacy. Default
+#                                      # keeps the 5 newest snapshots.
+#   csoi user check <email> [--prod]              # look up a user's role(s) by email
+#   csoi user set-role <email> <role> [--prod]    # set a user's role by email
+#                                                  # roles: cleaner manager property_ops admin owner
+#   csoi property report <name-or-id> <YYYY-MM> [--prod]
+#                                                  # monthly revenue/cost breakdown for a property
+#                                                  # (same data as /reports/monthly-close); requires jq
+#                                                  # for name lookup, not needed if passing a raw _id
+#   csoi analytics stats [days=7]       # PostHog: pageviews, unique visitors, sessions
+#   csoi analytics visits [days=7]      # PostHog: daily pageview + session counts
+#   csoi analytics sites [days=7]       # PostHog: event counts by `site` tag (jna-bs-admin/chezsoi-wp/chez-soi-decks)
+#   csoi analytics top-pages [days=7]   # PostHog: most-viewed URLs
+#   csoi analytics raw '<hogql>'        # PostHog: arbitrary HogQL query
+#                                        # (reads POSTHOG_PERSONAL_API_KEY_J&A-Project from
+#                                        #  <workspace>/.env — override CSOI_POSTHOG_ENV; project 211614)
+#   csoi install                        # symlink this script -> ~/.local/bin/csoi
+
+set -euo pipefail
+
+# Resolve the repo root from THIS SCRIPT'S OWN LOCATION, not a hardcoded path, so
+# the CLI works on any machine / server / checkout and for any developer. This file
+# lives at <repo>/scripts/csoi and is normally symlinked into ~/.local/bin/csoi, so
+# we must walk symlinks to find the real file. (`readlink -f` is GNU-only; macOS
+# ships BSD readlink, hence the loop.)
+_csoi_src="${BASH_SOURCE[0]}"
+while [ -L "$_csoi_src" ]; do
+  _csoi_dir="$(cd -P "$(dirname "$_csoi_src")" && pwd)"
+  _csoi_src="$(readlink "$_csoi_src")"
+  [[ $_csoi_src != /* ]] && _csoi_src="$_csoi_dir/$_csoi_src"
+done
+CSOI_SCRIPT_DIR="$(cd -P "$(dirname "$_csoi_src")" && pwd)"
+CSOI_REPO_ROOT="$(cd -P "$CSOI_SCRIPT_DIR/.." && pwd)"
+
+# All paths derive from the repo root. Every one is overridable by env var so this
+# also works from an odd layout, a CI runner, or a server.
+PROJECT_DIR="${CSOI_PROJECT_DIR:-$CSOI_REPO_ROOT}"
+
+if [ ! -d "$PROJECT_DIR" ]; then
+  echo "csoi: project dir not found: $PROJECT_DIR" >&2
+  echo "       set CSOI_PROJECT_DIR env var to override" >&2
+  exit 1
+fi
+
+# Resolve a Convex deploy key by name: checks the process environment first,
+# then falls back to parsing "$PROJECT_DIR/.env.local". Echoes the value and
+# returns 0 on success; returns 1 (nothing echoed) if not found anywhere.
+resolve_deploy_key() {
+  local name="$1"
+  local existing="${!name:-}"
+  if [ -n "$existing" ]; then
+    echo "$existing"
+    return 0
+  fi
+
+  local env_file="$PROJECT_DIR/.env.local"
+  if [ -f "$env_file" ]; then
+    local line value
+    line=$(grep "^${name}=" "$env_file" | tail -1 || true)
+    if [ -n "$line" ]; then
+      value="${line#*=}"
+      value="${value%\"}"; value="${value#\"}"
+      value="${value%\'}"; value="${value#\'}"
+      echo "$value"
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+cmd="${1:-help}"
+shift || true
+
+cd "$PROJECT_DIR"
+
+case "$cmd" in
+  install)
+    # Symlink this version-controlled script onto the user's PATH. Idempotent.
+    # Deliberately a symlink, not a copy: the CLI then updates with `git pull`
+    # instead of silently drifting from the repo (which is exactly how this file
+    # spent months living only in ~/.local/bin, unversioned, on one laptop).
+    target_dir="${CSOI_INSTALL_DIR:-$HOME/.local/bin}"
+    target="$target_dir/csoi"
+    mkdir -p "$target_dir"
+
+    if [ -e "$target" ] && [ ! -L "$target" ]; then
+      backup="$target.bak.$(date +%Y-%m-%d_%H%M)"
+      mv "$target" "$backup"
+      echo "csoi: existing non-symlink moved aside -> $backup" >&2
+    fi
+
+    ln -sfn "$_csoi_src" "$target"
+    echo "✓ installed: $target -> $_csoi_src"
+
+    case ":$PATH:" in
+      *":$target_dir:"*) ;;
+      *)
+        echo "⚠️  $target_dir is not on your PATH. Add to your shell rc:" >&2
+        echo "      export PATH=\"\$PATH:$target_dir\"" >&2
+        ;;
+    esac
+    ;;
+
+  help|-h|--help)
+    # NOTE: this range must cover the whole header comment block. If you add lines
+    # up there, bump the end. (A stale range silently truncates `csoi help`.)
+    sed -n '4,62p' "$0" | sed 's/^# \{0,1\}//'
+    ;;
+
+  sync)
+    echo "→ Full Hospitable sync (reservations + property details)"
+    npx convex run hospitable/actions:syncAllFromHospitable "$@"
+    ;;
+
+  sync:reservations)
+    echo "→ Reservations-only sync"
+    # syncReservations is internal — call via the public wrapper or list cron jobs
+    npx convex run hospitable/actions:syncAllFromHospitable "$@"
+    ;;
+
+  sync:properties)
+    echo "→ Property details resync"
+    npx convex run hospitable/actions:resyncPropertyDetails "$@"
+    ;;
+
+  events)
+    n="${1:-10}"; [ $# -gt 0 ] && shift
+    npx convex data hospitableWebhookEvents --limit "$n" --order desc "$@"
+    ;;
+
+  jobs)
+    n="${1:-10}"; [ $# -gt 0 ] && shift
+    npx convex data cleaningJobs --limit "$n" --order desc "$@"
+    ;;
+
+  stays)
+    n="${1:-10}"; [ $# -gt 0 ] && shift
+    npx convex data stays --limit "$n" --order desc "$@"
+    ;;
+
+  env)
+    npx convex env list
+    ;;
+
+  env:set)
+    if [ $# -lt 2 ]; then
+      echo "csoi: usage: csoi env:set KEY VALUE" >&2
+      exit 2
+    fi
+    npx convex env set "$1" "$2"
+    ;;
+
+  user)
+    subcmd="${1:-}"; shift || true
+
+    # Pull out --prod from the remaining args, leaving positionals in "args".
+    prod="false"
+    args=()
+    for arg in "$@"; do
+      if [ "$arg" = "--prod" ]; then
+        prod="true"
+      else
+        args+=("$arg")
+      fi
+    done
+
+    case "$subcmd" in
+      check)
+        email="${args[0]:-}"
+        if [ -z "$email" ]; then
+          echo "csoi: usage: csoi user check <email> [--prod]" >&2
+          exit 2
+        fi
+
+        if [ "$prod" = "true" ]; then
+          echo "=================================================================" >&2
+          echo "⚠️  --prod: reading from PRODUCTION (lovable-oriole-182)" >&2
+          echo "=================================================================" >&2
+          key="$(resolve_deploy_key PROD_CONVEX_DEPLOY_KEY)" || {
+            echo "csoi: PROD_CONVEX_DEPLOY_KEY not found (checked env + $PROJECT_DIR/.env.local)" >&2
+            exit 1
+          }
+          CONVEX_DEPLOY_KEY="$key" npx convex run users/queries:getUsersByEmailInternal "{\"email\":\"$email\"}"
+        else
+          npx convex run users/queries:getUsersByEmailInternal "{\"email\":\"$email\"}"
+        fi
+        ;;
+
+      set-role)
+        email="${args[0]:-}"
+        role="${args[1]:-}"
+        if [ -z "$email" ] || [ -z "$role" ]; then
+          echo "csoi: usage: csoi user set-role <email> <role> [--prod]" >&2
+          echo "      valid roles: cleaner manager property_ops admin owner" >&2
+          exit 2
+        fi
+        case "$role" in
+          cleaner|manager|property_ops|admin|owner) ;;
+          *)
+            echo "csoi: invalid role '$role'" >&2
+            echo "      valid roles: cleaner manager property_ops admin owner" >&2
+            exit 2
+            ;;
+        esac
+
+        if [ "$prod" = "true" ]; then
+          echo "=================================================================" >&2
+          echo "⚠️  --prod: WRITING TO PRODUCTION (lovable-oriole-182)" >&2
+          echo "⚠️  About to set role=\"$role\" for \"$email\" on REAL users." >&2
+          echo "=================================================================" >&2
+          key="$(resolve_deploy_key PROD_CONVEX_DEPLOY_KEY)" || {
+            echo "csoi: PROD_CONVEX_DEPLOY_KEY not found (checked env + $PROJECT_DIR/.env.local)" >&2
+            exit 1
+          }
+          CONVEX_DEPLOY_KEY="$key" npx convex run users/mutations:updateUserRoleByEmail "{\"email\":\"$email\",\"role\":\"$role\"}"
+        else
+          npx convex run users/mutations:updateUserRoleByEmail "{\"email\":\"$email\",\"role\":\"$role\"}"
+        fi
+        ;;
+
+      *)
+        echo "csoi: usage: csoi user <check|set-role> ..." >&2
+        exit 2
+        ;;
+    esac
+    ;;
+
+  property)
+    subcmd="${1:-}"; shift || true
+
+    prod="false"
+    args=()
+    for arg in "$@"; do
+      if [ "$arg" = "--prod" ]; then
+        prod="true"
+      else
+        args+=("$arg")
+      fi
+    done
+
+    case "$subcmd" in
+      report)
+        search="${args[0]:-}"
+        month="${args[1]:-}"
+        if [ -z "$search" ] || [ -z "$month" ]; then
+          echo "csoi: usage: csoi property report <name-or-id> <YYYY-MM> [--prod]" >&2
+          exit 2
+        fi
+        if ! [[ "$month" =~ ^[0-9]{4}-[0-9]{2}$ ]]; then
+          echo "csoi: month must be YYYY-MM (got '$month')" >&2
+          exit 2
+        fi
+
+        deploy_key=""
+        if [ "$prod" = "true" ]; then
+          echo "=================================================================" >&2
+          echo "⚠️  --prod: reading from PRODUCTION (lovable-oriole-182)" >&2
+          echo "=================================================================" >&2
+          deploy_key="$(resolve_deploy_key PROD_CONVEX_DEPLOY_KEY)" || {
+            echo "csoi: PROD_CONVEX_DEPLOY_KEY not found (checked env + $PROJECT_DIR/.env.local)" >&2
+            exit 1
+          }
+        fi
+
+        run_convex() {
+          if [ -n "$deploy_key" ]; then
+            CONVEX_DEPLOY_KEY="$deploy_key" npx convex run "$@"
+          else
+            npx convex run "$@"
+          fi
+        }
+
+        # A raw Convex _id is passed straight through; anything else is
+        # resolved by case-insensitive substring match against property name.
+        property_id="$search"
+        if ! [[ "$search" =~ ^[a-z0-9]{20,}$ ]]; then
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "csoi: property name lookup needs 'jq' (brew install jq) — or pass a raw property _id" >&2
+            exit 1
+          fi
+
+          properties_json="$(run_convex strCosts/queries:getProperties '{}')"
+          matches="$(echo "$properties_json" | jq -c --arg q "$search" \
+            '[.[] | select((.name // "") | ascii_downcase | contains($q | ascii_downcase))]')"
+          match_count="$(echo "$matches" | jq 'length')"
+
+          if [ "$match_count" -eq 0 ]; then
+            echo "csoi: no property matches \"$search\"" >&2
+            exit 1
+          elif [ "$match_count" -gt 1 ]; then
+            echo "csoi: multiple properties match \"$search\" — be more specific:" >&2
+            echo "$matches" | jq -r '.[] | "  \(.name)   [\(._id)]   \(.city // "?"), \(.state // "?")"' >&2
+            exit 1
+          fi
+
+          property_id="$(echo "$matches" | jq -r '.[0]._id')"
+        fi
+
+        report_json="$(run_convex strCosts/reports:resolvePropertyReportData "{\"propertyId\":\"$property_id\",\"month\":\"$month\"}")"
+        echo "$report_json" | node -e '
+          const data = JSON.parse(require("fs").readFileSync(0, "utf8"));
+          const fmt = (n) => "$" + Number(n ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          const pct = (n) => (n === null || n === undefined) ? "—" : n.toFixed(1) + "%";
+
+          // aligns: array of "l"/"r" per column, defaults to "l"
+          function printTable(headers, rows, aligns = []) {
+            const widths = headers.map((h, i) =>
+              Math.max(String(h).length, 1, ...rows.map((r) => String(r[i] ?? "").length)));
+            const line = (cells) =>
+              "  " + cells.map((c, i) => {
+                const s = String(c ?? "");
+                return (aligns[i] === "r") ? s.padStart(widths[i]) : s.padEnd(widths[i]);
+              }).join("   ");
+            console.log(line(headers));
+            console.log("  " + widths.map((w) => "-".repeat(w)).join("   "));
+            for (const r of rows) console.log(line(r));
+          }
+
+          console.log("");
+          console.log(`${data.property.name}  (${data.property.city ?? "?"}, ${data.property.state ?? "?"})  —  ${data.period.month}`);
+          console.log("=".repeat(64));
+
+          console.log(`\nRevenue  (source: ${data.revenue.sourceLabel})`);
+          printTable(
+            ["", "Amount"],
+            [
+              ["Gross", fmt(data.revenue.gross)],
+              ["Platform fees", fmt(data.revenue.platformFees)],
+              ["Net", fmt(data.revenue.net)],
+            ],
+            ["l", "r"],
+          );
+
+          const bucketRows = Object.entries(data.costs.bucketTotals)
+            .filter(([, amount]) => amount)
+            .map(([bucket, amount]) => [bucket, fmt(amount)]);
+          console.log(`\nCosts by bucket  (source: ${data.costs.sourceLabel}, total ${fmt(data.costs.total)})`);
+          if (bucketRows.length > 0) {
+            printTable(["Bucket", "Amount"], bucketRows, ["l", "r"]);
+          } else {
+            console.log("  (none)");
+          }
+
+          if (data.costs.breakdown.length > 0) {
+            console.log("\nCost line items");
+            printTable(
+              ["Item", "Amount", "Frequency", "Category"],
+              data.costs.breakdown.map((l) => [
+                l.name,
+                fmt(l.amount),
+                l.frequency,
+                l.category ?? "uncategorized",
+              ]),
+              ["l", "r", "l", "l"],
+            );
+          }
+
+          console.log("\nSummary");
+          printTable(
+            ["", "Value"],
+            [
+              ["Net profit", fmt(data.net.netProfit)],
+              ["Margin", pct(data.net.marginPercent)],
+              ["Occupancy", pct(data.net.occupancyRate)],
+              ["Booked nights", data.net.bookedNights ?? "—"],
+              ["Bookings", data.net.bookingCount],
+            ],
+            ["l", "r"],
+          );
+
+          if (data.metadata.notes) console.log(`\nNotes: ${data.metadata.notes}`);
+          console.log(`\n(hasActuals=${data.metadata.hasActuals}, hasAssumptions=${data.metadata.hasAssumptions})`);
+          console.log("");
+        '
+        ;;
+
+      *)
+        echo "csoi: usage: csoi property report <name-or-id> <YYYY-MM> [--prod]" >&2
+        exit 2
+        ;;
+    esac
+    ;;
+
+  purge:synthetic)
+    echo "→ Purging synthetic Hospitable test data"
+    npx convex run admin/purgeSyntheticHospitable:purge
+    ;;
+
+  reset:job)
+    if [ $# -lt 1 ]; then
+      echo "csoi: usage: csoi reset:job <jobId> [--dry-run]" >&2
+      exit 2
+    fi
+    job_id="$1"; shift
+    dry="false"
+    [ "${1:-}" = "--dry-run" ] && dry="true"
+    echo "→ Resetting job $job_id (dryRun=$dry)"
+    npx convex run cleaningJobs/devResetJobs:resetCompleted "{\"jobId\":\"$job_id\",\"dryRun\":$dry}"
+    ;;
+
+  reset:completed)
+    dry="false"
+    [ "${1:-}" = "--dry-run" ] && dry="true"
+    echo "→ Resetting all completed jobs (dryRun=$dry)"
+    npx convex run cleaningJobs/devResetJobs:resetCompleted "{\"dryRun\":$dry}"
+    ;;
+
+  reset:all)
+    dry="false"
+    [ "${1:-}" = "--dry-run" ] && dry="true"
+    echo "→ Resetting jobs in every status (dryRun=$dry)"
+    npx convex run cleaningJobs/devResetJobs:resetCompleted \
+      "{\"dryRun\":$dry,\"includeStatuses\":[\"scheduled\",\"assigned\",\"in_progress\",\"awaiting_approval\",\"rework_required\",\"completed\",\"cancelled\"]}"
+    ;;
+
+  raw)
+    if [ $# -lt 1 ]; then
+      echo "csoi: usage: csoi raw <module:function> [args...]" >&2
+      exit 2
+    fi
+    npx convex run "$@"
+    ;;
+
+  data)
+    if [ $# -lt 1 ]; then
+      echo "csoi: usage: csoi data <table> [--limit N]" >&2
+      exit 2
+    fi
+    npx convex data "$@"
+    ;;
+
+  backup)
+    # Full snapshot of the PROD Convex DB -> $PROJECT_DIR/backups/ (gitignored).
+    #
+    # Measured 2026-07-14: all 121 tables = 15.4 MB uncompressed / 3.2 MB zipped in
+    # ~7s. Do NOT be misled by the dashboard's "Database Storage: 209.5 MB" — that is
+    # mostly INDEX storage, not documents. Backups are cheap; scheduling is safe.
+    # --with-files adds Convex file storage (~674 MB, ~200x the transfer). Photos live
+    # on Backblaze B2, not Convex, so that is largely legacy. Off by default.
+    with_files=0
+    keep=5
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --with-files)
+          with_files=1
+          shift
+          ;;
+        --keep)
+          keep="${2:-}"
+          case "$keep" in
+            ''|*[!0-9]*|0)
+              echo "csoi: --keep expects a positive integer" >&2
+              exit 2
+              ;;
+          esac
+          shift 2
+          ;;
+        *)
+          echo "csoi: usage: csoi backup [--with-files] [--keep N]" >&2
+          exit 2
+          ;;
+      esac
+    done
+
+    # The Convex CLI needs Node 20+ (it uses the regex `v` flag).
+    node_major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
+    if [ "$node_major" -lt 20 ]; then
+      echo "csoi: Node $(node -v 2>/dev/null || echo '?') is too old for the Convex CLI (needs 20+)." >&2
+      echo "       Run: nvm use lts/jod   (then re-run)" >&2
+      exit 1
+    fi
+
+    key="$(resolve_deploy_key PROD_CONVEX_DEPLOY_KEY)" || {
+      echo "csoi: PROD_CONVEX_DEPLOY_KEY not found (checked env + $PROJECT_DIR/.env.local)" >&2
+      exit 1
+    }
+
+    mkdir -p "$PROJECT_DIR/backups"
+    out="$PROJECT_DIR/backups/convex-prod-$(date +%Y-%m-%d_%H%M).zip"
+
+    echo "⚠️  backup: reading PRODUCTION (lovable-oriole-182)" >&2
+    if [ "$with_files" -eq 1 ]; then
+      echo "⚠️  --with-files: also pulling Convex file storage (~674 MB, ~200x). Photos live on B2 — mostly legacy." >&2
+    fi
+
+    export_args=(--path "$out")
+    [ "$with_files" -eq 1 ] && export_args+=(--include-file-storage)
+    CONVEX_DEPLOY_KEY="$key" npx convex export "${export_args[@]}"
+
+    if [ ! -f "$out" ]; then
+      echo "csoi: export reported success but $out is missing" >&2
+      exit 1
+    fi
+    echo "✓ backup: $out ($(du -h "$out" | cut -f1 | tr -d ' '))"
+
+    # Retain only the N newest snapshots.
+    ls -t "$PROJECT_DIR"/backups/convex-prod-*.zip 2>/dev/null | tail -n +$((keep + 1)) | while read -r old; do
+      rm -f "$old"
+      echo "  pruned $(basename "$old")"
+    done
+    echo "  backups/ is gitignored — copy somewhere durable (NAS/MinIO) if it matters."
+    ;;
+
+  logs)
+    npx vercel logs https://app.chezsoistays.com "$@"
+    ;;
+
+  analytics)
+    subcmd="${1:-help}"; shift || true
+
+    posthog_env_file="${CSOI_POSTHOG_ENV:-$PROJECT_DIR/../../.env}"
+    posthog_project_id=211614
+    posthog_base="https://us.posthog.com"
+
+    posthog_query() {
+      if ! command -v jq >/dev/null 2>&1; then
+        echo "csoi analytics: needs 'jq' (brew install jq)" >&2
+        exit 1
+      fi
+      local key
+      key="$(grep -m1 '^POSTHOG_PERSONAL_API_KEY_J&A-Project=' "$posthog_env_file" | cut -d= -f2-)"
+      if [ -z "$key" ]; then
+        echo "csoi analytics: no POSTHOG_PERSONAL_API_KEY_J&A-Project= in $posthog_env_file" >&2
+        exit 1
+      fi
+      curl -s -X POST "$posthog_base/api/projects/$posthog_project_id/query/" \
+        -H "Authorization: Bearer $key" \
+        -H "Content-Type: application/json" \
+        --data-binary @<(python3 -c 'import json,sys; print(json.dumps({"query":{"kind":"HogQLQuery","query":sys.argv[1]}}))' "$1")
+    }
+
+    days="${1:-7}"
+
+    case "$subcmd" in
+      stats)
+        posthog_query "SELECT count() as pageviews, count(DISTINCT properties.distinct_id) as unique_visitors, count(DISTINCT properties.\$session_id) as sessions FROM events WHERE event = '\$pageview' AND timestamp > now() - INTERVAL $days DAY" \
+          | jq -r '.results[0] | "Pageviews: \(.[0])\nUnique visitors: \(.[1])\nSessions: \(.[2])"'
+        ;;
+      visits)
+        posthog_query "SELECT toDate(timestamp) as day, count() as pageviews, count(DISTINCT properties.\$session_id) as sessions FROM events WHERE event = '\$pageview' AND timestamp > now() - INTERVAL $days DAY GROUP BY day ORDER BY day" \
+          | jq -r '.results[] | @tsv' | (echo -e "DAY\tPAGEVIEWS\tSESSIONS"; cat) | column -t
+        ;;
+      sites)
+        posthog_query "SELECT properties.site as site, count() as events, count(DISTINCT properties.distinct_id) as uniques FROM events WHERE timestamp > now() - INTERVAL $days DAY GROUP BY site ORDER BY events DESC" \
+          | jq -r '.results[] | [(.[0] // "(untagged)"), .[1], .[2]] | @tsv' | (echo -e "SITE\tEVENTS\tUNIQUES"; cat) | column -t
+        ;;
+      top-pages)
+        posthog_query "SELECT properties.\$current_url as url, count() as views FROM events WHERE event = '\$pageview' AND timestamp > now() - INTERVAL $days DAY GROUP BY url ORDER BY views DESC LIMIT 20" \
+          | jq -r '.results[] | [(.[0] // "(no url)"), .[1]] | @tsv' | (echo -e "URL\tVIEWS"; cat) | column -t -s $'\t'
+        ;;
+      raw)
+        posthog_query "${1:?usage: csoi analytics raw '<hogql query>'}" | jq .
+        ;;
+      *)
+        echo "csoi: usage: csoi analytics <stats|visits|sites|top-pages> [days=7]" >&2
+        echo "      csoi analytics raw '<hogql query>'" >&2
+        exit 2
+        ;;
+    esac
+    ;;
+
+  mobile:check)
+    # Verify mobile app's TypeScript still compiles against admin's current
+    # convex source. Uses a throwaway git worktree so we never touch the
+    # mobile dev's working tree.
+    MOBILE_REPO="${CSOI_MOBILE_DIR:-$PROJECT_DIR/../jna-cleaners-app}"
+    TMP_WORKTREE="${TMPDIR:-/tmp}/csoi-mobile-check-$$"
+
+    if [ ! -d "$MOBILE_REPO" ]; then
+      echo "csoi mobile:check: mobile repo not found at $MOBILE_REPO" >&2
+      exit 1
+    fi
+
+    echo "→ Creating throwaway mobile worktree at $TMP_WORKTREE"
+    git -C "$MOBILE_REPO" fetch --quiet origin main
+    git -C "$MOBILE_REPO" worktree add "$TMP_WORKTREE" origin/main >/dev/null 2>&1
+
+    cleanup() { git -C "$MOBILE_REPO" worktree remove "$TMP_WORKTREE" --force >/dev/null 2>&1 || true; }
+    trap cleanup EXIT
+
+    echo "→ Syncing admin convex/ → mobile worktree convex/"
+    rsync -a --delete "$PROJECT_DIR/convex/" "$TMP_WORKTREE/convex/"
+
+    if [ ! -d "$TMP_WORKTREE/node_modules" ]; then
+      echo "→ Installing deps (first run, ~60s)"
+      (cd "$TMP_WORKTREE" && npm ci --silent --no-audit --no-fund --legacy-peer-deps >/dev/null 2>&1) || {
+        echo "  (npm ci failed, falling back to npm install)"
+        (cd "$TMP_WORKTREE" && npm install --silent --no-audit --no-fund --legacy-peer-deps >/dev/null 2>&1)
+      }
+    fi
+
+    echo "→ Running TypeScript check..."
+    out_file="${TMPDIR:-/tmp}/csoi-mobile-tsc.log"
+    (cd "$TMP_WORKTREE" && ./node_modules/.bin/tsc --noEmit 2>&1) > "$out_file" || true
+
+    total=$(grep -c "error TS" "$out_file" || echo 0)
+    prod=$(grep -E "^(app|services|components|lib|hooks|providers)/" "$out_file" | grep -c "error TS" || echo 0)
+    tests=$(grep -E "^tests/" "$out_file" | grep -c "error TS" || echo 0)
+    convex_local=$(grep -E "^convex/" "$out_file" | grep -c "error TS" || echo 0)
+
+    echo ""
+    echo "============================================="
+    echo "  Mobile typecheck (against admin's convex)"
+    echo "============================================="
+    echo "  Total errors:          $total"
+    echo "  Production code:       $prod   ← matters"
+    echo "  Tests (stale OK):      $tests"
+    echo "  Local convex (deps):   $convex_local"
+    echo ""
+
+    if [ "$prod" -gt 0 ]; then
+      echo "--- Production-code errors (first 20) ---"
+      grep -E "^(app|services|components|lib|hooks|providers)/" "$out_file" | head -20
+      echo ""
+      echo "Full log: $out_file"
+      exit 1
+    fi
+    echo "✅ Mobile production code compiles cleanly against current admin convex."
+    ;;
+
+  mobile:drift)
+    # Show file-level drift between admin's convex and mobile's mirror.
+    MOBILE_REPO="${CSOI_MOBILE_DIR:-$PROJECT_DIR/../jna-cleaners-app}"
+    echo "Comparing $PROJECT_DIR/convex/ vs $MOBILE_REPO/convex/"
+    diff -rq "$PROJECT_DIR/convex/" "$MOBILE_REPO/convex/" 2>&1 | grep -v "node_modules\|_generated/api.js" | head -40
+    ;;
+
+  webhook-test)
+    year="${1:-2030}"
+    token="${HOSPITABLE_WEBHOOK_URL_TOKEN:-abe7d81d8ee62cd152e6bc3eb3c44bc6ae6bde4b4ec3479c8c6a9d728b7e379e}"
+    node -e "
+      const url = 'https://app.chezsoistays.com/api/webhooks/hospitable/${token}';
+      const year = ${year};
+      const ts = Date.now();
+      const payload = {
+        id: 'evt-' + ts,
+        action: 'reservation.created',
+        version: 'v2',
+        created: new Date().toISOString(),
+        triggers: ['synthetic'],
+        data: {
+          id: 'synthetic-test-' + ts,
+          property_id: 'd4d15f06-b046-41a1-8c6b-a892d5fea805',
+          check_in:  year + '-01-15T16:00:00-06:00',
+          check_out: year + '-01-17T11:00:00-06:00',
+          number_of_guests: 2,
+          guest: { first_name: 'SYNTHETIC', last_name: 'TEST DO NOT FULFILL' },
+          guests: { total: 2 },
+          code: 'SYNTHTEST' + (year % 100),
+          platform: 'direct',
+          special_requests: 'Internal pipeline test',
+          status: 'confirmed',
+        }
+      };
+      fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+        .then(r => r.text().then(t => console.log('HTTP', r.status, t, '\\n→ reservation id:', payload.data.id, '\\n→ checkout:', payload.data.check_out)));
+    "
+    ;;
+
+  *)
+    echo "csoi: unknown command '$cmd'" >&2
+    echo "      run 'csoi help' for the list" >&2
+    exit 2
+    ;;
+esac
