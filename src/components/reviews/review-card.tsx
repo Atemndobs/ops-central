@@ -92,18 +92,18 @@ function AppSelect({
 }
 
 type RefinePanelProps = {
-  reviewCategory: string; setReviewCategory: (v: string) => void;
   incentive: string; setIncentive: (v: string) => void;
   tone: string; setTone: (v: string) => void;
+  length: string; setLength: (v: string) => void;
   provider: ReviewProvider; setProvider: (v: ReviewProvider) => void;
   refineInstruction: string; setRefineInstruction: (v: string) => void;
   refining: boolean; onRefine: () => void;
 };
 
 function RefinePanel({
-  reviewCategory, setReviewCategory,
   incentive, setIncentive,
   tone, setTone,
+  length, setLength,
   provider, setProvider,
   refineInstruction, setRefineInstruction,
   refining, onRefine,
@@ -114,14 +114,13 @@ function RefinePanel({
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex-1 min-w-[110px]">
           <AppSelect
-            label="Review type"
-            value={reviewCategory}
-            onChange={setReviewCategory}
+            label="Length"
+            value={length}
+            onChange={setLength}
             options={[
-              { value: "glowing_5star", label: "5★ Glowing" },
-              { value: "positive_4star", label: "4★ Positive" },
-              { value: "mixed_3star", label: "3★ Mixed" },
-              { value: "critical_2star", label: "2★ Critical" },
+              { value: "short", label: "Short (2–3 sentences)" },
+              { value: "standard", label: "Standard (3–5 sentences)" },
+              { value: "detailed", label: "Detailed (5+ sentences)" },
             ]}
           />
         </div>
@@ -215,14 +214,16 @@ export function ReviewCard({
   const [refining, setRefining] = useState(false);
   const [refineInstruction, setRefineInstruction] = useState("");
   // Template dropdowns
-  const [reviewCategory, setReviewCategory] = useState<string>(() =>
+  const reviewCategory =
     review.rating >= 5 ? "glowing_5star"
     : review.rating >= 4 ? "positive_4star"
     : review.rating >= 3 ? "mixed_3star"
-    : "critical_2star"
-  );
+    : "critical_2star";
   const [incentive, setIncentive] = useState("none");
   const [tone, setTone] = useState("professional");
+  const [length, setLength] = useState(
+    review.rating >= 4 ? "short" : "standard"
+  );
 
   const approveAndSend = useMutation(api.guestReviews.mutations.approveAndSend);
   const dismiss = useMutation(api.guestReviews.mutations.dismiss);
@@ -278,6 +279,7 @@ export function ReviewCard({
         reviewCategory: reviewCategory as "glowing_5star" | "positive_4star" | "mixed_3star" | "critical_2star",
         incentive: incentive as "none" | "return_discount" | "google_review" | "early_late_checkin",
         tone,
+        length,
         instruction: refineInstruction.trim() || undefined,
       });
       setDraft(newDraft);
@@ -400,9 +402,9 @@ export function ReviewCard({
 
           {/* Refine panel */}
           {refineOpen && <RefinePanel
-            reviewCategory={reviewCategory} setReviewCategory={setReviewCategory}
             incentive={incentive} setIncentive={setIncentive}
             tone={tone} setTone={setTone}
+            length={length} setLength={setLength}
             provider={provider} setProvider={setProvider}
             refineInstruction={refineInstruction} setRefineInstruction={setRefineInstruction}
             refining={refining} onRefine={handleRefine}
@@ -441,9 +443,9 @@ export function ReviewCard({
           </div>
 
           {refineOpen && <RefinePanel
-            reviewCategory={reviewCategory} setReviewCategory={setReviewCategory}
             incentive={incentive} setIncentive={setIncentive}
             tone={tone} setTone={setTone}
+            length={length} setLength={setLength}
             provider={provider} setProvider={setProvider}
             refineInstruction={refineInstruction} setRefineInstruction={setRefineInstruction}
             refining={refining} onRefine={handleRefine}

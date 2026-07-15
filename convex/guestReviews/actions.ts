@@ -44,6 +44,7 @@ export const refineReviewDraft = action({
     reviewCategory: v.optional(REVIEW_CATEGORY_VALUES),
     incentive: v.optional(INCENTIVE_VALUES),
     tone: v.optional(v.string()),
+    length: v.optional(v.string()),
   },
   returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
@@ -88,6 +89,9 @@ export const refineReviewDraft = action({
           `assemble them into a single fluent, natural response. ` +
           `Replace [GUEST_NAME] with the guest's first name and [PROPERTY_NAME] with the property name. ` +
           (args.tone ? `Tone: ${args.tone}. ` : "") +
+          (args.length === "short" ? "Keep the reply SHORT — 2 to 3 sentences maximum. " :
+           args.length === "detailed" ? "Write a DETAILED reply — 5 or more sentences. " :
+           "Keep the reply STANDARD length — 3 to 5 sentences. ") +
           `Do not add new content beyond what is in the blocks.\n\n${blocks}` +
           (args.instruction ? `\n\nAdditional note from manager: ${args.instruction}` : "");
       }
