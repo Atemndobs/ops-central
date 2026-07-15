@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import {
   useEffect,
   useMemo,
@@ -13,7 +14,7 @@ import {
 } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { makeFunctionReference } from "convex/server";
-import { ArrowDownAZ, Check, Filter, Search, X } from "lucide-react";
+import { ArrowDownAZ, Check, Filter, Loader2, Search, X } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useToast } from "@/components/ui/toast-provider";
@@ -48,6 +49,19 @@ type SortMode = "checklist" | "az";
 // that the reviewer sees the button fill and the badge land (so the tap is
 // confirmed), short enough that it never feels like waiting.
 const ADVANCE_DELAY_MS = 450;
+
+// How long the decision confirmation holds before loading the next job in the
+// queue. Long enough to read what was decided; the reviewer can skip it or bail
+// to the queue at any point.
+const NEXT_JOB_DELAY_S = 4;
+
+type DecisionResult = {
+  kind: "approved" | "rework";
+  propertyName: string;
+  passCount: number;
+  reworkCount: number;
+  totalRooms: number;
+};
 
 type EvidencePhoto = {
   photoId: Id<"photos">;
@@ -322,6 +336,15 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const { isAuthenticated } = useConvexAuth();
   const jobId = id as Id<"cleaningJobs">;
   const { showToast } = useToast();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // This component serves two routes (`/jobs/…` and `/review/jobs/…`). Keep the
+  // reviewer inside whichever one they came in through.
+  const isReviewRoute = (pathname ?? "").startsWith("/review/");
+  const queueHref = isReviewRoute ? "/review" : "/jobs";
+  const photosHrefFor = (nextId: string) =>
+    isReviewRoute ? `/review/jobs/${nextId}/photos-review` : `/jobs/${nextId}/photos-review`;
 
   const detail = useQuery(api.cleaningJobs.queries.getJobDetail, isAuthenticated ? { jobId } : "skip");
   // Every timestamp here belongs to this job's property — display in its zone.
@@ -342,6 +365,17 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const [compareAfterIndex, setCompareAfterIndex] = useState(0);
   const [compareLinked, setCompareLinked] = useState(true);
   const [pendingDecision, setPendingDecision] = useState<"approve" | "reject" | null>(null);
+  const [decisionResult, setDecisionResult] = useState<DecisionResult | null>(null);
+  const [redirectSeconds, setRedirectSeconds] = useState(NEXT_JOB_DELAY_S);
+  const [autoAdvanceJob, setAutoAdvanceJob] = useState(true);
+
+  // Deliberately gated on `decisionResult`: the reviewer only needs the queue
+  // once they've finished a job, so this subscription costs nothing during the
+  // review itself. Same query the /review queue page already runs.
+  const reviewQueue = useQuery(
+    api.cleaningJobs.queries.getReviewQueue,
+    isAuthenticated && decisionResult ? { status: "awaiting_approval", limit: 25 } : "skip",
+  );
   const [activeRoomKey, setActiveRoomKey] = useState<string | null>(null);
   const [viewer, setViewer] = useState<ViewerState | null>(null);
   const [annotateEnabled, setAnnotateEnabled] = useState(false);
@@ -491,6 +525,20 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
   const compareBeforePhoto = compareRow?.before[compareBeforeIndex] ?? null;
   const compareAfterPhoto = compareRow?.after[compareAfterIndex] ?? null;
 
+  // The next job waiting on this reviewer. `getReviewQueue` already sorts
+  // awaiting_approval first; drop the job just decided (its status flip may not
+  // have propagated to the queue subscription yet).
+  const nextJob = useMemo(() => {
+    if (!reviewQueue) {
+      return null;
+    }
+    return (
+      reviewQueue.find(
+        (job) => job._id !== jobId && job.status === "awaiting_approval",
+      ) ?? null
+    );
+  }, [reviewQueue, jobId]);
+
   // Never let a queued room-advance fire after the workspace is gone.
   useEffect(() => {
     return () => {
@@ -499,6 +547,47 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
       }
     };
   }, []);
+
+  // Hard reset when the job changes.
+  //
+  // Loading the next job is a same-route param change, so React keeps this
+  // component mounted and every piece of per-job state survives. `reviewByRoom`
+  // is keyed by normalized room NAME, so without this a "Kitchen" passed on the
+  // previous job would show as already-passed on the next one. The snapshot
+  // loader below can't cover it — it early-returns when a job has no saved
+  // snapshot, which is exactly the fresh-job case. Declared before that loader
+  // so a real snapshot still wins on mount.
+  useEffect(() => {
+    setDecisionResult(null);
+    setReviewByRoom({});
+    setNotesOpenByRoom({});
+    setCompareRoomKey(null);
+    setActiveRoomKey(null);
+    setViewer(null);
+    setSearch("");
+    setFilter("all");
+    setRedirectSeconds(NEXT_JOB_DELAY_S);
+  }, [id]);
+
+  // Hand the reviewer straight to the next job in the queue. Opt-out (not
+  // opt-in) — clearing a queue is the whole job, so continuing is the default
+  // and "Back to queue" is always one click away.
+  useEffect(() => {
+    if (!decisionResult || !nextJob || !autoAdvanceJob) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      router.push(photosHrefFor(nextJob._id));
+    }, NEXT_JOB_DELAY_S * 1000);
+    const ticker = setInterval(() => {
+      setRedirectSeconds((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(ticker);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [decisionResult, nextJob?._id, autoAdvanceJob]);
 
   useEffect(() => {
     if (persistedAnnotations === undefined) {
@@ -931,7 +1020,14 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
         jobId,
         roomReviewSnapshot: buildRoomReviewSnapshot(roomRows, reviewByRoom),
       });
-      showToast("Job approved from photo review.");
+      setRedirectSeconds(NEXT_JOB_DELAY_S);
+      setDecisionResult({
+        kind: "approved",
+        propertyName: detail?.property?.name ?? "this property",
+        passCount,
+        reworkCount,
+        totalRooms,
+      });
     } catch (error) {
       showToast(getErrorMessage(error, "Unable to approve job."), "error");
     } finally {
@@ -952,7 +1048,14 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
         rejectionReason,
         roomReviewSnapshot: buildRoomReviewSnapshot(roomRows, reviewByRoom),
       });
-      showToast("Job rejected to rework from photo review.");
+      setRedirectSeconds(NEXT_JOB_DELAY_S);
+      setDecisionResult({
+        kind: "rework",
+        propertyName: detail?.property?.name ?? "this property",
+        passCount,
+        reworkCount,
+        totalRooms,
+      });
     } catch (error) {
       showToast(getErrorMessage(error, "Unable to reject job."), "error");
     } finally {
@@ -1615,6 +1718,95 @@ export function JobPhotosReviewClient({ id }: { id: string }) {
           </div>
         </div>
       </div>
+
+      {decisionResult ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 text-center">
+            <div className="flex justify-center">
+              <RoomVerdictBadge
+                verdict={decisionResult.kind === "approved" ? "pass" : "rework"}
+                size="xl"
+              />
+            </div>
+
+            <h2 className="mt-4 text-xl font-semibold">
+              {decisionResult.kind === "approved" ? "Approved" : "Sent back for rework"}
+            </h2>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+              {decisionResult.propertyName}
+            </p>
+            <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+              {decisionResult.kind === "approved"
+                ? `All ${decisionResult.totalRooms} room${decisionResult.totalRooms === 1 ? "" : "s"} passed.`
+                : `${decisionResult.reworkCount} room${decisionResult.reworkCount === 1 ? "" : "s"} need rework · ${decisionResult.passCount} passed.`}
+            </p>
+
+            <div className="mt-5 border-t border-[var(--border)] pt-5">
+              {reviewQueue === undefined ? (
+                <p className="inline-flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  Checking the queue…
+                </p>
+              ) : nextJob ? (
+                <>
+                  <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
+                    Next up
+                  </p>
+                  <p className="mt-1 text-sm font-semibold">
+                    {nextJob.property?.name ?? "Unknown property"}
+                  </p>
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    {nextJob.cleaners?.[0]?.name ?? "Unassigned cleaner"}
+                  </p>
+
+                  <div className="mt-4 flex items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => router.push(photosHrefFor(nextJob._id))}
+                      className="rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] hover:opacity-90"
+                    >
+                      Review next job
+                    </button>
+                    <Link
+                      href={queueHref}
+                      className="rounded-md border border-[var(--border)] px-4 py-2 text-sm hover:bg-[var(--accent)]"
+                    >
+                      Back to queue
+                    </Link>
+                  </div>
+
+                  {autoAdvanceJob ? (
+                    <button
+                      type="button"
+                      onClick={() => setAutoAdvanceJob(false)}
+                      className="mt-3 text-xs text-[var(--muted-foreground)] underline underline-offset-2 hover:text-[var(--foreground)]"
+                    >
+                      Loading in {redirectSeconds}s · stay here
+                    </button>
+                  ) : (
+                    <p className="mt-3 text-xs text-[var(--muted-foreground)]">
+                      Auto-advance paused
+                    </p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-semibold">Queue clear</p>
+                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                    Nothing else is waiting for review.
+                  </p>
+                  <Link
+                    href={queueHref}
+                    className="mt-4 inline-block rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] hover:opacity-90"
+                  >
+                    Back to queue
+                  </Link>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {compareRow ? (
         <div className="fixed inset-0 z-40 flex flex-col bg-black/90 p-2">
@@ -2399,12 +2591,20 @@ function RoomVerdictBadge({
   className = "",
 }: {
   verdict: ReviewVerdict;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
   isCurrent?: boolean;
   className?: string;
 }) {
-  const box = size === "sm" ? "h-4 w-4" : size === "lg" ? "h-7 w-7" : "h-5 w-5";
-  const glyph = size === "sm" ? "h-2.5 w-2.5" : size === "lg" ? "h-4 w-4" : "h-3 w-3";
+  const box =
+    size === "sm" ? "h-4 w-4" : size === "lg" ? "h-7 w-7" : size === "xl" ? "h-16 w-16" : "h-5 w-5";
+  const glyph =
+    size === "sm"
+      ? "h-2.5 w-2.5"
+      : size === "lg"
+        ? "h-4 w-4"
+        : size === "xl"
+          ? "h-9 w-9"
+          : "h-3 w-3";
   const tone =
     verdict === "pass"
       ? "border-emerald-500 bg-emerald-500 text-white"
