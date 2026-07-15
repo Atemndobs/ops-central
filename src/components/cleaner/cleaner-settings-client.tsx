@@ -10,7 +10,7 @@ import { useTranslations } from "next-intl";
 import { Check } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { clearPendingUploads, listPendingUploads } from "@/features/cleaner/offline/indexeddb";
-import { uploadImageFile } from "@/lib/upload-image";
+import { compressImageFile } from "@/lib/upload-image";
 import {
   disableWebPushSubscription,
   ensureWebPushSubscription,
@@ -57,6 +57,10 @@ export function CleanerSettingsClient() {
   );
   const setThemePreference = useMutation(api.users.mutations.setThemePreference);
   const updateMyProfile = useMutation(api.users.mutations.updateMyProfile);
+  const generateAvatarUploadUrl = useMutation(
+    api.users.avatarUpload.generateAvatarUploadUrl,
+  );
+  const setMyAvatar = useMutation(api.users.avatarUpload.setMyAvatar);
   const markNotificationRead = useMutation(api.users.mutations.markNotificationRead);
   const dismissNotification = useMutation(api.users.mutations.dismissNotification);
   const updateWebPushSubscription = useMutation(api.users.mutations.updateWebPushSubscription);
@@ -183,8 +187,29 @@ export function CleanerSettingsClient() {
     setProfileMessage(null);
     setIsUploadingAvatar(true);
     try {
-      const nextAvatarUrl = await uploadImageFile(file);
-      setProfileAvatarUrl(nextAvatarUrl);
+      // Upload to file storage and store only the URL — never the image bytes.
+      // The photo is saved on pick rather than on "Save": the upload has already
+      // happened by the time the preview updates, so there is nothing left for
+      // Save to commit.
+      const blob = await compressImageFile(file);
+      const uploadUrl = await generateAvatarUploadUrl({});
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": blob.type },
+        body: blob,
+      });
+      if (!response.ok) {
+        throw new Error(t("cleaner.settings.failedUploadPhoto"));
+      }
+      const { storageId } = (await response.json()) as {
+        storageId: Id<"_storage">;
+      };
+      const { avatarUrl } = await setMyAvatar({ storageId });
+      setProfileAvatarUrl(avatarUrl);
+      setProfileMessage({
+        tone: "success",
+        text: t("cleaner.settings.profileUpdated"),
+      });
     } catch (error) {
       setProfileMessage({
         tone: "error",
@@ -212,10 +237,10 @@ export function CleanerSettingsClient() {
     setProfileMessage(null);
     setIsSavingProfile(true);
     try {
+      // No avatarUrl here — setMyAvatar already committed it on upload.
       await updateMyProfile({
         name: normalizedName,
         phone: profilePhone,
-        avatarUrl: profileAvatarUrl || undefined,
       });
       setProfileMessage({
         tone: "success",

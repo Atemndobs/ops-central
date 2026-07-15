@@ -35,6 +35,7 @@ import {
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { readProfileOverrides } from "../lib/profileMetadata";
+import { sanitizeAvatarUrl } from "../lib/avatarUrl";
 
 const CLERK_API_URL = "https://api.clerk.com/v1";
 
@@ -189,9 +190,13 @@ export const applyAvatar = internalMutation({
     if (!user) return;
     const overrides = readProfileOverrides(user.metadata);
     if (overrides.avatarUrl) return; // never clobber manual overrides
-    if (user.avatarUrl === args.avatarUrl) return; // no-op
+    // Clerk should only ever hand us a short https URL, but this is the write
+    // path — enforce it here rather than trusting the caller.
+    const avatarUrl = sanitizeAvatarUrl(args.avatarUrl);
+    if (avatarUrl === undefined) return;
+    if (user.avatarUrl === avatarUrl) return; // no-op
     await ctx.db.patch(args.userId, {
-      avatarUrl: args.avatarUrl,
+      avatarUrl,
       updatedAt: Date.now(),
     });
   },

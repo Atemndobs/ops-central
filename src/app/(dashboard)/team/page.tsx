@@ -9,7 +9,7 @@ import Image from "next/image";
 import { useToast } from "@/components/ui/toast-provider";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { TeamDetailDrawer, type DrawerMember } from "@/components/team/team-detail-drawer";
-import { uploadImageFile } from "@/lib/upload-image";
+import { compressImageFile } from "@/lib/upload-image";
 import {
   getRoleFromMetadata,
   getRoleFromSessionClaimsOrNull,
@@ -188,6 +188,10 @@ export default function TeamPage() {
     api.admin.mutations.assignUserCompanyMembership,
   );
   const updateUser = useMutation(api.admin.mutations.updateUser);
+  const generateAvatarUploadUrl = useMutation(
+    api.users.avatarUpload.generateAvatarUploadUrl,
+  );
+  const setUserAvatar = useMutation(api.users.avatarUpload.setUserAvatar);
   const assignCleanerToJob = useMutation(api.cleaningJobs.mutations.assign);
   const assignPropertyToCompany = useMutation(api.admin.mutations.assignPropertyToCompany);
 
@@ -587,13 +591,31 @@ export default function TeamPage() {
   ) {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (!file) {
+    if (!file || !profileEditor) {
       return;
     }
 
     setIsUploadingProfileAvatar(true);
     try {
-      const avatarUrl = await uploadImageFile(file);
+      // Upload to file storage and keep only the URL — never the image bytes.
+      // Committed on pick rather than on Save, so the draft holds a short URL.
+      const blob = await compressImageFile(file);
+      const uploadUrl = await generateAvatarUploadUrl({});
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": blob.type },
+        body: blob,
+      });
+      if (!response.ok) {
+        throw new Error("Failed to upload profile photo.");
+      }
+      const { storageId } = (await response.json()) as {
+        storageId: Id<"_storage">;
+      };
+      const { avatarUrl } = await setUserAvatar({
+        userId: profileEditor.userId,
+        storageId,
+      });
       setProfileDraft((current) => ({ ...current, avatarUrl }));
     } catch (error) {
       const message =
@@ -618,11 +640,11 @@ export default function TeamPage() {
 
     setIsUpdatingProfile(true);
     try {
+      // No avatarUrl here — setUserAvatar already committed it on upload.
       await updateUser({
         id: profileEditor.userId,
         name: normalizedName,
         phone: profileDraft.phone,
-        avatarUrl: profileDraft.avatarUrl || undefined,
       });
       showToast("Profile updated successfully.");
       setProfileEditor(null);

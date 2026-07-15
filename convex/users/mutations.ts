@@ -5,6 +5,7 @@ import {
   readProfileOverrides,
   setProfileOverride,
 } from "../lib/profileMetadata";
+import { MAX_AVATAR_URL_BYTES, sanitizeAvatarUrl } from "../lib/avatarUrl";
 import { internal } from "../_generated/api";
 
 const roleValidator = v.union(
@@ -44,6 +45,9 @@ export const ensureUser = mutation({
   handler: async (ctx, args) => {
     const identity = await requireAuth(ctx);
     const now = Date.now();
+    // Runs on every session (see clerk-user-sync.tsx) — a bad avatar must never
+    // block sign-in, so drop it silently rather than throwing.
+    const normalizedAvatarUrl = sanitizeAvatarUrl(args.avatarUrl);
 
     const existingUser = await ctx.db
       .query("users")
@@ -68,8 +72,8 @@ export const ensureUser = mutation({
         updates.name = args.name;
       }
 
-      if (!profileOverrides.avatarUrl && args.avatarUrl !== undefined) {
-        updates.avatarUrl = args.avatarUrl;
+      if (!profileOverrides.avatarUrl && normalizedAvatarUrl !== undefined) {
+        updates.avatarUrl = normalizedAvatarUrl;
       }
 
       await ctx.db.patch(existingUser._id, {
@@ -87,7 +91,7 @@ export const ensureUser = mutation({
       email: args.email,
       name: args.name,
       role,
-      avatarUrl: args.avatarUrl,
+      avatarUrl: normalizedAvatarUrl,
       preferredLocale: defaultLocale,
       createdAt: now,
       updatedAt: now,
@@ -133,9 +137,17 @@ export const updateMyProfile = mutation({
     }
 
     if (args.avatarUrl !== undefined) {
-      const normalizedAvatarUrl = args.avatarUrl.trim();
-      if (normalizedAvatarUrl.length === 0) {
+      if (args.avatarUrl.trim().length === 0) {
         throw new Error("Avatar URL cannot be empty.");
+      }
+      // The caller supplied this directly, so tell them why it bounced rather
+      // than silently storing nothing.
+      const normalizedAvatarUrl = sanitizeAvatarUrl(args.avatarUrl);
+      if (normalizedAvatarUrl === undefined) {
+        throw new Error(
+          "Avatar URL must be a link, not an embedded image, and under " +
+            `${MAX_AVATAR_URL_BYTES} characters.`,
+        );
       }
       updates.avatarUrl = normalizedAvatarUrl;
       nextMetadata = setProfileOverride(nextMetadata, "avatarUrl", true);

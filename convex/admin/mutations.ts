@@ -7,6 +7,7 @@ import {
   readProfileOverrides,
   setProfileOverride,
 } from "../lib/profileMetadata";
+import { MAX_AVATAR_URL_BYTES, sanitizeAvatarUrl } from "../lib/avatarUrl";
 
 const appRoleValidator = v.union(
   v.literal("cleaner"),
@@ -99,9 +100,7 @@ export const upsertUserFromDirectory = mutation({
     const now = Date.now();
     const normalizedEmail = normalizeEmail(args.email);
     const normalizedName = hasValue(args.name) ? args.name.trim() : undefined;
-    const normalizedAvatarUrl = hasValue(args.avatarUrl)
-      ? args.avatarUrl.trim()
-      : undefined;
+    const normalizedAvatarUrl = sanitizeAvatarUrl(args.avatarUrl);
     const normalizedPhone = hasValue(args.phone) ? args.phone.trim() : undefined;
 
     let existingUser = await ctx.db
@@ -207,9 +206,17 @@ export const updateUser = mutation({
       updates.phone = normalizedPhone.length > 0 ? normalizedPhone : undefined;
     }
     if (fields.avatarUrl !== undefined) {
-      const normalizedAvatarUrl = fields.avatarUrl.trim();
-      if (normalizedAvatarUrl.length === 0) {
+      const trimmedAvatarUrl = fields.avatarUrl.trim();
+      if (trimmedAvatarUrl.length === 0) {
         throw new ConvexError("Avatar URL cannot be empty.");
+      }
+      // Unlike the sync paths, an admin typed this — say why it bounced.
+      const normalizedAvatarUrl = sanitizeAvatarUrl(trimmedAvatarUrl);
+      if (normalizedAvatarUrl === undefined) {
+        throw new ConvexError(
+          "Avatar URL must be a link, not an embedded image, and under " +
+            `${MAX_AVATAR_URL_BYTES} characters.`,
+        );
       }
       updates.avatarUrl = normalizedAvatarUrl;
       nextMetadata = setProfileOverride(nextMetadata, "avatarUrl", true);
@@ -640,9 +647,7 @@ export const upsertUserFromClerkWebhook = mutation({
     const now = Date.now();
     const normalizedEmail = normalizeEmail(args.email);
     const normalizedName = hasValue(args.name) ? args.name.trim() : undefined;
-    const normalizedAvatarUrl = hasValue(args.avatarUrl)
-      ? args.avatarUrl.trim()
-      : undefined;
+    const normalizedAvatarUrl = sanitizeAvatarUrl(args.avatarUrl);
 
     let existingUser = await ctx.db
       .query("users")

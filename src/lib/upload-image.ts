@@ -1,7 +1,21 @@
 const MAX_DIMENSION = 512;
 const JPEG_QUALITY = 0.82;
 
-export async function uploadImageFile(file: File): Promise<string> {
+/** MIME of every blob this module produces. Must stay in the backend's
+ *  ALLOWED_AVATAR_MIMES allowlist (convex/users/avatarUpload.ts). */
+export const COMPRESSED_IMAGE_MIME = "image/jpeg";
+
+/**
+ * Downscale and re-encode an image for upload.
+ *
+ * Returns a Blob, NOT a data URL. This used to return `canvas.toDataURL(...)`,
+ * and callers wrote that base64 string straight into `users.avatarUrl` — which
+ * put a 246 KB image inside a user document on the hottest table in the app and
+ * cost GB/month in database reads. Avatars now go through Convex file storage
+ * (convex/users/avatarUpload.ts) and only the short URL is stored.
+ * See Docs/2026-07-14-convex-database-optimization-playbook.md.
+ */
+export async function compressImageFile(file: File): Promise<Blob> {
   if (!file.type.startsWith("image/")) {
     throw new Error("Please choose an image file.");
   }
@@ -22,10 +36,26 @@ export async function uploadImageFile(file: File): Promise<string> {
     }
 
     context.drawImage(image, 0, 0, width, height);
-    return canvas.toDataURL("image/jpeg", JPEG_QUALITY);
+    return await canvasToBlob(canvas);
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error("Failed to process the image."));
+        }
+      },
+      COMPRESSED_IMAGE_MIME,
+      JPEG_QUALITY,
+    );
+  });
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {

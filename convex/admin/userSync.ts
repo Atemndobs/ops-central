@@ -3,6 +3,7 @@ import { mutation, type MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { requireRole } from "../lib/auth";
 import { readProfileOverrides } from "../lib/profileMetadata";
+import { sanitizeAvatarUrl } from "../lib/avatarUrl";
 
 const userRoleValidator = v.union(
   v.literal("cleaner"),
@@ -414,8 +415,13 @@ export const reconcileWithClerk = mutation({
           `Duplicate email with different Clerk IDs in directory input: ${normalizedEmail}`,
         );
       }
-      clerkUsersByClerkId.set(directoryUser.clerkId, directoryUser);
-      clerkUsersByEmail.set(normalizedEmail, directoryUser);
+      // Sanitize once, here, so every write path below inherits the guard.
+      const normalized: ClerkDirectoryUser = {
+        ...directoryUser,
+        avatarUrl: sanitizeAvatarUrl(directoryUser.avatarUrl),
+      };
+      clerkUsersByClerkId.set(directoryUser.clerkId, normalized);
+      clerkUsersByEmail.set(normalizedEmail, normalized);
     }
 
     const users = await ctx.db.query("users").collect();
@@ -591,7 +597,9 @@ export const reconcileWithClerk = mutation({
           email: directoryUser.email,
           name: directoryUser.name,
           role,
-          avatarUrl: directoryUser.avatarUrl,
+          // NB: `missingInConvex` filters the raw `args.clerkUsers`, not the
+          // sanitized map above — so this path needs its own guard.
+          avatarUrl: sanitizeAvatarUrl(directoryUser.avatarUrl),
           preferredLocale: locale,
           createdAt: now,
           updatedAt: now,
