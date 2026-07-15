@@ -9,8 +9,8 @@
     "bare-scan": 10
   },
   "convex/admin/ownerOverview.ts": {
-    "bare-scan": 4,
-    "query-in-loop": 5
+    "bare-scan": 2,
+    "query-in-loop": 4
   },
   "convex/admin/queries.ts": {
     "bare-scan": 13,

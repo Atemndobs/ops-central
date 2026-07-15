@@ -34,6 +34,20 @@ import { notifyStatementIssued } from "../owner/notify";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+/**
+ * All currently-active ownership stakes, across every owner.
+ *
+ * Bare scan is deliberate and allowed here (convex/CLAUDE.md R1): callers need
+ * every owner's stakes, and `propertyOwners` has no index keyed on `effectiveTo`
+ * alone — `by_user_and_active` requires a `userId` prefix, so it can't serve an
+ * "all active" read. The table is bounded by portfolio size, not by traffic or
+ * time (10 rows for 8 properties today), so it does not grow the way
+ * `cleaningJobs` / `photos` do.
+ *
+ * If the portfolio ever reaches the hundreds, add an `["effectiveTo"]` index and
+ * range on it instead. Callers scoped to a SINGLE owner must NOT use this — see
+ * `getOwnerDashboard`, which reads `by_user_and_active` directly.
+ */
 async function loadActiveOwnerships(
   ctx: QueryCtx,
 ): Promise<Doc<"propertyOwners">[]> {
@@ -87,16 +101,26 @@ async function loadPlatformClaimIncidents(
     platformClaim: NonNullable<Doc<"incidents">["platformClaim"]>;
   }> = [];
 
-  for (const propertyId of propertyIds) {
-    const [property, incidents] = await Promise.all([
-      ctx.db.get(propertyId),
-      ctx.db
-        .query("incidents")
-        .withIndex("by_property", (q) => q.eq("propertyId", propertyId))
-        .collect(),
-    ]);
+  // Dedupe ids and batch both reads across all properties, rather than awaiting
+  // a round-trip per property in sequence (convex/CLAUDE.md R3).
+  const uniquePropertyIds = [...new Set(propertyIds)];
+  const [properties, incidentsByProperty] = await Promise.all([
+    Promise.all(uniquePropertyIds.map((id) => ctx.db.get(id))),
+    Promise.all(
+      uniquePropertyIds.map((id) =>
+        ctx.db
+          .query("incidents")
+          .withIndex("by_property", (q) => q.eq("propertyId", id))
+          .collect(),
+      ),
+    ),
+  ]);
 
-    for (const incident of incidents) {
+  for (let i = 0; i < uniquePropertyIds.length; i += 1) {
+    const propertyId = uniquePropertyIds[i];
+    const propertyName = properties[i]?.name ?? "(unknown property)";
+
+    for (const incident of incidentsByProperty[i]) {
       if (!incident.platformClaim) continue;
       rows.push({
         _id: incident._id,
@@ -105,7 +129,7 @@ async function loadPlatformClaimIncidents(
         severity: incident.severity,
         createdAt: incident.createdAt,
         propertyId,
-        propertyName: property?.name ?? "(unknown property)",
+        propertyName,
         platformClaim: incident.platformClaim,
       });
     }
@@ -160,28 +184,57 @@ export const listOwners = query({
       const user = await ctx.db.get(userId);
       if (!user) continue;
 
-      const propertyIds = ownerships.map((o) => o.propertyId);
-      let lastStatement: { propertyName: string; periodStart: number; status: Doc<"ownerStatements">["status"] } | null = null;
+      // Dedupe: an owner can hold more than one stake in the same property, and
+      // each duplicate would otherwise re-run every read below for it.
+      const propertyIds = [...new Set(ownerships.map((o) => o.propertyId))];
+
+      // Fetch each property's statements once, in parallel, instead of awaiting
+      // them one at a time inside the loop (R3).
+      const statementsByProperty = await Promise.all(
+        propertyIds.map((pid) =>
+          ctx.db
+            .query("ownerStatements")
+            .withIndex("by_property", (q) => q.eq("propertyId", pid))
+            .collect(),
+        ),
+      );
+
       let draftsPending = 0;
-      for (const pid of propertyIds) {
-        const sts = await ctx.db
-          .query("ownerStatements")
-          .withIndex("by_property", (q) => q.eq("propertyId", pid))
-          .collect();
-        for (const s of sts) {
+      // Track only the winning statement's property id; resolving the property
+      // doc inside the loop re-read it for every newer statement found (R3).
+      let best: {
+        propertyId: Id<"properties">;
+        periodStart: number;
+        status: Doc<"ownerStatements">["status"];
+      } | null = null;
+
+      for (let i = 0; i < propertyIds.length; i += 1) {
+        const pid = propertyIds[i];
+        for (const s of statementsByProperty[i]) {
           if (s.status === "draft" || s.status === "ready") draftsPending += 1;
           if (s.status === "issued" || s.status === "sent") {
-            if (!lastStatement || s.periodStart > lastStatement.periodStart) {
-              const prop = await ctx.db.get(pid);
-              lastStatement = {
-                propertyName: prop?.name ?? "(unknown property)",
-                periodStart: s.periodStart,
-                status: s.status,
-              };
+            if (!best || s.periodStart > best.periodStart) {
+              best = { propertyId: pid, periodStart: s.periodStart, status: s.status };
             }
           }
         }
       }
+
+      // One read for the single property that actually won, after the loop.
+      let lastStatement: {
+        propertyName: string;
+        periodStart: number;
+        status: Doc<"ownerStatements">["status"];
+      } | null = null;
+      if (best) {
+        const prop = await ctx.db.get(best.propertyId);
+        lastStatement = {
+          propertyName: prop?.name ?? "(unknown property)",
+          periodStart: best.periodStart,
+          status: best.status,
+        };
+      }
+
       const platformClaims = await loadPlatformClaimIncidents(ctx, propertyIds);
 
       rows.push({
@@ -201,9 +254,16 @@ export const listOwners = query({
     // Role↔ownership drift: users flagged role="owner" who hold no active
     // stake. Surfaced here (instead of silently omitted) so admins see WHY
     // someone is missing from statements/portal and where to fix it.
-    const allUsers = await ctx.db.query("users").collect();
-    for (const u of allUsers) {
-      if (u.role !== "owner" || byUser.has(u._id)) continue;
+    //
+    // Read via `by_role` rather than scanning the whole table and filtering in
+    // JS — the index already existed and went unused (convex/CLAUDE.md R2).
+    // Only owner-role users can be drifted, so this is the same result set.
+    const ownerRoleUsers = await ctx.db
+      .query("users")
+      .withIndex("by_role", (q) => q.eq("role", "owner"))
+      .collect();
+    for (const u of ownerRoleUsers) {
+      if (byUser.has(u._id)) continue;
       rows.push({
         userId: u._id,
         name: u.name ?? u.email ?? "(unnamed owner)",
@@ -232,10 +292,17 @@ export const getOwnerDashboard = query({
     const user = await ctx.db.get(args.ownerUserId);
     if (!user) throw new ConvexError(`User ${args.ownerUserId} not found`);
 
-    const all = await ctx.db.query("propertyOwners").collect();
-    const ownerships = all.filter(
-      (o) => o.userId === args.ownerUserId && o.effectiveTo === undefined,
-    );
+    // This dashboard is scoped to ONE owner, so read only their stakes via
+    // `by_user_and_active` instead of scanning every ownership row and
+    // discarding the rest in JS (convex/CLAUDE.md R2). The index already
+    // existed and went unused. `effectiveTo === undefined` IS the "active"
+    // marker and is indexable directly — see filterActiveOwnerships.
+    const ownerships = await ctx.db
+      .query("propertyOwners")
+      .withIndex("by_user_and_active", (q) =>
+        q.eq("userId", args.ownerUserId).eq("effectiveTo", undefined),
+      )
+      .collect();
 
     const properties = await Promise.all(
       ownerships.map(async (o) => {
