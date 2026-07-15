@@ -28,7 +28,12 @@ Run `npm run check:convex-readcost` after editing any file here. New violations 
   `inventoryItems`, `incidents`, `hospitableWebhookEvents`, `pendingMediaUploads`.
   A bare `.collect()` is acceptable ONLY on small config tables (`appSettings`,
   `featureFlags`, `aiProviderSettings`, `hospitableConfig`, `costCategories`,
-  `cleaningCompanies`, `instructionCategories`) **with a comment saying so**.
+  `cleaningCompanies`, `instructionCategories`, `reviewResponseTemplates`)
+  **with a comment saying so**. The bar for that list is that size is bounded by
+  *configuration*, not by business activity — e.g. `reviewResponseTemplates` is a
+  fixed 4x4 product of two enums (16 rows max; both writers dedupe on that key), so
+  it cannot grow however many jobs the business does. "Small today" is NOT the bar:
+  `photos` was small once.
 - **R2 — Never `.filter()` to narrow reads when an index can.** Check `schema.ts`
   first — `by_unread`, `by_bucket`, `by_role`, `by_checkin`, `by_active`,
   `by_property_and_status` all existed unused during the incident. If a JS filter is
