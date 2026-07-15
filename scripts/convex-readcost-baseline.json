@@ -121,6 +121,15 @@
   "convex/reports/queries.ts": {
     "query-in-loop": 1
   },
+  "convex/reviewTemplates/internalQueries.ts": {
+    "bare-scan": 1
+  },
+  "convex/reviewTemplates/mutations.ts": {
+    "bare-scan": 3
+  },
+  "convex/reviewTemplates/queries.ts": {
+    "bare-scan": 2
+  },
   "convex/serviceUsage/b2Snapshot.ts": {
     "bare-scan": 4,
     "giant-take": 2

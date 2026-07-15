@@ -2334,4 +2334,28 @@ export default defineSchema({
   ownerNotificationPrefs,
 
   appSettings,
+
+  // Review response template building blocks — small config table, never grows
+  // with business activity. Seeded once; safe to bare-scan (see R1 exemption).
+  reviewResponseTemplates: defineTable({
+    reviewCategory: v.union(
+      v.literal("glowing_5star"),
+      v.literal("positive_4star"),
+      v.literal("mixed_3star"),
+      v.literal("critical_2star"),
+    ),
+    incentive: v.union(
+      v.literal("none"),
+      v.literal("return_discount"),
+      v.literal("google_review"),
+      v.literal("early_late_checkin"),
+    ),
+    label: v.string(), // human-readable dropdown label
+    opener: v.string(),
+    acknowledgment: v.string(),
+    addressIssue: v.optional(v.string()),
+    inviteBack: v.string(),
+    incentiveText: v.string(),
+    closer: v.string(),
+  }),
 });
