@@ -83,6 +83,13 @@ It answers three questions:
 | **Did we make something ELSE worse?** | **Diff vs the committed ratchet baseline** — any *new* violation anywhere is a regression, reported with file, line, function and snippet |
 | Is the code in good shape? | **Blast radius** (violations × client mount points, flagging always-mounted screens) + **document weight** + a PASS/WARN/FAIL verdict |
 
+**Reading the report.** Every finding is a table row ending in a plain-English *what it
+means*, so you can act on it without knowing the rule names. The rule ids (`bare-scan`,
+`query-in-loop`, …) are the ratchet's vocabulary — the report shows the symptom
+("scans whole table") and expands each one *once* in a legend under the table rather
+than on every row. A progress bar goes to **stderr** while it greps and exports, so
+`csoi perf > report.txt` and `--json` stay clean.
+
 **Blast radius** matters because reactive cost is `per-exec reads × writes to that
 range × subscribers`. A cheap query on ten always-mounted screens beats an ugly one
 behind a rarely-opened page — the ranking reflects that.
@@ -104,7 +111,9 @@ protocol covers both.
 #### Extending the rules
 
 Rules live in `scripts/lib/convex-scan.mjs`, shared with the CI ratchet
-(`npm run check:convex-readcost`) so they cannot rot apart. When adding a rule, test it
+(`npm run check:convex-readcost`) so they cannot rot apart. A new rule also needs a
+`PLAIN` entry in `scripts/perf-audit.mjs` (tag + what + fix) or it will surface in the
+report as a bare rule id. Table/progress rendering lives in `scripts/lib/report-ui.mjs`. When adding a rule, test it
 against a **true positive, a correct pattern, and a false-positive guard** — the
 `query-in-loop` rule initially flagged 39 files of noise (it matched comments, and its
 loop-body extraction overshot the closing brace) and would have trained everyone to

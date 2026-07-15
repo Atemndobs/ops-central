@@ -282,12 +282,14 @@ export function findViolations(source) {
 /**
  * Scan a convex/ dir. Returns { counts, detail } where counts is
  * { relPath: { rule: n } } (the ratchet's shape) and detail carries lines +
- * owning function names.
+ * owning function names. `onProgress(done, total)` is optional and fires per file.
  */
-export function scanConvexDir(convexDir, repoRoot) {
+export function scanConvexDir(convexDir, repoRoot, onProgress) {
   const counts = {};
   const detail = {};
-  for (const file of listSourceFiles(convexDir)) {
+  const files = listSourceFiles(convexDir);
+  for (const [i, file] of files.entries()) {
+    onProgress?.(i + 1, files.length);
     const source = readFileSync(file, "utf8");
     const violations = findViolations(source);
     if (violations.length === 0) continue;
