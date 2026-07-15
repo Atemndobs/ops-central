@@ -8,7 +8,6 @@ import { Star, Loader2, Send, X, RotateCcw, Sparkles, ChevronDown, ChevronUp } f
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/components/ui/toast-provider";
 import type { ReviewProvider } from "@convex/lib/reviewResponseDraft";
-import { VoiceRecordButton } from "@/components/voice/voice-record-button";
 
 export type ReviewRow = {
   _id: Id<"guestReviews">;
@@ -72,9 +71,17 @@ export function ReviewCard({
 
   // AI refine panel state
   const [refineOpen, setRefineOpen] = useState(false);
-  const [refineInstruction, setRefineInstruction] = useState("");
   const [provider, setProvider] = useState<ReviewProvider>("gemini");
   const [refining, setRefining] = useState(false);
+  // Template dropdowns
+  const [reviewCategory, setReviewCategory] = useState<string>(() =>
+    review.rating >= 5 ? "glowing_5star"
+    : review.rating >= 4 ? "positive_4star"
+    : review.rating >= 3 ? "mixed_3star"
+    : "critical_2star"
+  );
+  const [incentive, setIncentive] = useState("none");
+  const [tone, setTone] = useState("professional");
 
   const approveAndSend = useMutation(api.guestReviews.mutations.approveAndSend);
   const dismiss = useMutation(api.guestReviews.mutations.dismiss);
@@ -126,12 +133,13 @@ export function ReviewCard({
       const newDraft = await refineAction({
         reviewId: review._id,
         currentDraft: draft,
-        instruction: refineInstruction.trim() || undefined,
         provider,
+        reviewCategory: reviewCategory as "glowing_5star" | "positive_4star" | "mixed_3star" | "critical_2star",
+        incentive: incentive as "none" | "return_discount" | "google_review" | "early_late_checkin",
+        tone,
       });
       setDraft(newDraft);
       setRefineOpen(false);
-      setRefineInstruction("");
       showToast(`Draft refined with ${provider === "gemini" ? "Gemini" : provider === "claude" ? "Claude" : "OpenAI"}`, "success");
     } catch (error) {
       showToast(`AI refinement failed: ${getErrorMessage(error)}`, "error");
@@ -250,42 +258,66 @@ export function ReviewCard({
           {/* Refine panel */}
           {refineOpen && (
             <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-3 space-y-3">
-              {/* Provider selector */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-[var(--muted-foreground)] shrink-0">Provider:</span>
-                {PROVIDERS.map((p) => (
-                  <button
-                    key={p.value}
-                    onClick={() => setProvider(p.value)}
-                    className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors ${
-                      provider === p.value ? p.color : "hover:bg-[var(--muted)]"
-                    }`}
+              {/* Row 1: Review type + Incentive */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-[var(--muted-foreground)] mb-1">Review type</label>
+                  <select
+                    value={reviewCategory}
+                    onChange={(e) => setReviewCategory(e.target.value)}
+                    className="w-full rounded-md border px-2 py-1.5 text-xs bg-[var(--background)]"
                   >
-                    {p.label}
-                  </button>
-                ))}
+                    <option value="glowing_5star">5★ Glowing</option>
+                    <option value="positive_4star">4★ Positive</option>
+                    <option value="mixed_3star">3★ Mixed</option>
+                    <option value="critical_2star">2★ Critical</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-[var(--muted-foreground)] mb-1">Incentive</label>
+                  <select
+                    value={incentive}
+                    onChange={(e) => setIncentive(e.target.value)}
+                    className="w-full rounded-md border px-2 py-1.5 text-xs bg-[var(--background)]"
+                  >
+                    <option value="none">None</option>
+                    <option value="return_discount">10% return discount</option>
+                    <option value="google_review">Google review ask</option>
+                    <option value="early_late_checkin">Early/late check-in</option>
+                  </select>
+                </div>
               </div>
 
-              {/* Instruction */}
-              <div>
-                <label className="block text-xs text-[var(--muted-foreground)] mb-1">
-                  Refinement instruction (optional)
-                </label>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="text"
-                    placeholder='e.g. "Be more apologetic about the cleanliness issue" or leave blank to auto-improve'
-                    value={refineInstruction}
-                    onChange={(e) => setRefineInstruction(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && !refining && handleRefine()}
-                    className="flex-1 rounded-md border px-2.5 py-1.5 text-sm bg-[var(--background)]"
-                  />
-                  <VoiceRecordButton
-                    size="sm"
-                    onTranscript={(text) => setRefineInstruction((prev) => prev ? `${prev} ${text}` : text)}
-                    onError={(msg) => showToast(msg, "error")}
-                    disabled={refining}
-                  />
+              {/* Row 2: Tone + Provider */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-[var(--muted-foreground)] mb-1">Tone</label>
+                  <select
+                    value={tone}
+                    onChange={(e) => setTone(e.target.value)}
+                    className="w-full rounded-md border px-2 py-1.5 text-xs bg-[var(--background)]"
+                  >
+                    <option value="professional">Professional</option>
+                    <option value="warm and friendly">Warm</option>
+                    <option value="brief and concise">Brief</option>
+                    <option value="empathetic">Empathetic</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-[var(--muted-foreground)] mb-1">Provider</label>
+                  <div className="flex items-center gap-1.5 pt-0.5">
+                    {PROVIDERS.map((p) => (
+                      <button
+                        key={p.value}
+                        onClick={() => setProvider(p.value)}
+                        className={`rounded-full border px-2 py-0.5 text-xs font-medium transition-colors ${
+                          provider === p.value ? p.color : "hover:bg-[var(--muted)]"
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -338,35 +370,64 @@ export function ReviewCard({
 
           {refineOpen && (
             <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-3 space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-[var(--muted-foreground)] shrink-0">Provider:</span>
-                {PROVIDERS.map((p) => (
-                  <button
-                    key={p.value}
-                    onClick={() => setProvider(p.value)}
-                    className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors ${
-                      provider === p.value ? p.color : "hover:bg-[var(--muted)]"
-                    }`}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-[var(--muted-foreground)] mb-1">Review type</label>
+                  <select
+                    value={reviewCategory}
+                    onChange={(e) => setReviewCategory(e.target.value)}
+                    className="w-full rounded-md border px-2 py-1.5 text-xs bg-[var(--background)]"
                   >
-                    {p.label}
-                  </button>
-                ))}
+                    <option value="glowing_5star">5★ Glowing</option>
+                    <option value="positive_4star">4★ Positive</option>
+                    <option value="mixed_3star">3★ Mixed</option>
+                    <option value="critical_2star">2★ Critical</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-[var(--muted-foreground)] mb-1">Incentive</label>
+                  <select
+                    value={incentive}
+                    onChange={(e) => setIncentive(e.target.value)}
+                    className="w-full rounded-md border px-2 py-1.5 text-xs bg-[var(--background)]"
+                  >
+                    <option value="none">None</option>
+                    <option value="return_discount">10% return discount</option>
+                    <option value="google_review">Google review ask</option>
+                    <option value="early_late_checkin">Early/late check-in</option>
+                  </select>
+                </div>
               </div>
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="text"
-                  placeholder='e.g. "Be more apologetic about the cleanliness issue"'
-                  value={refineInstruction}
-                  onChange={(e) => setRefineInstruction(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && !refining && handleRefine()}
-                  className="flex-1 rounded-md border px-2.5 py-1.5 text-sm bg-[var(--background)]"
-                />
-                <VoiceRecordButton
-                  size="sm"
-                  onTranscript={(text) => setRefineInstruction((prev) => prev ? `${prev} ${text}` : text)}
-                  onError={(msg) => showToast(msg, "error")}
-                  disabled={refining}
-                />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-[var(--muted-foreground)] mb-1">Tone</label>
+                  <select
+                    value={tone}
+                    onChange={(e) => setTone(e.target.value)}
+                    className="w-full rounded-md border px-2 py-1.5 text-xs bg-[var(--background)]"
+                  >
+                    <option value="professional">Professional</option>
+                    <option value="warm and friendly">Warm</option>
+                    <option value="brief and concise">Brief</option>
+                    <option value="empathetic">Empathetic</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-[var(--muted-foreground)] mb-1">Provider</label>
+                  <div className="flex items-center gap-1.5 pt-0.5">
+                    {PROVIDERS.map((p) => (
+                      <button
+                        key={p.value}
+                        onClick={() => setProvider(p.value)}
+                        className={`rounded-full border px-2 py-0.5 text-xs font-medium transition-colors ${
+                          provider === p.value ? p.color : "hover:bg-[var(--muted)]"
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
               <button
                 onClick={handleRefine}

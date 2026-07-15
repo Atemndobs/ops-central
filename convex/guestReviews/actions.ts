@@ -21,12 +21,29 @@ const DEFAULT_HOSPITABLE_BASE_URL = "https://public.api.hospitable.com/v2";
  * Returns the new draft text. The caller (ReviewCard) places it into the
  * editable textarea; the user can edit further before approving.
  */
+const REVIEW_CATEGORY_VALUES = v.union(
+  v.literal("glowing_5star"),
+  v.literal("positive_4star"),
+  v.literal("mixed_3star"),
+  v.literal("critical_2star"),
+);
+const INCENTIVE_VALUES = v.union(
+  v.literal("none"),
+  v.literal("return_discount"),
+  v.literal("google_review"),
+  v.literal("early_late_checkin"),
+);
+
 export const refineReviewDraft = action({
   args: {
     reviewId: v.id("guestReviews"),
     currentDraft: v.string(),
     instruction: v.optional(v.string()),
     provider: v.union(v.literal("gemini"), v.literal("claude"), v.literal("openai")),
+    // Template-based refinement (replaces free-text instruction when provided)
+    reviewCategory: v.optional(REVIEW_CATEGORY_VALUES),
+    incentive: v.optional(INCENTIVE_VALUES),
+    tone: v.optional(v.string()),
   },
   returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
@@ -49,6 +66,32 @@ export const refineReviewDraft = action({
 
     const promptSettings = await ctx.runQuery(internal.appSettings.getReviewSystemPromptInternal, {});
 
+    // Build a structured instruction from pre-written template blocks when
+    // the caller sends category + incentive instead of a free-text instruction.
+    let resolvedInstruction = args.instruction;
+    if (args.reviewCategory && args.incentive) {
+      const templates = await ctx.runQuery(internal.reviewTemplates.internalQueries.getByKey, {
+        reviewCategory: args.reviewCategory,
+        incentive: args.incentive,
+      });
+      if (templates) {
+        const blocks = [
+          `Opener: "${templates.opener}"`,
+          `Acknowledgment: "${templates.acknowledgment}"`,
+          templates.addressIssue ? `Address issue: "${templates.addressIssue}"` : null,
+          `Invite back: "${templates.inviteBack}"`,
+          templates.incentiveText ? `Incentive offer: "${templates.incentiveText}"` : null,
+          `Closer: "${templates.closer}"`,
+        ].filter(Boolean).join("\n");
+        resolvedInstruction =
+          `Using ONLY the following pre-written building blocks as your source material, ` +
+          `assemble them into a single fluent, natural response. ` +
+          `Replace [GUEST_NAME] with the guest's first name and [PROPERTY_NAME] with the property name. ` +
+          (args.tone ? `Tone: ${args.tone}. ` : "") +
+          `Do not add new content beyond what is in the blocks.\n\n${blocks}`;
+      }
+    }
+
     try {
       return await refineReviewResponse({
         rating: review.rating,
@@ -62,7 +105,7 @@ export const refineReviewDraft = action({
         totalAmount: stay?.totalAmount,
         currency: stay?.currency,
         currentDraft: args.currentDraft,
-        instruction: args.instruction,
+        instruction: resolvedInstruction,
         provider: args.provider,
         systemPromptOverride: promptSettings?.prompt ?? undefined,
       });
