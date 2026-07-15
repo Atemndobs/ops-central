@@ -58,6 +58,146 @@ const PROVIDERS: { value: ReviewProvider; label: string; color: string }[] = [
   { value: "openai", label: "OpenAI", color: "border-emerald-400 text-emerald-700 bg-emerald-50" },
 ];
 
+// Styled select that respects CSS var tokens and avoids native browser chrome.
+function AppSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <div className="flex flex-col gap-1 min-w-0">
+      <label className="text-[11px] font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
+        {label}
+      </label>
+      <div className="relative">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full appearance-none rounded-md border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] px-2.5 py-1.5 pr-7 text-xs focus:outline-none focus:ring-1 focus:ring-violet-400"
+        >
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--muted-foreground)]" />
+      </div>
+    </div>
+  );
+}
+
+type RefinePanelProps = {
+  reviewCategory: string; setReviewCategory: (v: string) => void;
+  incentive: string; setIncentive: (v: string) => void;
+  tone: string; setTone: (v: string) => void;
+  provider: ReviewProvider; setProvider: (v: ReviewProvider) => void;
+  refineInstruction: string; setRefineInstruction: (v: string) => void;
+  refining: boolean; onRefine: () => void;
+};
+
+function RefinePanel({
+  reviewCategory, setReviewCategory,
+  incentive, setIncentive,
+  tone, setTone,
+  provider, setProvider,
+  refineInstruction, setRefineInstruction,
+  refining, onRefine,
+}: RefinePanelProps) {
+  return (
+    <div className="rounded-xl border border-violet-200 bg-[var(--background)] p-3 space-y-3 shadow-sm">
+      {/* Single row: all 3 dropdowns + provider */}
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex-1 min-w-[110px]">
+          <AppSelect
+            label="Review type"
+            value={reviewCategory}
+            onChange={setReviewCategory}
+            options={[
+              { value: "glowing_5star", label: "5★ Glowing" },
+              { value: "positive_4star", label: "4★ Positive" },
+              { value: "mixed_3star", label: "3★ Mixed" },
+              { value: "critical_2star", label: "2★ Critical" },
+            ]}
+          />
+        </div>
+        <div className="flex-1 min-w-[130px]">
+          <AppSelect
+            label="Incentive"
+            value={incentive}
+            onChange={setIncentive}
+            options={[
+              { value: "none", label: "None" },
+              { value: "return_discount", label: "10% return discount" },
+              { value: "google_review", label: "Google review ask" },
+              { value: "early_late_checkin", label: "Early/late check-in" },
+            ]}
+          />
+        </div>
+        <div className="flex-1 min-w-[110px]">
+          <AppSelect
+            label="Tone"
+            value={tone}
+            onChange={setTone}
+            options={[
+              { value: "professional", label: "Professional" },
+              { value: "warm and friendly", label: "Warm" },
+              { value: "brief and concise", label: "Brief" },
+              { value: "empathetic", label: "Empathetic" },
+            ]}
+          />
+        </div>
+        <div className="flex flex-col gap-1 shrink-0">
+          <label className="text-[11px] font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
+            Provider
+          </label>
+          <div className="flex items-center gap-1.5">
+            {PROVIDERS.map((p) => (
+              <button
+                key={p.value}
+                onClick={() => setProvider(p.value)}
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                  provider === p.value ? p.color : "border-[var(--border)] hover:bg-[var(--muted)] text-[var(--foreground)]"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Free-text instruction */}
+      <div>
+        <label className="block text-[11px] font-medium text-[var(--muted-foreground)] uppercase tracking-wide mb-1">
+          Additional instruction (optional)
+        </label>
+        <input
+          type="text"
+          placeholder='e.g. "Mention the rooftop view specifically" or leave blank to use template blocks'
+          value={refineInstruction}
+          onChange={(e) => setRefineInstruction(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && !refining && onRefine()}
+          className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] px-2.5 py-1.5 text-sm placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-1 focus:ring-violet-400"
+        />
+      </div>
+
+      <button
+        onClick={onRefine}
+        disabled={refining}
+        className="inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-3 py-1.5 text-sm text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+      >
+        {refining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+        {refining ? "Refining…" : "Regenerate draft"}
+      </button>
+    </div>
+  );
+}
+
 export function ReviewCard({
   review,
   showProperty,
@@ -73,6 +213,7 @@ export function ReviewCard({
   const [refineOpen, setRefineOpen] = useState(false);
   const [provider, setProvider] = useState<ReviewProvider>("gemini");
   const [refining, setRefining] = useState(false);
+  const [refineInstruction, setRefineInstruction] = useState("");
   // Template dropdowns
   const [reviewCategory, setReviewCategory] = useState<string>(() =>
     review.rating >= 5 ? "glowing_5star"
@@ -137,9 +278,11 @@ export function ReviewCard({
         reviewCategory: reviewCategory as "glowing_5star" | "positive_4star" | "mixed_3star" | "critical_2star",
         incentive: incentive as "none" | "return_discount" | "google_review" | "early_late_checkin",
         tone,
+        instruction: refineInstruction.trim() || undefined,
       });
       setDraft(newDraft);
       setRefineOpen(false);
+      setRefineInstruction("");
       showToast(`Draft refined with ${provider === "gemini" ? "Gemini" : provider === "claude" ? "Claude" : "OpenAI"}`, "success");
     } catch (error) {
       showToast(`AI refinement failed: ${getErrorMessage(error)}`, "error");
@@ -256,85 +399,14 @@ export function ReviewCard({
           </div>
 
           {/* Refine panel */}
-          {refineOpen && (
-            <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-3 space-y-3">
-              {/* Row 1: Review type + Incentive */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs text-[var(--muted-foreground)] mb-1">Review type</label>
-                  <select
-                    value={reviewCategory}
-                    onChange={(e) => setReviewCategory(e.target.value)}
-                    className="w-full rounded-md border px-2 py-1.5 text-xs bg-[var(--background)]"
-                  >
-                    <option value="glowing_5star">5★ Glowing</option>
-                    <option value="positive_4star">4★ Positive</option>
-                    <option value="mixed_3star">3★ Mixed</option>
-                    <option value="critical_2star">2★ Critical</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-[var(--muted-foreground)] mb-1">Incentive</label>
-                  <select
-                    value={incentive}
-                    onChange={(e) => setIncentive(e.target.value)}
-                    className="w-full rounded-md border px-2 py-1.5 text-xs bg-[var(--background)]"
-                  >
-                    <option value="none">None</option>
-                    <option value="return_discount">10% return discount</option>
-                    <option value="google_review">Google review ask</option>
-                    <option value="early_late_checkin">Early/late check-in</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Row 2: Tone + Provider */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs text-[var(--muted-foreground)] mb-1">Tone</label>
-                  <select
-                    value={tone}
-                    onChange={(e) => setTone(e.target.value)}
-                    className="w-full rounded-md border px-2 py-1.5 text-xs bg-[var(--background)]"
-                  >
-                    <option value="professional">Professional</option>
-                    <option value="warm and friendly">Warm</option>
-                    <option value="brief and concise">Brief</option>
-                    <option value="empathetic">Empathetic</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-[var(--muted-foreground)] mb-1">Provider</label>
-                  <div className="flex items-center gap-1.5 pt-0.5">
-                    {PROVIDERS.map((p) => (
-                      <button
-                        key={p.value}
-                        onClick={() => setProvider(p.value)}
-                        className={`rounded-full border px-2 py-0.5 text-xs font-medium transition-colors ${
-                          provider === p.value ? p.color : "hover:bg-[var(--muted)]"
-                        }`}
-                      >
-                        {p.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={handleRefine}
-                disabled={refining}
-                className="inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-3 py-1.5 text-sm text-white disabled:opacity-50"
-              >
-                {refining ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Sparkles className="h-3.5 w-3.5" />
-                )}
-                {refining ? "Refining…" : "Regenerate draft"}
-              </button>
-            </div>
-          )}
+          {refineOpen && <RefinePanel
+            reviewCategory={reviewCategory} setReviewCategory={setReviewCategory}
+            incentive={incentive} setIncentive={setIncentive}
+            tone={tone} setTone={setTone}
+            provider={provider} setProvider={setProvider}
+            refineInstruction={refineInstruction} setRefineInstruction={setRefineInstruction}
+            refining={refining} onRefine={handleRefine}
+          />}
         </div>
       )}
 
@@ -368,77 +440,14 @@ export function ReviewCard({
             </button>
           </div>
 
-          {refineOpen && (
-            <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-3 space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs text-[var(--muted-foreground)] mb-1">Review type</label>
-                  <select
-                    value={reviewCategory}
-                    onChange={(e) => setReviewCategory(e.target.value)}
-                    className="w-full rounded-md border px-2 py-1.5 text-xs bg-[var(--background)]"
-                  >
-                    <option value="glowing_5star">5★ Glowing</option>
-                    <option value="positive_4star">4★ Positive</option>
-                    <option value="mixed_3star">3★ Mixed</option>
-                    <option value="critical_2star">2★ Critical</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-[var(--muted-foreground)] mb-1">Incentive</label>
-                  <select
-                    value={incentive}
-                    onChange={(e) => setIncentive(e.target.value)}
-                    className="w-full rounded-md border px-2 py-1.5 text-xs bg-[var(--background)]"
-                  >
-                    <option value="none">None</option>
-                    <option value="return_discount">10% return discount</option>
-                    <option value="google_review">Google review ask</option>
-                    <option value="early_late_checkin">Early/late check-in</option>
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs text-[var(--muted-foreground)] mb-1">Tone</label>
-                  <select
-                    value={tone}
-                    onChange={(e) => setTone(e.target.value)}
-                    className="w-full rounded-md border px-2 py-1.5 text-xs bg-[var(--background)]"
-                  >
-                    <option value="professional">Professional</option>
-                    <option value="warm and friendly">Warm</option>
-                    <option value="brief and concise">Brief</option>
-                    <option value="empathetic">Empathetic</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-[var(--muted-foreground)] mb-1">Provider</label>
-                  <div className="flex items-center gap-1.5 pt-0.5">
-                    {PROVIDERS.map((p) => (
-                      <button
-                        key={p.value}
-                        onClick={() => setProvider(p.value)}
-                        className={`rounded-full border px-2 py-0.5 text-xs font-medium transition-colors ${
-                          provider === p.value ? p.color : "hover:bg-[var(--muted)]"
-                        }`}
-                      >
-                        {p.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <button
-                onClick={handleRefine}
-                disabled={refining}
-                className="inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-3 py-1.5 text-sm text-white disabled:opacity-50"
-              >
-                {refining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                {refining ? "Refining…" : "Regenerate draft"}
-              </button>
-            </div>
-          )}
+          {refineOpen && <RefinePanel
+            reviewCategory={reviewCategory} setReviewCategory={setReviewCategory}
+            incentive={incentive} setIncentive={setIncentive}
+            tone={tone} setTone={setTone}
+            provider={provider} setProvider={setProvider}
+            refineInstruction={refineInstruction} setRefineInstruction={setRefineInstruction}
+            refining={refining} onRefine={handleRefine}
+          />}
         </div>
       )}
     </div>

@@ -88,7 +88,8 @@ export const refineReviewDraft = action({
           `assemble them into a single fluent, natural response. ` +
           `Replace [GUEST_NAME] with the guest's first name and [PROPERTY_NAME] with the property name. ` +
           (args.tone ? `Tone: ${args.tone}. ` : "") +
-          `Do not add new content beyond what is in the blocks.\n\n${blocks}`;
+          `Do not add new content beyond what is in the blocks.\n\n${blocks}` +
+          (args.instruction ? `\n\nAdditional note from manager: ${args.instruction}` : "");
       }
     }
 
