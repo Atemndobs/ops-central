@@ -388,6 +388,11 @@ const cleaningJobs = defineTable({
   .index("by_scheduled", ["scheduledStartAt"])
   .index("by_property_and_scheduled", ["propertyId", "scheduledStartAt"])
   .index("by_property_status", ["propertyId", "status"])
+  // Lets the acknowledgement-escalation cron read only open jobs near the
+  // present instead of every `scheduled`/`assigned` job ever. `by_status` has no
+  // date bound and `by_scheduled` has no status, so neither alone can express
+  // "open jobs from the last day onward" — see cleaningJobs/acknowledgements.ts.
+  .index("by_status_scheduled", ["status", "scheduledStartAt"])
   .index("by_stay", ["stayId"]);
 
 const jobExecutionSessions = defineTable({

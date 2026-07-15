@@ -318,14 +318,43 @@ export async function schedulePendingAcknowledgementEscalation(
 }
 
 /**
- * Backstop sweep: retained for one deploy cycle as a safety net while
- * already-in-flight acknowledgements (seeded before the event-driven path
- * shipped) drain out. Delete after verifying logs show zero escalations.
+ * How far into the past this sweep looks. An acknowledgement always expires
+ * within 2h of assignment (`computeAckExpiry` clamps to
+ * `[assignedAt + 10min, assignedAt + 2h]`), and the event-driven `escalateOne`
+ * is the primary path — so anything still un-escalated on a job whose start time
+ * is more than a day gone is stale. Telling ops that a job from three weeks ago
+ * went unacknowledged is noise, not a signal.
+ *
+ * Note this bound is on `scheduledStartAt`, not on the ack expiry, and it is
+ * open-ended toward the future on purpose: a job scheduled months out but
+ * assigned today has an ack expiring today, and must still be swept.
+ */
+const SWEEP_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+
+/** Hard ceiling on documents read per sweep (R4). Well above the real count. */
+const SWEEP_HARD_CAP = 500;
+
+/**
+ * Backstop sweep for expired acknowledgements.
+ *
+ * The primary path is event-driven: `assign` calls
+ * `schedulePendingAcknowledgementEscalation`, which uses `ctx.scheduler.runAt`
+ * to fire `escalateOne` at the exact expiry. That covers every path that seeds a
+ * pending ack, and `escalateExpiredAcksForJob` is idempotent, so this sweep is
+ * defense-in-depth against a dropped schedule — not the mechanism.
+ *
+ * READ COST: this used to `.collect()` every `scheduled` + `assigned` job with no
+ * date bound — 59 docs (~29 KB) per run × 96 runs/day = ~81 MB/month, burned
+ * whether or not anyone used the app. 44 of those 59 were jobs more than a day
+ * past, which can never produce a useful escalation. Bounding to open jobs from
+ * the last day onward via `by_status_scheduled` reads ~15 docs (~7 KB) instead.
+ * See convex/CLAUDE.md R1/R4/R9 and the optimization playbook.
  */
 export const escalateExpiredAcknowledgements = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
+    const since = now - SWEEP_LOOKBACK_MS;
     const candidateStatuses: Array<Doc<"cleaningJobs">["status"]> = [
       "scheduled",
       "assigned",
@@ -333,10 +362,14 @@ export const escalateExpiredAcknowledgements = internalMutation({
 
     const candidateJobs: Doc<"cleaningJobs">[] = [];
     for (const status of candidateStatuses) {
+      // Indexed on (status, scheduledStartAt) so the date bound is applied at
+      // the read — a JS filter here would scan every open job and discard most.
       const jobs = await ctx.db
         .query("cleaningJobs")
-        .withIndex("by_status", (q) => q.eq("status", status))
-        .collect();
+        .withIndex("by_status_scheduled", (q) =>
+          q.eq("status", status).gte("scheduledStartAt", since),
+        )
+        .take(SWEEP_HARD_CAP);
       candidateJobs.push(...jobs);
     }
 
@@ -350,6 +383,11 @@ export const escalateExpiredAcknowledgements = internalMutation({
       }
     }
 
-    return { escalatedJobs, escalatedAcks, checkedAt: now };
+    return {
+      escalatedJobs,
+      escalatedAcks,
+      jobsScanned: candidateJobs.length,
+      checkedAt: now,
+    };
   },
 });
