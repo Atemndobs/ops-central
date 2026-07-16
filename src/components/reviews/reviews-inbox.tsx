@@ -12,7 +12,7 @@ type StatusFilter = "all" | "urgent" | "needs_action" | "sent" | "dismissed";
 
 const NEEDS_ACTION = new Set(["needs_draft", "drafted", "send_failed"]);
 
-// P1: bad review, no draft yet or failed send — must respond
+// P1: bad review, no draft yet or failed send, must respond
 // P2: bad review, draft ready but not sent
 // P3: good review, no draft yet
 // P4: good review, draft ready
@@ -37,7 +37,7 @@ function statusMatch(status: string, rating: number, filter: StatusFilter) {
 }
 
 const STATUS_LABELS: Record<StatusFilter, string> = {
-  urgent: "Urgent — bad reviews",
+  urgent: "Urgent: bad reviews",
   needs_action: "Needs action",
   all: "All statuses",
   sent: "Sent",
@@ -82,7 +82,7 @@ export function ReviewsInbox() {
     );
   }
 
-  // Additive filtering helpers — each dimension filters using the OTHER two active filters
+  // Additive filtering helpers: each dimension filters using the OTHER two active filters
   const afterRatingAndProperty = reviews.filter(
     (r) =>
       (ratingFilter === 0 || r.rating === ratingFilter) &&
@@ -158,7 +158,7 @@ export function ReviewsInbox() {
 
   return (
     <div className="space-y-4">
-      {/* Filter row — styled dropdowns */}
+      {/* Filter row: styled dropdowns */}
       <div className="flex flex-wrap gap-2 items-center">
         {/* Status */}
         <FilterDropdown

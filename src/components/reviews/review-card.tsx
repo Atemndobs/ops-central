@@ -18,6 +18,7 @@ export type ReviewRow = {
   platform: "airbnb" | "direct";
   rating: number;
   publicReview: string;
+  privateFeedback?: string;
   guestFirstName: string;
   guestLastName: string;
   reviewedAt: number;
@@ -59,7 +60,7 @@ const PROVIDERS: { value: ReviewProvider; label: string; color: string }[] = [
   { value: "openai", label: "OpenAI", color: "border-emerald-400 text-emerald-700 bg-emerald-50" },
 ];
 
-// Fully custom select using Radix Popover — matches app CSS var tokens,
+// Fully custom select using Radix Popover, matches app CSS var tokens,
 // no native browser chrome in the option list.
 function RefineSelect({
   label,
@@ -377,12 +378,20 @@ export function ReviewCard({
         </div>
       </div>
 
-      {/* Review text */}
-      <p className="text-sm text-[var(--foreground)] leading-relaxed">{review.publicReview}</p>
+      {/* What the guest wrote: their words, neutral/muted color */}
+      <div className="rounded-md border-l-[3px] border-slate-300 bg-slate-50 dark:border-slate-600 dark:bg-slate-800/40 pl-3 pr-2.5 py-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Guest wrote</p>
+        <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">{review.publicReview}</p>
+        {review.privateFeedback && (
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400 leading-relaxed whitespace-pre-wrap border-t border-slate-200 dark:border-slate-700 pt-2">
+            <span className="font-semibold">Private note to host:</span> {review.privateFeedback}
+          </p>
+        )}
+      </div>
 
       {!canReply && (
         <p className="text-xs text-[var(--muted-foreground)] italic">
-          Direct booking — no OTA reply target, read-only.
+          Direct booking: no OTA reply target, read-only.
         </p>
       )}
 
@@ -392,15 +401,20 @@ export function ReviewCard({
         </div>
       )}
 
-      {/* Draft textarea */}
+      {/* Our response: large field, emerald = "us", clearly distinct from the guest's neutral text */}
       {canReply && (review.status === "drafted" || review.status === "send_failed") && (
-        <textarea
-          className="w-full rounded-md border p-2 text-sm resize-y"
-          rows={3}
-          value={draft}
-          disabled={!isEditable}
-          onChange={(e) => setDraft(e.target.value)}
-        />
+        <div className="rounded-md border-l-[3px] border-emerald-400 bg-emerald-50/60 dark:border-emerald-500 dark:bg-emerald-900/10 pl-3 pr-2.5 py-2 space-y-1.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+            Your response · ready to send
+          </p>
+          <textarea
+            className="w-full rounded-md border border-emerald-200 dark:border-emerald-800 bg-[var(--card)] p-3 text-sm leading-relaxed text-emerald-900 dark:text-emerald-100 resize-y min-h-[180px] focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
+            rows={8}
+            value={draft}
+            disabled={!isEditable}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+        </div>
       )}
 
       {/* Sent response */}

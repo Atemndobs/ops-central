@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "@convex/_generated/api";
-import { Loader2, Star, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, EyeOff, Eye, TrendingUp, Mail, Phone } from "lucide-react";
+import { Loader2, Star, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, EyeOff, Eye, TrendingUp, Mail, Copy, Check } from "lucide-react";
 
 const HIDDEN_KEY = "reviews-dashboard-hidden-properties";
 
@@ -112,8 +112,149 @@ function daysSince(ts: number) {
   return Math.floor((Date.now() - ts) / (1000 * 60 * 60 * 24));
 }
 
+// Airbnb masks many guest names in the partner API (stored as the literal
+// "Guest"). Pull a usable first name where we have one; fall back to "".
+function firstNameOf(guestName: string): string {
+  const f = (guestName ?? "").trim();
+  if (!f || f.toLowerCase() === "guest") return "";
+  const first = f.split(/\s+/)[0];
+  return first.toLowerCase() === "guest" ? "" : first;
+}
+
+// Prepared outreach message: thank for the booking, invite back with a
+// discount, then ask for a review with the small-business framing (Hasib's
+// point: a young business's growth leans hard on guest reviews).
+function buildOutreach(guestName: string, propertyName: string | null): string {
+  const first = firstNameOf(guestName);
+  const hi = first ? `Hi ${first}!` : "Hi there!";
+  const prop = propertyName ?? "our place";
+  return (
+    `${hi} Thank you so much for choosing ${prop} for your recent stay. ` +
+    `It was a real pleasure hosting you, and we'd love to welcome you back anytime. ` +
+    `As a thank-you, we'd be glad to offer you 10% off your next stay with us. ` +
+    `If you have a moment, we'd be incredibly grateful if you could leave us a quick review. ` +
+    `We're a small, growing business, and honest reviews from guests like you make a real ` +
+    `difference in helping us reach more travelers. Thank you again, and we hope to see you soon!` +
+    `\n\nWarm regards,\nThe ChezSoi Stays Team`
+  );
+}
+
+type Opportunity = {
+  _id: string;
+  guestName: string;
+  guestPhotoUrl?: string | null;
+  guestEmail?: string | null;
+  propertyName: string | null;
+  platform: string | null;
+  checkOutAt: number;
+};
+
+function OutreachRow({ s }: { s: Opportunity }) {
+  const [expanded, setExpanded] = useState(false);
+  const [message, setMessage] = useState(() => buildOutreach(s.guestName, s.propertyName));
+  const [copied, setCopied] = useState(false);
+
+  const days = daysSince(s.checkOutAt);
+  const hasName = firstNameOf(s.guestName) !== "";
+  const displayName = hasName ? s.guestName : "Guest (name hidden by Airbnb)";
+  const initials = hasName
+    ? s.guestName.split(" ").map((w) => w[0]).slice(0, 2).join("")
+    : "G";
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(message);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* clipboard unavailable; user can still select the text */
+    }
+  }
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--muted)]/40 transition-colors"
+      >
+        {/* Avatar */}
+        {s.guestPhotoUrl ? (
+          <img src={s.guestPhotoUrl} alt={displayName} className="h-9 w-9 rounded-full object-cover shrink-0 ring-1 ring-[var(--border)]" />
+        ) : (
+          <div className="h-9 w-9 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 ring-1 ring-emerald-200">
+            <span className="text-xs font-semibold text-emerald-700 select-none">{initials}</span>
+          </div>
+        )}
+
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className={`text-sm font-medium truncate ${hasName ? "" : "text-[var(--muted-foreground)] italic"}`}>{displayName}</span>
+            {s.propertyName && (
+              <span className="text-xs text-[var(--muted-foreground)] truncate">· {s.propertyName}</span>
+            )}
+          </div>
+          <p className="text-xs text-[var(--muted-foreground)] mt-0.5">
+            Checked out {days === 0 ? "today" : `${days}d ago`}
+            {s.platform ? ` · ${s.platform}` : ""}
+          </p>
+        </div>
+
+        {/* Small recency dot instead of a wide pill; tier is now the header filter */}
+        <span
+          title={days <= 7 ? "Fresh" : days <= 21 ? "Act soon" : "Cooling"}
+          className={`h-2.5 w-2.5 rounded-full shrink-0 ${
+            days <= 7 ? "bg-emerald-500" : days <= 21 ? "bg-amber-500" : "bg-slate-400"
+          }`}
+        />
+        {expanded ? <ChevronUp className="h-4 w-4 text-[var(--muted-foreground)] shrink-0" /> : <ChevronDown className="h-4 w-4 text-[var(--muted-foreground)] shrink-0" />}
+      </button>
+
+      {expanded && (
+        <div className="px-4 pb-4 pt-1 space-y-2 bg-[var(--muted)]/20">
+          <p className="text-xs text-[var(--muted-foreground)]">Prepared outreach message. Edit if you like, then copy and send from your Airbnb / Hospitable inbox.</p>
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            rows={7}
+            className="w-full rounded-lg border bg-[var(--card)] p-3 text-sm leading-relaxed resize-y focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={copy}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                copied ? "bg-emerald-600 text-white" : "bg-emerald-500 text-white hover:bg-emerald-600"
+              }`}
+            >
+              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              {copied ? "Copied" : "Copy message"}
+            </button>
+            {s.guestEmail && (
+              <a
+                href={`mailto:${s.guestEmail}?subject=${encodeURIComponent("Thank you for your stay!")}&body=${encodeURIComponent(message)}`}
+                className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors"
+              >
+                <Mail className="h-4 w-4" /> Email
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type Tier = "all" | "fresh" | "soon" | "cooling";
+function tierOf(checkOutAt: number): Exclude<Tier, "all"> {
+  const d = daysSince(checkOutAt);
+  return d <= 7 ? "fresh" : d <= 21 ? "soon" : "cooling";
+}
+
 function ReviewOpportunities({ isAuthenticated }: { isAuthenticated: boolean }) {
   const [open, setOpen] = useState(true);
+  const [tier, setTier] = useState<Tier>("all");
   const opportunities = useQuery(
     api.stays.queries.getUnreviewedCheckouts,
     isAuthenticated ? {} : "skip",
@@ -121,6 +262,24 @@ function ReviewOpportunities({ isAuthenticated }: { isAuthenticated: boolean }) 
 
   if (opportunities === undefined) return null;
   if (opportunities.length === 0) return null;
+
+  const counts = {
+    all: opportunities.length,
+    fresh: opportunities.filter((s) => tierOf(s.checkOutAt) === "fresh").length,
+    soon: opportunities.filter((s) => tierOf(s.checkOutAt) === "soon").length,
+    cooling: opportunities.filter((s) => tierOf(s.checkOutAt) === "cooling").length,
+  };
+  // Freshest first, then filtered by the selected tier.
+  const visible = [...opportunities]
+    .sort((a, b) => b.checkOutAt - a.checkOutAt)
+    .filter((s) => tier === "all" || tierOf(s.checkOutAt) === tier);
+
+  const TIERS: { key: Tier; label: string; activeCls: string }[] = [
+    { key: "all", label: "All", activeCls: "bg-emerald-600 text-white" },
+    { key: "fresh", label: "Fresh", activeCls: "bg-emerald-500 text-white" },
+    { key: "soon", label: "Act soon", activeCls: "bg-amber-500 text-white" },
+    { key: "cooling", label: "Cooling", activeCls: "bg-slate-500 text-white" },
+  ];
 
   return (
     <div className="rounded-xl border bg-[var(--card)] overflow-hidden">
@@ -144,59 +303,29 @@ function ReviewOpportunities({ isAuthenticated }: { isAuthenticated: boolean }) 
       {open && (
         <>
           <div className="px-4 py-2 bg-emerald-50 border-b text-xs text-emerald-800">
-            These guests checked out recently and left no review. Reach out — happy guests who didn't review are your easiest 5★.
+            These guests checked out recently and left no review. Tap any guest for a prepared outreach message. Happy guests who didn't review are your easiest 5★.
+          </div>
+          {/* Tier sort/filter: the pills moved up here so the rows stay clean */}
+          <div className="flex items-center gap-1.5 px-4 py-2 border-b overflow-x-auto">
+            {TIERS.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setTier(t.key)}
+                className={`shrink-0 text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${
+                  tier === t.key
+                    ? t.activeCls
+                    : "bg-[var(--muted)] text-[var(--muted-foreground)] hover:bg-[var(--muted)]/70"
+                }`}
+              >
+                {t.label} <span className="tabular-nums opacity-70">{counts[t.key]}</span>
+              </button>
+            ))}
           </div>
           <div className="divide-y divide-[var(--border)]">
-            {opportunities.map((s) => {
-              const days = daysSince(s.checkOutAt);
-              const initials = s.guestName.split(" ").map((w: string) => w[0]).slice(0, 2).join("");
-              return (
-                <div key={s._id} className="flex items-center gap-3 px-4 py-3">
-                  {/* Avatar */}
-                  {s.guestPhotoUrl ? (
-                    <img src={s.guestPhotoUrl} alt={s.guestName} className="h-9 w-9 rounded-full object-cover shrink-0 ring-1 ring-[var(--border)]" />
-                  ) : (
-                    <div className="h-9 w-9 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 ring-1 ring-emerald-200">
-                      <span className="text-xs font-semibold text-emerald-700 select-none">{initials}</span>
-                    </div>
-                  )}
-
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-sm font-medium truncate">{s.guestName}</span>
-                      {s.propertyName && (
-                        <span className="text-xs text-[var(--muted-foreground)] truncate">· {s.propertyName}</span>
-                      )}
-                    </div>
-                    <p className="text-xs text-[var(--muted-foreground)] mt-0.5">
-                      Checked out {days === 0 ? "today" : `${days}d ago`}
-                      {s.platform ? ` · ${s.platform}` : ""}
-                    </p>
-                  </div>
-
-                  {/* Contact indicators */}
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {s.guestEmail && (
-                      <span title={s.guestEmail} className="p-1.5 rounded bg-[var(--muted)] text-[var(--muted-foreground)]">
-                        <Mail className="h-3.5 w-3.5" />
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Recency urgency */}
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${
-                    days <= 7
-                      ? "bg-emerald-100 text-emerald-700"
-                      : days <= 21
-                      ? "bg-amber-100 text-amber-700"
-                      : "bg-slate-100 text-slate-600"
-                  }`}>
-                    {days <= 7 ? "Fresh" : days <= 21 ? "Act soon" : "Cooling"}
-                  </span>
-                </div>
-              );
-            })}
+            {visible.map((s) => (
+              <OutreachRow key={s._id} s={s as Opportunity} />
+            ))}
           </div>
         </>
       )}
@@ -255,7 +384,7 @@ export function ReviewsDashboard() {
         />
       </div>
 
-      {/* Review opportunities — guests who stayed but never reviewed */}
+      {/* Review opportunities: guests who stayed but never reviewed */}
       <ReviewOpportunities isAuthenticated={isAuthenticated} />
 
       {/* Property health table */}
@@ -354,7 +483,7 @@ export function ReviewsDashboard() {
                                 {p.badCount} bad
                               </span>
                             ) : (
-                              <span className="text-[var(--muted-foreground)]">—</span>
+                              <span className="text-[var(--muted-foreground)]">·</span>
                             )}
                           </td>
                           <td className="px-4 py-3 text-center tabular-nums">
@@ -363,7 +492,7 @@ export function ReviewsDashboard() {
                                 {p.respondedCount} / {p.badCount}
                               </span>
                             ) : (
-                              <span className="text-[var(--muted-foreground)]">—</span>
+                              <span className="text-[var(--muted-foreground)]">·</span>
                             )}
                           </td>
                           <td className="px-2 py-3">
