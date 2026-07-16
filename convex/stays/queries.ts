@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { query } from "../_generated/server";
 import { getCurrentUser } from "../lib/auth";
+import { requireRole } from "../lib/auth";
 import { getCallerJobScopeForListing } from "../lib/companyScope";
 
 const GET_IN_RANGE_HARD_CAP = 500;
@@ -78,5 +79,79 @@ export const getInDateRange = query({
       checkInAt: stay.checkInAt,
       checkOutAt: stay.checkOutAt,
     }));
+  },
+});
+
+const UNREVIEWED_WINDOW_MS = 60 * 24 * 60 * 60 * 1000; // 60-day lookback
+const UNREVIEWED_CAP = 100;
+// guestReviews grows slowly (~7/mo); hard-capped at 300 so this never
+// becomes a full-table read even as the business scales.
+const REVIEW_SCAN_CAP = 300;
+
+/**
+ * Recent checkouts with no linked guest review — the "low hanging fruit"
+ * outreach list. Sorted newest-checkout-first.
+ *
+ * R1: stays scanned via by_checkout index with two-sided date bounds.
+ * R4: guestReviews bounded at REVIEW_SCAN_CAP (grows ~7/mo; safe for years).
+ * R3: stayId set built in memory before filtering stays — no per-row queries.
+ */
+export const getUnreviewedCheckouts = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireRole(ctx, ["admin", "property_ops", "manager"]);
+
+    const now = Date.now();
+    const windowStart = now - UNREVIEWED_WINDOW_MS;
+
+    // Bounded two-sided scan on stays (R1 compliant).
+    const recentStays = await ctx.db
+      .query("stays")
+      .withIndex("by_checkout", (q) =>
+        q.gte("checkOutAt", windowStart).lte("checkOutAt", now),
+      )
+      .take(UNREVIEWED_CAP * 4); // over-fetch before filtering cancelled
+
+    const activeStays = recentStays.filter((s) => !s.cancelledAt);
+
+    // Build a set of reviewed (propertyId:normalizedGuestName) pairs in one
+    // bounded read (R3: no per-row queries). guestReviews has no stayId FK;
+    // we match on propertyId + full name since both come from Hospitable and
+    // use consistent formatting. REVIEW_SCAN_CAP keeps cost bounded for years.
+    const reviews = await ctx.db
+      .query("guestReviews")
+      .withIndex("by_status")
+      .take(REVIEW_SCAN_CAP);
+    const reviewedKeys = new Set(
+      reviews.map(
+        (r) =>
+          `${r.propertyId}:${(r.guestFirstName + " " + r.guestLastName).toLowerCase().trim()}`,
+      ),
+    );
+
+    // Enrich with property name in one batched pass (R3 compliant).
+    const propertyIds = [...new Set(activeStays.map((s) => s.propertyId))];
+    const properties = await Promise.all(propertyIds.map((id) => ctx.db.get(id)));
+    const propName = new Map(
+      properties.flatMap((p) => (p ? [[p._id, p.name]] : [])),
+    );
+
+    return activeStays
+      .filter((s) => {
+        const key = `${s.propertyId}:${s.guestName.toLowerCase().trim()}`;
+        return !reviewedKeys.has(key);
+      })
+      .slice(0, UNREVIEWED_CAP)
+      .map((s) => ({
+        _id: s._id,
+        propertyId: s.propertyId,
+        propertyName: propName.get(s.propertyId) ?? null,
+        guestName: s.guestName,
+        guestPhotoUrl: s.guestPhotoUrl,
+        guestEmail: s.guestEmail,
+        platform: s.platform ?? null,
+        checkInAt: s.checkInAt,
+        checkOutAt: s.checkOutAt,
+      }));
   },
 });
