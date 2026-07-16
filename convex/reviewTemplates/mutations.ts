@@ -46,7 +46,7 @@ export const upsert = mutation({
   },
 });
 
-// Seeds all 16 pre-built template combinations. Safe to re-run — upserts by key.
+// Seeds all 16 pre-built template combinations. Safe to re-run; upserts by key.
 export const seedAll = mutation({
   args: {},
   handler: async (ctx) => {

@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { internalQuery } from "../_generated/server";
 
-// Small config table — bare scan is intentional and safe (R1 exemption).
+// Small config table: bare scan is intentional and safe (R1 exemption).
 export const getByKey = internalQuery({
   args: {
     reviewCategory: v.union(

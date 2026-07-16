@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { query } from "../_generated/server";
 import { requireRole } from "../lib/auth";
 
-// Small config table — bare scan is intentional and safe (see schema.ts R1 note).
+// Small config table: bare scan is intentional and safe (see schema.ts R1 note).
 export const list = query({
   args: {},
   handler: async (ctx) => {
