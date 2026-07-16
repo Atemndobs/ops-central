@@ -169,82 +169,135 @@ export function ReviewsDashboard() {
           <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">Property Health</p>
           {tableOpen ? <ChevronUp className="h-4 w-4 text-[var(--muted-foreground)]" /> : <ChevronDown className="h-4 w-4 text-[var(--muted-foreground)]" />}
         </button>
-        {tableOpen && <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-xs text-[var(--muted-foreground)] uppercase tracking-wider">
-                <th className="text-left px-4 py-2 font-medium">Property</th>
-                <th className="text-right px-4 py-2 font-medium">Reviews</th>
-                <th className="text-left px-4 py-2 font-medium">Avg Rating</th>
-                <th className="text-center px-4 py-2 font-medium">Low (≤3★)</th>
-                <th className="text-center px-4 py-2 font-medium">Responded</th>
-                <th className="text-left px-4 py-2 font-medium">Status</th>
-                <th className="w-8" />
-              </tr>
-            </thead>
-            <tbody>
+        {tableOpen && (
+          <>
+            {/* Mobile card list */}
+            <div className="sm:hidden divide-y divide-[var(--border)]">
               {summary.propertyHealth
                 .filter((p) => showHidden || !hidden.has(p.propertyId as string))
                 .map((p) => {
                   const isHidden = hidden.has(p.propertyId as string);
                   return (
-                    <tr
+                    <div
                       key={p.propertyId as string}
-                      className={`border-b last:border-0 hover:bg-[var(--muted)]/40 transition-colors group ${isHidden ? "opacity-40" : "cursor-pointer"}`}
+                      className={`flex items-center gap-3 px-4 py-3 group transition-colors ${isHidden ? "opacity-40" : "cursor-pointer active:bg-[var(--muted)]/60"}`}
                       onClick={() => !isHidden && router.push(`/reviews?property=${p.propertyId}`)}
                     >
-                      <td className="px-4 py-3 font-medium text-[var(--primary)] hover:underline">{p.propertyName ?? p.propertyId}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-[var(--muted-foreground)]">{p.reviewCount}</td>
-                      <td className="px-4 py-3"><Stars rating={p.avgRating} /></td>
-                      <td className="px-4 py-3 text-center">
-                        {p.badCount > 0 ? (
-                          <span className="inline-block rounded-full bg-rose-600 px-2 py-0.5 text-xs text-white font-medium tabular-nums">
-                            {p.badCount} bad
-                          </span>
-                        ) : (
-                          <span className="text-[var(--muted-foreground)]">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-center tabular-nums">
-                        {p.badCount > 0 ? (
-                          <span className={p.respondedCount < p.badCount ? "text-rose-400" : "text-emerald-400"}>
-                            {p.respondedCount} / {p.badCount}
-                          </span>
-                        ) : (
-                          <span className="text-[var(--muted-foreground)]">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
+                      {/* Status indicator stripe */}
+                      <div className="shrink-0">
                         <StatusChip badCount={p.badCount} respondedCount={p.respondedCount} />
-                      </td>
-                      <td className="px-2 py-3">
-                        <button
-                          type="button"
-                          title={isHidden ? "Show property" : "Hide from dashboard"}
-                          onClick={(e) => { e.stopPropagation(); isHidden ? restore(p.propertyId as string) : hide(p.propertyId as string); }}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-[var(--muted)] text-[var(--muted-foreground)]"
-                        >
-                          {isHidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-                        </button>
-                      </td>
-                    </tr>
+                      </div>
+
+                      {/* Property name + meta */}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm text-[var(--primary)] truncate leading-tight">
+                          {p.propertyName ?? p.propertyId}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <Stars rating={p.avgRating} />
+                          <span className="text-xs text-[var(--muted-foreground)] tabular-nums">{p.reviewCount} reviews</span>
+                          {p.badCount > 0 && (
+                            <span className="text-xs text-rose-400 tabular-nums">
+                              {p.respondedCount}/{p.badCount} bad responded
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Hide button */}
+                      <button
+                        type="button"
+                        title={isHidden ? "Show property" : "Hide from dashboard"}
+                        onClick={(e) => { e.stopPropagation(); isHidden ? restore(p.propertyId as string) : hide(p.propertyId as string); }}
+                        className="shrink-0 opacity-0 group-active:opacity-100 p-1.5 rounded hover:bg-[var(--muted)] text-[var(--muted-foreground)]"
+                      >
+                        {isHidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                      </button>
+                    </div>
                   );
                 })}
-            </tbody>
-          </table>
-          {hidden.size > 0 && (
-            <div className="px-4 py-2 border-t">
-              <button
-                type="button"
-                onClick={() => setShowHidden((s) => !s)}
-                className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] flex items-center gap-1 transition-colors"
-              >
-                {showHidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                {showHidden ? "Hide excluded" : `Show ${hidden.size} excluded propert${hidden.size === 1 ? "y" : "ies"}`}
-              </button>
             </div>
-          )}
-        </div>}
+
+            {/* Desktop table */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-xs text-[var(--muted-foreground)] uppercase tracking-wider">
+                    <th className="text-left px-4 py-2 font-medium">Status</th>
+                    <th className="text-left px-4 py-2 font-medium">Property</th>
+                    <th className="text-right px-4 py-2 font-medium">Reviews</th>
+                    <th className="text-left px-4 py-2 font-medium">Avg Rating</th>
+                    <th className="text-center px-4 py-2 font-medium">Low (≤3★)</th>
+                    <th className="text-center px-4 py-2 font-medium">Responded</th>
+                    <th className="w-8" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.propertyHealth
+                    .filter((p) => showHidden || !hidden.has(p.propertyId as string))
+                    .map((p) => {
+                      const isHidden = hidden.has(p.propertyId as string);
+                      return (
+                        <tr
+                          key={p.propertyId as string}
+                          className={`border-b last:border-0 hover:bg-[var(--muted)]/40 transition-colors group ${isHidden ? "opacity-40" : "cursor-pointer"}`}
+                          onClick={() => !isHidden && router.push(`/reviews?property=${p.propertyId}`)}
+                        >
+                          <td className="px-4 py-3">
+                            <StatusChip badCount={p.badCount} respondedCount={p.respondedCount} />
+                          </td>
+                          <td className="px-4 py-3 font-medium text-[var(--primary)] hover:underline">{p.propertyName ?? p.propertyId}</td>
+                          <td className="px-4 py-3 text-right tabular-nums text-[var(--muted-foreground)]">{p.reviewCount}</td>
+                          <td className="px-4 py-3"><Stars rating={p.avgRating} /></td>
+                          <td className="px-4 py-3 text-center">
+                            {p.badCount > 0 ? (
+                              <span className="inline-block rounded-full bg-rose-600 px-2 py-0.5 text-xs text-white font-medium tabular-nums">
+                                {p.badCount} bad
+                              </span>
+                            ) : (
+                              <span className="text-[var(--muted-foreground)]">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center tabular-nums">
+                            {p.badCount > 0 ? (
+                              <span className={p.respondedCount < p.badCount ? "text-rose-400" : "text-emerald-400"}>
+                                {p.respondedCount} / {p.badCount}
+                              </span>
+                            ) : (
+                              <span className="text-[var(--muted-foreground)]">—</span>
+                            )}
+                          </td>
+                          <td className="px-2 py-3">
+                            <button
+                              type="button"
+                              title={isHidden ? "Show property" : "Hide from dashboard"}
+                              onClick={(e) => { e.stopPropagation(); isHidden ? restore(p.propertyId as string) : hide(p.propertyId as string); }}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-[var(--muted)] text-[var(--muted-foreground)]"
+                            >
+                              {isHidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+
+            {hidden.size > 0 && (
+              <div className="px-4 py-2 border-t">
+                <button
+                  type="button"
+                  onClick={() => setShowHidden((s) => !s)}
+                  className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] flex items-center gap-1 transition-colors"
+                >
+                  {showHidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                  {showHidden ? "Hide excluded" : `Show ${hidden.size} excluded propert${hidden.size === 1 ? "y" : "ies"}`}
+                </button>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
