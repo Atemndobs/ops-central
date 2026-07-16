@@ -40,8 +40,28 @@ export async function createNotificationsForUsers(
   }
 
   const now = Date.now();
-  const notificationIds = await Promise.all(
+  const DEDUP_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+  const jobId = args.data?.jobId as string | undefined;
+
+  const results = await Promise.all(
     recipientIds.map(async (userId) => {
+      // Dedup: skip if this user already has a notification of the same type
+      // for the same job within the last hour. Uses by_user_and_type index
+      // (bounded read on userId + type + createdAt range).
+      if (jobId !== undefined) {
+        const recent = await ctx.db
+          .query("notifications")
+          .withIndex("by_user_and_type", (q) =>
+            q
+              .eq("userId", userId)
+              .eq("type", args.type)
+              .gte("createdAt", now - DEDUP_WINDOW_MS),
+          )
+          .filter((q) => q.eq(q.field("data.jobId"), jobId))
+          .first();
+        if (recent !== null) return null;
+      }
+
       const notificationId = await ctx.db.insert("notifications", {
         userId,
         type: args.type,
@@ -64,7 +84,10 @@ export async function createNotificationsForUsers(
     }),
   );
 
-  return { count: recipientIds.length, notificationIds };
+  const notificationIds = results.filter(
+    (id): id is Id<"notifications"> => id !== null,
+  );
+  return { count: notificationIds.length, notificationIds };
 }
 
 export async function createOpsNotifications(

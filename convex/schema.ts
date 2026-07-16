@@ -1248,7 +1248,10 @@ const notifications = defineTable({
   // instead of scanning the user's entire notification history. Wave 4 in
   // Docs/2026-04-28-convex-bandwidth-optimization-plan.md.
   .index("by_user_and_dismissed", ["userId", "dismissedAt"])
-  .index("by_type", ["type"]);
+  .index("by_type", ["type"])
+  // Dedup guard: lets createNotificationsForUsers check for a recent
+  // notification of the same type for a user without scanning all their rows.
+  .index("by_user_and_type", ["userId", "type", "createdAt"]);
 
 // Reverse-index of cleaningJobs.assignedCleanerIds. Convex doesn't natively
 // index array fields, so `getMyAssigned` previously had to `.collect()` the
