@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation } from "../_generated/server";
+import { mutation, internalMutation } from "../_generated/server";
 import { requireRole } from "../lib/auth";
 import { TEMPLATES } from "./seed";
 
@@ -51,6 +51,33 @@ export const seedAll = mutation({
   args: {},
   handler: async (ctx) => {
     await requireRole(ctx, ["admin"]);
+    const existing = await ctx.db.query("reviewResponseTemplates").collect();
+    const byKey = new Map(
+      existing.map((r) => [`${r.reviewCategory}:${r.incentive}`, r]),
+    );
+    let created = 0;
+    let updated = 0;
+    for (const t of TEMPLATES) {
+      const key = `${t.reviewCategory}:${t.incentive}`;
+      const row = byKey.get(key);
+      if (row) {
+        await ctx.db.patch(row._id, t);
+        updated++;
+      } else {
+        await ctx.db.insert("reviewResponseTemplates", t);
+        created++;
+      }
+    }
+    return { created, updated, total: TEMPLATES.length };
+  },
+});
+
+// Internal twin of seedAll, runnable from the Convex CLI (no user identity).
+// Used to push template copy edits to prod: `npx convex run
+// reviewTemplates/mutations:seedAllInternal`.
+export const seedAllInternal = internalMutation({
+  args: {},
+  handler: async (ctx) => {
     const existing = await ctx.db.query("reviewResponseTemplates").collect();
     const byKey = new Map(
       existing.map((r) => [`${r.reviewCategory}:${r.incentive}`, r]),
