@@ -316,11 +316,17 @@ export function ReviewCard({
     }
   }
 
+  const isBadReview = review.rating <= 3;
+  const isUrgent = isBadReview && (review.status === "needs_draft" || review.status === "send_failed");
+  const isRespondNeeded = isBadReview && review.status === "drafted";
+
   return (
-    <div className="rounded-2xl border bg-[var(--card)] p-5 space-y-3">
+    <div className={`rounded-2xl border bg-[var(--card)] p-5 space-y-3 ${
+      isUrgent ? "border-l-4 border-l-rose-500" : isRespondNeeded ? "border-l-4 border-l-amber-400" : ""
+    }`}>
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
           {/* Guest avatar */}
           {review.guestPhotoUrl ? (
             <img
@@ -341,7 +347,7 @@ export function ReviewCard({
                 {review.guestFirstName} {review.guestLastName}
               </span>
               {showProperty && review.propertyName && (
-                <span className="text-xs text-[var(--muted-foreground)]">· {review.propertyName}</span>
+                <span className="text-xs text-[var(--muted-foreground)] truncate">· {review.propertyName}</span>
               )}
             </div>
             <div className="flex items-center gap-0.5 mt-0.5">
@@ -354,9 +360,21 @@ export function ReviewCard({
             </div>
           </div>
         </div>
-        <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_CLASS[review.status]}`}>
-          {STATUS_LABEL[review.status]}
-        </span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {isUrgent && (
+            <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-rose-600 text-white">
+              P1 Urgent
+            </span>
+          )}
+          {isRespondNeeded && (
+            <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-500 text-white">
+              P2 Respond
+            </span>
+          )}
+          <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_CLASS[review.status]}`}>
+            {STATUS_LABEL[review.status]}
+          </span>
+        </div>
       </div>
 
       {/* Review text */}

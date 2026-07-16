@@ -8,20 +8,38 @@ import { Loader2 } from "lucide-react";
 import { ReviewCard } from "./review-card";
 import { FilterDropdown } from "./filter-dropdown";
 
-type StatusFilter = "all" | "needs_action" | "sent" | "dismissed";
+type StatusFilter = "all" | "urgent" | "needs_action" | "sent" | "dismissed";
 
 const NEEDS_ACTION = new Set(["needs_draft", "drafted", "send_failed"]);
 
-function statusMatch(status: string, filter: StatusFilter) {
+// P1: bad review, no draft yet or failed send — must respond
+// P2: bad review, draft ready but not sent
+// P3: good review, no draft yet
+// P4: good review, draft ready
+// P5: sent
+// P6: dismissed
+function priorityScore(rating: number, status: string): number {
+  const bad = rating <= 3;
+  if (bad && (status === "needs_draft" || status === "send_failed")) return 1;
+  if (bad && status === "drafted") return 2;
+  if (!bad && (status === "needs_draft" || status === "send_failed")) return 3;
+  if (!bad && status === "drafted") return 4;
+  if (status === "sent") return 5;
+  return 6;
+}
+
+function statusMatch(status: string, rating: number, filter: StatusFilter) {
   if (filter === "all") return true;
+  if (filter === "urgent") return rating <= 3 && NEEDS_ACTION.has(status);
   if (filter === "needs_action") return NEEDS_ACTION.has(status);
   if (filter === "sent") return status === "sent";
   return status === "dismissed";
 }
 
 const STATUS_LABELS: Record<StatusFilter, string> = {
-  all: "All statuses",
+  urgent: "Urgent — bad reviews",
   needs_action: "Needs action",
+  all: "All statuses",
   sent: "Sent",
   dismissed: "Dismissed",
 };
@@ -29,7 +47,7 @@ const STATUS_LABELS: Record<StatusFilter, string> = {
 export function ReviewsInbox() {
   const { isAuthenticated } = useConvexAuth();
   const searchParams = useSearchParams();
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("needs_action");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("urgent");
   const [ratingFilter, setRatingFilter] = useState<number>(0); // 0 = all
   const [propertyFilter, setPropertyFilter] = useState<string>(
     searchParams.get("property") ?? "",
@@ -72,20 +90,22 @@ export function ReviewsInbox() {
   );
   const afterStatusAndProperty = reviews.filter(
     (r) =>
-      statusMatch(r.status, statusFilter) &&
+      statusMatch(r.status, r.rating, statusFilter) &&
       (propertyFilter === "" || r.propertyId === propertyFilter),
   );
   const afterStatusAndRating = reviews.filter(
     (r) =>
-      statusMatch(r.status, statusFilter) &&
+      statusMatch(r.status, r.rating, statusFilter) &&
       (ratingFilter === 0 || r.rating === ratingFilter),
   );
 
   // Status options: count based on rating + property filter
   const statusCounts = afterRatingAndProperty.reduce<Record<string, number>>(
     (acc, r) => {
-      const key = NEEDS_ACTION.has(r.status) ? "needs_action" : r.status;
-      acc[key] = (acc[key] ?? 0) + 1;
+      if (r.rating <= 3 && NEEDS_ACTION.has(r.status)) acc["urgent"] = (acc["urgent"] ?? 0) + 1;
+      if (NEEDS_ACTION.has(r.status)) acc["needs_action"] = (acc["needs_action"] ?? 0) + 1;
+      const key = r.status === "sent" ? "sent" : r.status === "dismissed" ? "dismissed" : null;
+      if (key) acc[key] = (acc[key] ?? 0) + 1;
       acc["all"] = (acc["all"] ?? 0) + 1;
       return acc;
     },
@@ -115,16 +135,23 @@ export function ReviewsInbox() {
     totalForProperty++;
   }
 
-  // Final filtered list
-  const filtered = reviews.filter(
-    (r) =>
-      statusMatch(r.status, statusFilter) &&
-      (ratingFilter === 0 || r.rating === ratingFilter) &&
-      (propertyFilter === "" || r.propertyId === propertyFilter),
-  );
+  // Final filtered list, sorted by priority (P1 bad+unanswered first)
+  const filtered = reviews
+    .filter(
+      (r) =>
+        statusMatch(r.status, r.rating, statusFilter) &&
+        (ratingFilter === 0 || r.rating === ratingFilter) &&
+        (propertyFilter === "" || r.propertyId === propertyFilter),
+    )
+    .sort((a, b) => {
+      const pa = priorityScore(a.rating, a.status);
+      const pb = priorityScore(b.rating, b.status);
+      if (pa !== pb) return pa - pb;
+      return b.reviewedAt - a.reviewedAt; // newest first within same priority
+    });
 
   const activeFilters = [
-    statusFilter !== "all" ? 1 : 0,
+    statusFilter !== "urgent" ? 1 : 0,
     ratingFilter !== 0 ? 1 : 0,
     propertyFilter !== "" ? 1 : 0,
   ].reduce((a, b) => a + b, 0);
@@ -137,7 +164,7 @@ export function ReviewsInbox() {
         <FilterDropdown
           value={statusFilter}
           onChange={(v) => setStatusFilter(v as StatusFilter)}
-          options={(["needs_action", "all", "sent", "dismissed"] as StatusFilter[]).map((f) => ({
+          options={(["urgent", "needs_action", "all", "sent", "dismissed"] as StatusFilter[]).map((f) => ({
             value: f,
             label: STATUS_LABELS[f],
             count: statusCounts[f],
@@ -175,7 +202,7 @@ export function ReviewsInbox() {
         {/* Clear all */}
         {activeFilters > 0 && (
           <button
-            onClick={() => { setStatusFilter("needs_action"); setRatingFilter(0); setPropertyFilter(""); }}
+            onClick={() => { setStatusFilter("urgent"); setRatingFilter(0); setPropertyFilter(""); }}
             className="text-xs text-[var(--muted-foreground)] underline underline-offset-2 hover:text-[var(--foreground)]"
           >
             Clear filters
