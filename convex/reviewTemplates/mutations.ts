@@ -78,6 +78,7 @@ export const seedAll = mutation({
 export const seedAllInternal = internalMutation({
   args: {},
   handler: async (ctx) => {
+    // Config table (16 rows max — fixed 4×4 enum product), R1-exempt.
     const existing = await ctx.db.query("reviewResponseTemplates").collect();
     const byKey = new Map(
       existing.map((r) => [`${r.reviewCategory}:${r.incentive}`, r]),
