@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useMutation, useAction } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { Star, Loader2, Send, X, RotateCcw, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
+import { Star, Loader2, Send, X, RotateCcw, Sparkles, ChevronDown, ChevronUp, Check, ChevronsUpDown } from "lucide-react";
+import * as Popover from "@radix-ui/react-popover";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/components/ui/toast-provider";
 import type { ReviewProvider } from "@convex/lib/reviewResponseDraft";
@@ -58,8 +59,9 @@ const PROVIDERS: { value: ReviewProvider; label: string; color: string }[] = [
   { value: "openai", label: "OpenAI", color: "border-emerald-400 text-emerald-700 bg-emerald-50" },
 ];
 
-// Styled select that respects CSS var tokens and avoids native browser chrome.
-function AppSelect({
+// Fully custom select using Radix Popover — matches app CSS var tokens,
+// no native browser chrome in the option list.
+function RefineSelect({
   label,
   value,
   onChange,
@@ -70,23 +72,44 @@ function AppSelect({
   onChange: (v: string) => void;
   options: { value: string; label: string }[];
 }) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((o) => o.value === value);
   return (
     <div className="flex flex-col gap-1 min-w-0">
       <label className="text-[11px] font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
         {label}
       </label>
-      <div className="relative">
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full appearance-none rounded-md border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] px-2.5 py-1.5 pr-7 text-xs focus:outline-none focus:ring-1 focus:ring-violet-400"
-        >
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-        <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--muted-foreground)]" />
-      </div>
+      <Popover.Root open={open} onOpenChange={setOpen}>
+        <Popover.Trigger asChild>
+          <button
+            type="button"
+            className="inline-flex w-full items-center justify-between gap-2 rounded-md border border-[var(--border)] bg-[var(--card)] px-2.5 py-1.5 text-left text-xs text-[var(--foreground)] hover:bg-[var(--accent)]/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          >
+            <span className="truncate">{selected?.label ?? "Select…"}</span>
+            <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground)]" />
+          </button>
+        </Popover.Trigger>
+        <Popover.Portal>
+          <Popover.Content
+            side="bottom"
+            align="start"
+            sideOffset={4}
+            className="z-50 min-w-[var(--radix-popover-trigger-width)] rounded-md border border-[var(--border)] bg-[var(--card)] shadow-md p-1"
+          >
+            {options.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => { onChange(o.value); setOpen(false); }}
+                className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-xs text-[var(--foreground)] hover:bg-[var(--accent)]/40 text-left"
+              >
+                <Check className={`h-3.5 w-3.5 shrink-0 ${o.value === value ? "opacity-100" : "opacity-0"}`} />
+                {o.label}
+              </button>
+            ))}
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover.Root>
     </div>
   );
 }
@@ -113,7 +136,7 @@ function RefinePanel({
       {/* Single row: all 3 dropdowns + provider */}
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex-1 min-w-[110px]">
-          <AppSelect
+          <RefineSelect
             label="Length"
             value={length}
             onChange={setLength}
@@ -125,7 +148,7 @@ function RefinePanel({
           />
         </div>
         <div className="flex-1 min-w-[130px]">
-          <AppSelect
+          <RefineSelect
             label="Incentive"
             value={incentive}
             onChange={setIncentive}
@@ -138,7 +161,7 @@ function RefinePanel({
           />
         </div>
         <div className="flex-1 min-w-[110px]">
-          <AppSelect
+          <RefineSelect
             label="Tone"
             value={tone}
             onChange={setTone}

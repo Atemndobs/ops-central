@@ -76,18 +76,21 @@ export const refineReviewDraft = action({
         incentive: args.incentive,
       });
       if (templates) {
+        const guestName = review.guestFirstName;
+        const propName = property?.name ?? "the property";
+        const sub = (s: string) =>
+          s.replace(/\[GUEST_NAME\]/g, guestName).replace(/\[PROPERTY_NAME\]/g, propName);
         const blocks = [
-          `Opener: "${templates.opener}"`,
-          `Acknowledgment: "${templates.acknowledgment}"`,
-          templates.addressIssue ? `Address issue: "${templates.addressIssue}"` : null,
-          `Invite back: "${templates.inviteBack}"`,
-          templates.incentiveText ? `Incentive offer: "${templates.incentiveText}"` : null,
-          `Closer: "${templates.closer}"`,
+          `Opener: "${sub(templates.opener)}"`,
+          `Acknowledgment: "${sub(templates.acknowledgment)}"`,
+          templates.addressIssue ? `Address issue: "${sub(templates.addressIssue)}"` : null,
+          `Invite back: "${sub(templates.inviteBack)}"`,
+          templates.incentiveText ? `Incentive offer: "${sub(templates.incentiveText)}"` : null,
+          `Closer: "${sub(templates.closer)}"`,
         ].filter(Boolean).join("\n");
         resolvedInstruction =
           `Using ONLY the following pre-written building blocks as your source material, ` +
           `assemble them into a single fluent, natural response. ` +
-          `Replace [GUEST_NAME] with the guest's first name and [PROPERTY_NAME] with the property name. ` +
           (args.tone ? `Tone: ${args.tone}. ` : "") +
           (args.length === "short" ? "Keep the reply SHORT — 2 to 3 sentences maximum. " :
            args.length === "detailed" ? "Write a DETAILED reply — 5 or more sentences. " :
