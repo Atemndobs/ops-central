@@ -60,6 +60,10 @@
   "convex/files/orphanCleanupState.ts": {
     "post-index-filter": 1
   },
+  "convex/guestReviews/mutations.ts": {
+    "bare-scan": 1,
+    "query-in-loop": 1
+  },
   "convex/guestReviews/queries.ts": {
     "bare-scan": 2,
     "query-in-loop": 1
@@ -94,6 +98,10 @@
   "convex/lib/notificationLifecycle.ts": {
     "query-in-loop": 1
   },
+  "convex/lib/opsNotifications.ts": {
+    "post-index-filter": 1,
+    "query-in-loop": 1
+  },
   "convex/lib/photoStorageAggregate.ts": {
     "bare-scan": 2
   },
@@ -125,7 +133,7 @@
     "bare-scan": 1
   },
   "convex/reviewTemplates/mutations.ts": {
-    "bare-scan": 3
+    "bare-scan": 4
   },
   "convex/reviewTemplates/queries.ts": {
     "bare-scan": 2

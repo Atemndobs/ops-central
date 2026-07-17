@@ -46,8 +46,20 @@ export async function createNotificationsForUsers(
   const results = await Promise.all(
     recipientIds.map(async (userId) => {
       // Dedup: skip if this user already has a notification of the same type
-      // for the same job within the last hour. Uses by_user_and_type index
-      // (bounded read on userId + type + createdAt range).
+      // for the same job within the last hour.
+      //
+      // Read-cost (convex/CLAUDE.md R2/R3) — this per-recipient query is the
+      // CORRECT pattern here, not debt to batch away:
+      //   • Write path only: createOpsNotifications is called exclusively from
+      //     mutations, never a reactive query — no subscriber amplification.
+      //   • recipientIds is the bounded ops set (admin/manager/property_ops),
+      //     single digits.
+      //   • `by_user_and_type` [userId, type, createdAt] narrows to this user's
+      //     same-type notifications in the last hour, and `.first()` caps it. The
+      //     only cross-user alternative is `by_type` (type only), which would
+      //     scan EVERY user's notifications of this type — strictly worse.
+      //   • The `.filter(data.jobId)` is unavoidable: `data` is v.any() so its
+      //     nested jobId isn't indexable. It runs over the tiny indexed slice.
       if (jobId !== undefined) {
         const recent = await ctx.db
           .query("notifications")
