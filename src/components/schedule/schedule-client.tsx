@@ -808,6 +808,13 @@ export function ScheduleClient() {
     });
   }, []);
 
+  // Drawer toggle for the property axis: collapsed shows only the property image
+  // ("initials"), expanded shows image + name ("full"). Applies to both the
+  // Occupancy and Tasks boards (the axis is shared).
+  const togglePropertyDrawer = useCallback(() => {
+    setPropertyLabelMode((current) => (current === "full" ? "initials" : "full"));
+  }, []);
+
   // --- Swipe handlers ---
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
@@ -1636,9 +1643,24 @@ export function ScheduleClient() {
             onPointerCancel={handleHeaderPointerUp}
           >
             {propertyLabelMode !== "hidden" ? (
-              <div className="sticky left-0 z-20 border-r bg-[var(--card)] p-2 text-[10px] font-bold uppercase tracking-wider text-[var(--muted-foreground)] sm:p-3 sm:text-xs">
-                {propertyLabelMode === "initials" ? "" : "Property"}
-              </div>
+              <button
+                type="button"
+                onClick={togglePropertyDrawer}
+                onPointerDown={(e) => e.stopPropagation()}
+                title={propertyLabelMode === "full" ? "Collapse to image only" : "Expand to show property names"}
+                aria-label={propertyLabelMode === "full" ? "Collapse property column to image only" : "Expand property column to show names"}
+                aria-expanded={propertyLabelMode === "full"}
+                className="sticky left-0 z-20 flex items-center justify-between gap-1 border-r bg-[var(--card)] p-2 text-[10px] font-bold uppercase tracking-wider text-[var(--muted-foreground)] hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] sm:p-3 sm:text-xs"
+              >
+                {propertyLabelMode === "full" ? (
+                  <>
+                    <span>Property</span>
+                    <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
+                  </>
+                ) : (
+                  <ChevronRight className="mx-auto h-3.5 w-3.5 shrink-0" />
+                )}
+              </button>
             ) : null}
             {rangeDays.map((day) => {
               const isToday = dateKeyFn(day) === todayKey;
