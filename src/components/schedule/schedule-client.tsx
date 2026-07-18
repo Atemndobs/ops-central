@@ -187,6 +187,44 @@ function GuestAvatar({ name, photoUrl }: { name: string; photoUrl?: string }) {
   );
 }
 
+// Property thumbnail for the calendar's left axis — reuses the property photo
+// (primary gallery image / legacy imageUrl / Hospitable picture) with an
+// initials fallback, mirroring GuestAvatar and the Properties page cards.
+function PropertyPhoto({
+  name,
+  imageUrl,
+  className,
+}: {
+  name: string;
+  imageUrl?: string;
+  className?: string;
+}) {
+  const [errored, setErrored] = useState(false);
+  const show = Boolean(imageUrl) && !errored;
+  return (
+    <span
+      className={cn(
+        "relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-md border bg-[var(--accent)] text-[var(--muted-foreground)]",
+        className,
+      )}
+    >
+      {show ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={imageUrl}
+          alt={name}
+          className="h-full w-full object-cover"
+          onError={() => setErrored(true)}
+        />
+      ) : (
+        <span className="px-0.5 text-center text-[9px] font-bold leading-none">
+          {propertyInitials(name)}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function ScheduleClient() {
   const { showToast } = useToast();
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
@@ -786,38 +824,63 @@ export function ScheduleClient() {
   };
 
   // --- Render helpers ---
-  const renderPropertyCell = (property: { _id: string; name: string; address: string; status?: unknown }) => {
+  const renderPropertyCell = (property: {
+    _id: string;
+    name: string;
+    address: string;
+    status?: unknown;
+    primaryPhotoUrl?: string;
+    imageUrl?: string;
+    picture?: string;
+  }) => {
     if (propertyLabelMode === "hidden") return null;
     const statusCandidate = property.status;
     const pStatus: PropertyStatus =
       statusCandidate === "ready" || statusCandidate === "dirty" || statusCandidate === "in_progress" || statusCandidate === "vacant"
         ? statusCandidate
         : "vacant";
+    // Same resolution as the Properties page cards.
+    const photo = property.primaryPhotoUrl ?? property.imageUrl ?? property.picture;
 
     if (propertyLabelMode === "initials") {
+      // Reduced mode: just the property photo (with a status-dot badge).
       return (
         <Link
           href={`/properties/${property._id}`}
           className="sticky left-0 z-10 flex items-center justify-center border-r bg-[var(--card)] p-1 hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
           title={property.name}
         >
-          <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${readinessDotClass[pStatus]}`} />
-          <span className="text-[10px] font-bold">{propertyInitials(property.name)}</span>
+          <span className="relative">
+            <PropertyPhoto name={property.name} imageUrl={photo} className="h-8 w-8" />
+            <span
+              className={`absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full border border-[var(--card)] ${readinessDotClass[pStatus]}`}
+            />
+          </span>
         </Link>
       );
     }
 
+    // Full mode: property photo + name + address + status.
     return (
       <Link
         href={`/properties/${property._id}`}
         className="sticky left-0 z-10 block border-r bg-[var(--card)] p-2 hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] sm:p-3"
         title={`Open ${property.name}`}
       >
-        <p className="truncate text-xs font-bold underline-offset-2 hover:underline sm:text-sm">{property.name}</p>
-        <p className="hidden truncate text-xs text-[var(--muted-foreground)] sm:block">{property.address}</p>
-        <div className="mt-1 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] sm:mt-2 sm:px-2 sm:text-xs">
-          <span className={`h-1.5 w-1.5 rounded-full sm:h-2 sm:w-2 ${readinessDotClass[pStatus]}`} />
-          <span className="hidden sm:inline">{pStatus.replace("_", " ")}</span>
+        <div className="flex items-start gap-2">
+          <PropertyPhoto
+            name={property.name}
+            imageUrl={photo}
+            className="h-9 w-9 sm:h-10 sm:w-10"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-bold underline-offset-2 hover:underline sm:text-sm">{property.name}</p>
+            <p className="hidden truncate text-xs text-[var(--muted-foreground)] sm:block">{property.address}</p>
+            <div className="mt-1 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] sm:px-2 sm:text-xs">
+              <span className={`h-1.5 w-1.5 rounded-full sm:h-2 sm:w-2 ${readinessDotClass[pStatus]}`} />
+              <span className="hidden sm:inline">{pStatus.replace("_", " ")}</span>
+            </div>
+          </div>
         </div>
       </Link>
     );
@@ -1634,7 +1697,7 @@ export function ScheduleClient() {
                   className="grid w-max border-b last:border-b-0"
                   style={{ gridTemplateColumns: scheduleGridTemplateColumns }}
                 >
-                  {renderPropertyCell(property as { _id: string; name: string; address: string; status?: unknown })}
+                  {renderPropertyCell(property as { _id: string; name: string; address: string; status?: unknown; primaryPhotoUrl?: string; imageUrl?: string; picture?: string })}
                   {boardMode === "occupancy"
                     ? renderOccupancyLane(property._id)
                     : rangeDays.map((day) => {
