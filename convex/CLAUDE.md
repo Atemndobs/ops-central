@@ -72,7 +72,12 @@ Run `npm run check:convex-readcost` after editing any file here. New violations 
 
 ## Verification tools
 
-- `npm run check:convex-readcost` — static scan + ratchet baseline.
+- `npm run check:convex-readcost` — static scan + ratchet baseline. **Gated in CI**
+  (`.github/workflows/convex-readcost-check.yml`) on every PR, so a new violation
+  fails the build rather than surfacing in a manual audit days after it merged.
+  If it fails, fix the query — don't reach for `--update-baseline --force` unless
+  the scan is genuinely justified (small config table, one-off migration), and say
+  why in the PR. The baseline diff is reviewable precisely so that call is visible.
 - `npx convex data <table> --limit 8 --format jsonl` — real doc sizes. NEVER trust the
   default `pretty` format for sizes (column padding lies).
 - Dashboard → Usage → breakdown by function (Database I/O tab) is ground truth for
