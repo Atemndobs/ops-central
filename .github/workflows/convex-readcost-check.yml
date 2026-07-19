@@ -1,0 +1,46 @@
+name: Convex Read-Cost Check
+
+# Gates the read-cost ratchet on every PR.
+#
+# WHY THIS EXISTS
+# ---------------
+# On 2026-07-14 this 8-property app hit 10.66 GB of database reads against a 6 GB
+# cap. The ratchet (scripts/check-convex-readcost.mjs) was built to stop a repeat,
+# but it only ran when someone remembered to type `npm run check:convex-readcost`
+# or `csoi perf`. Feature PRs kept merging with new violations, which then surfaced
+# days later in a manual audit — three separate times in one week (PRs #279, #280,
+# and the reviews backfill work, cleaned up in #281).
+#
+# The check is worthless as an afterthought: by then the code is on main and the
+# only options are rewrite-after-the-fact or baseline it. Catching it on the PR is
+# the whole point.
+#
+# NOTE ON THE ESCAPE HATCH: a PR can still pass by running
+# `--update-baseline --force` to accept its own violations. That is deliberate —
+# some scans are genuinely justified (small config tables, one-off migrations).
+# But it shows up as a baseline diff in review, which is exactly where that
+# judgement call belongs. Silent regressions are what this stops.
+#
+# No `npm ci`: the checker and its scanner import only node: builtins, so a bare
+# checkout runs it in ~1s. Keep it that way.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  readcost-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Verify Convex read-cost ratchet
+        run: npm run check:convex-readcost
