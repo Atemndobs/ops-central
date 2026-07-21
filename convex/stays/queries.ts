@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { query } from "../_generated/server";
+import { internalQuery, query } from "../_generated/server";
 import { getCurrentUser } from "../lib/auth";
 import { requireRole } from "../lib/auth";
 import { getCallerJobScopeForListing } from "../lib/companyScope";
@@ -87,6 +87,24 @@ const UNREVIEWED_CAP = 100;
 // guestReviews grows slowly (~7/mo); hard-capped at 300 so this never
 // becomes a full-table read even as the business scales.
 const REVIEW_SCAN_CAP = 300;
+
+export const getOutreachContext = internalQuery({
+  args: { stayId: v.id("stays") },
+  handler: async (ctx, args) => {
+    await requireRole(ctx, ["admin", "property_ops", "manager"]);
+    const stay = await ctx.db.get(args.stayId);
+    if (!stay || stay.cancelledAt) return null;
+    const property = await ctx.db.get(stay.propertyId);
+    return {
+      stayId: stay._id,
+      hospitableId: stay.hospitableId,
+      guestName: stay.guestName,
+      propertyName: property?.name ?? "the property",
+      checkInAt: stay.checkInAt,
+      checkOutAt: stay.checkOutAt,
+    };
+  },
+});
 
 /**
  * Recent checkouts with no linked guest review — the "low hanging fruit"

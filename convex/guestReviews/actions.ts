@@ -5,10 +5,11 @@ import { ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
 import {
   draftReviewResponse,
+  refineOutreachMessage,
   refineReviewResponse,
   ReviewResponseDraftError,
 } from "../lib/reviewResponseDraft";
-import { postReviewResponse } from "../hospitable/actions";
+import { postReservationMessage, postReviewResponse } from "../hospitable/actions";
 
 const DEFAULT_HOSPITABLE_BASE_URL = "https://public.api.hospitable.com/v2";
 
@@ -33,6 +34,86 @@ const INCENTIVE_VALUES = v.union(
   v.literal("google_review"),
   v.literal("early_late_checkin"),
 );
+
+export const refineOutreachDraft = action({
+  args: {
+    stayId: v.id("stays"),
+    currentDraft: v.string(),
+    instruction: v.optional(v.string()),
+    provider: v.union(v.literal("gemini"), v.literal("claude"), v.literal("openai")),
+    incentive: INCENTIVE_VALUES,
+    tone: v.string(),
+    length: v.string(),
+  },
+  returns: v.string(),
+  handler: async (ctx, args): Promise<string> => {
+    const context = await ctx.runQuery(internal.stays.queries.getOutreachContext, {
+      stayId: args.stayId,
+    });
+    if (!context) throw new ConvexError("Stay not found.");
+
+    try {
+      return await refineOutreachMessage({
+        guestName: context.guestName,
+        propertyName: context.propertyName,
+        stayCheckIn: context.checkInAt,
+        stayCheckOut: context.checkOutAt,
+        currentDraft: args.currentDraft,
+        provider: args.provider,
+        incentive: args.incentive,
+        tone: args.tone,
+        length: args.length,
+        instruction: args.instruction,
+      });
+    } catch (error) {
+      throw new ConvexError(
+        error instanceof ReviewResponseDraftError ? error.message : String(error),
+      );
+    }
+  },
+});
+
+export const sendOutreachMessage = action({
+  args: {
+    stayId: v.id("stays"),
+    message: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
+    const context = await ctx.runQuery(internal.stays.queries.getOutreachContext, {
+      stayId: args.stayId,
+    });
+    if (!context) throw new ConvexError("Stay not found.");
+    if (!context.hospitableId) {
+      throw new ConvexError("This stay is not linked to a Hospitable reservation.");
+    }
+
+    const message = args.message.trim();
+    if (!message) throw new ConvexError("Message cannot be empty.");
+    if (message.length > 4000) throw new ConvexError("Message is too long.");
+
+    const apiKey = process.env.HOSPITABLE_API_KEY ?? process.env.HOSPITABLE_API_TOKEN;
+    if (!apiKey) {
+      throw new ConvexError(
+        "Missing HOSPITABLE_API_KEY/HOSPITABLE_API_TOKEN environment variable.",
+      );
+    }
+    const baseUrl = process.env.HOSPITABLE_API_URL ?? DEFAULT_HOSPITABLE_BASE_URL;
+
+    try {
+      await postReservationMessage({
+        apiKey,
+        baseUrl,
+        reservationId: context.hospitableId,
+        message,
+        ctx,
+      });
+      return null;
+    } catch (error) {
+      throw new ConvexError(error instanceof Error ? error.message : String(error));
+    }
+  },
+});
 
 export const refineReviewDraft = action({
   args: {
@@ -63,6 +144,8 @@ export const refineReviewDraft = action({
     const stay = await ctx.runQuery(internal.guestReviews.internalQueries.getLinkedStay, {
       propertyId: review.propertyId,
       reviewedAt: review.reviewedAt,
+      guestFirstName: review.guestFirstName,
+      guestLastName: review.guestLastName,
     });
 
     const promptSettings = await ctx.runQuery(internal.appSettings.getReviewSystemPromptInternal, {});

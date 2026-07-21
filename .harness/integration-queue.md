@@ -4,6 +4,18 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
+### TASK-REVIEW-REPLY-CONTROLS-001
+- Branch: task/review-reply-controls
+- Worktree: ~/sites/opscentral-admin-team-redesign
+- PR: https://github.com/Atemndobs/ops-central/pull/285
+- Schema impact: none
+- Convex impact: deploy-required (new outreach refine/send actions and Hospitable reservation-message helper)
+- Risk: medium — adds a live outbound guest-message path; failures remain visible and no schema/data writes are introduced
+- Ready since: 2026-07-21 11:00 CEST
+- What: adds Send message + the shared Refine with AI panel to Review Opportunities, fixes stale lower-card draft state, and prevents another guest's stay context from entering generated review replies
+- CI: focused tests 6/6; read-cost gate pass; touched-file ESLint has 0 errors; production compile + TypeScript pass before expected missing-env prerender stop
+- Handoff: .harness/handoffs/TASK-REVIEW-REPLY-CONTROLS-001/worktree-handoff.md
+
 ### TASK-REVIEW-VERDICT-FEEDBACK-001
 - Branch: task/review-verdict-feedback
 - Worktree: ~/sites/opscentral-admin-review-feedback
