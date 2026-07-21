@@ -1,10 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useConvexAuth, useQuery } from "convex/react";
+import { useAction, useConvexAuth, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "@convex/_generated/api";
-import { Loader2, Star, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, EyeOff, Eye, TrendingUp, Mail, Copy, Check } from "lucide-react";
+import type { Id } from "@convex/_generated/dataModel";
+import type { ReviewProvider } from "@convex/lib/reviewResponseDraft";
+import { Loader2, Star, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, EyeOff, Eye, TrendingUp, Mail, Copy, Check, Send, Sparkles } from "lucide-react";
+import { getErrorMessage } from "@/lib/errors";
+import { useToast } from "@/components/ui/toast-provider";
+import { RefinePanel } from "./refine-panel";
 
 const HIDDEN_KEY = "reviews-dashboard-hidden-properties";
 
@@ -13,6 +18,8 @@ function useHiddenProperties() {
   useEffect(() => {
     try {
       const stored = localStorage.getItem(HIDDEN_KEY);
+      // Hydrate the browser-only preference after mount.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (stored) setHidden(new Set(JSON.parse(stored)));
     } catch {}
   }, []);
@@ -140,7 +147,7 @@ function buildOutreach(guestName: string, propertyName: string | null): string {
 }
 
 type Opportunity = {
-  _id: string;
+  _id: Id<"stays">;
   guestName: string;
   guestPhotoUrl?: string | null;
   guestEmail?: string | null;
@@ -150,9 +157,21 @@ type Opportunity = {
 };
 
 function OutreachRow({ s }: { s: Opportunity }) {
+  const { showToast } = useToast();
   const [expanded, setExpanded] = useState(false);
   const [message, setMessage] = useState(() => buildOutreach(s.guestName, s.propertyName));
   const [copied, setCopied] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [refineOpen, setRefineOpen] = useState(false);
+  const [provider, setProvider] = useState<ReviewProvider>("gemini");
+  const [refining, setRefining] = useState(false);
+  const [refineInstruction, setRefineInstruction] = useState("");
+  const [incentive, setIncentive] = useState("return_discount");
+  const [tone, setTone] = useState("warm and friendly");
+  const [length, setLength] = useState("standard");
+  const refineOutreach = useAction(api.guestReviews.actions.refineOutreachDraft);
+  const sendOutreach = useAction(api.guestReviews.actions.sendOutreachMessage);
 
   const days = daysSince(s.checkOutAt);
   const hasName = firstNameOf(s.guestName) !== "";
@@ -168,6 +187,41 @@ function OutreachRow({ s }: { s: Opportunity }) {
       setTimeout(() => setCopied(false), 1800);
     } catch {
       /* clipboard unavailable; user can still select the text */
+    }
+  }
+
+  async function handleRefine() {
+    setRefining(true);
+    try {
+      const nextMessage = await refineOutreach({
+        stayId: s._id,
+        currentDraft: message,
+        provider,
+        incentive: incentive as "none" | "return_discount" | "google_review" | "early_late_checkin",
+        tone,
+        length,
+        instruction: refineInstruction.trim() || undefined,
+      });
+      setMessage(nextMessage);
+      setRefineInstruction("");
+      showToast("Outreach draft refined", "success");
+    } catch (error) {
+      showToast(`AI refinement failed: ${getErrorMessage(error)}`, "error");
+    } finally {
+      setRefining(false);
+    }
+  }
+
+  async function handleSend() {
+    setSending(true);
+    try {
+      await sendOutreach({ stayId: s._id, message });
+      setSent(true);
+      showToast("Message sent to guest", "success");
+    } catch (error) {
+      showToast(`Failed to send message: ${getErrorMessage(error)}`, "error");
+    } finally {
+      setSending(false);
     }
   }
 
@@ -213,14 +267,23 @@ function OutreachRow({ s }: { s: Opportunity }) {
 
       {expanded && (
         <div className="px-4 pb-4 pt-1 space-y-2 bg-[var(--muted)]/20">
-          <p className="text-xs text-[var(--muted-foreground)]">Prepared outreach message. Edit if you like, then copy and send from your Airbnb / Hospitable inbox.</p>
+          <p className="text-xs text-[var(--muted-foreground)]">Prepared outreach message. Edit or refine it, then send it to the guest through Hospitable.</p>
           <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             rows={7}
             className="w-full rounded-lg border bg-[var(--card)] p-3 text-sm leading-relaxed resize-y focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
           />
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={sending || sent || !message.trim()}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+            >
+              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : sent ? <Check className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+              {sending ? "Sending…" : sent ? "Sent" : "Send message"}
+            </button>
             <button
               type="button"
               onClick={copy}
@@ -239,7 +302,33 @@ function OutreachRow({ s }: { s: Opportunity }) {
                 <Mail className="h-4 w-4" /> Email
               </a>
             )}
+            <button
+              type="button"
+              onClick={() => setRefineOpen((current) => !current)}
+              disabled={sending}
+              className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-violet-300 px-3 py-1.5 text-sm font-medium text-violet-700 hover:bg-violet-50 disabled:opacity-50 transition-colors"
+            >
+              <Sparkles className="h-4 w-4" />
+              Refine with AI
+              {refineOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            </button>
           </div>
+          {refineOpen && (
+            <RefinePanel
+              incentive={incentive}
+              setIncentive={setIncentive}
+              tone={tone}
+              setTone={setTone}
+              length={length}
+              setLength={setLength}
+              provider={provider}
+              setProvider={setProvider}
+              refineInstruction={refineInstruction}
+              setRefineInstruction={setRefineInstruction}
+              refining={refining}
+              onRefine={handleRefine}
+            />
+          )}
         </div>
       )}
     </div>
@@ -303,7 +392,7 @@ function ReviewOpportunities({ isAuthenticated }: { isAuthenticated: boolean }) 
       {open && (
         <>
           <div className="px-4 py-2 bg-emerald-50 border-b text-xs text-emerald-800">
-            These guests checked out recently and left no review. Tap any guest for a prepared outreach message. Happy guests who didn't review are your easiest 5★.
+            These guests checked out recently and left no review. Tap any guest for a prepared outreach message. Happy guests who didn&apos;t review are your easiest 5★.
           </div>
           {/* Tier sort/filter: the pills moved up here so the rows stay clean */}
           <div className="flex items-center gap-1.5 px-4 py-2 border-b overflow-x-auto">

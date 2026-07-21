@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { draftReviewResponse, ReviewResponseDraftError } from "./reviewResponseDraft.ts";
+import {
+  draftReviewResponse,
+  refineOutreachMessage,
+  ReviewResponseDraftError,
+} from "./reviewResponseDraft.ts";
 
 function mockFetchOnce(response: { ok: boolean; status?: number; json?: unknown; text?: string }) {
   const original = globalThis.fetch;
@@ -72,6 +76,45 @@ test("draftReviewResponse: throws ReviewResponseDraftError when blocked by safet
     await assert.rejects(() => draftReviewResponse(INPUT), ReviewResponseDraftError);
   } finally {
     restore();
+    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  }
+});
+
+test("refineOutreachMessage: keeps the selected guest and incentive in the prompt", async () => {
+  process.env.GOOGLE_GENERATIVE_AI_API_KEY = "test-key";
+  const original = globalThis.fetch;
+  let requestBody = "";
+  globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+    requestBody = String(init?.body ?? "");
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: "Thanks for staying with us, Alex!" }] } }],
+      }),
+      text: async () => "",
+    } as Response;
+  }) as typeof fetch;
+
+  try {
+    const result = await refineOutreachMessage({
+      guestName: "Alex Rivera",
+      propertyName: "Dallas-The Scandi",
+      stayCheckIn: Date.UTC(2026, 6, 1),
+      stayCheckOut: Date.UTC(2026, 6, 5),
+      currentDraft: "Thank you for your stay.",
+      provider: "gemini",
+      incentive: "return_discount",
+      tone: "warm and friendly",
+      length: "standard",
+    });
+
+    assert.equal(result, "Thanks for staying with us, Alex!");
+    assert.match(requestBody, /Alex Rivera/);
+    assert.match(requestBody, /Dallas-The Scandi/);
+    assert.match(requestBody, /10% discount/);
+  } finally {
+    globalThis.fetch = original;
     delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
   }
 });

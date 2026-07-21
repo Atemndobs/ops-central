@@ -24,6 +24,19 @@ export interface RefineReviewResponseInput {
   systemPromptOverride?: string;
 }
 
+export interface RefineOutreachMessageInput {
+  guestName: string;
+  propertyName: string;
+  stayCheckIn: number;
+  stayCheckOut: number;
+  currentDraft: string;
+  provider: ReviewProvider;
+  incentive: "none" | "return_discount" | "google_review" | "early_late_checkin";
+  tone: string;
+  length: string;
+  instruction?: string;
+}
+
 const DEFAULT_REVIEW_SYSTEM_PROMPT = `You are a hospitality operations manager drafting public replies to guest reviews for ChezSoi Stays, a premium short-term rental company. Your replies appear publicly on Airbnb and are visible to future guests. Always:
 - Thank the guest by first name and reference something specific from their review
 - Be warm and appreciative for positive reviews; measured, non-defensive, and professional for complaints
@@ -137,6 +150,62 @@ export async function refineReviewResponse(input: RefineReviewResponseInput): Pr
     case "gemini": return callGeminiRefine(system, user);
     case "claude": return callClaudeRefine(system, user);
     case "openai": return callOpenAIRefine(system, user);
+  }
+}
+
+const OUTREACH_SYSTEM_PROMPT = `You are a hospitality operations manager drafting a private post-stay message for ChezSoi Stays. The guest has checked out but has not left a review yet. Always:
+- Thank the guest and invite them to stay again
+- Ask politely for an honest review without pressuring or implying a required positive rating
+- Preserve any incentive selected by the manager, but never invent offers
+- Never claim the guest said something they did not say
+- Return only the guest-ready message, with no preamble or commentary`;
+
+export async function refineOutreachMessage(
+  input: RefineOutreachMessageInput,
+): Promise<string> {
+  const formatDate = (timestamp: number) =>
+    new Date(timestamp).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  const incentiveInstruction: Record<RefineOutreachMessageInput["incentive"], string> = {
+    none: "Do not offer an incentive.",
+    return_discount: "Keep or add the approved 10% discount on the guest's next stay.",
+    google_review: "Ask for a Google review without offering compensation for it.",
+    early_late_checkin: "Offer an early check-in or late check-out on a future stay, subject to availability.",
+  };
+  const lengthInstruction =
+    input.length === "short"
+      ? "Use 2 to 3 sentences."
+      : input.length === "detailed"
+        ? "Use 5 or more sentences."
+        : "Use 3 to 5 sentences.";
+  const userPrompt = [
+    `Guest: ${input.guestName || "Guest"}`,
+    `Property: ${input.propertyName}`,
+    `Stay: ${formatDate(input.stayCheckIn)} – ${formatDate(input.stayCheckOut)}`,
+    `Tone: ${input.tone}.`,
+    lengthInstruction,
+    incentiveInstruction[input.incentive],
+    "",
+    "Current outreach draft:",
+    input.currentDraft,
+    "",
+    input.instruction
+      ? `Additional manager instruction: ${input.instruction}`
+      : "Improve the draft while preserving its intent and accurate details.",
+    "",
+    "Return ONLY the improved outreach message.",
+  ].join("\n");
+
+  switch (input.provider) {
+    case "gemini":
+      return callGeminiRefine(OUTREACH_SYSTEM_PROMPT, userPrompt);
+    case "claude":
+      return callClaudeRefine(OUTREACH_SYSTEM_PROMPT, userPrompt);
+    case "openai":
+      return callOpenAIRefine(OUTREACH_SYSTEM_PROMPT, userPrompt);
   }
 }
 

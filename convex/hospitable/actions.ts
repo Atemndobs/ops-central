@@ -4,6 +4,7 @@ import type { ActionCtx } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { normalizeGuestReview } from "../guestReviews/normalize";
+import { buildReservationMessageRequest } from "./reservationMessages";
 
 const DEFAULT_HOSPITABLE_BASE_URL = "https://public.api.hospitable.com/v2";
 const DEFAULT_SYNC_WINDOW_DAYS = 30;
@@ -1883,6 +1884,79 @@ export const backfillReservationPlatforms = internalAction({
     };
   },
 });
+
+/**
+ * POST /v2/reservations/{uuid}/messages — sends a message to the guest on
+ * the reservation's connected booking channel.
+ */
+export async function postReservationMessage(args: {
+  apiKey: string;
+  baseUrl: string;
+  reservationId: string;
+  message: string;
+  ctx?: UsageLogCtx;
+}): Promise<void> {
+  const request = buildReservationMessageRequest(args);
+  const url = request.url;
+  const startedAt = Date.now();
+  let response: Response;
+
+  try {
+    response = await fetch(url, request.init);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error ?? "unknown");
+    if (args.ctx) {
+      try {
+        await args.ctx.runMutation(internal.serviceUsage.logger.log, {
+          serviceKey: "hospitable",
+          feature: "hospitable_reservation_message",
+          status: "timeout",
+          durationMs: Date.now() - startedAt,
+          errorMessage: errorMessage.slice(0, 500),
+          metadata: { url: stripUrlSecrets(url) },
+        });
+      } catch {
+        // best-effort
+      }
+    }
+    throw new Error(`Network error sending reservation message: ${errorMessage}`);
+  }
+
+  const durationMs = Date.now() - startedAt;
+  if (!response.ok) {
+    const errorBody = await response.text();
+    if (args.ctx) {
+      try {
+        await args.ctx.runMutation(internal.serviceUsage.logger.log, {
+          serviceKey: "hospitable",
+          feature: "hospitable_reservation_message",
+          status: classifyHttpStatus(response.status),
+          durationMs,
+          errorCode: String(response.status),
+          errorMessage: errorBody.slice(0, 500),
+          metadata: { url: stripUrlSecrets(url) },
+        });
+      } catch {
+        // best-effort
+      }
+    }
+    throw new Error(`Hospitable send-message failed (${response.status}): ${errorBody}`);
+  }
+
+  if (args.ctx) {
+    try {
+      await args.ctx.runMutation(internal.serviceUsage.logger.log, {
+        serviceKey: "hospitable",
+        feature: "hospitable_reservation_message",
+        status: "success",
+        durationMs,
+        metadata: { url: stripUrlSecrets(url) },
+      });
+    } catch {
+      // best-effort
+    }
+  }
+}
 
 /**
  * POST /v2/reviews/{uuid}/respond — publishes a reply to a guest review on
