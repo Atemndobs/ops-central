@@ -80,7 +80,7 @@ test("draftReviewResponse: throws ReviewResponseDraftError when blocked by safet
   }
 });
 
-test("refineOutreachMessage: keeps the selected guest and incentive in the prompt", async () => {
+test("refineOutreachMessage: keeps the selected details and exact brand signature in the prompt", async () => {
   process.env.GOOGLE_GENERATIVE_AI_API_KEY = "test-key";
   const original = globalThis.fetch;
   let requestBody = "";
@@ -113,6 +113,8 @@ test("refineOutreachMessage: keeps the selected guest and incentive in the promp
     assert.match(requestBody, /Alex Rivera/);
     assert.match(requestBody, /Dallas-The Scandi/);
     assert.match(requestBody, /10% discount/);
+    assert.match(requestBody, /Chez Soi Stays/);
+    assert.doesNotMatch(requestBody, /ChezSoi Stays|Chez Soi Stays Team/);
   } finally {
     globalThis.fetch = original;
     delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;

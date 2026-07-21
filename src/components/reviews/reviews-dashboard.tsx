@@ -142,7 +142,7 @@ function buildOutreach(guestName: string, propertyName: string | null): string {
     `If you have a moment, we'd be incredibly grateful if you could leave us a quick review. ` +
     `We're a small, growing business, and honest reviews from guests like you make a real ` +
     `difference in helping us reach more travelers. Thank you again, and we hope to see you soon!` +
-    `\n\nWarm regards,\nThe ChezSoi Stays Team`
+    `\n\nWarm regards,\nChez Soi Stays`
   );
 }
 

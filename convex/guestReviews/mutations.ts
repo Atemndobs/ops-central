@@ -218,4 +218,53 @@ export const backfillPreparedDrafts = internalMutation({
   },
 });
 
+/**
+ * One-off brand-signature migration for stored templates and unsent drafts.
+ * It changes only legacy signature text, preserving every other edit.
+ * Both tables are intentionally small/config-sized (R1-exempt).
+ */
+export const normalizePreparedDraftSignatures = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const normalize = (text: string) =>
+      text
+        .replaceAll("The ChezSoi Stays Team", "Chez Soi Stays")
+        .replaceAll("The Chez Soi Stays Team", "Chez Soi Stays")
+        .replaceAll("ChezSoi Stays", "Chez Soi Stays");
+
+    let templatesUpdated = 0;
+    const templates = await ctx.db.query("reviewResponseTemplates").collect();
+    for (const template of templates) {
+      const closer = normalize(template.closer);
+      if (closer !== template.closer) {
+        await ctx.db.patch(template._id, { closer });
+        templatesUpdated++;
+      }
+    }
+
+    let draftsUpdated = 0;
+    const pendingStatuses = ["needs_draft", "drafted", "send_failed"] as const;
+    const drafts = (
+      await Promise.all(
+        pendingStatuses.map((status) =>
+          ctx.db
+            .query("guestReviews")
+            .withIndex("by_status", (q) => q.eq("status", status))
+            .collect(),
+        ),
+      )
+    ).flat();
+    for (const review of drafts) {
+      if (!review.aiDraftText) continue;
+      const aiDraftText = normalize(review.aiDraftText);
+      if (aiDraftText !== review.aiDraftText) {
+        await ctx.db.patch(review._id, { aiDraftText });
+        draftsUpdated++;
+      }
+    }
+
+    return { templatesUpdated, draftsUpdated };
+  },
+});
+
 export { InvalidReviewTransitionError };

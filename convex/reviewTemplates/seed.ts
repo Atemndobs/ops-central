@@ -41,7 +41,7 @@ export const TEMPLATES: TemplateInput[] = [
       "We're so glad you found the space clean, comfortable, and exactly as described, that's exactly the experience we work hard to deliver at [PROPERTY_NAME].",
     inviteBack: "We'd love to welcome you back whenever you're in the area!",
     incentiveText: "",
-    closer: "Warm regards,\nThe ChezSoi Stays Team",
+    closer: "Warm regards,\nChez Soi Stays",
   },
   {
     reviewCategory: "glowing_5star",
@@ -53,7 +53,7 @@ export const TEMPLATES: TemplateInput[] = [
     inviteBack: "We'd love to have you back!",
     incentiveText:
       "As a small token of our appreciation, we'd like to offer you 10% off your next stay with us, just reach out directly before booking and we'll sort it out.",
-    closer: "Until next time,\nThe ChezSoi Stays Team",
+    closer: "Until next time,\nChez Soi Stays",
   },
   {
     reviewCategory: "glowing_5star",
@@ -65,7 +65,7 @@ export const TEMPLATES: TemplateInput[] = [
     inviteBack: "We hope to host you again soon!",
     incentiveText:
       "If you have a spare moment, we'd be incredibly grateful if you could share a quick review on Google as well, it helps other travelers discover us and goes a long way for a small team like ours.",
-    closer: "With gratitude,\nThe ChezSoi Stays Team",
+    closer: "With gratitude,\nChez Soi Stays",
   },
   {
     reviewCategory: "glowing_5star",
@@ -77,7 +77,7 @@ export const TEMPLATES: TemplateInput[] = [
     inviteBack: "Please come back anytime, we'd love to host you again.",
     incentiveText:
       "Next time you stay with us, just let us know your travel schedule and we'll do our best to arrange an early check-in or late checkout for you, on us.",
-    closer: "See you next time,\nThe ChezSoi Stays Team",
+    closer: "See you next time,\nChez Soi Stays",
   },
 
   // ─── 4★ POSITIVE WITH MINOR NOTE ───────────────────────────────────────────
@@ -91,7 +91,7 @@ export const TEMPLATES: TemplateInput[] = [
       "We're glad the overall experience at [PROPERTY_NAME] was a positive one, and we appreciate you sharing your honest feedback, it helps us keep improving.",
     inviteBack: "We hope to see you again and give you a fully 5-star experience next time.",
     incentiveText: "",
-    closer: "Best regards,\nThe ChezSoi Stays Team",
+    closer: "Best regards,\nChez Soi Stays",
   },
   {
     reviewCategory: "positive_4star",
@@ -103,7 +103,7 @@ export const TEMPLATES: TemplateInput[] = [
     inviteBack: "We'd love to welcome you back and show you what we're capable of.",
     incentiveText:
       "To say thank you, we'd like to offer 10% off your next booking with us, just reach out before you reserve and we'll make it happen.",
-    closer: "Hope to see you again soon,\nThe ChezSoi Stays Team",
+    closer: "Hope to see you again soon,\nChez Soi Stays",
   },
   {
     reviewCategory: "positive_4star",
@@ -115,7 +115,7 @@ export const TEMPLATES: TemplateInput[] = [
     inviteBack: "We'd love a chance to earn that fifth star on your next visit.",
     incentiveText:
       "If you get a moment, a quick Google review would mean a lot to us, it helps other travelers find us and supports our small team in a big way.",
-    closer: "With appreciation,\nThe ChezSoi Stays Team",
+    closer: "With appreciation,\nChez Soi Stays",
   },
   {
     reviewCategory: "positive_4star",
@@ -127,7 +127,7 @@ export const TEMPLATES: TemplateInput[] = [
     inviteBack: "We hope you'll give us another shot, we'd love to win that extra star.",
     incentiveText:
       "When you book again, drop us a message and we'll do our best to fit your schedule with an early check-in or late checkout at no extra cost.",
-    closer: "Until next time,\nThe ChezSoi Stays Team",
+    closer: "Until next time,\nChez Soi Stays",
   },
 
   // ─── 3★ MIXED ───────────────────────────────────────────────────────────────
@@ -143,7 +143,7 @@ export const TEMPLATES: TemplateInput[] = [
       "We've reviewed the specifics of your stay and are taking steps to address the concerns you raised.",
     inviteBack: "We hope you'll give us another opportunity to do better.",
     incentiveText: "",
-    closer: "Respectfully,\nThe ChezSoi Stays Team",
+    closer: "Respectfully,\nChez Soi Stays",
   },
   {
     reviewCategory: "mixed_3star",
@@ -157,7 +157,7 @@ export const TEMPLATES: TemplateInput[] = [
     inviteBack: "We'd love a chance to make it right.",
     incentiveText:
       "As a gesture of goodwill, we'd like to offer you 10% off a future stay, please reach out directly and we'll honour it.",
-    closer: "Thank you again,\nThe ChezSoi Stays Team",
+    closer: "Thank you again,\nChez Soi Stays",
   },
   {
     reviewCategory: "mixed_3star",
@@ -171,7 +171,7 @@ export const TEMPLATES: TemplateInput[] = [
     inviteBack: "We hope to have the chance to show you a better experience.",
     incentiveText:
       "If you're open to it, sharing your experience on Google (even the honest version) helps other travellers make informed choices and helps us understand our reputation outside Airbnb.",
-    closer: "With appreciation,\nThe ChezSoi Stays Team",
+    closer: "With appreciation,\nChez Soi Stays",
   },
   {
     reviewCategory: "mixed_3star",
@@ -185,7 +185,7 @@ export const TEMPLATES: TemplateInput[] = [
     inviteBack: "We'd genuinely love the opportunity to win you back.",
     incentiveText:
       "If you ever stay with us again, just let us know your arrival and departure times and we'll do our best to accommodate an early check-in or late checkout.",
-    closer: "Thank you again,\nThe ChezSoi Stays Team",
+    closer: "Thank you again,\nChez Soi Stays",
   },
 
   // ─── 2★ CRITICAL ────────────────────────────────────────────────────────────
@@ -201,7 +201,7 @@ export const TEMPLATES: TemplateInput[] = [
       "We've investigated the specific concerns you raised and have taken corrective action to ensure this doesn't happen to future guests.",
     inviteBack: "We understand if you choose to stay elsewhere, but we hope you'll give us the opportunity to show you what we're truly capable of.",
     incentiveText: "",
-    closer: "Sincerely,\nThe ChezSoi Stays Team",
+    closer: "Sincerely,\nChez Soi Stays",
   },
   {
     reviewCategory: "critical_2star",
@@ -215,7 +215,7 @@ export const TEMPLATES: TemplateInput[] = [
     inviteBack: "We'd genuinely like the chance to make it up to you.",
     incentiveText:
       "As a gesture of goodwill, we'd like to offer you 10% off a future stay, please reach out directly and we'll honour it, no questions asked.",
-    closer: "With sincere apologies,\nThe ChezSoi Stays Team",
+    closer: "With sincere apologies,\nChez Soi Stays",
   },
   {
     reviewCategory: "critical_2star",
@@ -228,7 +228,7 @@ export const TEMPLATES: TemplateInput[] = [
       "Specifically, [ISSUE_DETAIL], this has been corrected and we've updated our internal checklist to prevent a recurrence.",
     inviteBack: "We appreciate honest feedback more than silence, it helps us improve for every guest who comes after you.",
     incentiveText: "",
-    closer: "With appreciation for your candour,\nThe ChezSoi Stays Team",
+    closer: "With appreciation for your candour,\nChez Soi Stays",
   },
   {
     reviewCategory: "critical_2star",
@@ -242,6 +242,6 @@ export const TEMPLATES: TemplateInput[] = [
     inviteBack: "We would genuinely love the chance to restore your confidence in us.",
     incentiveText:
       "If you're ever willing to give us another try, please reach out directly, we'll ensure a smooth arrival with an early check-in or late checkout arranged around your schedule.",
-    closer: "With sincere apologies,\nThe ChezSoi Stays Team",
+    closer: "With sincere apologies,\nChez Soi Stays",
   },
 ];
