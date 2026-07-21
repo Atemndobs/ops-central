@@ -1,6 +1,8 @@
 // convex/guestReviews/actions.ts
 import { v } from "convex/values";
 import { action, internalAction } from "../_generated/server";
+import type { ActionCtx } from "../_generated/server";
+import type { Doc } from "../_generated/dataModel";
 import { ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
 import {
@@ -9,9 +11,123 @@ import {
   refineReviewResponse,
   ReviewResponseDraftError,
 } from "../lib/reviewResponseDraft";
-import { postReservationMessage, postReviewResponse } from "../hospitable/actions";
+import {
+  getReservationMessages,
+  postReservationMessage,
+  postReviewResponse,
+} from "../hospitable/actions";
+import type { ReservationMessage } from "../hospitable/reservationMessages";
 
 const DEFAULT_HOSPITABLE_BASE_URL = "https://public.api.hospitable.com/v2";
+
+async function loadReservationHistory(
+  ctx: ActionCtx,
+  stay: Doc<"stays"> | null,
+): Promise<ReservationMessage[]> {
+  if (!stay?.hospitableId) return [];
+  const apiKey = process.env.HOSPITABLE_API_KEY ?? process.env.HOSPITABLE_API_TOKEN;
+  if (!apiKey) throw new ConvexError("Hospitable API credentials are not configured.");
+  const baseUrl = process.env.HOSPITABLE_API_URL ?? DEFAULT_HOSPITABLE_BASE_URL;
+  return getReservationMessages({
+    apiKey,
+    baseUrl,
+    reservationId: stay.hospitableId,
+    ctx,
+  });
+}
+
+async function loadReservationHistoryForDraft(
+  ctx: ActionCtx,
+  stay: Doc<"stays"> | null,
+): Promise<ReservationMessage[]> {
+  try {
+    return await loadReservationHistory(ctx, stay);
+  } catch (error) {
+    console.warn("Could not load Hospitable history for review drafting", {
+      stayId: stay?._id,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
+}
+
+const reservationMessageValidator = v.object({
+  id: v.string(),
+  senderRole: v.union(v.literal("guest"), v.literal("host"), v.literal("system")),
+  body: v.string(),
+  createdAt: v.number(),
+  platform: v.optional(v.string()),
+  attachments: v.array(v.string()),
+});
+
+interface ReviewStayHistory {
+  linked: boolean;
+  reason?: string;
+  stay?: {
+    checkInAt: number;
+    checkOutAt: number;
+    guestName: string;
+    confirmationCode?: string;
+    platform?: string;
+  };
+  messages: ReservationMessage[];
+}
+
+export const getReviewStayHistory = action({
+  args: { reviewId: v.id("guestReviews") },
+  returns: v.object({
+    linked: v.boolean(),
+    reason: v.optional(v.string()),
+    stay: v.optional(v.object({
+      checkInAt: v.number(),
+      checkOutAt: v.number(),
+      guestName: v.string(),
+      confirmationCode: v.optional(v.string()),
+      platform: v.optional(v.string()),
+    })),
+    messages: v.array(reservationMessageValidator),
+  }),
+  handler: async (ctx, args): Promise<ReviewStayHistory> => {
+    await ctx.runQuery(internal.guestReviews.internalQueries.assertReviewManagerAccess, {});
+    const review = await ctx.runQuery(internal.guestReviews.internalQueries.getById, {
+      reviewId: args.reviewId,
+    });
+    if (!review) throw new ConvexError("Review not found.");
+
+    const stay = await ctx.runQuery(internal.guestReviews.internalQueries.getLinkedStay, {
+      propertyId: review.propertyId,
+      reviewedAt: review.reviewedAt,
+      guestFirstName: review.guestFirstName,
+      guestLastName: review.guestLastName,
+      hospitableReservationId: review.hospitableReservationId,
+    });
+    if (!stay) {
+      return { linked: false, reason: "No matching stay was found.", messages: [] };
+    }
+
+    const staySummary = {
+      checkInAt: stay.checkInAt,
+      checkOutAt: stay.checkOutAt,
+      guestName: stay.guestName,
+      ...(stay.confirmationCode ? { confirmationCode: stay.confirmationCode } : {}),
+      ...(stay.platform ? { platform: stay.platform } : {}),
+    };
+    if (!stay.hospitableId) {
+      return {
+        linked: false,
+        reason: "The stay is not linked to a Hospitable reservation.",
+        stay: staySummary,
+        messages: [],
+      };
+    }
+
+    return {
+      linked: true,
+      stay: staySummary,
+      messages: await loadReservationHistory(ctx, stay),
+    };
+  },
+});
 
 /**
  * Client-callable action: regenerate or refine an AI draft using the
@@ -146,7 +262,10 @@ export const refineReviewDraft = action({
       reviewedAt: review.reviewedAt,
       guestFirstName: review.guestFirstName,
       guestLastName: review.guestLastName,
+      hospitableReservationId: review.hospitableReservationId,
     });
+
+    const reservationMessages = await loadReservationHistoryForDraft(ctx, stay);
 
     const promptSettings = await ctx.runQuery(internal.appSettings.getReviewSystemPromptInternal, {});
 
@@ -172,13 +291,15 @@ export const refineReviewDraft = action({
           `Closer: "${sub(templates.closer)}"`,
         ].filter(Boolean).join("\n");
         resolvedInstruction =
-          `Using ONLY the following pre-written building blocks as your source material, ` +
+          `Use the following pre-written building blocks for structure and tone, ` +
           `assemble them into a single fluent, natural response. ` +
           (args.tone ? `Tone: ${args.tone}. ` : "") +
           (args.length === "short" ? "Keep the reply SHORT — 2 to 3 sentences maximum. " :
            args.length === "detailed" ? "Write a DETAILED reply — 5 or more sentences. " :
            "Keep the reply STANDARD length — 3 to 5 sentences. ") +
-          `Do not add new content beyond what is in the blocks.\n\n${blocks}` +
+          `Use the stay conversation as the source of truth for factual details. ` +
+          `For a negative review, mention a specific correction only when the conversation shows it happened; ` +
+          `otherwise say the concern is being reviewed. Never expose private guest details.\n\n${blocks}` +
           (args.instruction ? `\n\nAdditional note from manager: ${args.instruction}` : "");
       }
     }
@@ -195,6 +316,7 @@ export const refineReviewDraft = action({
         stayCheckOut: stay?.checkOutAt,
         totalAmount: stay?.totalAmount,
         currency: stay?.currency,
+        reservationMessages,
         currentDraft: args.currentDraft,
         instruction: resolvedInstruction,
         provider: args.provider,
@@ -227,12 +349,22 @@ export const generateDraft = internalAction({
       propertyId: review.propertyId,
     });
 
+    const stay = await ctx.runQuery(internal.guestReviews.internalQueries.getLinkedStay, {
+      propertyId: review.propertyId,
+      reviewedAt: review.reviewedAt,
+      guestFirstName: review.guestFirstName,
+      guestLastName: review.guestLastName,
+      hospitableReservationId: review.hospitableReservationId,
+    });
+
     try {
+      const reservationMessages = await loadReservationHistoryForDraft(ctx, stay);
       const draftText = await draftReviewResponse({
         rating: review.rating,
         publicReview: review.publicReview,
         guestFirstName: review.guestFirstName,
         propertyName: property?.name ?? "the property",
+        reservationMessages,
       });
 
       await ctx.runMutation(internal.guestReviews.mutations.saveDraft, {

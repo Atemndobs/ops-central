@@ -8,6 +8,7 @@ const guestReviewValidator = v.object({
   _id: v.id("guestReviews"),
   _creationTime: v.number(),
   hospitableReviewId: v.string(),
+  hospitableReservationId: v.optional(v.string()),
   propertyId: v.id("properties"),
   propertyName: v.optional(v.string()),
   guestPhotoUrl: v.optional(v.string()),

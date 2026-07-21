@@ -7,6 +7,7 @@
 
 export interface NormalizedGuestReview {
   hospitableReviewId: string;
+  hospitableReservationId?: string;
   hospitablePropertyId: string;
   platform: "airbnb" | "direct";
   rating: number;
@@ -80,10 +81,17 @@ export function normalizeGuestReview(
 
   const privateBlock = isRecord(raw.private) ? raw.private : undefined;
   const guest = isRecord(raw.guest) ? raw.guest : undefined;
+  const reservation = isRecord(raw.reservation) ? raw.reservation : undefined;
+  const hospitableReservationId =
+    asString(raw.reservation_id) ??
+    asString(raw.reservation_uuid) ??
+    asString(reservation?.id) ??
+    asString(reservation?.uuid);
 
   return {
     review: {
       hospitableReviewId,
+      hospitableReservationId,
       hospitablePropertyId,
       platform: platform as "airbnb" | "direct",
       rating,

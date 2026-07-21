@@ -4,7 +4,11 @@ import type { ActionCtx } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { normalizeGuestReview } from "../guestReviews/normalize";
-import { buildReservationMessageRequest } from "./reservationMessages";
+import {
+  buildReservationMessageRequest,
+  normalizeReservationMessagePage,
+  type ReservationMessage,
+} from "./reservationMessages";
 
 const DEFAULT_HOSPITABLE_BASE_URL = "https://public.api.hospitable.com/v2";
 const DEFAULT_SYNC_WINDOW_DAYS = 30;
@@ -1956,6 +1960,41 @@ export async function postReservationMessage(args: {
       // best-effort
     }
   }
+}
+
+/**
+ * Fetch the complete guest-host thread for one reservation. Hospitable's
+ * endpoint is paginated; keep following pages (bounded at 20 × 100) and
+ * de-duplicate defensively in case an API page shifts while we read it.
+ */
+export async function getReservationMessages(args: {
+  apiKey: string;
+  baseUrl: string;
+  reservationId: string;
+  ctx?: UsageLogCtx;
+}): Promise<ReservationMessage[]> {
+  const baseUrl = args.baseUrl.replace(/\/$/, "");
+  const byId = new Map<string, ReservationMessage>();
+
+  for (let page = 1; page <= 20; page++) {
+    const params = new URLSearchParams({ page: String(page), per_page: "100" });
+    const url =
+      `${baseUrl}/reservations/${encodeURIComponent(args.reservationId)}/messages?` +
+      params.toString();
+    const payload = await fetchHospitableJson(
+      args.apiKey,
+      url,
+      args.ctx,
+      "hospitable_reservation_history",
+    );
+    const normalized = normalizeReservationMessagePage(payload);
+    const sizeBefore = byId.size;
+    for (const message of normalized.messages) byId.set(message.id, message);
+
+    if (!normalized.hasMore || byId.size === sizeBefore) break;
+  }
+
+  return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
 }
 
 /**

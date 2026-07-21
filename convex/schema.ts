@@ -1382,6 +1382,7 @@ const hospitableConfig = defineTable({
 
 const guestReviews = defineTable({
   hospitableReviewId: v.string(),
+  hospitableReservationId: v.optional(v.string()),
   propertyId: v.id("properties"),
   platform: v.union(v.literal("airbnb"), v.literal("direct")),
   rating: v.number(),

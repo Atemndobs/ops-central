@@ -4,7 +4,19 @@ import { useEffect, useState } from "react";
 import { useMutation, useAction } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { Star, Loader2, Send, X, RotateCcw, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Star,
+  Loader2,
+  Send,
+  X,
+  RotateCcw,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  MessageSquareText,
+  RefreshCw,
+  Paperclip,
+} from "lucide-react";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/components/ui/toast-provider";
 import type { ReviewProvider } from "@convex/lib/reviewResponseDraft";
@@ -12,6 +24,7 @@ import { RefinePanel } from "./refine-panel";
 
 export type ReviewRow = {
   _id: Id<"guestReviews">;
+  hospitableReservationId?: string;
   propertyId: Id<"properties">;
   propertyName?: string;
   guestPhotoUrl?: string;
@@ -27,6 +40,43 @@ export type ReviewRow = {
   respondedText?: string;
   sendError?: string;
 };
+
+type StayHistory = {
+  linked: boolean;
+  reason?: string;
+  stay?: {
+    checkInAt: number;
+    checkOutAt: number;
+    guestName: string;
+    confirmationCode?: string;
+    platform?: string;
+  };
+  messages: Array<{
+    id: string;
+    senderRole: "guest" | "host" | "system";
+    body: string;
+    createdAt: number;
+    platform?: string;
+    attachments: string[];
+  }>;
+};
+
+function formatStayDate(timestamp: number): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(timestamp);
+}
+
+function formatMessageTime(timestamp: number): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(timestamp);
+}
 
 const STATUS_LABEL: Record<ReviewRow["status"], string> = {
   needs_draft: "Drafting…",
@@ -64,6 +114,10 @@ export function ReviewCard({
   const { showToast } = useToast();
   const [draft, setDraft] = useState(review.aiDraftText ?? "");
   const [pending, setPending] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [stayHistory, setStayHistory] = useState<StayHistory | null>(null);
 
   useEffect(() => {
     setDraft(review.aiDraftText ?? "");
@@ -90,6 +144,7 @@ export function ReviewCard({
   const dismiss = useMutation(api.guestReviews.mutations.dismiss);
   const retrySend = useMutation(api.guestReviews.mutations.retrySend);
   const refineAction = useAction(api.guestReviews.actions.refineReviewDraft);
+  const getStayHistory = useAction(api.guestReviews.actions.getReviewStayHistory);
 
   const canReply = review.platform === "airbnb";
   const isEditable = review.status === "drafted" || review.status === "send_failed";
@@ -152,6 +207,25 @@ export function ReviewCard({
     } finally {
       setRefining(false);
     }
+  }
+
+  async function loadStayHistory(force = false) {
+    if (stayHistory && !force) return;
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      setStayHistory(await getStayHistory({ reviewId: review._id }));
+    } catch (error) {
+      setHistoryError(getErrorMessage(error));
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function toggleStayHistory() {
+    const nextOpen = !historyOpen;
+    setHistoryOpen(nextOpen);
+    if (nextOpen) await loadStayHistory();
   }
 
   const isBadReview = review.rating <= 3;
@@ -225,6 +299,122 @@ export function ReviewCard({
           </p>
         )}
       </div>
+
+      {/* The operational story of the stay, fetched directly from Hospitable. */}
+      <section className="rounded-lg border border-sky-200/80 bg-sky-50/50 dark:border-sky-900 dark:bg-sky-950/20 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => void toggleStayHistory()}
+          className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-sky-100/60 dark:hover:bg-sky-900/20"
+          aria-expanded={historyOpen}
+        >
+          <MessageSquareText className="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0" />
+          <span className="text-xs font-semibold text-sky-900 dark:text-sky-100">
+            Stay conversation
+          </span>
+          <span className="hidden text-xs text-sky-700/70 dark:text-sky-300/70 sm:inline">
+            {stayHistory
+              ? `${stayHistory.messages.length} message${stayHistory.messages.length === 1 ? "" : "s"}`
+              : "Guest and Chez Soi history"}
+          </span>
+          {historyLoading && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-sky-600" />}
+          {!historyLoading && (
+            historyOpen
+              ? <ChevronUp className="ml-auto h-3.5 w-3.5 text-sky-600" />
+              : <ChevronDown className="ml-auto h-3.5 w-3.5 text-sky-600" />
+          )}
+        </button>
+
+        {historyOpen && (
+          <div className="border-t border-sky-200/80 dark:border-sky-900 px-3 py-3 space-y-3">
+            {stayHistory?.stay && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-sky-800/80 dark:text-sky-200/80">
+                <span className="font-medium text-sky-950 dark:text-sky-50">
+                  {formatStayDate(stayHistory.stay.checkInAt)} → {formatStayDate(stayHistory.stay.checkOutAt)}
+                </span>
+                {stayHistory.stay.platform && <span>{stayHistory.stay.platform}</span>}
+                {stayHistory.stay.confirmationCode && (
+                  <span className="font-mono">#{stayHistory.stay.confirmationCode}</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void loadStayHistory(true)}
+                  disabled={historyLoading}
+                  className="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-1 font-medium hover:bg-sky-100 dark:hover:bg-sky-900 disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3 w-3 ${historyLoading ? "animate-spin" : ""}`} />
+                  Refresh
+                </button>
+              </div>
+            )}
+
+            {historyError && (
+              <p className="rounded-md border border-rose-200 bg-rose-50 px-2.5 py-2 text-xs text-rose-700">
+                Could not load the stay conversation: {historyError}
+              </p>
+            )}
+
+            {!historyLoading && stayHistory && !stayHistory.linked && (
+              <p className="text-xs text-sky-800/75 dark:text-sky-200/75">
+                {stayHistory.reason ?? "No Hospitable conversation is linked to this review yet."}
+              </p>
+            )}
+
+            {!historyLoading && stayHistory?.linked && stayHistory.messages.length === 0 && (
+              <p className="text-xs text-sky-800/75 dark:text-sky-200/75">
+                No messages were returned for this stay.
+              </p>
+            )}
+
+            {stayHistory && stayHistory.messages.length > 0 && (
+              <div className="max-h-80 overflow-y-auto pr-1 space-y-2" aria-label="Stay message timeline">
+                {stayHistory.messages.map((message) => {
+                  const fromGuest = message.senderRole === "guest";
+                  const fromHost = message.senderRole === "host";
+                  return (
+                    <div
+                      key={message.id}
+                      className={`flex ${fromHost ? "justify-end" : fromGuest ? "justify-start" : "justify-center"}`}
+                    >
+                      <div className={`max-w-[88%] sm:max-w-[76%] rounded-xl border px-3 py-2 ${
+                        fromHost
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100"
+                          : fromGuest
+                            ? "border-slate-200 bg-[var(--card)] text-slate-800 dark:border-slate-700 dark:text-slate-200"
+                            : "border-sky-200 bg-sky-100/70 text-sky-800 dark:border-sky-800 dark:bg-sky-900/30 dark:text-sky-200"
+                      }`}>
+                        <div className="mb-1 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide opacity-65">
+                          <span>{fromHost ? "Chez Soi" : fromGuest ? "Guest" : "System"}</span>
+                          <span className="normal-case font-normal tracking-normal">
+                            {formatMessageTime(message.createdAt)}
+                          </span>
+                        </div>
+                        <p className="whitespace-pre-wrap text-xs leading-relaxed">{message.body}</p>
+                        {message.attachments.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {message.attachments.map((url, index) => (
+                              <a
+                                key={`${message.id}-attachment-${index}`}
+                                href={url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 rounded border border-current/20 px-1.5 py-1 text-[10px] font-medium hover:opacity-70"
+                              >
+                                <Paperclip className="h-2.5 w-2.5" />
+                                Attachment {index + 1}
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       {!canReply && (
         <p className="text-xs text-[var(--muted-foreground)] italic">

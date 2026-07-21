@@ -10,6 +10,7 @@ const VALID_RAW = {
   reviewed_at: "2024-03-19T10:00:00Z",
   can_respond: true,
   guest: { first_name: "Jane", last_name: "Doe" },
+  reservation: { id: "reservation-123" },
   property: { id: "497f6eca-6276-4993-bfeb-53cbbbba6f08", name: "The Paris" },
 };
 
@@ -18,6 +19,7 @@ test("normalizeGuestReview: maps a valid Airbnb review", () => {
   assert.equal(error, undefined);
   assert.ok(review);
   assert.equal(review.hospitableReviewId, VALID_RAW.id);
+  assert.equal(review.hospitableReservationId, "reservation-123");
   assert.equal(review.hospitablePropertyId, VALID_RAW.property.id);
   assert.equal(review.platform, "airbnb");
   assert.equal(review.rating, 5);
@@ -27,6 +29,15 @@ test("normalizeGuestReview: maps a valid Airbnb review", () => {
   assert.equal(review.guestLastName, "Doe");
   assert.equal(review.reviewedAt, Date.parse("2024-03-19T10:00:00Z"));
   assert.equal(review.canRespond, true);
+});
+
+test("normalizeGuestReview: accepts top-level reservation identifiers", () => {
+  const { review } = normalizeGuestReview({
+    ...VALID_RAW,
+    reservation: undefined,
+    reservation_uuid: "reservation-456",
+  });
+  assert.equal(review?.hospitableReservationId, "reservation-456");
 });
 
 test("normalizeGuestReview: defaults missing guest name and private feedback", () => {

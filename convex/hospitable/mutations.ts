@@ -668,6 +668,7 @@ export const patchStayFinancials = internalMutation({
 export const upsertGuestReview = internalMutation({
   args: {
     hospitableReviewId: v.string(),
+    hospitableReservationId: v.optional(v.string()),
     hospitablePropertyId: v.string(),
     platform: v.union(v.literal("airbnb"), v.literal("direct")),
     rating: v.number(),
@@ -695,6 +696,7 @@ export const upsertGuestReview = internalMutation({
 
     if (existing) {
       await ctx.db.patch(existing._id, {
+        hospitableReservationId: args.hospitableReservationId,
         rating: args.rating,
         publicReview: args.publicReview,
         privateFeedback: args.privateFeedback,
@@ -714,6 +716,7 @@ export const upsertGuestReview = internalMutation({
 
     const reviewId = await ctx.db.insert("guestReviews", {
       hospitableReviewId: args.hospitableReviewId,
+      hospitableReservationId: args.hospitableReservationId,
       propertyId: property._id,
       platform: args.platform,
       rating: args.rating,

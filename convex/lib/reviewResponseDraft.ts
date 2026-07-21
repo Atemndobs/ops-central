@@ -7,6 +7,12 @@
 
 export type ReviewProvider = "gemini" | "claude" | "openai";
 
+export interface ReviewConversationMessage {
+  senderRole: "guest" | "host" | "system";
+  body: string;
+  createdAt: number;
+}
+
 export interface RefineReviewResponseInput {
   rating: number;
   publicReview: string;
@@ -18,6 +24,7 @@ export interface RefineReviewResponseInput {
   stayCheckOut?: number;
   totalAmount?: number;
   currency?: string;
+  reservationMessages?: ReadonlyArray<ReviewConversationMessage>;
   currentDraft: string;
   instruction?: string;
   provider: ReviewProvider;
@@ -41,10 +48,39 @@ const DEFAULT_REVIEW_SYSTEM_PROMPT = `You are a hospitality operations manager d
 - Thank the guest by first name and reference something specific from their review
 - Be warm and appreciative for positive reviews; measured, non-defensive, and professional for complaints
 - Acknowledge issues without admitting fault or making specific fix promises with dates
+- Use the stay conversation to understand what happened, but never expose private details publicly
+- For a negative review, acknowledge the issue, state only corrective action evidenced by the conversation, and reassure future guests; if no correction is evidenced, say the issue is being reviewed instead of inventing a fix
 - Never offer discounts, refunds, or use legal/liability language
 - Keep replies to 2–4 sentences maximum
 - Show that management cares and acts on feedback
 - End with exactly "Chez Soi Stays" as the signature; never add "The" or "Team"`;
+
+export function formatReservationHistory(
+  messages: ReadonlyArray<ReviewConversationMessage> | undefined,
+): string | null {
+  if (!messages?.length) return null;
+  const lines: string[] = [];
+  let usedCharacters = 0;
+  const recentMessages = messages.slice(-60).reverse();
+  for (const message of recentMessages) {
+    const sender =
+      message.senderRole === "guest"
+        ? "Guest"
+        : message.senderRole === "host"
+          ? "Chez Soi"
+          : "System";
+    const line = `[${new Date(message.createdAt).toISOString()}] ${sender}: ${message.body}`;
+    if (usedCharacters + line.length > 12_000) break;
+    lines.unshift(line);
+    usedCharacters += line.length;
+  }
+  const omitted = Math.max(0, messages.length - lines.length);
+  return [
+    "Stay conversation (private operational context; do not quote sensitive details):",
+    omitted > 0 ? `[${omitted} earlier messages omitted for context length]` : null,
+    ...lines,
+  ].filter((line): line is string => line !== null).join("\n");
+}
 
 function buildRefinePrompt(input: RefineReviewResponseInput): string {
   const fmt = (ts: number) =>
@@ -53,6 +89,7 @@ function buildRefinePrompt(input: RefineReviewResponseInput): string {
     input.stayCheckIn && input.stayCheckOut
       ? `Stay: ${fmt(input.stayCheckIn)} – ${fmt(input.stayCheckOut)}${input.totalAmount ? ` · ${input.currency ?? "USD"} ${input.totalAmount.toFixed(2)} total` : ""}`
       : null;
+  const reservationHistory = formatReservationHistory(input.reservationMessages);
 
   return [
     `Property: ${input.propertyName}`,
@@ -61,6 +98,7 @@ function buildRefinePrompt(input: RefineReviewResponseInput): string {
     stayLine,
     `Review: "${input.publicReview}"`,
     input.privateFeedback ? `Private guest feedback: "${input.privateFeedback}"` : null,
+    reservationHistory,
     "",
     "Current draft reply:",
     `"${input.currentDraft}"`,
@@ -145,7 +183,11 @@ async function callOpenAIRefine(system: string, user: string): Promise<string> {
 }
 
 export async function refineReviewResponse(input: RefineReviewResponseInput): Promise<string> {
-  const system = input.systemPromptOverride ?? DEFAULT_REVIEW_SYSTEM_PROMPT;
+  const mandatoryRules = `Mandatory operational rules:
+- Treat the stay conversation as private context and never expose sensitive details
+- For negative reviews, mention only corrective action supported by the conversation; otherwise say the concern is being reviewed
+- End with exactly "Chez Soi Stays" as the signature`;
+  const system = `${input.systemPromptOverride ?? DEFAULT_REVIEW_SYSTEM_PROMPT}\n\n${mandatoryRules}`;
   const user = buildRefinePrompt(input);
   switch (input.provider) {
     case "gemini": return callGeminiRefine(system, user);
@@ -229,6 +271,7 @@ export interface DraftReviewResponseInput {
   publicReview: string;
   guestFirstName: string;
   propertyName: string;
+  reservationMessages?: ReadonlyArray<ReviewConversationMessage>;
 }
 
 export async function draftReviewResponse(
@@ -246,6 +289,7 @@ export async function draftReviewResponse(
     input.rating >= 4
       ? "warm and appreciative"
       : "measured, non-defensive, and appreciative of the feedback without making excuses";
+  const reservationHistory = formatReservationHistory(input.reservationMessages);
 
   const prompt = [
     "You are drafting a short public reply to a guest review of a short-term",
@@ -255,6 +299,7 @@ export async function draftReviewResponse(
     `Guest: ${input.guestFirstName || "the guest"}`,
     `Star rating: ${input.rating} out of 5`,
     `Review text: "${input.publicReview}"`,
+    reservationHistory,
     "",
     "Write a reply that:",
     `- Is ${tone} in tone.`,
@@ -262,7 +307,10 @@ export async function draftReviewResponse(
     "  specific from their review — never generic filler.",
     "- Never offers a discount, refund, or any specific promised fix with a date.",
     "- Never uses legal or liability language.",
+    "- Uses the private stay conversation only to understand the facts; never quotes sensitive details.",
+    "- For a negative review, acknowledges the problem, mentions only a correction evidenced in the conversation, and reassures future guests. If no correction is evidenced, says the issue is being reviewed.",
     "- Is 2 to 4 sentences long.",
+    '- Ends with exactly "Chez Soi Stays" as the signature, never "the team".',
     "",
     "Return ONLY the reply text — no preamble, no quotes, no commentary.",
   ].join("\n");

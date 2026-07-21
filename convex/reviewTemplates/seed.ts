@@ -140,7 +140,7 @@ export const TEMPLATES: TemplateInput[] = [
     acknowledgment:
       "We're sorry [PROPERTY_NAME] didn't fully meet your expectations. Your comments help us understand where to focus our energy.",
     addressIssue:
-      "We've reviewed the specifics of your stay and are taking steps to address the concerns you raised.",
+      "We've reviewed what happened carefully and are following up with our operations team so future guests receive a better experience.",
     inviteBack: "We hope you'll give us another opportunity to do better.",
     incentiveText: "",
     closer: "Respectfully,\nChez Soi Stays",
@@ -153,7 +153,7 @@ export const TEMPLATES: TemplateInput[] = [
     acknowledgment:
       "We're sorry that your stay at [PROPERTY_NAME] was only average, that's not the standard we set for ourselves and we appreciate you letting us know.",
     addressIssue:
-      "We're looking into the specific points you raised to make sure future guests don't face the same issues.",
+      "We've reviewed the points you raised with our operations team and are tightening the parts of the stay that fell short.",
     inviteBack: "We'd love a chance to make it right.",
     incentiveText:
       "As a gesture of goodwill, we'd like to offer you 10% off a future stay, please reach out directly and we'll honour it.",
@@ -167,7 +167,7 @@ export const TEMPLATES: TemplateInput[] = [
     acknowledgment:
       "We appreciate the balanced feedback on [PROPERTY_NAME]. Mixed experiences push us to improve and we take every point seriously.",
     addressIssue:
-      "We're reviewing what you raised and working on improvements for upcoming stays.",
+      "We're reviewing what you raised with the property team and using it to improve the experience for upcoming stays.",
     inviteBack: "We hope to have the chance to show you a better experience.",
     incentiveText:
       "If you're open to it, sharing your experience on Google (even the honest version) helps other travellers make informed choices and helps us understand our reputation outside Airbnb.",
@@ -181,7 +181,7 @@ export const TEMPLATES: TemplateInput[] = [
     acknowledgment:
       "We're sorry [PROPERTY_NAME] didn't hit all the right notes this time. We use feedback like yours to raise the bar for every future stay.",
     addressIssue:
-      "We're taking the points you raised seriously and making the necessary improvements.",
+      "We're taking the points you raised seriously and reviewing the stay with our operations team.",
     inviteBack: "We'd genuinely love the opportunity to win you back.",
     incentiveText:
       "If you ever stay with us again, just let us know your arrival and departure times and we'll do our best to accommodate an early check-in or late checkout.",
@@ -198,7 +198,7 @@ export const TEMPLATES: TemplateInput[] = [
     acknowledgment:
       "This is not the standard we hold ourselves to, and we take full responsibility for the issues you encountered.",
     addressIssue:
-      "We've investigated the specific concerns you raised and have taken corrective action to ensure this doesn't happen to future guests.",
+      "We've reviewed the full stay history with our operations team and are addressing the points that fell below our standard.",
     inviteBack: "We understand if you choose to stay elsewhere, but we hope you'll give us the opportunity to show you what we're truly capable of.",
     incentiveText: "",
     closer: "Sincerely,\nChez Soi Stays",
@@ -211,7 +211,7 @@ export const TEMPLATES: TemplateInput[] = [
     acknowledgment:
       "The issues you raised are unacceptable and we've taken immediate steps to address them. Every guest deserves a smooth, comfortable stay, you did not get that, and we own it.",
     addressIssue:
-      "We have reviewed the specifics of your stay and made direct improvements to prevent a recurrence.",
+      "We have reviewed the specifics of your stay with our operations team and are addressing the breakdowns you experienced.",
     inviteBack: "We'd genuinely like the chance to make it up to you.",
     incentiveText:
       "As a gesture of goodwill, we'd like to offer you 10% off a future stay, please reach out directly and we'll honour it, no questions asked.",
@@ -225,7 +225,7 @@ export const TEMPLATES: TemplateInput[] = [
     acknowledgment:
       "We are genuinely sorry your stay at [PROPERTY_NAME] was impacted by the issues you described. We want to be transparent: we've reviewed what happened and we've made changes.",
     addressIssue:
-      "Specifically, [ISSUE_DETAIL], this has been corrected and we've updated our internal checklist to prevent a recurrence.",
+      "We have reviewed the stay communication carefully and are using it to strengthen the process for future guests.",
     inviteBack: "We appreciate honest feedback more than silence, it helps us improve for every guest who comes after you.",
     incentiveText: "",
     closer: "With appreciation for your candour,\nChez Soi Stays",
@@ -238,7 +238,7 @@ export const TEMPLATES: TemplateInput[] = [
     acknowledgment:
       "We've investigated your stay thoroughly and have taken corrective steps. Your comfort and safety matter to us, and we failed to deliver on that.",
     addressIssue:
-      "The specific issue you raised has been addressed and we've reinforced our process to prevent it from happening again.",
+      "We have reviewed the issue with our operations team and are reinforcing the process around it for future stays.",
     inviteBack: "We would genuinely love the chance to restore your confidence in us.",
     incentiveText:
       "If you're ever willing to give us another try, please reach out directly, we'll ensure a smooth arrival with an early check-in or late checkout arranged around your schedule.",

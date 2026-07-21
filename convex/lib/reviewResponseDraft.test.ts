@@ -120,3 +120,49 @@ test("refineOutreachMessage: keeps the selected details and exact brand signatur
     delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
   }
 });
+
+test("refineReviewResponse includes the private stay timeline as drafting context", async () => {
+  process.env.GOOGLE_GENERATIVE_AI_API_KEY = "test-key";
+  const original = globalThis.fetch;
+  let requestBody = "";
+  globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+    requestBody = String(init?.body ?? "");
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: "Thank you, Jane. Chez Soi Stays" }] } }],
+      }),
+      text: async () => "",
+    } as Response;
+  }) as typeof fetch;
+
+  try {
+    const { refineReviewResponse } = await import("./reviewResponseDraft.ts");
+    await refineReviewResponse({
+      ...INPUT,
+      guestLastName: "Doe",
+      currentDraft: "Thank you for your review.",
+      provider: "gemini",
+      reservationMessages: [
+        {
+          senderRole: "guest",
+          body: "The heating is not working.",
+          createdAt: Date.UTC(2026, 6, 2, 20),
+        },
+        {
+          senderRole: "host",
+          body: "Maintenance reset the boiler and the guest confirmed it was warm.",
+          createdAt: Date.UTC(2026, 6, 2, 21),
+        },
+      ],
+    });
+
+    assert.match(requestBody, /heating is not working/);
+    assert.match(requestBody, /Maintenance reset the boiler/);
+    assert.match(requestBody, /private operational context/);
+  } finally {
+    globalThis.fetch = original;
+    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  }
+});
