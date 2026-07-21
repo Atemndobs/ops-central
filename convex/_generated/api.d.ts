@@ -57,6 +57,7 @@ import type * as hospitable_actions from "../hospitable/actions.js";
 import type * as hospitable_diagnostics from "../hospitable/diagnostics.js";
 import type * as hospitable_mutations from "../hospitable/mutations.js";
 import type * as hospitable_queries from "../hospitable/queries.js";
+import type * as hospitable_reservationMessages from "../hospitable/reservationMessages.js";
 import type * as hospitable_webhooks from "../hospitable/webhooks.js";
 import type * as http from "../http.js";
 import type * as incidents_mutations from "../incidents/mutations.js";
@@ -217,6 +218,7 @@ declare const fullApi: ApiFromModules<{
   "hospitable/diagnostics": typeof hospitable_diagnostics;
   "hospitable/mutations": typeof hospitable_mutations;
   "hospitable/queries": typeof hospitable_queries;
+  "hospitable/reservationMessages": typeof hospitable_reservationMessages;
   "hospitable/webhooks": typeof hospitable_webhooks;
   http: typeof http;
   "incidents/mutations": typeof incidents_mutations;

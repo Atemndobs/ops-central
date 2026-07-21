@@ -4,18 +4,6 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 
 ## Ready
 
-### TASK-REVIEW-REPLY-CONTROLS-001
-- Branch: task/review-reply-controls
-- Worktree: ~/sites/opscentral-admin-team-redesign
-- PR: https://github.com/Atemndobs/ops-central/pull/285
-- Schema impact: none
-- Convex impact: deploy-required (new outreach refine/send actions and Hospitable reservation-message helper)
-- Risk: medium — adds a live outbound guest-message path; failures remain visible and no schema/data writes are introduced
-- Ready since: 2026-07-21 11:00 CEST
-- What: adds Send message + the shared Refine with AI panel to Review Opportunities, fixes stale lower-card draft state, and prevents another guest's stay context from entering generated review replies
-- CI: focused tests 6/6; read-cost gate pass; touched-file ESLint has 0 errors; production compile + TypeScript pass before expected missing-env prerender stop
-- Handoff: .harness/handoffs/TASK-REVIEW-REPLY-CONTROLS-001/worktree-handoff.md
-
 ### TASK-REVIEW-VERDICT-FEEDBACK-001
 - Branch: task/review-verdict-feedback
 - Worktree: ~/sites/opscentral-admin-review-feedback
@@ -67,6 +55,17 @@ Ready-for-integration tasks. Worktree sessions append to `## Ready`. Main sessio
 _None._
 
 ## Done
+
+### TASK-REVIEW-REPLY-CONTROLS-001
+- Branch: task/review-reply-controls
+- PR: https://github.com/Atemndobs/ops-central/pull/285 (merged → 3a2be95)
+- Schema impact: none
+- Convex impact: deployed to lovable-oriole-182; cleaners mirror synced
+- Risk: medium — live outbound guest-message path, with errors surfaced to the operator
+- What: adds Send message + shared Refine with AI controls to Review Opportunities, fixes stale lower-card draft state, and guest-matches AI stay context
+- Integrated: 2026-07-21
+- Validation: focused tests 6/6, read-cost gate pass, production build pass, mirror and mobile compatibility checks pass
+- Handoff: .harness/handoffs/TASK-REVIEW-REPLY-CONTROLS-001/worktree-handoff.md · integration-result.md
 
 ### TASK-PROPERTIES-PAGE-BUGS-001
 - Branch: task/properties-page-bugs
