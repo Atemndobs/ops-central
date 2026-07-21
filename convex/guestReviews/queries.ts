@@ -31,6 +31,7 @@ const guestReviewValidator = v.object({
   aiDraftGeneratedAt: v.optional(v.number()),
   respondedText: v.optional(v.string()),
   respondedAt: v.optional(v.number()),
+  respondedBy: v.optional(v.id("users")),
   sendError: v.optional(v.string()),
 });
 
