@@ -3,6 +3,7 @@ import { query } from "../_generated/server";
 import type { QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { getCurrentUser } from "../lib/auth";
+import { callerSharesOrgForProperty } from "../lib/tenantGuard";
 import {
   assertConversationAccess,
   canAccessJobConversation,
@@ -421,6 +422,15 @@ export const getConversationById = query({
     }
 
     await assertConversationAccess(ctx, { user, conversation });
+
+    // Cross-org isolation (multi-tenancy). No-op until TENANCY_ENFORCED is on;
+    // then denies conversations whose property belongs to another org.
+    if (
+      conversation.propertyId &&
+      !(await callerSharesOrgForProperty(ctx, conversation.propertyId))
+    ) {
+      return null;
+    }
 
     const limit =
       typeof args.limit === "number" && Number.isFinite(args.limit)
