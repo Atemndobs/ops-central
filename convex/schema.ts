@@ -65,8 +65,64 @@ const userRoles = defineTable({
 // CLEANING COMPANIES
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ORGANIZATIONS (multi-tenancy — Phase 1, additive)
+//
+// One `organizations` row = one paying customer company (a tenant). It sits
+// ABOVE `cleaningCompanies`: an organization owns its cleaningCompanies (per
+// city / crew), and through them its properties, users, jobs, etc. See
+// docs/2026-07-24-multi-tenancy-kickoff-plan.md.
+//
+// Phase 1 is intentionally additive and NON-enforcing: the field on
+// `cleaningCompanies` below is OPTIONAL and nothing filters by organization
+// yet. Existing single-tenant (J&A) behaviour is unchanged until a later
+// enforcement phase backfills the org and turns on `requireOrg` (convex/lib/
+// tenant.ts). Do NOT make organizationId required or add isolation filters
+// here without the backfill + coordination described in the plan.
+// ─────────────────────────────────────────────────────────────────────────────
+const organizations = defineTable({
+  // Human-facing name of the customer company.
+  name: v.string(),
+  // URL-safe identifier, unique per org (used for onboarding / subdomains).
+  slug: v.string(),
+  // Access gate that drives both apps. See the billing spec §2.
+  status: v.union(
+    v.literal("trialing"),
+    v.literal("active"),
+    v.literal("past_due"),
+    v.literal("canceled"),
+  ),
+  // Pricing tier mirror for fast display; source of truth is Stripe.
+  plan: v.optional(
+    v.union(
+      v.literal("starter"),
+      v.literal("growth"),
+      v.literal("scale"),
+      v.literal("enterprise"),
+    ),
+  ),
+  // Clerk Organization id, once the org is provisioned in Clerk. Optional so
+  // existing/backfilled orgs can exist before the Clerk org is created.
+  clerkOrgId: v.optional(v.string()),
+  // Billing linkage (Stripe). Populated by the billing phase; see billing spec.
+  stripeCustomerId: v.optional(v.string()),
+  stripeSubscriptionId: v.optional(v.string()),
+  currentPeriodEnd: v.optional(v.number()),
+  trialEndsAt: v.optional(v.number()),
+  // Per-org branding (generalizes the current Chez Soi / J&A theming later).
+  brandingLogoStorageId: v.optional(v.id("_storage")),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+})
+  .index("by_slug", ["slug"])
+  .index("by_clerkOrgId", ["clerkOrgId"])
+  .index("by_stripeCustomerId", ["stripeCustomerId"]);
+
 const cleaningCompanies = defineTable({
   name: v.string(),
+  // Owning tenant. OPTIONAL in Phase 1 (see ORGANIZATIONS note above): existing
+  // rows have no org until the enforcement-phase backfill links them.
+  organizationId: v.optional(v.id("organizations")),
   ownerId: v.optional(v.id("users")),
   contactEmail: v.optional(v.string()),
   contactPhone: v.optional(v.string()),
@@ -84,7 +140,8 @@ const cleaningCompanies = defineTable({
   updatedAt: v.optional(v.number()),
 })
   .index("by_owner", ["ownerId"])
-  .index("by_active", ["isActive"]);
+  .index("by_active", ["isActive"])
+  .index("by_organization", ["organizationId"]);
 
 const companyMembers = defineTable({
   companyId: v.id("cleaningCompanies"),
@@ -2236,7 +2293,8 @@ export default defineSchema({
   users,
   userRoles,
 
-  // Companies
+  // Organizations (tenancy root) + Companies
+  organizations,
   cleaningCompanies,
   companyMembers,
   companyProperties,
