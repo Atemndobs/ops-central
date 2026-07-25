@@ -9,7 +9,10 @@ import {
   normalizeStorageProvider,
 } from "../lib/externalStorage";
 import { resolvePhotoAccessUrl } from "../lib/photoUrls";
-import { callerSharesOrgForProperty } from "../lib/tenantGuard";
+import {
+  callerSharesOrgForProperty,
+  getCallerOrgPropertyIds,
+} from "../lib/tenantGuard";
 import { assertReviewerRole } from "./reviewAccess";
 import {
   canCallerAccessPropertyById,
@@ -263,6 +266,13 @@ export const getAll = query({
     // filter by propertyId (status-only, by_scheduled).
     if (allowedPropertyIds) {
       jobs = jobs.filter((job) => allowedPropertyIds.has(job.propertyId));
+    }
+
+    // Cross-org isolation for the list. No-op until TENANCY_ENFORCED is on;
+    // then restricts to jobs whose property belongs to the caller's org.
+    const orgPropertyIds = await getCallerOrgPropertyIds(ctx);
+    if (orgPropertyIds) {
+      jobs = jobs.filter((job) => orgPropertyIds.has(job.propertyId));
     }
 
     if (typeof args.notEndedBefore === "number") {
