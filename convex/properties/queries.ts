@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { getCurrentUser } from "../lib/auth";
+import { callerSharesOrgForProperty } from "../lib/tenantGuard";
 import {
   canCallerAccessPropertyById,
   getCallerJobScopeForListing,
@@ -248,6 +249,12 @@ export const getById = query({
     const property = await ctx.db.get(args.id);
 
     if (!property || !property.isActive) {
+      return null;
+    }
+
+    // Cross-org isolation (multi-tenancy). No-op until the tenancy_enforced
+    // flag is on; then denies when the property belongs to another org.
+    if (!(await callerSharesOrgForProperty(ctx, property._id))) {
       return null;
     }
 
