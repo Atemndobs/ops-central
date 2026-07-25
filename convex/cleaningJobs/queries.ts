@@ -9,6 +9,7 @@ import {
   normalizeStorageProvider,
 } from "../lib/externalStorage";
 import { resolvePhotoAccessUrl } from "../lib/photoUrls";
+import { callerSharesOrgForProperty } from "../lib/tenantGuard";
 import { assertReviewerRole } from "./reviewAccess";
 import {
   canCallerAccessPropertyById,
@@ -292,6 +293,12 @@ export const getById = query({
       lightweight: true,
     });
     if (!detail) {
+      return null;
+    }
+
+    // Cross-org isolation (multi-tenancy). No-op until TENANCY_ENFORCED is on;
+    // then denies when the job's property belongs to another org.
+    if (!(await callerSharesOrgForProperty(ctx, detail.job.propertyId))) {
       return null;
     }
 
