@@ -55,6 +55,20 @@ export async function requireOrg(ctx: Ctx): Promise<Doc<"organizations">> {
 }
 
 /**
+ * Like {@link requireOrg} but also enforces the billing status gate: a canceled
+ * organization is rejected (hard lockout). `trialing` / `active` / `past_due`
+ * pass (see isOrganizationActive + billing spec §2). Still dark in Phase 2:
+ * wire into mutations behind the tenancy_enforced flag in the activation PR.
+ */
+export async function requireActiveOrg(ctx: Ctx): Promise<Doc<"organizations">> {
+  const org = await requireOrg(ctx);
+  if (!isOrganizationActive(org)) {
+    throw new Error("This organization's subscription is inactive.");
+  }
+  return org;
+}
+
+/**
  * Whether an organization currently has app access. `canceled` is the only
  * hard lockout; `past_due` keeps access during dunning (see billing spec §2).
  * Pure function, used by the future status gate, safe to unit-test.
