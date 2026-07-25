@@ -3,7 +3,10 @@ import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { getCurrentUser } from "../lib/auth";
-import { callerSharesOrgForProperty } from "../lib/tenantGuard";
+import {
+  callerSharesOrgForProperty,
+  getCallerOrgPropertyIds,
+} from "../lib/tenantGuard";
 import {
   canCallerAccessPropertyById,
   getCallerJobScopeForListing,
@@ -368,6 +371,13 @@ export const getAll = query({
 
     if (allowedPropertyIds) {
       properties = properties.filter((p) => allowedPropertyIds.has(p._id));
+    }
+
+    // Cross-org isolation for the list. No-op until TENANCY_ENFORCED is on;
+    // then restricts to the caller's organization's properties.
+    const orgPropertyIds = await getCallerOrgPropertyIds(ctx);
+    if (orgPropertyIds) {
+      properties = properties.filter((p) => orgPropertyIds.has(p._id));
     }
 
     const sorted = properties
